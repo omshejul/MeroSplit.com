@@ -69,6 +69,12 @@ SECURE_HSTS_SECONDS = 31536000 if not DEBUG else 0
 USE_TZ = True
 TIME_ZONE = "Asia/Kolkata"
 LANGUAGE_CODE = "en-in"
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {"console": {"class": "logging.StreamHandler"}},
+    "loggers": {"django.request": {"handlers": ["console"], "level": "ERROR", "propagate": False}},
+}
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
