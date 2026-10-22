@@ -56,9 +56,10 @@ export async function clearPickedMedia(file: PickedMedia): Promise<void> {
   } catch { /* Only a temporary picker copy may be removed. */ }
 }
 
-export async function uploadMedia<T>(session: Session, path: string, file: PickedMedia, id: string, fetcher: typeof fetch = fetch): Promise<T> {
+export async function uploadMedia<T>(session: Session, path: string, file: PickedMedia, id: string, fetcher: typeof fetch = fetch,
+  readBytes: (uri: string) => Promise<Uint8Array> = async uri => { const { File } = await import('expo-file-system'); return new File(uri).bytes(); }): Promise<T> {
   const body = new FormData(); body.append('id', id);
-  body.append('file', { uri: file.uri, name: file.name, type: file.type } as unknown as Blob);
+  body.append('file', { name: file.name, type: file.type, bytes: () => readBytes(file.uri) } as unknown as Blob);
   const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 60_000);
   try {
     const response = await fetcher(`${session.baseUrl}/api/v1${path}`, { method: 'POST', headers: { 'X-Session-Token': session.token }, body, signal: controller.signal })

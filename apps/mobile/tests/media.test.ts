@@ -1,5 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { runInNewContext } from 'node:vm';
+import ts from 'typescript';
 import { ApiError, request } from '../src/api.ts';
 import { freshMediaUrl, readPrivateMedia, uploadMedia, validateMedia } from '../src/media.ts';
 import type { PickedMedia } from '../src/media.ts';
@@ -9,11 +12,22 @@ const session: Session = { baseUrl: 'https://example.test', userId: '1', email: 
 const file: PickedMedia = { uri: 'file:///synthetic/photo.png', name: 'photo.png', type: 'image/png', size: 1500 };
 const expires = () => new Date(Date.now() + 300_000).toISOString();
 
-// React Native FormData accepts a file URI descriptor rather than a browser Blob.
-class NativeFormData {
-  values: [string, unknown][] = [];
-  append(name: string, value: unknown) { this.values.push([name, value]); }
+// Exercise the installed SDK's real FormData patch and multipart converter.
+// Only the native FormData backing array and unused Blob utility need a stub.
+function expoSource<T>(relative: string): T {
+  const source = readFileSync(new URL(`../node_modules/expo/src/${relative}`, import.meta.url), 'utf8');
+  const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
+  const exports = {};
+  runInNewContext(compiled, { exports, Blob, TextEncoder, Uint8Array, require: (name: string) => {
+    assert.equal(name, '../../utils/blobUtils');
+    return { blobToArrayBufferAsync: () => { throw new Error('A native Blob conversion must not be used for uploaded files.'); } };
+  } });
+  return exports as T;
 }
+const { convertFormDataAsync } = expoSource<{ convertFormDataAsync: (data: FormData, boundary: string) => Promise<{ body: Uint8Array; boundary: string }> }>('winter/fetch/convertFormData.ts');
+const { installFormDataPatch } = expoSource<{ installFormDataPatch: (formData: typeof FormData) => typeof FormData }>('winter/FormData.ts');
+class NativeFormDataBacking { _parts: [string, unknown][] = []; }
+const NativeFormData = installFormDataPatch(NativeFormDataBacking as unknown as typeof FormData);
 
 test('Original upload bounds reject unsupported, empty, oversized and remote inputs', () => {
   validateMedia(file, true); validateMedia({ ...file, type: 'application/pdf' });
@@ -28,7 +42,7 @@ test('Original upload bounds reject unsupported, empty, oversized and remote inp
   assert.throws(() => validateMedia({ ...file, type: 'application/pdf' }, true));
 });
 
-test('Multipart upload uses the native file URI, current account auth and server optimized metadata', async () => {
+test('Multipart upload passes the actual Expo converter with filename, MIME, exact bytes and account auth', async () => {
   const previousFormData = globalThis.FormData;
   globalThis.FormData = NativeFormData as unknown as typeof FormData;
   try {
@@ -37,13 +51,20 @@ test('Multipart upload uses the native file URI, current account auth and server
       assert.equal(url, 'https://example.test/api/v1/groups/g/expenses/e/attachments');
       assert.equal(options?.method, 'POST');
       assert.deepEqual(options?.headers, { 'X-Session-Token': session.token }, 'Native fetch must create its own multipart boundary');
-      assert.deepEqual((options?.body as unknown as NativeFormData).values, [
-        ['id', 'media-1'], ['file', { uri: file.uri, name: file.name, type: file.type }],
-      ]);
+      const converted = await convertFormDataAsync(options?.body as FormData, 'MeroSplitTestBoundary');
+      const multipart = new TextDecoder().decode(converted.body);
+      assert.ok(multipart.includes('content-disposition: form-data; name="id"\r\n\r\nmedia-1'));
+      assert.ok(multipart.includes('content-disposition: form-data; name="file"; filename="photo.png"'));
+      assert.ok(multipart.includes('content-type: image/png\r\n\r\nSYNTHETIC IMAGE BYTES\r\n'));
+      assert.ok(!multipart.includes('[object Object]'));
       assert.ok(options?.signal instanceof AbortSignal);
       return new Response(JSON.stringify(optimized), { status: 200, headers: { 'content-type': 'application/json' } });
     };
-    assert.deepEqual(await uploadMedia(session, '/groups/g/expenses/e/attachments', file, 'media-1', fetcher), optimized);
+    let reads = 0;
+    assert.deepEqual(await uploadMedia(session, '/groups/g/expenses/e/attachments', file, 'media-1', fetcher, async uri => {
+      reads++; assert.equal(uri, file.uri); return new TextEncoder().encode('SYNTHETIC IMAGE BYTES');
+    }), optimized);
+    assert.equal(reads, 1);
   } finally { globalThis.FormData = previousFormData; }
 });
 
