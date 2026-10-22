@@ -1,8 +1,8 @@
-# SplitDumb
+# MeroSplit
 
-Functional shared-expense app for iOS and Android, built with Expo React Native and a Django/PostgreSQL backend. Backend: [Railway readiness](https://api-production-fb6ac.up.railway.app/api/v1/ready). Source: [private GitHub repository](https://github.com/omshejul/SplitDumb). Visual design is deferred.
+Functional shared-expense app for iOS and Android, built with Expo React Native and a Django/PostgreSQL backend. Backend: [Railway readiness](https://api-production-fb6ac.up.railway.app/api/v1/ready). Source: [private GitHub repository](https://github.com/omshejul/SplitDumb). The selected mint design uses Groups, People and Me, React Native Paper controls, native calendar pickers and Hugeicons. See the [design decisions](.dev/merosplit-design-decisions.md).
 
-The original six functional phases passed, including native Android/iOS journeys against Railway. The replacement normal app uses Groups, Friends, Activity and Account, with named people and rupee inputs. Android manual acceptance and the final APK upgrade passed. A fresh direct iOS manual pass and broader native UI tests also passed. A signed iPhone IPA is staged; installation on the physical phone is not yet verified. See the [current acceptance report](.dev/USABLE_ACCEPTANCE.md), [Android manual evidence](.dev/usable-native-android.md) and [delivery status](.dev/USABLE_APP_STATUS.md). Earlier diagnostic self-tests do not establish acceptance of these new screens.
+Version 0.3.0 uses the MeroSplit mint design. Current results, artifact identities and limitations are in the [design acceptance report](.dev/merosplit-acceptance.md), with separate [Android](.dev/merosplit-native-qa.md) and [iOS simulator](.dev/merosplit-ios-qa.md) evidence. This release keeps the installed package identity, SQLite database and account session. The earlier 0.2.0 builds and iPhone installer are historical evidence, not artifacts for this version.
 
 See the [original verification and artifacts](.dev/VERIFICATION.md), [development instructions](.dev/DEV.md), [implementation phases](PLAN.md), and [API contract](API_CONTRACT.md). Email verification/recovery, direct UPI app launch, physical-device payments, public store release, and measured maximum-capacity performance remain outside this controlled functional build.
 
