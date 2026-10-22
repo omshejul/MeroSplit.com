@@ -1,5 +1,5 @@
 minimumReleaseAgeExclude:
-  - '@expo/cli@58.1.10'
+  - '@expo/cli@58.1.10 || 58.1.11'
   - '@expo/metro-config@58.0.14'
   - '@expo/package-manager@1.14.2'
   - '@expo/prebuild-config@58.0.14'
@@ -17,9 +17,12 @@ minimumReleaseAgeExclude:
   - '@react-native/virtualized-lists@0.88.0'
   - babel-preset-expo@58.0.16 || 58.0.17
   - expo-asset@58.0.16
-  - expo-modules-core@58.0.20 || 58.0.21
-  - expo-modules-jsi@58.0.14
-  - expo@58.0.12 || 58.0.13
+  - expo-modules-core@58.0.20 || 58.0.21 || 58.0.22
+  - expo-modules-jsi@58.0.14 || 58.0.15
+  - expo@58.0.12 || 58.0.13 || 58.0.14
   - react-native@0.88.0
   - expo-crypto@58.0.7
   - expo-sharing@58.0.19
+  - '@expo/schema-utils@58.0.2'
+  - expo-dev-client@58.0.14
+  - expo-dev-launcher@58.0.14

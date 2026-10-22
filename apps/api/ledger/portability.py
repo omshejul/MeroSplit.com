@@ -2,10 +2,21 @@ import csv
 import io
 
 from allauth.account.models import EmailAddress
+from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.utils import timezone
 
-from .models import Change, Group, Invite, Participant, PaymentAttempt, PaymentProfile, Settlement
+from .media import avatar_for, metadata, purge_files
+from .models import (
+    Change,
+    Group,
+    Invite,
+    Participant,
+    PaymentAttempt,
+    PaymentProfile,
+    Settlement,
+    UploadedFile,
+)
 from .services import snapshot, visible_group
 
 
@@ -13,6 +24,10 @@ def accepted_export(actor, group_id):
     with transaction.atomic():
         group = visible_group(actor, group_id, lock=True)
         state = snapshot(group)
+        state["attachments"] = [
+            {"expense_id": str(file.expense_id), **metadata(file)}
+            for file in UploadedFile.objects.filter(expense__group=group, state="active").order_by("id")
+        ]
         if group.owner_id != actor.pk:
             state["invites"] = []
         return {
@@ -108,7 +123,7 @@ def account_export(actor):
     groups = Group.objects.filter(participants__user=actor).order_by("id")
     return {
         "schema_version": 1,
-        "account": {"id": actor.pk, "email": actor.email},
+        "account": {"id": actor.pk, "email": actor.email, "avatar": avatar_for(actor)},
         "groups": [accepted_export(actor, group.id) for group in groups],
     }
 
@@ -116,6 +131,10 @@ def account_export(actor):
 @transaction.atomic
 def delete_account(actor):
     # Other members retain their shared financial records; solo-owned data is removed.
+    get_user_model().objects.select_for_update(no_key=True).get(pk=actor.pk)
+    photos = UploadedFile.objects.filter(avatar_owner=actor)
+    media_ids = list(photos.values_list("id", flat=True))
+    photos.update(state="deleted")
     groups = list(
         Group.objects.filter(participants__user=actor).order_by("id").select_for_update(of=("self",))
     )
@@ -125,10 +144,15 @@ def delete_account(actor):
                 group.participants.filter(user__isnull=False).exclude(user=actor).order_by("id").first()
             )
             if not successor:
+                files = UploadedFile.objects.filter(expense__group=group)
+                media_ids.extend(files.values_list("id", flat=True))
+                files.update(state="deleted")
                 group.delete()
                 continue
             group.owner_id = successor.user_id
-            group.save(update_fields=["owner"])
+            # Duplicate detection belongs to the original importing account.
+            group.import_source_hash = ""
+            group.save(update_fields=["owner", "import_source_hash"])
         group.version += 1
         group.save(update_fields=["version"])
         Change.objects.create(
@@ -148,6 +172,7 @@ def delete_account(actor):
     Change.objects.filter(actor=actor).update(actor=None)
     Invite.objects.filter(claimant=actor).update(claimant=None, revoked=True)
     PaymentProfile.objects.filter(user=actor).delete()
+    UploadedFile.objects.filter(uploaded_by=actor).update(uploaded_by=None)
     EmailAddress.objects.filter(user=actor).delete()
     actor.email = ""
     actor.first_name = actor.last_name = ""
@@ -155,4 +180,6 @@ def delete_account(actor):
     actor.is_active = False
     actor.set_unusable_password()
     actor.save()
+    if media_ids:
+        transaction.on_commit(lambda: purge_files(media_ids))
     return {"deleted": True}

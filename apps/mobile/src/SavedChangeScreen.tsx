@@ -1,9 +1,11 @@
-import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import React, { useMemo } from 'react';
+import { StyleSheet, View } from 'react-native';
 import { formatMoney, validateExpense } from './accounting';
+import { Text } from 'react-native-paper';
 import type { Amounts, Split } from './accounting';
 import type { Command, Expense, Group } from './types';
-import { Button, colors, ui } from './ui';
+import { Button, useUI } from './ui';
+import type { Palette } from './ui';
 
 type Props = {
   command: Command; group: Group; busy: boolean;
@@ -11,6 +13,8 @@ type Props = {
 };
 
 export default function SavedChangeScreen({ command, group, busy, onDiscard, onEditSaved }: Props) {
+  const { palette: colors, ui } = useUI();
+  const s = useMemo(() => makeStyles(colors), [colors]);
   const body = command.body;
   const current = group.expenses.find(expense => expense.id === body.id);
   const path = `/groups/${group.id}/expenses`;
@@ -87,11 +91,11 @@ export default function SavedChangeScreen({ command, group, busy, onDiscard, onE
   </View>;
 }
 
-const s = StyleSheet.create({
-  content: { gap: 20 },
+const makeStyles = (colors: Palette) => StyleSheet.create({
+  content: { gap: 14 },
   section: { gap: 12 },
-  bill: { backgroundColor: colors.surface, borderRadius: 16, padding: 16, gap: 10 },
+  bill: { backgroundColor: colors.surface, borderRadius: 8, padding: 12, gap: 10 },
   person: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
-  name: { ...ui.body, flex: 1 },
-  amount: { ...ui.body, fontWeight: '500', textAlign: 'right', flexShrink: 1, fontVariant: ['tabular-nums'] },
+  name: { fontSize: 16, lineHeight: 23, color: colors.text, flex: 1 },
+  amount: { fontSize: 16, lineHeight: 23, color: colors.text, fontWeight: '500', textAlign: 'right', flexShrink: 1, fontVariant: ['tabular-nums'] },
 });

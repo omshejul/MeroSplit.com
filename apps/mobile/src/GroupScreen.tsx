@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { formatMoney } from './accounting';
+import { Text } from 'react-native-paper';
 import type { Command, Expense, Group, Settlement } from './types';
-import { Avatar, Button, colors, Disclosure, Icon, ui } from './ui';
+import { Avatar, Button, Disclosure, Icon, useUI } from './ui';
+import type { Palette } from './ui';
 
 type Transfer = { sender: string; recipient: string; amount: string };
 type Props = {
@@ -20,6 +22,8 @@ const displayDate = (value: string) => {
 };
 
 export default function GroupScreen({ group, accepted, pending, busy, local, selfId, onAdd, onExpense, onSettle, onReverse, onSettings, onSync, onDiscard, onReview, onConfirmReceipt }: Props) {
+  const { palette: colors, ui, inputColors } = useUI();
+  const s = useMemo(() => makeStyles(colors), [colors]);
   const [section, setSection] = useState('Bills');
   const [search, setSearch] = useState('');
   const expenses = group.expenses.filter(expense => group.expenses.length < 5 || `${expense.description} ${expense.notes}`.toLowerCase().includes(search.trim().toLowerCase()));
@@ -29,7 +33,7 @@ export default function GroupScreen({ group, accepted, pending, busy, local, sel
   const receipts = (group.payment_attempts ?? []).filter(attempt => attempt.recipient === selfId && ['reported', 'recorded', 'cancelled'].includes(attempt.state));
   const purchases = group.expenses.filter(expense => !expense.deleted);
   const spending = purchases.reduce((total, expense) => total + BigInt(expense.total), 0n).toString();
-  const searchField = <TextInput accessibilityLabel="Search bills" placeholder="Find a bill by name or note" placeholderTextColor={colors.muted} value={search} onChangeText={setSearch} style={ui.input} />;
+  const searchField = <TextInput {...inputColors} accessibilityLabel="Search bills" placeholder="Find a bill by name or note" placeholderTextColor={colors.muted} value={search} onChangeText={setSearch} style={ui.input} />;
   return <View style={s.content}>
     <View style={s.summary}>
       <Text style={ui.caption}>{balance > 0n ? 'You are owed' : balance < 0n ? 'You owe' : 'Your balance'}</Text>
@@ -130,6 +134,8 @@ export default function GroupScreen({ group, accepted, pending, busy, local, sel
 }
 
 export function ExpenseDetail({ expense, group, busy, canEdit, onEdit, onDelete, onRestore }: { expense: Expense; group: Group; busy: boolean; canEdit: boolean; onEdit: () => void; onDelete: () => void; onRestore: () => void }) {
+  const { palette: colors, ui } = useUI();
+  const s = useMemo(() => makeStyles(colors), [colors]);
   const hasCategory = !!expense.category && !['general', 'other'].includes(expense.category);
   return <View style={s.content}>
     <View style={s.summary}>
@@ -164,22 +170,22 @@ export function ExpenseDetail({ expense, group, busy, canEdit, onEdit, onDelete,
     {!canEdit && <Text style={ui.caption}>{group.archived ? 'Reopen this group in settings before changing a bill.' : 'Send or discard saved changes before changing this bill.'}</Text>}
   </View>;
 }
-const s = StyleSheet.create({
-  content: { gap: 16 },
+const makeStyles = (colors: Palette) => StyleSheet.create({
+  content: { gap: 12 },
   summary: { gap: 4, paddingVertical: 8 },
   section: { gap: 10, paddingVertical: 4 },
-  receipt: { gap: 12, padding: 16, borderRadius: 16, backgroundColor: colors.surface },
-  tabs: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, padding: 4, borderRadius: 16, backgroundColor: colors.surface },
-  tab: { flex: 1, flexBasis: 80, minHeight: 48, borderRadius: 12, paddingHorizontal: 10, paddingVertical: 12, alignItems: 'center', justifyContent: 'center' },
+  receipt: { gap: 12, padding: 12, borderRadius: 8, backgroundColor: colors.surface },
+  tabs: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, padding: 4, borderRadius: 8, backgroundColor: colors.surface },
+  tab: { flex: 1, flexBasis: 80, minHeight: 48, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 12, alignItems: 'center', justifyContent: 'center' },
   selectedTab: { backgroundColor: colors.soft },
   tabText: { color: colors.muted, fontSize: 15, lineHeight: 21, fontWeight: '500', textAlign: 'center' },
   selectedTabText: { color: colors.accent, fontWeight: '600' },
-  billMark: { width: 42, height: 42, borderRadius: 14, backgroundColor: colors.soft, alignItems: 'center', justifyContent: 'center' },
+  billMark: { width: 36, height: 36, borderRadius: 8, backgroundColor: colors.soft, alignItems: 'center', justifyContent: 'center' },
   trailing: { maxWidth: '42%', gap: 4, alignItems: 'flex-end' },
   amount: { color: colors.text, fontSize: 17, lineHeight: 24, fontWeight: '600', fontVariant: ['tabular-nums'], flexShrink: 1, textAlign: 'right' },
   payment: { gap: 6, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
   transfer: { gap: 8, paddingVertical: 10 },
-  empty: { gap: 10, alignItems: 'center', paddingVertical: 28 },
+  empty: { gap: 10, alignItems: 'center', paddingVertical: 20 },
   pressed: { opacity: 0.65 },
   flex: { flex: 1 },
 });

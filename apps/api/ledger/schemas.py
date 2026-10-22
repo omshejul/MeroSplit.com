@@ -5,7 +5,7 @@ from typing import Annotated, Literal
 from uuid import UUID
 
 from ninja import Schema
-from pydantic import ConfigDict, Field, StrictStr
+from pydantic import ConfigDict, Field, StrictInt, StrictStr
 
 
 class Input(Schema):
@@ -95,3 +95,18 @@ class WriteResult(Schema):
 class ParticipantIn(Command):
     id: UUID
     name: Annotated[str, Field(min_length=1, max_length=120, pattern=r"\S")]
+
+
+class SplitwisePreviewIn(Input):
+    csv: Annotated[StrictStr, Field(min_length=1, max_length=1_048_576)]
+
+
+class SplitwiseImportIn(SplitwisePreviewIn, Command):
+    id: UUID
+    name: Annotated[str, Field(min_length=1, max_length=120, pattern=r"\S")]
+    self_index: Annotated[StrictInt, Field(ge=0, le=99)]
+    payers: dict[str, StrictInt] = Field(default_factory=dict, max_length=10_000)
+
+
+class SplitwiseImportResult(WriteResult):
+    already_imported: bool

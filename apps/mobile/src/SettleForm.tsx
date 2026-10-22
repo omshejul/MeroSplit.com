@@ -1,15 +1,18 @@
-import React, { useRef, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { RadioButton } from 'react-native-paper';
+import React, { useMemo, useRef, useState } from 'react';
+import { Alert, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { RadioButton, Text } from 'react-native-paper';
 import { addSettlement, formatMoney, integer, rupeesToPaise } from './accounting';
 import type { Group } from './types';
-import { Avatar, Button, colors, Disclosure, Icon, ui } from './ui';
+import { Avatar, Button, Disclosure, Icon, useUI } from './ui';
+import type { Palette } from './ui';
 
 type Payment = { sender: string; recipient: string; amount: string };
 type Props = { group: Group; initial?: Payment; busy: boolean; onSave: (payment: Payment) => Promise<void>; onCancel: () => void };
 const rupees = (value: string) => { const amount = integer(value); return `${amount / 100n}.${(amount % 100n).toString().padStart(2, '0')}`; };
 
 export default function SettleForm({ group, initial, busy, onSave }: Props) {
+  const { palette: colors, ui, inputColors } = useUI();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const proposal = initial ?? group.transfers[0];
   const [sender, setSender] = useState(proposal?.sender ?? group.participants[0]?.id ?? '');
   const [recipient, setRecipient] = useState(proposal?.recipient ?? group.participants.find(person => person.id !== sender)?.id ?? '');
@@ -50,7 +53,7 @@ export default function SettleForm({ group, initial, busy, onSave }: Props) {
     </View></View>
     <Text style={ui.notice}>Record money already paid outside this app. This does not send money.</Text>
     {group.archived && <Text style={ui.notice}>Reopen this group in settings before recording a payment.</Text>}
-    <View style={styles.field}><Text style={ui.label}>Amount paid (₹)</Text><TextInput accessibilityLabel="Amount paid (₹)" keyboardType="decimal-pad" value={amount}
+    <View style={styles.field}><Text style={ui.label}>Amount paid (₹)</Text><TextInput {...inputColors} accessibilityLabel="Amount paid (₹)" keyboardType="decimal-pad" value={amount}
       onChangeText={value => { setAmount(value); setError(''); }} editable={!disabled} placeholder="0" placeholderTextColor={colors.muted} style={[ui.input, styles.amount]} />
       <Text style={ui.caption}>You can record part of the amount.</Text></View>
     <View style={styles.people}>
@@ -76,8 +79,8 @@ export default function SettleForm({ group, initial, busy, onSave }: Props) {
   </View>;
 }
 
-const styles = StyleSheet.create({
-  form: { gap: 18 }, field: { gap: 7 }, person: { flexDirection: 'row', gap: 14, alignItems: 'center', paddingVertical: 8 },
-  amount: { fontSize: 36, minHeight: 76, fontWeight: '600', fontVariant: ['tabular-nums'] }, people: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
-  summary: { minHeight: 52, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 }, reveal: { gap: 12, paddingBottom: 16 },
+const makeStyles = (colors: Palette) => StyleSheet.create({
+  form: { gap: 12 }, field: { gap: 7 }, person: { flexDirection: 'row', gap: 14, alignItems: 'center', paddingVertical: 8 },
+  amount: { fontSize: 32, minHeight: 64, fontWeight: '600', fontVariant: ['tabular-nums'] }, people: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
+  summary: { minHeight: 52, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 }, reveal: { gap: 12, paddingBottom: 12 },
 });

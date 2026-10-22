@@ -4,8 +4,9 @@ from uuid import UUID
 from allauth.headless.contrib.ninja.security import x_session_token_auth
 from django.db import DatabaseError, IntegrityError, connection, transaction
 from django.http import HttpResponse, JsonResponse
-from ninja import NinjaAPI
+from ninja import File, Form, NinjaAPI
 from ninja.errors import HttpError, ValidationError
+from ninja.files import UploadedFile as RequestFile
 from ninja.security import django_auth
 
 from .accounting import AccountingError
@@ -20,6 +21,7 @@ from .collaboration import (
     invite_token,
     review_invite,
 )
+from .media import avatar_for, download_url, list_attachments, remove_attachment, remove_avatar, upload_file
 from .models import Group
 from .payments import change_payment, launch_details, prepare_payment, profile_for, update_profile
 from .portability import accepted_export, account_export, csv_export, delete_account
@@ -35,6 +37,9 @@ from .schemas import (
     ProfileIn,
     Revision,
     SettlementIn,
+    SplitwiseImportIn,
+    SplitwiseImportResult,
+    SplitwisePreviewIn,
     WriteResult,
 )
 from .services import (
@@ -46,6 +51,7 @@ from .services import (
     snapshot,
     visible_group,
 )
+from .splitwise_import import import_splitwise, preview_splitwise
 
 api = NinjaAPI(title="MeroSplit", version="1.0", auth=[x_session_token_auth, django_auth])
 
@@ -102,6 +108,7 @@ def duplicate_error(request, exc):
         "actor_command_once",
         "one_user_per_group",
         "one_active_payment_attempt",
+        "one_splitwise_source_per_owner",
     } and not constraint.endswith("_pkey"):
         raise exc
     return JsonResponse(
@@ -127,6 +134,16 @@ def groups(request):
 @api.post("/groups", response=WriteResult)
 def group_create(request, body: GroupIn):
     return create_group(request.auth, body.model_dump(mode="json"))
+
+
+@api.post("/imports/splitwise/preview")
+def splitwise_preview(request, body: SplitwisePreviewIn):
+    return preview_splitwise(request.auth, body.csv)
+
+
+@api.post("/imports/splitwise", response=SplitwiseImportResult)
+def splitwise_import(request, body: SplitwiseImportIn):
+    return import_splitwise(request.auth, body.model_dump(mode="json"))
 
 
 @api.get("/groups/{group_id}")
@@ -176,7 +193,38 @@ def me(request):
         "email": request.auth.email,
         "email_verified": False,
         "payment_profile": profile_for(request.auth),
+        "avatar": avatar_for(request.auth),
     }
+
+
+@api.post("/me/avatar")
+def avatar_upload(request, id: Form[UUID], file: File[RequestFile]):
+    return upload_file(request.auth, id, file)
+
+
+@api.delete("/me/avatar")
+def avatar_remove(request):
+    return remove_avatar(request.auth)
+
+
+@api.get("/groups/{group_id}/expenses/{expense_id}/attachments")
+def attachments_get(request, group_id: UUID, expense_id: UUID):
+    return list_attachments(request.auth, group_id, expense_id)
+
+
+@api.post("/groups/{group_id}/expenses/{expense_id}/attachments")
+def attachment_upload(request, group_id: UUID, expense_id: UUID, id: Form[UUID], file: File[RequestFile]):
+    return upload_file(request.auth, id, file, group_id=group_id, expense_id=expense_id)
+
+
+@api.delete("/groups/{group_id}/expenses/{expense_id}/attachments/{file_id}")
+def attachment_remove(request, group_id: UUID, expense_id: UUID, file_id: UUID):
+    return remove_attachment(request.auth, group_id, expense_id, file_id)
+
+
+@api.get("/media/{file_id}/url")
+def media_url(request, file_id: UUID):
+    return download_url(request.auth, file_id)
 
 
 @api.put("/me/payment-profile")

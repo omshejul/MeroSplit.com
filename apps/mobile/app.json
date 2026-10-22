@@ -3,14 +3,14 @@
     "name": "MeroSplit",
     "slug": "splitdumb",
     "scheme": "splitdumb",
-    "version": "0.3.0",
+    "version": "0.3.1",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "icon": "./assets/android-icon-monochrome.png",
+    "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.omshejul.splitdumb",
-      "buildNumber": "3",
+      "buildNumber": "4",
       "infoPlist": {
         "NSAppTransportSecurity": {
           "NSAllowsLocalNetworking": true
@@ -19,24 +19,26 @@
     },
     "android": {
       "package": "com.omshejul.splitdumb",
-      "versionCode": 3,
+      "versionCode": 4,
       "adaptiveIcon": {
-        "backgroundColor": "#DFF5E9",
-        "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png",
+        "backgroundColor": "#FFFFFF",
+        "foregroundImage": "./assets/android-icon-monochrome.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/android-icon-monochrome.png"
     },
     "plugins": [
       "expo-sqlite",
       "expo-secure-store",
       "expo-sharing",
       "@react-native-community/datetimepicker",
-      "expo-font"
-    ]
+      "expo-font",
+      ["expo-image-picker", {"photosPermission": "Choose a profile photo or a bill image for MeroSplit.", "cameraPermission": false, "microphonePermission": false}],
+      "./plugins/with-monochrome.cjs"
+    ],
+    "primaryColor": "#161616"
   }
 }

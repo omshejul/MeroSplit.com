@@ -27,6 +27,17 @@ export async function saveSession(session: Session | null): Promise<void> {
   else await SecureStore.deleteItemAsync(SESSION_KEY);
 }
 
+export type AppearancePreference = 'system' | 'light' | 'dark';
+const APPEARANCE_KEY = 'splitdumb.appearance';
+export async function savedAppearance(): Promise<AppearancePreference> {
+  const value = await SecureStore.getItemAsync(APPEARANCE_KEY);
+  return value === 'light' || value === 'dark' ? value : 'system';
+}
+export async function saveAppearance(value: AppearancePreference): Promise<void> {
+  if (!['system', 'light', 'dark'].includes(value)) throw new Error('Choose System, Light or Dark.');
+  await SecureStore.setItemAsync(APPEARANCE_KEY, value);
+}
+
 export async function savedSyncPaused(): Promise<boolean> { return (await SecureStore.getItemAsync('splitdumb.syncPaused')) === 'true'; }
 export async function saveSyncPaused(value: boolean): Promise<void> { await SecureStore.setItemAsync('splitdumb.syncPaused', String(value)); }
 

@@ -12,6 +12,16 @@ class Group(models.Model):
     version = models.PositiveIntegerField(default=0)
     archived = models.BooleanField(default=False)
     is_direct = models.BooleanField(default=False)
+    import_source_hash = models.CharField(max_length=64, blank=True, default="")
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["owner", "import_source_hash"],
+                condition=~Q(import_source_hash=""),
+                name="one_splitwise_source_per_owner",
+            )
+        ]
 
 
 class Participant(models.Model):
@@ -150,3 +160,36 @@ class CommandReceipt(models.Model):
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=["actor", "command_id"], name="actor_command_once")]
+
+
+class UploadedFile(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    avatar_owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name="profile_photos"
+    )
+    expense = models.ForeignKey(Expense, null=True, on_delete=models.SET_NULL, related_name="attachments")
+    uploaded_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL)
+    object_key = models.CharField(max_length=300, unique=True)
+    source_hash = models.CharField(max_length=64)
+    name = models.CharField(max_length=200)
+    content_type = models.CharField(max_length=40)
+    size = models.PositiveIntegerField()
+    state = models.CharField(max_length=8, default="pending")
+    purged = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(state="deleted") | (
+                    Q(avatar_owner__isnull=False, expense__isnull=True)
+                    | Q(avatar_owner__isnull=True, expense__isnull=False)
+                ),
+                name="uploaded_file_has_one_scope",
+            ),
+            models.UniqueConstraint(
+                fields=["avatar_owner"], condition=Q(state="active", avatar_owner__isnull=False),
+                name="one_active_profile_photo",
+            ),
+            models.CheckConstraint(condition=Q(state__in=["pending", "active", "deleted"]), name="uploaded_file_state"),
+        ]

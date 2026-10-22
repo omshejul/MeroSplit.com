@@ -1,11 +1,12 @@
-import React, { useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { Checkbox, RadioButton } from 'react-native-paper';
+import React, { useMemo, useRef, useState } from 'react';
+import { Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { Checkbox, RadioButton, Text } from 'react-native-paper';
 import * as Crypto from 'expo-crypto';
 import { formatMoney, integer, rupeesToPaise, validateExpense } from './accounting';
 import type { Amounts, Split } from './accounting';
 import type { Expense, Group } from './types';
-import { Button, colors, DateField, Icon, ui } from './ui';
+import { Button, DateField, Icon, useUI } from './ui';
+import type { Palette } from './ui';
 
 export type ExpenseFormDraft = {
   schemaVersion: 1; groupId: string; expenseId: string | null; id: string; expenseVersion: number;
@@ -66,16 +67,21 @@ function startingDraft(group: Group, expense: Expense | undefined, selfId: strin
 function Field({ label, value, onChange, decimal = false, multiline = false, maxLength, disabled = false, large = false, placeholder }: {
   label: string; value: string; onChange: (value: string) => void; decimal?: boolean; multiline?: boolean; maxLength?: number; disabled?: boolean; large?: boolean; placeholder?: string;
 }) {
-  return <View style={styles.field}><Text style={ui.label}>{label}</Text><TextInput accessibilityLabel={label} value={value} onChangeText={onChange}
+  const { palette: colors, ui, inputColors } = useUI();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
+  return <View style={styles.field}><Text style={ui.label}>{label}</Text><TextInput {...inputColors} accessibilityLabel={label} value={value} onChangeText={onChange}
     keyboardType={decimal ? 'decimal-pad' : 'default'} autoCorrect={false} multiline={multiline} maxLength={maxLength} editable={!disabled}
     placeholder={placeholder} placeholderTextColor={colors.muted} style={[ui.input, large && styles.amount, multiline && styles.notes]} /></View>;
 }
 function Choice({ title, selected, disabled, onPress, role = 'checkbox' }: { title: string; selected: boolean; disabled: boolean; onPress: () => void; role?: 'checkbox' | 'radio' }) {
+  const { ui } = useUI();
   return role === 'radio'
     ? <RadioButton.Item label={title} value={title} status={selected ? 'checked' : 'unchecked'} disabled={disabled} onPress={onPress} accessibilityLabel={title} labelStyle={ui.body} mode="android" />
     : <Checkbox.Item label={title} status={selected ? 'checked' : 'unchecked'} disabled={disabled} onPress={onPress} accessibilityLabel={title} labelStyle={ui.body} mode="android" />;
 }
 function Summary({ title, value, open, disabled, onPress }: { title: string; value: string; open: boolean; disabled: boolean; onPress: () => void }) {
+  const { palette: colors, ui } = useUI();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   return <Pressable accessibilityRole="button" accessibilityLabel={`${title}. ${value}`} accessibilityState={{ expanded: open, disabled }} disabled={disabled}
     onPress={onPress} style={({ pressed }) => [styles.summary, pressed && { opacity: 0.7 }]}>
     <View style={ui.rowBody}><Text style={ui.label}>{title}</Text><Text style={ui.rowTitle}>{value}</Text></View>
@@ -84,6 +90,8 @@ function Summary({ title, value, open, disabled, onPress }: { title: string; val
 }
 
 export default function ExpenseForm({ group, expense, selfId, busy, onSave, initialDraft, onDraftChange }: Props) {
+  const { palette: colors, ui } = useUI();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const [restored] = useState(() => startingDraft(group, expense, selfId, initialDraft));
   const [draft, setDraft] = useState(restored.draft), [error, setError] = useState(restored.warning), [saving, setSaving] = useState(false);
   const [payersOpen, setPayersOpen] = useState(false), [splitOpen, setSplitOpen] = useState(false), [detailsOpen, setDetailsOpen] = useState(false);
@@ -203,8 +211,8 @@ export default function ExpenseForm({ group, expense, selfId, busy, onSave, init
   </View>;
 }
 
-const styles = StyleSheet.create({
-  form: { gap: 18 }, field: { gap: 7 }, amount: { fontSize: 38, fontWeight: '600', minHeight: 76, fontVariant: ['tabular-nums'] },
+const makeStyles = (colors: Palette) => StyleSheet.create({
+  form: { gap: 12 }, field: { gap: 7 }, amount: { fontSize: 32, fontWeight: '600', minHeight: 64, fontVariant: ['tabular-nums'] },
   notes: { minHeight: 100, textAlignVertical: 'top' }, section: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
-  summary: { minHeight: 68, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', gap: 12 }, reveal: { gap: 12, paddingBottom: 16 },
+  summary: { minHeight: 56, paddingVertical: 8, flexDirection: 'row', alignItems: 'center', gap: 12 }, reveal: { gap: 12, paddingBottom: 12 },
 });

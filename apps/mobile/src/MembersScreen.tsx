@@ -1,11 +1,12 @@
-import React, { useRef, useState } from 'react';
-import { Alert, Share, StyleSheet, Text, TextInput, View } from 'react-native';
+import React, { useMemo, useRef, useState } from 'react';
+import { Alert, Share, StyleSheet, TextInput, View } from 'react-native';
 import type { TextInputProps } from 'react-native';
-import { SegmentedButtons } from 'react-native-paper';
+import { SegmentedButtons, Text } from 'react-native-paper';
 import * as Crypto from 'expo-crypto';
 import { formatMoney, integer } from './accounting';
 import type { Group } from './types';
-import { Avatar, Button, colors, DateField, Disclosure, ui } from './ui';
+import { Avatar, Button, DateField, Disclosure, useUI } from './ui';
+import type { Palette } from './ui';
 
 type Props = {
   group: Group;
@@ -21,7 +22,9 @@ type Props = {
 function Field({ label, value, onChange, disabled, maxLength = 120, keyboardType = 'default', placeholder }: {
   label: string; value: string; onChange: (value: string) => void; disabled: boolean; maxLength?: number; keyboardType?: TextInputProps['keyboardType']; placeholder?: string;
 }) {
-  return <View style={s.field}><Text style={ui.label}>{label}</Text><TextInput accessibilityLabel={label} value={value} onChangeText={onChange}
+  const { palette: colors, ui, inputColors } = useUI();
+  const s = useMemo(() => makeStyles(colors), [colors]);
+  return <View style={s.field}><Text style={ui.label}>{label}</Text><TextInput {...inputColors} accessibilityLabel={label} value={value} onChangeText={onChange}
     editable={!disabled} accessibilityState={{ disabled }} keyboardType={keyboardType} autoCapitalize="none" autoCorrect={false} maxLength={maxLength} placeholder={placeholder} placeholderTextColor={colors.muted} style={ui.input} /></View>;
 }
 
@@ -47,6 +50,8 @@ export default function MembersScreen(props: Props) {
 }
 
 function MemberSettings({ group, selfId, local, busy, onAction, onLocalAdd, onExport, onPublish }: Props) {
+  const { palette: colors, ui } = useUI();
+  const s = useMemo(() => makeStyles(colors), [colors]);
   const [newName, setNewName] = useState('');
   const [inviteLink, setInviteLink] = useState<{ participantId: string; name: string; url: string } | null>(null);
   const [showOpening, setShowOpening] = useState(false);
@@ -229,8 +234,8 @@ function MemberSettings({ group, selfId, local, busy, onAction, onLocalAdd, onEx
   </View>;
 }
 
-const s = StyleSheet.create({
-  content: { gap: 20 },
+const makeStyles = (colors: Palette) => StyleSheet.create({
+  content: { gap: 14 },
   section: { gap: 10, paddingVertical: 6 },
   row: { gap: 8, paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
   field: { gap: 8 },
