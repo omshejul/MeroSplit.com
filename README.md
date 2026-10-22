@@ -1,6 +1,8 @@
-# SplitDumb product research
+# SplitDumb
 
-India-first shared-expense app discovery, completed 16 October 2026. The proposed app uses React Native for iOS and Android. Functional implementation is now underway with a Django/PostgreSQL backend and Expo React Native app. Visual design is deferred. See [implementation phases](PLAN.md) and the [API contract](API_CONTRACT.md).
+Functional shared-expense app for iOS and Android, built with Expo React Native and a Django/PostgreSQL backend. Backend: [Railway readiness](https://api-production-fb6ac.up.railway.app/api/v1/ready). Source: [private GitHub repository](https://github.com/omshejul/SplitDumb). Visual design is deferred.
+
+All six functional phases passed, including native Android/iOS journeys against Railway. See the [verification and artifacts](.dev/VERIFICATION.md), [development instructions](.dev/DEV.md), [implementation phases](PLAN.md), and [API contract](API_CONTRACT.md). Email verification/recovery, direct UPI app launch, physical-device payments, public store release, and measured maximum-capacity performance remain outside this controlled functional build.
 
 Start with the [PRD](PRD.md). It specifies the controlled pilot, later public beta, bill-splitting calculations, ledger rules, UPI states, guest participation, migration, architecture, acceptance criteria and delivery sequence.
 
@@ -41,4 +43,4 @@ python3 research/audit_reviews.py
 
 Collection reuses existing raw snapshots. The saved label map is tied to the fixed review sample and must be inspected again if that sample changes. It is not an automatic sentiment or willingness-to-pay classifier.
 
-Splitwise Android 26.9.1/963 was installed through Google Play and tested in the official Android emulator. Saved synthetic cases verified a simplified debt chain, partial manual repayment, paise rounding and multiple payers. The fifth expense was blocked after four bills. The labeled test group remains available for review. No real money moved. See the [hands-on findings](research/ANDROID_HANDS_ON_FINDINGS.md) and [transcribed accounting fixture](research/results/native_accounting_fixture.json). iOS, real UPI handoff, offline conflicts and export fidelity remain untested.
+Splitwise Android 26.9.1/963 was installed through Google Play and tested in the official Android emulator. Saved synthetic cases verified a simplified debt chain, partial manual repayment, paise rounding and multiple payers. The fifth expense was blocked after four bills. The labeled test group remains available for review. No real money moved. See the [hands-on findings](research/ANDROID_HANDS_ON_FINDINGS.md) and [transcribed accounting fixture](research/results/native_accounting_fixture.json). Splitwise's iOS behavior, real UPI handoff, offline conflicts and export fidelity remain untested. SplitDumb's implementation tests are recorded separately in the verification report above.
