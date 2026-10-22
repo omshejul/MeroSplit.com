@@ -2,7 +2,7 @@
 
 Draft for a React Native prototype, 16 October 2026. Working name only. Product owner: Om Shejul. Platforms: iOS and Android. Implementation is now authorized. The current build uses Django/PostgreSQL and Expo React Native, with functions and plain controls first. [PLAN.md](PLAN.md) records implementation phases and their abstraction checks. P1/P2 remain deferred.
 
-This document describes the target product. The current functional build has plain controls, email/password accounts without email verification or delivery, explicit organizer-approved participant claims, and manual payment assistance. Direct UPI launch is disabled; no bank transfer or bank verification has been tested. Android and iOS standalone builds passed native accounting, SQLite and end-to-end journeys against the Railway Django/PostgreSQL service. Passing these functional phases does not establish every public-beta, accessibility, performance or operational requirement below. Current evidence is in the [verification report](.dev/VERIFICATION.md) and [phase reviews](.dev/PHASE_REVIEWS.md).
+This document describes the target product. The current functional build has plain controls, email/password accounts without email verification or delivery, explicit organizer-approved participant claims, and manual payment assistance. Direct UPI launch is disabled; no bank transfer or bank verification has been tested. The original Android and iOS standalone builds passed native accounting, SQLite and end-to-end journeys against the Railway Django/PostgreSQL service. The replacement Groups/Friends/Activity/Account app requires fresh normal-control acceptance, tracked in the [Android manual report](.dev/usable-native-android.md) and [delivery status](.dev/USABLE_APP_STATUS.md). Passing functional phases does not establish every public-beta, accessibility, performance or operational requirement below. Historical evidence remains in the [verification report](.dev/VERIFICATION.md) and [phase reviews](.dev/PHASE_REVIEWS.md).
 
 Build an India-first shared-expense app for friends on trips and people sharing a home. A person should be able to record a bill without an interruption, explain every share, and help a friend repay through their existing UPI app. The group must still work when some participants have not installed the app.
 
@@ -89,7 +89,7 @@ To collaborate, the organizer signs in and publishes the group. Explain that nam
 
 ### Add a bill
 
-Select group → enter amount and description → confirm payer and beneficiaries → Save. Equal split is the default, using the group's selected active members. Changing membership later does not alter an existing expense. The pilot People view lists shared groups and private two-person ledgers; a group net balance is not misrepresented as a bilateral amount owed to every member. Date defaults to the current local date. A private draft survives navigation and restart.
+Select group → enter amount and description → confirm payer and beneficiaries → Save. Equal split is the default, using the group's selected active members. Changing membership later does not alter an existing expense. Friends lists two-person ledgers and separately named people in their shared groups. A group net balance is not presented as a bilateral amount owed to every member. Date defaults to the current local date. A private draft survives navigation and restart, until explicit sign-out removes account-local data.
 
 Advanced split modes open one sheet with a live total, remaining difference and preview. Multiple payer amounts have their own reconciliation row. The save action says exactly why it is disabled, such as "₹20 is unassigned." Network loss produces "Saved on this phone. Waiting to sync." An accepted record shows the server's revision in Details, not a technical identifier in the primary list.
 
@@ -115,7 +115,7 @@ Archiving hides a settled group from the default list without removing records. 
 
 ## 6. Navigation and interface
 
-Use three main destinations: Groups, People and Activity. Put Add expense in a consistent reachable position. Group detail opens Expenses, Balances and Totals as simple sections or tabs. Settings, export, opening balances, feedback, support and legal pages belong in the app-wide menu. P1 adds supported history import, Create backup and Restore backup there.
+Use four main destinations: Groups, Friends, Activity and Account. Put Add expense in a consistent reachable position. Group detail opens Expenses, Balances and Totals as simple sections. Group settings contains members, invitation claims, opening balances, export and archive. Account contains sign-in, sync controls, the person's payment address, account export and deletion. P1 adds supported history import, Create backup and Restore backup. Use plain native controls for this build; visual polish remains deferred.
 
 Expense Details contains payer contributions, beneficiary shares, split explanation, date, category, notes and revision history. P1 adds images and comments. Edit, delete and restore actions operate on that expense. Preserve list scroll and search context when returning from details.
 
@@ -343,9 +343,9 @@ The backend is Django with Django Ninja and PostgreSQL, as requested by the prod
 flowchart LR
     Native[React Native iOS and Android] --> Local[(SQLite local ledger and outbox)]
     Guest[Scoped mobile web participant view] --> API[Authenticated Django API]
-    Local -->|idempotent commands and cursor sync| API
+    Local -->|idempotent commands and accepted snapshots| API
     API --> DB[(PostgreSQL accepted ledger)]
-    Native -->|user reviewed handoff| UPI[Existing UPI app]
+    Native -.->|later tested handoff| UPI[Existing UPI app]
     API -.-> Files[P1 private receipt storage]
     API -.-> Jobs[P1 reminder and notification jobs]
     Core[Common accounting fixtures] -.-> Native
@@ -354,15 +354,16 @@ flowchart LR
 
 SQLite owns the durable local cache, private local records and unsent commands. PostgreSQL owns accepted collaborative events. Every screen distinguishes accepted and tentative projections. Do not maintain a second durable copy in Zustand or React context. Use component state for forms; use Zustand only if an actual shared transient state needs it. Use SecureStore for tokens and platform protected storage for sensitive local data; do not assume SecureStore encrypts the SQLite database.
 
-Starting responsibility map, created as each delivery stage needs it:
+Current responsibility map:
 
 ```text
-apps/mobile/app                 routes and navigation
-apps/mobile/src/screens         view composition
-apps/mobile/src/db              SQLite schema, migrations, queries and outbox
-apps/mobile/src/services        authenticated API, sync and supported payment handoff
-apps/mobile/src/design          tokens and accessible controls
-apps/api/ledger/templates       minimal guest participant pages when implemented
+apps/mobile/App.tsx             navigation, account scope and action wiring
+apps/mobile/src/*Screen.tsx     plain screen composition
+apps/mobile/src/*Form.tsx       named expense and settlement inputs
+apps/mobile/src/storage.ts      SQLite schema, cache, drafts and outbox
+apps/mobile/src/native.ts       SecureStore, SQLite opening and system sharing
+apps/mobile/src/api.ts          authenticated requests and outbox sync
+apps/api/ledger/templates       scoped guest participant page
 apps/api                        auth, permissions, transactions and sync
 fixtures/accounting.json        golden cases executed by Python and TypeScript
 apps/api/ledger/accounting.py    authoritative pure calculation functions

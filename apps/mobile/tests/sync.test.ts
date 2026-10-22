@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
-import { accountOwner, authenticate, syncOutbox } from '../src/api.ts';
+import { accountOwner, ApiError, authenticate, request, syncOutbox } from '../src/api.ts';
 import { migrate, enqueue, pendingCommands, readGroup, saveGroup, replaceCommand } from '../src/storage.ts';
 import { sqliteAdapter } from './sqlite.ts';
 import type { Command, Group, Session } from '../src/types.ts';
@@ -29,7 +29,7 @@ test('Lost responses retry the same command, conflicts remain durable and accoun
   try {
     await migrate(db); await saveGroup(db, owner, group, 'shared');
     await enqueue(db, owner, command); await enqueue(db, 'different-account', { ...command, command_id: 'other' });
-    await assert.rejects(syncOutbox(db, session), /Response lost/);
+    await assert.rejects(syncOutbox(db, session), /Could not connect/);
     assert.equal((await pendingCommands(db, owner))[0].state, 'pending');
     await syncOutbox(db, session);
     assert.equal(writes[0], writes[1]);
@@ -61,5 +61,17 @@ test('Native auth uses allauth response and an account/backend ownership key', a
     const result = await authenticate('https://example.invalid/', 'person@example.invalid', 'synthetic-password', true);
     assert.equal(result.userId, '17'); assert.equal(result.token, 'test-session');
     assert.notEqual(accountOwner(result), accountOwner({ ...result, baseUrl: 'https://other.invalid' }));
+  } finally { globalThis.fetch = original; }
+});
+
+test('Connection failures hide native diagnostics while HTTP conflicts keep their status', async () => {
+  const original = globalThis.fetch;
+  try {
+    globalThis.fetch = async () => { throw new TypeError('java.net.UnknownHostException: private.host.internal'); };
+    for (const action of [() => request(session, '/groups'), () => authenticate(session.baseUrl, session.email, 'synthetic-password', false)]) {
+      await assert.rejects(action(), error => error instanceof Error && /Could not connect/.test(error.message) && !/java\.net|private\.host/.test(error.message));
+    }
+    globalThis.fetch = async () => Response.json({ detail: 'Accepted revision changed.' }, { status: 409 });
+    await assert.rejects(request(session, '/groups/g'), error => error instanceof ApiError && error.status === 409 && error.message === 'Accepted revision changed.');
   } finally { globalThis.fetch = original; }
 });

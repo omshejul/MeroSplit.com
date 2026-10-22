@@ -9,6 +9,9 @@ export type Settlement = { id: string; sender: string; recipient: string; amount
 export type Group = {
   id: string; name: string; version: number; participants: Participant[]; expenses: Expense[];
   settlements: Settlement[]; balances: Amounts; transfers: Transfer[]; activity: unknown[];
+  is_direct?: boolean; archived?: boolean; owner_id?: number;
+  opening_balance?: { id: string; balances: Amounts; source: string; cutoff: string; acknowledgments: Record<string, unknown>; accepted: boolean } | null;
+  invites?: { id: string; participant_id: string; claimant_id: number | null; claimant_email: string | null; approved: boolean; revoked: boolean }[];
   totals?: { spending: string; paid: Amounts; shares: Amounts };
   payment_attempts?: { id: string; sender: string; recipient: string; amount: string; state: string; recorded_amount?: string | null; settlement_id?: string | null }[];
 };

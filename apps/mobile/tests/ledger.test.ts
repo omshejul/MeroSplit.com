@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { emptyGroup, previewPending, putLocalExpense } from '../src/ledger.ts';
+import { emptyGroup, previewPending, putLocalExpense, recalculateLocal } from '../src/ledger.ts';
 import type { Command } from '../src/types.ts';
 
 const original = putLocalExpense(emptyGroup('g', 'Trip', [{ id: 'A', name: 'A' }, { id: 'B', name: 'B' }]), {
@@ -35,4 +35,14 @@ test('Opening and receipt acknowledgments explicitly withhold an unsupported pen
   for (const path of ['/opening-balances/acknowledge', '/payment-attempts/p/confirm']) {
     assert.throws(() => previewPending(original, [command('POST', path)]), /accepted server result/);
   }
+});
+
+test('A local partial repayment can be reversed once while retaining its original record', () => {
+  const paid = recalculateLocal({ ...original, settlements: [{ id: 'past', sender: 'B', recipient: 'A', amount: '1250', provenance: 'manual_record' }] });
+  assert.deepEqual(paid.balances, { A: '3750', B: '-3750' });
+  const reversed = recalculateLocal({ ...paid, settlements: paid.settlements.map(value => ({ ...value, reversed: true })) });
+  assert.deepEqual(reversed.balances, { A: '5000', B: '-5000' });
+  assert.deepEqual(recalculateLocal(reversed).balances, { A: '5000', B: '-5000' });
+  assert.deepEqual(reversed.settlements, [{ id: 'past', sender: 'B', recipient: 'A', amount: '1250', provenance: 'manual_record', reversed: true }]);
+  assert.equal(paid.settlements[0].reversed, undefined);
 });

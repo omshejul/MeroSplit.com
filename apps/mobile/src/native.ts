@@ -27,6 +27,9 @@ export async function saveSession(session: Session | null): Promise<void> {
   else await SecureStore.deleteItemAsync(SESSION_KEY);
 }
 
+export async function savedSyncPaused(): Promise<boolean> { return (await SecureStore.getItemAsync('splitdumb.syncPaused')) === 'true'; }
+export async function saveSyncPaused(value: boolean): Promise<void> { await SecureStore.setItemAsync('splitdumb.syncPaused', String(value)); }
+
 export async function shareJson(filename: string, data: unknown): Promise<void> {
   return shareText(`${filename}.json`, JSON.stringify(data, null, 2), 'application/json');
 }
@@ -39,20 +42,4 @@ export async function shareText(filename: string, data: string, mimeType: string
     file.write(data);
     await Sharing.shareAsync(file.uri, { mimeType, UTI: mimeType === 'application/json' ? 'public.json' : 'public.comma-separated-values-text' });
   } finally { if (file.exists) file.delete(); }
-}
-
-export async function localSelfTest(): Promise<string> {
-  const db = await SQLite.openDatabaseAsync('splitdumb-selftest.db');
-  try {
-    await migrate(db);
-    await db.runAsync('DELETE FROM outbox WHERE owner=?', 'selftest');
-    await db.runAsync('INSERT INTO outbox(owner,command_id,group_id,method,path,body,state,error) VALUES(?,?,?,?,?,?,?,?)', 'selftest', 'restart-probe', 'test-group', 'POST', '/test', '{}', 'pending', null);
-  } finally { await db.closeAsync(); }
-  const reopened = await SQLite.openDatabaseAsync('splitdumb-selftest.db');
-  try {
-    const row = await reopened.getFirstAsync<{ count: number }>('SELECT COUNT(*) AS count FROM outbox WHERE owner=? AND command_id=?', 'selftest', 'restart-probe');
-    if (row?.count !== 1) throw new Error('SQLite restart test failed.');
-    await reopened.runAsync('DELETE FROM outbox WHERE owner=?', 'selftest');
-    return 'SQLite migration, write, close, reopen and read passed.';
-  } finally { await reopened.closeAsync(); }
 }

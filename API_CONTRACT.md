@@ -6,6 +6,7 @@ All mutating ledger requests contain `command_id` UUID. Updates also contain `ve
 
 - GET `/health`, `/ready` are unauthenticated liveness/database readiness.
 - POST `/groups` body `{command_id, id, name, participants:[{id,name}]}`. Creator is participant with their user ID linked explicitly by server. Client supplies their participant `id` as `self_participant_id`. Returns `{id:group_id,version}`; fetch snapshot separately.
+- Optional `is_direct:true` creates a friend ledger with exactly two participants; adding a third is rejected. The default is false. Group lists, snapshots and JSON exports preserve the flag. Omitted and explicit false retain legacy command-replay compatibility.
 - GET `/groups` returns `{groups:[{id,name,version}]}`.
 - GET `/groups/{id}` returns `{id,name,version,participants:[{id,name,user_id}],expenses:[...],settlements:[...],balances:{participant_id:paise},transfers:[{sender,recipient,amount}],activity:[...]}`. Sync currently fetches full snapshots carrying the accepted group version. Maximum-size snapshot performance has not been established; no incremental cursor endpoint exists yet.
 - POST `/groups/{id}/expenses` body `{command_id,id,description,total,paid:{id:paise},split:{mode:'equal'|'exact'|'percent'|'shares',values:{id:decimal_string}},date:'YYYY-MM-DD',category,notes}`. Equal values are selected participant IDs with value'1'. Percent values total100.00; shares max4decimal places. Returns `{id:group_id,version}`; fetch snapshot separately.

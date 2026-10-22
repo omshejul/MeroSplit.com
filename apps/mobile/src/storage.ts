@@ -82,6 +82,22 @@ export async function discardCommand(db: Database, owner: string, id: string): P
   await db.runAsync('DELETE FROM outbox WHERE owner=? AND command_id=?', owner, id);
 }
 
+export async function discardUnsentGroup(db: Database, owner: string, groupId: string): Promise<void> {
+  await db.withExclusiveTransactionAsync(async tx => {
+    const cached = await readGroup(tx, owner, groupId);
+    const creation = await tx.getFirstAsync<{ command_id: string }>(
+      "SELECT command_id FROM outbox WHERE owner=? AND group_id=? AND method='POST' AND path='/groups' AND json_extract(body,'$.id')=? LIMIT 1",
+      owner, groupId, groupId,
+    );
+    if (cached?.kind !== 'shared' || cached.group.version !== 0 || !creation) {
+      throw new Error('Only an unsynced new group can be discarded. Refresh this group before trying again.');
+    }
+    await tx.runAsync('DELETE FROM outbox WHERE owner=? AND group_id=?', owner, groupId);
+    await tx.runAsync('DELETE FROM drafts WHERE owner=? AND group_id=?', owner, groupId);
+    await tx.runAsync('DELETE FROM groups_cache WHERE owner=? AND id=?', owner, groupId);
+  });
+}
+
 export async function replaceCommand(db: Database, owner: string, previousId: string, command: Command): Promise<void> {
   await db.withExclusiveTransactionAsync(async tx => {
     await discardCommand(tx, owner, previousId);

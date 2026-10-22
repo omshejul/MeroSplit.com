@@ -2,7 +2,7 @@
   "name": "splitdumb-mobile",
   "description": "Functional shared-expense pilot for the SplitDumb Django API.",
   "license": "0BSD",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "main": "index.ts",
   "dependencies": {
     "expo": "~58.0.12",
@@ -14,7 +14,8 @@
     "expo-sqlite": "~58.0.13",
     "expo-status-bar": "~58.0.3",
     "react": "19.3.0",
-    "react-native": "0.88.0"
+    "react-native": "0.88.0",
+    "react-native-safe-area-context": "~5.10.1"
   },
   "devDependencies": {
     "@types/node": "^24.19.2",

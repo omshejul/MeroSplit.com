@@ -20,9 +20,9 @@ export async function request<T>(session: Session, path: string, method = 'GET',
     const response = await fetch(`${session.baseUrl}/api/v1${path}`, {
       method, headers: { 'Content-Type': 'application/json', 'X-Session-Token': session.token },
       body: body === undefined ? undefined : JSON.stringify(body), signal: controller.signal,
-    });
+    }).catch(() => { throw new Error('Could not connect. Your saved changes remain on this phone. Retry when online.'); });
     if (responseType === 'text' && response.ok) return await response.text() as T;
-    if (!response.headers.get('content-type')?.includes('json')) throw new ApiError(response.ok ? 502 : response.status, `Server returned HTTP ${response.status} without JSON. Check the server URL and API version.`);
+    if (!response.headers.get('content-type')?.includes('json')) throw new ApiError(response.ok ? 502 : response.status, 'The service is temporarily unavailable. Your saved changes remain on this phone. Try again later.');
     const data = await response.json();
     if (!response.ok) throw new ApiError(response.status, String(data.detail ?? data.error ?? `Request failed (${response.status})`));
     return data as T;
@@ -61,8 +61,8 @@ export async function authenticate(baseUrl: string, email: string, password: str
   try {
     const response = await fetch(`${normalized}/_allauth/app/v1/auth/${signup ? 'signup' : 'login'}`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: email.trim(), password }), signal: controller.signal,
-    });
-    if (!response.headers.get('content-type')?.includes('json')) throw new Error(`Sign-in server returned HTTP ${response.status} without JSON. Check the server URL.`);
+    }).catch(() => { throw new Error('Could not connect. Check your connection and try signing in again.'); });
+    if (!response.headers.get('content-type')?.includes('json')) throw new Error('Sign-in is temporarily unavailable. Try again later.');
     const data = await response.json() as AuthResult;
     if (!response.ok || !data.meta?.session_token || !data.data?.user || data.meta.is_authenticated === false) {
       throw new Error(data.errors?.map(error => error.message).filter(Boolean).join(' ') || 'Sign-in is incomplete. Check your details or required email verification.');
