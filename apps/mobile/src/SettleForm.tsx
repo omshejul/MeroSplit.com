@@ -1,17 +1,20 @@
 import React, { useRef, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { RadioButton } from 'react-native-paper';
 import { addSettlement, formatMoney, integer, rupeesToPaise } from './accounting';
 import type { Group } from './types';
+import { Avatar, Button, colors, Disclosure, Icon, ui } from './ui';
 
 type Payment = { sender: string; recipient: string; amount: string };
 type Props = { group: Group; initial?: Payment; busy: boolean; onSave: (payment: Payment) => Promise<void>; onCancel: () => void };
 const rupees = (value: string) => { const amount = integer(value); return `${amount / 100n}.${(amount % 100n).toString().padStart(2, '0')}`; };
 
-export default function SettleForm({ group, initial, busy, onSave, onCancel }: Props) {
+export default function SettleForm({ group, initial, busy, onSave }: Props) {
   const proposal = initial ?? group.transfers[0];
   const [sender, setSender] = useState(proposal?.sender ?? group.participants[0]?.id ?? '');
   const [recipient, setRecipient] = useState(proposal?.recipient ?? group.participants.find(person => person.id !== sender)?.id ?? '');
   const [amount, setAmount] = useState(proposal ? rupees(proposal.amount) : ''), [error, setError] = useState(''), [saving, setSaving] = useState(false);
+  const [peopleOpen, setPeopleOpen] = useState(false);
   const lock = useRef(false), disabled = busy || saving;
   const label = (id: string) => {
     const person = group.participants.find(value => value.id === id);
@@ -27,7 +30,7 @@ export default function SettleForm({ group, initial, busy, onSave, onCancel }: P
     finally { lock.current = false; setSaving(false); }
   }
   function confirm() {
-    if (disabled) return;
+    if (disabled || group.archived) return;
     try {
       const payment = { sender, recipient, amount: rupeesToPaise(amount) };
       addSettlement(group.balances, sender, recipient, payment.amount);
@@ -38,31 +41,43 @@ export default function SettleForm({ group, initial, busy, onSave, onCancel }: P
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Check the people and payment amount.'); }
   }
   const profile = group.participants.find(person => person.id === recipient)?.payment_profile;
+  let amountLabel = '';
+  try { amountLabel = formatMoney(rupeesToPaise(amount)); } catch { /* Validate on confirmation, without interrupting typing. */ }
   return <View style={styles.form}>
-    <Text style={styles.heading}>Record a payment</Text>
-    <Text>Record money already paid outside SplitDumb. You can enter a partial amount.</Text>
-    <Text style={styles.section}>From</Text>
-    {group.participants.map(person => <Pressable key={`from-${person.id}`} accessibilityRole="radio" accessibilityLabel={`From ${label(person.id)}`}
-      accessibilityState={{ checked: sender === person.id, disabled }} disabled={disabled} style={[styles.control, sender === person.id && styles.selected]}
-      onPress={() => { setSender(person.id); if (recipient === person.id) setRecipient(group.participants.find(value => value.id !== person.id)?.id ?? ''); setError(''); }}>
-      <Text>{sender === person.id ? '✓ ' : ''}{label(person.id)}</Text>
-    </Pressable>)}
-    <Text style={styles.section}>To</Text>
-    {group.participants.filter(person => person.id !== sender).map(person => <Pressable key={`to-${person.id}`} accessibilityRole="radio" accessibilityLabel={`To ${label(person.id)}`}
-      accessibilityState={{ checked: recipient === person.id, disabled }} disabled={disabled} style={[styles.control, recipient === person.id && styles.selected]}
-      onPress={() => { setRecipient(person.id); setError(''); }}><Text>{recipient === person.id ? '✓ ' : ''}{label(person.id)}</Text></Pressable>)}
-    <View style={styles.field}><Text>Amount paid (₹)</Text><TextInput accessibilityLabel="Amount paid (₹)" keyboardType="decimal-pad" value={amount}
-      onChangeText={value => { setAmount(value); setError(''); }} editable={!disabled} style={styles.input} /></View>
-    {profile && <><Text selectable>{label(recipient)}'s UPI ID: {profile.vpa}</Text><Text>This address was added by the person and has not been bank verified.</Text></>}
-    {!!error && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.error}>{error}</Text>}
-    <Pressable accessibilityRole="button" accessibilityState={{ disabled }} disabled={disabled} onPress={confirm} style={[styles.control, styles.primary]}><Text style={styles.primaryText}>{saving ? 'Recording…' : 'Record payment'}</Text></Pressable>
-    <Pressable accessibilityRole="button" accessibilityState={{ disabled }} disabled={disabled} onPress={onCancel} style={styles.control}><Text>Cancel</Text></Pressable>
+    <Text style={ui.caption}>{group.name}</Text>
+    <View style={styles.person}><Avatar name={label(recipient)} /><View style={ui.rowBody}>
+      <Text style={ui.label}>Paid to</Text><Text style={ui.section}>{label(recipient)}</Text><Text style={ui.caption}>From {label(sender)}</Text>
+    </View></View>
+    <Text style={ui.notice}>Record money already paid outside this app. This does not send money.</Text>
+    {group.archived && <Text style={ui.notice}>Reopen this group in settings before recording a payment.</Text>}
+    <View style={styles.field}><Text style={ui.label}>Amount paid (₹)</Text><TextInput accessibilityLabel="Amount paid (₹)" keyboardType="decimal-pad" value={amount}
+      onChangeText={value => { setAmount(value); setError(''); }} editable={!disabled} placeholder="0" placeholderTextColor={colors.muted} style={[ui.input, styles.amount]} />
+      <Text style={ui.caption}>You can record part of the amount.</Text></View>
+    <View style={styles.people}>
+      <Pressable accessibilityRole="button" accessibilityState={{ expanded: peopleOpen, disabled }} disabled={disabled} onPress={() => setPeopleOpen(value => !value)} style={styles.summary}>
+        <Text style={ui.rowTitle}>Change people</Text><View style={{ transform: [{ rotate: peopleOpen ? '180deg' : '0deg' }] }}><Icon name="down" size={20} /></View>
+      </Pressable>
+      {peopleOpen && <View style={styles.reveal}>
+        <Text style={ui.label}>From</Text>
+        {group.participants.map(person => <RadioButton.Item key={`from-${person.id}`} value={person.id} label={label(person.id)} accessibilityLabel={`From ${label(person.id)}`}
+          status={sender === person.id ? 'checked' : 'unchecked'} disabled={disabled} labelStyle={ui.body} mode="android"
+          onPress={() => { setSender(person.id); if (recipient === person.id) setRecipient(group.participants.find(value => value.id !== person.id)?.id ?? ''); setError(''); }} />)}
+        <Text style={ui.label}>To</Text>
+        {group.participants.filter(person => person.id !== sender).map(person => <RadioButton.Item key={`to-${person.id}`} value={person.id} label={label(person.id)} accessibilityLabel={`To ${label(person.id)}`}
+          status={recipient === person.id ? 'checked' : 'unchecked'} disabled={disabled} labelStyle={ui.body} mode="android"
+          onPress={() => { setRecipient(person.id); setError(''); }} />)}
+        <Button title="Done" onPress={() => setPeopleOpen(false)} disabled={disabled} kind="text" icon="check" />
+      </View>}
+    </View>
+    {profile && <Disclosure title="Payment address"><Text selectable style={ui.body}>{label(recipient)}'s UPI ID: {profile.vpa}</Text>
+      <Text style={ui.caption}>Entered by this person. Not bank verified.</Text></Disclosure>}
+    {!!error && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={ui.error}>{error}</Text>}
+    <Button title={saving ? 'Recording…' : amountLabel ? `Record ${amountLabel}` : 'Record payment'} accessibilityLabel={amountLabel ? `Record ${amountLabel} to ${label(recipient)}` : 'Record payment'} onPress={confirm} disabled={disabled || group.archived} kind="primary" icon="check" />
   </View>;
 }
 
 const styles = StyleSheet.create({
-  form: { gap: 12 }, field: { gap: 6 }, heading: { fontSize: 22, fontWeight: '600' }, section: { fontSize: 17, fontWeight: '600', marginTop: 8 },
-  input: { minHeight: 44, borderWidth: 1, borderColor: '#888', padding: 10, color: '#111', fontSize: 16 },
-  control: { minHeight: 44, borderWidth: 1, borderColor: '#888', padding: 12, justifyContent: 'center' }, selected: { backgroundColor: '#eee' },
-  primary: { backgroundColor: '#111' }, primaryText: { color: 'white', fontWeight: '600', textAlign: 'center' }, error: { color: '#a11919' },
+  form: { gap: 18 }, field: { gap: 7 }, person: { flexDirection: 'row', gap: 14, alignItems: 'center', paddingVertical: 8 },
+  amount: { fontSize: 36, minHeight: 76, fontWeight: '600', fontVariant: ['tabular-nums'] }, people: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
+  summary: { minHeight: 52, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 }, reveal: { gap: 12, paddingBottom: 16 },
 });

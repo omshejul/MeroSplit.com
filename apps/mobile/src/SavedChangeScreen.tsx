@@ -1,8 +1,9 @@
 import React from 'react';
-import { Alert, Button, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { formatMoney, validateExpense } from './accounting';
 import type { Amounts, Split } from './accounting';
 import type { Command, Expense, Group } from './types';
+import { Button, colors, ui } from './ui';
 
 type Props = {
   command: Command; group: Group; busy: boolean;
@@ -40,38 +41,57 @@ export default function SavedChangeScreen({ command, group, busy, onDiscard, onE
   const canEdit = !!saved && (creating ? !current : updating && !!current && !current.deleted);
 
   function summary(expense: Expense) {
-    return <View style={{ gap: 6 }}>
-      <Text>{expense.description}</Text>
-      <Text>{formatMoney(expense.total)} · {expense.date}</Text>
-      {expense.deleted && <Text>Deleted. This expense is not included in balances.</Text>}
-      {group.participants.filter(person => (expense.paid[person.id] ?? '0') !== '0'
-        || (expense.shares[person.id] ?? '0') !== '0').map(person => <Text key={person.id}>
-        {person.name} paid {formatMoney(expense.paid[person.id] ?? '0')}; share {formatMoney(expense.shares[person.id] ?? '0')}
-      </Text>)}
-      {!!expense.notes && <Text>{expense.notes}</Text>}
+    return <View style={s.bill}>
+      <Text style={ui.section}>{expense.description}</Text>
+      <Text style={ui.numeric}>{formatMoney(expense.total)}</Text>
+      <Text style={ui.caption}>{expense.date}</Text>
+      {expense.deleted && <Text style={ui.notice}>Deleted. This bill is not included in balances.</Text>}
+      <Text style={ui.label}>Who paid?</Text>
+      {group.participants.filter(person => (expense.paid[person.id] ?? '0') !== '0').map(person => <View key={person.id} style={s.person}>
+        <Text style={s.name}>{person.name}</Text><Text style={s.amount}>{formatMoney(expense.paid[person.id])}</Text>
+      </View>)}
+      <Text style={ui.label}>Split between</Text>
+      {group.participants.filter(person => Object.hasOwn(expense.split.values, person.id)).map(person => <View key={person.id} style={s.person}>
+        <Text style={s.name}>{person.name}</Text><Text style={s.amount}>{formatMoney(expense.shares[person.id] ?? '0')}</Text>
+      </View>)}
+      {!!expense.notes && <Text style={ui.caption}>{expense.notes}</Text>}
     </View>;
   }
 
   function editSaved() {
     if (busy || !canEdit || !saved) return;
-    const expense = saved;
-    Alert.alert('Edit your saved change?',
-      'Compare your saved values with the accepted expense above. This opens your saved values for review. Nothing changes until you save.',
-      [{ text: 'Cancel', style: 'cancel' }, { text: 'Edit saved change', onPress: () => onEditSaved(expense) }]);
+    onEditSaved(saved);
   }
 
-  return <View style={{ gap: 16 }}>
-    <Text>The saved change is still on this device. Compare it with accepted records before editing.</Text>
-    <Text style={{ fontSize: 18, fontWeight: '600' }}>{expenseCommand ? 'Your saved expense' : 'Your saved change'}</Text>
-    {saved ? summary(saved) : <Text>{issue}</Text>}
+  return <View style={s.content}>
+    <Text style={ui.caption}>{group.name}</Text>
+    <Text style={ui.notice}>{expenseCommand ? 'Your change is saved on this phone. Compare both versions before choosing what to keep.' : 'This action is saved on this phone until it can be sent or you discard it.'}</Text>
+    <View style={s.section}>
+      <Text accessibilityRole="header" style={ui.section}>{expenseCommand ? 'My saved bill' : 'My saved change'}</Text>
+      {saved ? summary(saved) : <Text accessibilityRole="alert" style={ui.body}>{issue}</Text>}
+    </View>
     {expenseCommand && <>
-      <Text style={{ fontSize: 18, fontWeight: '600' }}>Current accepted expense</Text>
-      {current ? summary(current) : <Text>This expense is not in the accepted group records.</Text>}
-      {creating && current && <Text>This expense already exists in accepted records and will not be overwritten here. Leave this change saved or discard it below.</Text>}
-      {updating && current?.deleted && <Text>Restore the accepted expense before editing it.</Text>}
-      {updating && !current && <Text>The accepted expense is no longer available. This saved change will not recreate it automatically.</Text>}
+      <View style={s.section}>
+        <Text accessibilityRole="header" style={ui.section}>Latest bill</Text>
+        {current ? summary(current) : <Text style={ui.body}>This bill is not in the group's latest records.</Text>}
+      </View>
+      {creating && current && <Text style={ui.notice}>This bill already exists and will not be overwritten here. Leave your change saved or discard it below.</Text>}
+      {updating && current?.deleted && <Text style={ui.notice}>Restore the latest bill before editing it.</Text>}
+      {updating && !current && <Text style={ui.notice}>The latest bill is no longer available. Your saved change will not recreate it automatically.</Text>}
     </>}
-    {canEdit && <Button title="Edit my saved change" disabled={busy} onPress={editSaved} />}
-    <Button title="Keep accepted records and discard this change" disabled={busy} onPress={onDiscard} />
+    <View style={s.section}>
+      {canEdit && <Button title="Edit my bill" kind="primary" disabled={busy} onPress={editSaved} />}
+      <Button title={expenseCommand ? 'Discard my saved bill' : 'Discard my saved change'} disabled={busy} onPress={onDiscard} />
+      <Text style={ui.caption}>Discarding keeps the latest records as they are.</Text>
+    </View>
   </View>;
 }
+
+const s = StyleSheet.create({
+  content: { gap: 20 },
+  section: { gap: 12 },
+  bill: { backgroundColor: colors.surface, borderRadius: 16, padding: 16, gap: 10 },
+  person: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  name: { ...ui.body, flex: 1 },
+  amount: { ...ui.body, fontWeight: '500', textAlign: 'right', flexShrink: 1, fontVariant: ['tabular-nums'] },
+});

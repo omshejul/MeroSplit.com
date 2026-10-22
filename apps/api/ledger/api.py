@@ -47,7 +47,7 @@ from .services import (
     visible_group,
 )
 
-api = NinjaAPI(title="SplitDumb", version="1.0", auth=[x_session_token_auth, django_auth])
+api = NinjaAPI(title="MeroSplit", version="1.0", auth=[x_session_token_auth, django_auth])
 
 
 @api.get("/health", auth=None)
@@ -260,7 +260,7 @@ def group_export(request, group_id: UUID, format: str = "json"):
         response = HttpResponse(csv_export(result), content_type="text/csv; charset=utf-8")
     else:
         raise HttpError(422, "Choose json or csv")
-    response["Content-Disposition"] = f'attachment; filename="splitdumb-{group_id}.{format}"'
+    response["Content-Disposition"] = f'attachment; filename="merosplit-{group_id}.{format}"'
     return response
 
 

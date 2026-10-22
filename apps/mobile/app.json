@@ -1,23 +1,27 @@
 {
   "expo": {
-    "name": "SplitDumb",
+    "name": "MeroSplit",
     "slug": "splitdumb",
     "scheme": "splitdumb",
-    "version": "0.2.0",
+    "version": "0.3.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.omshejul.splitdumb",
-      "buildNumber": "2",
-      "infoPlist": { "NSAppTransportSecurity": { "NSAllowsLocalNetworking": true } }
+      "buildNumber": "3",
+      "infoPlist": {
+        "NSAppTransportSecurity": {
+          "NSAllowsLocalNetworking": true
+        }
+      }
     },
     "android": {
       "package": "com.omshejul.splitdumb",
-      "versionCode": 2,
+      "versionCode": 3,
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#DFF5E9",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
@@ -30,7 +34,8 @@
     "plugins": [
       "expo-sqlite",
       "expo-secure-store",
-      "expo-sharing"
+      "expo-sharing",
+      "@react-native-community/datetimepicker"
     ]
   }
 }
