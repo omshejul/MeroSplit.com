@@ -26,7 +26,7 @@ export type IconName = keyof typeof icons;
 export function Icon({ name, size = 22, color = colors.accent }: { name: IconName; size?: number; color?: string }) {
   return <HugeiconsIcon icon={icons[name]} size={size} color={color} strokeWidth={1.7} />;
 }
-export const theme = { ...MD3LightTheme, roundness: 4, colors: { ...MD3LightTheme.colors, primary: colors.accent, onPrimary: colors.surface, primaryContainer: colors.soft, onPrimaryContainer: colors.accent, background: colors.background, surface: colors.surface, onSurface: colors.text, onSurfaceVariant: colors.muted, outline: colors.line, error: colors.error } };
+export const theme = { ...MD3LightTheme, roundness: 4, colors: { ...MD3LightTheme.colors, primary: colors.accent, onPrimary: colors.surface, primaryContainer: colors.soft, onPrimaryContainer: colors.accent, secondary: colors.accent, onSecondary: colors.surface, secondaryContainer: colors.soft, onSecondaryContainer: colors.accent, background: colors.background, surface: colors.surface, onSurface: colors.text, onSurfaceVariant: colors.muted, outline: colors.line, error: colors.error } };
 function LibraryIcon({ name, color, size }: { name: string; color?: string; size: number }) {
   const libraryIcons = { 'checkbox-blank-outline': SquareIcon, 'checkbox-marked': CheckmarkSquare01Icon, 'checkbox-intermediate': MinusSignSquareIcon, check: CheckmarkCircle01Icon, 'chevron-down': ArrowDown01Icon };
   return <HugeiconsIcon icon={libraryIcons[name as keyof typeof libraryIcons] ?? CheckmarkCircle01Icon} color={color ?? colors.accent} size={size} strokeWidth={1.7} />;

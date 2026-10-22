@@ -129,7 +129,7 @@ export function ExpenseDetail({ expense, group, busy, canEdit, onEdit, onDelete,
   const hasCategory = !!expense.category && !['general', 'other'].includes(expense.category);
   return <View style={s.content}>
     <View style={s.summary}>
-      <Text style={ui.title}>{expense.description}</Text>
+      
       <Text style={ui.numeric}>{formatMoney(expense.total)}</Text>
       <Text style={ui.caption}>{group.name} · {expense.date}</Text>
     </View>
