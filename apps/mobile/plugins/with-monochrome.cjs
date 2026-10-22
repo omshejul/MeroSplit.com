@@ -14,14 +14,19 @@ module.exports = config => {
     return mod;
   });
   return withAppDelegate(config, mod => {
-    const anchor = 'window = UIWindow(frame: UIScreen.main.bounds)';
-    const tint = 'window?.tintColor = UIColor { traits in traits.userInterfaceStyle == .dark ? .white : .black }';
-    if (mod.modResults.contents.includes('window?.tintColor = .black')) {
-      mod.modResults.contents = mod.modResults.contents.replace('window?.tintColor = .black', tint);
-    } else if (!mod.modResults.contents.includes(tint)) {
-      if (!mod.modResults.contents.includes(anchor)) throw new Error('Check the AppDelegate window before applying its monochrome tint.');
-      mod.modResults.contents = mod.modResults.contents.replace(anchor, `${anchor}\n    ${tint}`);
+    const anchor = '  var window: UIWindow?';
+    // Expo's scene delegate creates this window and forwards activation here.
+    const activation = `  public override func applicationDidBecomeActive(_ application: UIApplication) {
+    super.applicationDidBecomeActive(application)
+    window?.tintColor = .label
+  }`;
+    if (!mod.modResults.contents.includes(activation)) {
+      if (!mod.modResults.contents.includes(anchor) || mod.modResults.contents.includes('func applicationDidBecomeActive(')) {
+        throw new Error('Check the AppDelegate activation hook before applying its monochrome tint.');
+      }
+      mod.modResults.contents = mod.modResults.contents.replace(anchor, `${anchor}\n\n${activation}`);
     }
+    if (!mod.modResults.contents.includes('import UIKit')) mod.modResults.contents = `import UIKit\n${mod.modResults.contents}`;
     return mod;
   });
 };
