@@ -64,7 +64,6 @@ export function Disclosure({ title, children, initialOpen = false }: { title: st
   </View>;
 }
 export const ui = StyleSheet.create({
-  title: { fontSize: 28, lineHeight: 34, fontWeight: '600', color: colors.text },
   section: { fontSize: 18, lineHeight: 24, fontWeight: '600', color: colors.text },
   body: { fontSize: 16, lineHeight: 23, color: colors.text },
   caption: { fontSize: 14, lineHeight: 20, color: colors.muted },
@@ -77,11 +76,9 @@ export const ui = StyleSheet.create({
   rowSub: { fontSize: 14, lineHeight: 20, color: colors.muted },
   avatar: { width: 44, height: 44, borderRadius: 16, backgroundColor: colors.soft, alignItems: 'center', justifyContent: 'center' },
   initials: { fontSize: 17, fontWeight: '600', color: colors.accent },
-  selected: { backgroundColor: colors.soft, borderColor: colors.accent },
   notice: { backgroundColor: colors.surface, borderLeftWidth: 3, borderLeftColor: colors.accent, borderRadius: 12, padding: 14, color: colors.text, fontSize: 14, lineHeight: 21 },
   error: { color: colors.error, fontSize: 15, lineHeight: 22 },
   disclosure: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
   disclosureHeading: { minHeight: 60, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
   disclosureBody: { gap: 12, paddingBottom: 18 },
-  actionRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 },
 });
