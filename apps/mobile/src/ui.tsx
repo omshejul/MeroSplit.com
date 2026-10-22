@@ -15,9 +15,6 @@ import UserCircleIcon from '@hugeicons/core-free-icons/UserCircleIcon';
 import UserGroupIcon from '@hugeicons/core-free-icons/UserGroupIcon';
 import UserMultipleIcon from '@hugeicons/core-free-icons/UserMultipleIcon';
 import Wallet01Icon from '@hugeicons/core-free-icons/Wallet01Icon';
-import SquareIcon from '@hugeicons/core-free-icons/SquareIcon';
-import CheckmarkSquare01Icon from '@hugeicons/core-free-icons/CheckmarkSquare01Icon';
-import MinusSignSquareIcon from '@hugeicons/core-free-icons/MinusSignSquareIcon';
 import Calendar03Icon from '@hugeicons/core-free-icons/Calendar03Icon';
 
 export const colors = { background: '#F5F8F6', surface: '#FFFFFF', text: '#172A23', muted: '#61726A', accent: '#1F6F5C', soft: '#DFF5E9', line: '#DEE8E1', error: '#A93A28' };
@@ -28,7 +25,7 @@ export function Icon({ name, size = 22, color = colors.accent }: { name: IconNam
 }
 export const theme = { ...MD3LightTheme, roundness: 4, colors: { ...MD3LightTheme.colors, primary: colors.accent, onPrimary: colors.surface, primaryContainer: colors.soft, onPrimaryContainer: colors.accent, secondary: colors.accent, onSecondary: colors.surface, secondaryContainer: colors.soft, onSecondaryContainer: colors.accent, background: colors.background, surface: colors.surface, onSurface: colors.text, onSurfaceVariant: colors.muted, outline: colors.line, error: colors.error } };
 function LibraryIcon({ name, color, size }: { name: string; color?: string; size: number }) {
-  const libraryIcons = { 'checkbox-blank-outline': SquareIcon, 'checkbox-marked': CheckmarkSquare01Icon, 'checkbox-intermediate': MinusSignSquareIcon, check: CheckmarkCircle01Icon, 'chevron-down': ArrowDown01Icon };
+  const libraryIcons = { check: CheckmarkCircle01Icon, 'chevron-down': ArrowDown01Icon };
   return <HugeiconsIcon icon={libraryIcons[name as keyof typeof libraryIcons] ?? CheckmarkCircle01Icon} color={color ?? colors.accent} size={size} strokeWidth={1.7} />;
 }
 export function UIProvider({ children }: { children: React.ReactNode }) {
