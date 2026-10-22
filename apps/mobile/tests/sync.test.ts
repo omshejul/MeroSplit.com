@@ -1,0 +1,65 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { DatabaseSync } from 'node:sqlite';
+import { accountOwner, authenticate, syncOutbox } from '../src/api.ts';
+import { migrate, enqueue, pendingCommands, readGroup, saveGroup, replaceCommand } from '../src/storage.ts';
+import { sqliteAdapter } from './sqlite.ts';
+import type { Command, Group, Session } from '../src/types.ts';
+
+const session: Session = { token: 'synthetic-token', userId: '1', email: 'synthetic@example.invalid', baseUrl: 'https://example.invalid' };
+const owner = accountOwner(session);
+const group: Group = { id: 'g', name: 'Trip', version: 0, participants: [], expenses: [], settlements: [], balances: {}, transfers: [], activity: [] };
+const command: Command = { command_id: 'c', group_id: 'g', method: 'POST', path: '/groups', body: { command_id: 'c', id: 'g' }, state: 'pending', error: null };
+
+test('Lost responses retry the same command, conflicts remain durable and accounts stay isolated', async () => {
+  const original = globalThis.fetch, raw = new DatabaseSync(':memory:'), db = sqliteAdapter(raw);
+  const writes: string[] = [];
+  let loseResponse = true, conflict = false, denySnapshot = false;
+  globalThis.fetch = async (url, options) => {
+    assert.equal((options?.headers as Record<string, string>)['X-Session-Token'], session.token);
+    if (options?.method === 'POST') {
+      writes.push(String(options.body));
+      if (conflict) return Response.json({ error: 'conflict', detail: 'Accepted revision changed.' }, { status: 409 });
+      if (loseResponse) { loseResponse = false; throw new TypeError('Response lost after commit'); }
+      return Response.json({ id: 'g', version: 1 });
+    }
+    assert.equal(String(url), `${session.baseUrl}/api/v1/groups/g`);
+    return denySnapshot ? Response.json({ detail: 'Snapshot unavailable' }, { status: 403 }) : Response.json({ ...group, version: 1 });
+  };
+  try {
+    await migrate(db); await saveGroup(db, owner, group, 'shared');
+    await enqueue(db, owner, command); await enqueue(db, 'different-account', { ...command, command_id: 'other' });
+    await assert.rejects(syncOutbox(db, session), /Response lost/);
+    assert.equal((await pendingCommands(db, owner))[0].state, 'pending');
+    await syncOutbox(db, session);
+    assert.equal(writes[0], writes[1]);
+    assert.equal((await pendingCommands(db, owner)).length, 0);
+    assert.equal((await pendingCommands(db, 'different-account')).length, 1);
+    assert.equal((await readGroup(db, owner, 'g'))?.group.version, 1);
+    await enqueue(db, owner, { ...command, command_id: 'conflict', body: { command_id: 'conflict' } }); conflict = true;
+    await assert.rejects(syncOutbox(db, session), /Accepted revision/);
+    assert.equal((await pendingCommands(db, owner))[0].state, 'conflict');
+    const before = writes.length;
+    await assert.rejects(syncOutbox(db, session), /Resolve/); assert.equal(writes.length, before);
+    const replacement = { ...command, command_id: 'reviewed', body: { command_id: 'reviewed', version: 2 } };
+    await replaceCommand(db, owner, 'conflict', replacement); conflict = false; denySnapshot = true;
+    await assert.rejects(syncOutbox(db, session), /Snapshot unavailable/);
+    assert.equal((await pendingCommands(db, owner))[0].state, 'pending', 'a failed read cannot classify an accepted write as rejected');
+    denySnapshot = false; await syncOutbox(db, session);
+    assert.equal((await pendingCommands(db, owner)).length, 0);
+  } finally { globalThis.fetch = original; raw.close(); }
+});
+
+test('Native auth uses allauth response and an account/backend ownership key', async () => {
+  const original = globalThis.fetch;
+  globalThis.fetch = async (url, options) => {
+    assert.equal(String(url), 'https://example.invalid/_allauth/app/v1/auth/signup');
+    assert.deepEqual(JSON.parse(String(options?.body)), { email: 'person@example.invalid', password: 'synthetic-password' });
+    return Response.json({ meta: { session_token: 'test-session', is_authenticated: true }, data: { user: { id: 17, email: 'person@example.invalid' } } });
+  };
+  try {
+    const result = await authenticate('https://example.invalid/', 'person@example.invalid', 'synthetic-password', true);
+    assert.equal(result.userId, '17'); assert.equal(result.token, 'test-session');
+    assert.notEqual(accountOwner(result), accountOwner({ ...result, baseUrl: 'https://other.invalid' }));
+  } finally { globalThis.fetch = original; }
+});

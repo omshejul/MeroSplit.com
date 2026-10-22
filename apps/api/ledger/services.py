@@ -1,0 +1,370 @@
+import hashlib
+import json
+from datetime import date
+
+from django.contrib.auth import get_user_model
+from django.db import transaction
+from django.utils import timezone
+from ninja.errors import HttpError
+
+from .accounting import AccountingError, propose_transfers, validate_expense
+from .models import (
+    Change,
+    CommandReceipt,
+    Expense,
+    Group,
+    Invite,
+    OpeningBalance,
+    Participant,
+    PaymentProfile,
+    Settlement,
+)
+
+
+def visible_group(actor, group_id, *, lock=False):
+    query = Group.objects.filter(id=group_id, participants__user=actor)
+    if lock:
+        query = query.select_for_update(of=("self",))
+    group = query.first()
+    if not group:
+        raise HttpError(404, "Group not found")
+    return group
+
+
+def previous_result(actor, command_id, operation, payload):
+    fingerprint = hashlib.sha256(
+        json.dumps([operation, payload], sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    receipt = CommandReceipt.objects.filter(actor=actor, command_id=command_id).first()
+    if receipt and receipt.fingerprint != fingerprint:
+        raise HttpError(409, "Command ID already used for different input")
+    return receipt.result if receipt else None, fingerprint
+
+
+def record_change(group, actor, command_id, fingerprint, kind, data):
+    group.version += 1
+    group.save(update_fields=["version"])
+    Change.objects.create(group=group, sequence=group.version, actor=actor, kind=kind, data=data)
+    result = {"id": str(group.id), "version": group.version}
+    CommandReceipt.objects.create(actor=actor, command_id=command_id, fingerprint=fingerprint, result=result)
+    return result
+
+
+def writable(group):
+    if group.archived:
+        raise HttpError(409, "Unarchive this group before changing it")
+
+
+def positive_amount(raw):
+    if not isinstance(raw, str) or not raw.isascii() or not raw.isdecimal() or raw.startswith("0"):
+        raise AccountingError("Use a positive integer paise string")
+    if len(raw) > 10 or int(raw) > 1_000_000_000:
+        raise AccountingError("Amount exceeds the bill limit")
+    return int(raw)
+
+
+def people(group):
+    return {str(p.id): p for p in group.participants.all()}
+
+
+def expense_dict(expense):
+    return {
+        "id": str(expense.id),
+        "version": expense.version,
+        "description": expense.description,
+        "total": str(expense.total),
+        "paid": expense.paid,
+        "shares": expense.shares,
+        "split": expense.split,
+        "date": expense.date.isoformat(),
+        "category": expense.category,
+        "notes": expense.notes,
+        "deleted": expense.deleted,
+    }
+
+
+def snapshot(group):
+    participants = list(group.participants.order_by("id"))
+    balances = {str(p.id): 0 for p in participants}
+    paid_totals, share_totals = dict(balances), dict(balances)
+    expenses = list(group.expenses.order_by("date", "id"))
+    settlements = list(group.settlements.order_by("created_at", "id"))
+    opening = OpeningBalance.objects.filter(group=group).first()
+    for expense in expenses:
+        if not expense.deleted:
+            for person in balances:
+                paid_totals[person] += int(expense.paid.get(person, "0"))
+                share_totals[person] += int(expense.shares.get(person, "0"))
+                balances[person] = paid_totals[person] - share_totals[person]
+    for payment in settlements:
+        if not payment.reversed:
+            balances[str(payment.sender_id)] += payment.amount
+            balances[str(payment.recipient_id)] -= payment.amount
+    if opening and opening.accepted:
+        for person, amount in opening.balances.items():
+            balances[person] += int(amount)
+    result = {
+        "id": str(group.id),
+        "name": group.name,
+        "version": group.version,
+        "archived": group.archived,
+        "owner_id": group.owner_id,
+        "participants": [{"id": str(p.id), "name": p.name, "user_id": p.user_id} for p in participants],
+        "expenses": [expense_dict(e) for e in expenses],
+        "settlements": [
+            {
+                "id": str(p.id),
+                "sender": str(p.sender_id),
+                "recipient": str(p.recipient_id),
+                "amount": str(p.amount),
+                "method": p.method,
+                "recorded_by": p.recorded_by_id,
+                "date": p.date.isoformat(),
+                "attempt_id": str(p.attempt_id) if p.attempt_id else None,
+                "reversed": p.reversed,
+            }
+            for p in settlements
+        ],
+        "balances": {p: str(amount) for p, amount in balances.items()},
+        "activity": list(
+            group.changes.order_by("sequence").values("sequence", "actor_id", "kind", "data", "created_at")
+        ),
+    }
+    profiles = {
+        profile.user_id: {"vpa": profile.vpa, "version": profile.version, "bank_verified": False}
+        for profile in PaymentProfile.objects.filter(
+            user_id__in=[p.user_id for p in participants if p.user_id]
+        )
+    }
+    for participant in result["participants"]:
+        participant["payment_profile"] = profiles.get(participant["user_id"])
+    result["payment_attempts"] = [
+        {
+            "id": str(a.id),
+            "sender": str(a.sender_id),
+            "recipient": str(a.recipient_id),
+            "amount": str(a.amount),
+            "state": a.state,
+            "payee": a.payee,
+            "payee_version": a.payee_version,
+            "group_version": a.group_version,
+            "expires_at": a.expires_at.isoformat(),
+            "settlement_id": str(a.settlement.id) if hasattr(a, "settlement") else None,
+            "recorded_amount": str(a.settlement.amount) if hasattr(a, "settlement") else None,
+        }
+        for a in group.attempts.select_related("settlement").order_by("created_at", "id")
+    ]
+    result["invites"] = [
+        {
+            "id": str(i.id),
+            "participant_id": str(i.participant_id),
+            "claimant_id": i.claimant_id,
+            "claimant_email": i.claimant.email if i.claimant else None,
+            "approved": i.approved,
+            "revoked": i.revoked,
+            "expires_at": i.expires_at.isoformat(),
+        }
+        for i in Invite.objects.filter(participant__group=group).select_related("claimant").order_by("id")
+    ]
+    result["totals"] = {
+        "spending": str(sum(e.total for e in expenses if not e.deleted)),
+        "paid": {p: str(amount) for p, amount in paid_totals.items()},
+        "shares": {p: str(amount) for p, amount in share_totals.items()},
+    }
+    result["transfers"] = propose_transfers(result["balances"])
+    result["opening_balance"] = (
+        None
+        if not opening
+        else {
+            "id": str(opening.id),
+            "balances": opening.balances,
+            "source": opening.source,
+            "cutoff": opening.cutoff.isoformat(),
+            "acknowledgments": opening.acknowledgments,
+            "accepted": opening.accepted,
+        }
+    )
+    return result
+
+
+@transaction.atomic
+def create_group(actor, payload):
+    get_user_model().objects.select_for_update().get(pk=actor.pk)
+    previous, fingerprint = previous_result(actor, payload["command_id"], "create_group", payload)
+    if previous:
+        visible_group(actor, previous["id"])
+        return previous
+    ids = [p["id"] for p in payload["participants"]]
+    if len(set(ids)) != len(ids) or payload["self_participant_id"] not in ids:
+        raise AccountingError("Participants must be unique and include the creator")
+    if Group.objects.filter(id=payload["id"]).exists() or Participant.objects.filter(id__in=ids).exists():
+        raise HttpError(409, "A supplied ID is already in use")
+    group = Group.objects.create(id=payload["id"], name=payload["name"], owner=actor)
+    Participant.objects.bulk_create(
+        [
+            Participant(
+                id=p["id"],
+                name=p["name"],
+                group=group,
+                user=actor if p["id"] == payload["self_participant_id"] else None,
+            )
+            for p in payload["participants"]
+        ]
+    )
+    return record_change(
+        group, actor, payload["command_id"], fingerprint, "group_created", {"name": group.name}
+    )
+
+
+@transaction.atomic
+def save_expense(actor, group_id, payload, expense_id=None):
+    group = visible_group(actor, group_id, lock=True)
+    operation = f"expense:{group_id}:{expense_id or 'new'}"
+    previous, fingerprint = previous_result(actor, payload["command_id"], operation, payload)
+    if previous:
+        return previous
+    writable(group)
+    if expense_id and str(expense_id) != payload["id"]:
+        raise AccountingError("Expense ID must match the URL")
+    paid, shares = validate_expense(payload["total"], payload["paid"], payload["split"], list(people(group)))
+    fields = {key: payload[key] for key in ["description", "split", "category", "notes"]}
+    fields.update(
+        total=int(payload["total"]), paid=paid, shares=shares, date=date.fromisoformat(payload["date"])
+    )
+    if expense_id:
+        expense = group.expenses.filter(id=expense_id).first()
+        if not expense:
+            raise HttpError(404, "Expense not found")
+        if expense.version != payload["version"] or expense.deleted:
+            raise HttpError(409, "Expense changed; fetch the current revision before retrying")
+        for key, value in fields.items():
+            setattr(expense, key, value)
+        expense.version += 1
+        expense.save()
+    else:
+        if Expense.objects.filter(id=payload["id"]).exists():
+            raise HttpError(409, "Expense ID already used")
+        if group.expenses.count() >= 10_000:
+            raise HttpError(409, "Group reached its tested expense limit")
+        expense = Expense.objects.create(id=payload["id"], group=group, **fields)
+    return record_change(
+        group, actor, payload["command_id"], fingerprint, "expense_saved", expense_dict(expense)
+    )
+
+
+@transaction.atomic
+def set_expense_deleted(actor, group_id, expense_id, payload, deleted):
+    group = visible_group(actor, group_id, lock=True)
+    previous, fingerprint = previous_result(
+        actor, payload["command_id"], f"expense_deleted:{group_id}:{expense_id}:{deleted}", payload
+    )
+    if previous:
+        return previous
+    writable(group)
+    expense = group.expenses.filter(id=expense_id).first()
+    if not expense:
+        raise HttpError(404, "Expense not found")
+    if expense.version != payload["version"] or expense.deleted == deleted:
+        raise HttpError(409, "Expense revision or deletion state changed")
+    expense.deleted = deleted
+    expense.version += 1
+    expense.save(update_fields=["deleted", "version"])
+    return record_change(
+        group,
+        actor,
+        payload["command_id"],
+        fingerprint,
+        "expense_deleted" if deleted else "expense_restored",
+        expense_dict(expense),
+    )
+
+
+@transaction.atomic
+def record_settlement(actor, group_id, payload):
+    group = visible_group(actor, group_id, lock=True)
+    previous, fingerprint = previous_result(actor, payload["command_id"], f"settlement:{group_id}", payload)
+    if previous:
+        return previous
+    writable(group)
+    members = people(group)
+    if (
+        payload["sender"] not in members
+        or payload["recipient"] not in members
+        or payload["sender"] == payload["recipient"]
+    ):
+        raise AccountingError("Choose two different participants in this group")
+    amount = positive_amount(payload["amount"])
+    attempt = None
+    if payload.get("attempt_id"):
+        attempt = group.attempts.filter(id=payload["attempt_id"]).first()
+        if (
+            not attempt
+            or str(attempt.sender_id) != payload["sender"]
+            or str(attempt.recipient_id) != payload["recipient"]
+        ):
+            raise AccountingError("Payment attempt does not match this actual transfer")
+        if hasattr(attempt, "settlement"):
+            raise HttpError(409, "This payment already has a bookkeeping entry")
+        attempt.state = "recorded"
+        attempt.save(update_fields=["state"])
+    elif group.attempts.filter(
+        sender_id=payload["sender"], recipient_id=payload["recipient"], state__in=["prepared", "reported"]
+    ).exists():
+        raise HttpError(
+            409,
+            "Link the existing payment attempt before recording this transfer, so it cannot be counted twice",
+        )
+    if Settlement.objects.filter(id=payload["id"]).exists():
+        raise HttpError(409, "Settlement ID already used")
+    payment = Settlement.objects.create(
+        id=payload["id"],
+        group=group,
+        sender=members[payload["sender"]],
+        recipient=members[payload["recipient"]],
+        amount=amount,
+        date=date.fromisoformat(payload["date"]) if payload.get("date") else timezone.localdate(),
+        recorded_by=actor,
+        attempt=attempt,
+    )
+    return record_change(
+        group,
+        actor,
+        payload["command_id"],
+        fingerprint,
+        "manual_settlement",
+        {
+            "id": str(payment.id),
+            "sender": payload["sender"],
+            "recipient": payload["recipient"],
+            "amount": str(amount),
+            "method": payment.method,
+        },
+    )
+
+
+@transaction.atomic
+def reverse_settlement(actor, group_id, settlement_id, payload):
+    group = visible_group(actor, group_id, lock=True)
+    previous, fingerprint = previous_result(
+        actor, payload["command_id"], f"reverse:{group_id}:{settlement_id}", payload
+    )
+    if previous:
+        return previous
+    writable(group)
+    payment = group.settlements.filter(id=settlement_id).first()
+    if not payment:
+        raise HttpError(404, "Settlement not found")
+    if payment.reversed:
+        raise HttpError(409, "Settlement is already reversed")
+    if actor.pk not in [
+        group.owner_id,
+        payment.recorded_by_id,
+        payment.sender.user_id,
+        payment.recipient.user_id,
+    ]:
+        raise HttpError(403, "Only the involved people or organizer can reverse this record")
+    payment.reversed = True
+    payment.save(update_fields=["reversed"])
+    return record_change(
+        group, actor, payload["command_id"], fingerprint, "settlement_reversed", {"id": str(payment.id)}
+    )

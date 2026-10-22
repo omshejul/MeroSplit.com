@@ -1,0 +1,35 @@
+{
+  "name": "splitdumb-mobile",
+  "description": "Functional shared-expense pilot for the SplitDumb Django API.",
+  "license": "0BSD",
+  "version": "0.1.0",
+  "main": "index.ts",
+  "dependencies": {
+    "expo": "~58.0.12",
+    "expo-crypto": "~58.0.6",
+    "expo-dev-client": "~58.0.13",
+    "expo-file-system": "~58.0.9",
+    "expo-secure-store": "~58.0.2",
+    "expo-sharing": "~58.0.18",
+    "expo-sqlite": "~58.0.13",
+    "expo-status-bar": "~58.0.3",
+    "react": "19.3.0",
+    "react-native": "0.88.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "@types/react": "~19.3.0",
+    "typescript": "~6.0.3"
+  },
+  "scripts": {
+    "start": "expo start",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
+    "web": "expo start --web",
+    "typecheck": "tsc --noEmit",
+    "test": "node --experimental-strip-types --test tests/*.test.ts",
+    "test:server": "node --experimental-strip-types tests/server-smoke.ts"
+  },
+  "private": true,
+  "type": "module"
+}

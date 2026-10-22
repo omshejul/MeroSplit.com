@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SplitDumb participant review</title></head>
+<body>
+<h1>{{ data.group_name }}</h1><h2>{{ data.participant.name }}</h2>
+<p>Balance in paise: {{ data.balance }}. Positive means owed to you. No money moves on this page.</p>
+<p>The link shows your involved records. Signing in does not claim this participant until the organizer approves.</p>
+{% csrf_token %}
+{% if not signed_in %}
+<form id="login"><label>Email <input id="email" type="email" autocomplete="username" required></label>
+<label>Password <input id="password" type="password" autocomplete="current-password" required></label>
+<button type="submit">Sign in</button><button id="signup" type="button">Create account</button></form>
+{% else %}<button id="claim" type="button">Request this participant claim</button>{% endif %}
+<p id="status" role="status"></p>
+<div id="actions"></div><pre id="records"></pre>
+{{ data|json_script:"review-data" }}
+{{ token|json_script:"invite-token" }}
+<script>
+const data = JSON.parse(document.getElementById('review-data').textContent);
+const token = JSON.parse(document.getElementById('invite-token').textContent);
+const status = document.getElementById('status');
+const csrf = document.querySelector('[name=csrfmiddlewaretoken]').value;
+const command = () => ({command_id: crypto.randomUUID()});
+const showError = error => { status.textContent = error.message; };
+async function call(path, method='GET', body) {
+  const response = await fetch(path, {method, credentials:'same-origin', headers:{'Content-Type':'application/json','X-CSRFToken':csrf}, body:body === undefined ? undefined : JSON.stringify(body)});
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.detail || result.errors?.map(e=>e.message).join(' ') || 'Request could not be completed.');
+  return result;
+}
+document.getElementById('records').textContent = JSON.stringify({expenses:data.expenses,settlements:data.settlements}, null, 2);
+async function login(signup) {
+  await call('/_allauth/browser/v1/auth/' + (signup ? 'signup' : 'login'), 'POST', {email:document.getElementById('email').value,password:document.getElementById('password').value});
+  location.reload();
+}
+document.getElementById('login')?.addEventListener('submit', event => {event.preventDefault(); login(false).catch(showError);});
+document.getElementById('signup')?.addEventListener('click', () => login(true).catch(showError));
+document.getElementById('claim')?.addEventListener('click', async () => {
+  try {await call('/api/v1/invites/'+encodeURIComponent(token)+'/claim','POST',command()); status.textContent='Claim requested. The organizer must approve your account.';} catch(error) {showError(error);}
+});
+function button(label, action) {
+  const element=document.createElement('button');element.textContent=label;element.type='button';element.onclick=()=>action().then(()=>location.reload()).catch(showError);document.getElementById('actions').appendChild(element);
+}
+async function memberActions() {
+  if (!document.getElementById('claim')) return;
+  const group = await call('/api/v1/groups/'+data.group_id);
+  if (group.opening_balance && !group.opening_balance.accepted) button('Acknowledge opening balance',()=>call('/api/v1/groups/'+group.id+'/opening-balances/'+group.opening_balance.id+'/acknowledge','POST',command()));
+  for (const attempt of group.payment_attempts || []) if (attempt.recipient===data.participant.id && ['reported','recorded','cancelled'].includes(attempt.state)) button('Confirm received '+(attempt.recorded_amount || attempt.amount)+' paise',()=>call('/api/v1/groups/'+group.id+'/payment-attempts/'+attempt.id+'/confirm','POST',command()));
+}
+memberActions().catch(error=>{ if(!error.message.includes('not found')) showError(error); });
+</script></body></html>

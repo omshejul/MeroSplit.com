@@ -1,0 +1,20 @@
+import type { Amounts, Split, Transfer } from './accounting';
+
+export type Participant = { id: string; name: string; user_id?: number | null; payment_profile?: { vpa: string; version: number; bank_verified: false } | null };
+export type Expense = {
+  id: string; version: number; description: string; total: string;
+  paid: Amounts; shares: Amounts; split: Split; date: string; category: string; notes: string; deleted: boolean;
+};
+export type Settlement = { id: string; sender: string; recipient: string; amount: string; provenance?: string; method?: string; recorded_by?: number; date?: string; attempt_id?: string | null; reversed?: boolean };
+export type Group = {
+  id: string; name: string; version: number; participants: Participant[]; expenses: Expense[];
+  settlements: Settlement[]; balances: Amounts; transfers: Transfer[]; activity: unknown[];
+  totals?: { spending: string; paid: Amounts; shares: Amounts };
+  payment_attempts?: { id: string; sender: string; recipient: string; amount: string; state: string; recorded_amount?: string | null; settlement_id?: string | null }[];
+};
+export type CachedGroup = { group: Group; kind: 'local' | 'shared' };
+export type Command = {
+  command_id: string; group_id: string; method: 'POST' | 'PUT' | 'DELETE'; path: string;
+  body: Record<string, unknown>; state: 'pending' | 'conflict' | 'rejected'; error: string | null;
+};
+export type Session = { token: string; userId: string; email: string; baseUrl: string };

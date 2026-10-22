@@ -1,0 +1,12 @@
+[project]
+name = "splitdumb-api"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = ["Django>=5.2,<5.3", "django-ninja>=1.4,<2", "psycopg[binary]>=3.2,<4", "django-allauth[headless]>=65,<66", "gunicorn>=23,<24", "dj-database-url>=2,<4"]
+
+[dependency-groups]
+dev = ["pytest>=8,<9", "pytest-django>=4.11,<5", "ruff>=0.11"]
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "config.settings"
+python_files = ["test_*.py"]

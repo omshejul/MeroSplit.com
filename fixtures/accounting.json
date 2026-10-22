@@ -1,0 +1,2175 @@
+{
+  "schema_version": 1,
+  "currency": "INR",
+  "minor_unit": "paise",
+  "money_encoding": "canonical decimal integer strings; no floats or exponent notation",
+  "maximum_bill_amount": "1000000000",
+  "percentage_decimal_places": 2,
+  "shares_decimal_places": 4,
+  "rounding": "largest remainder, then lexical immutable participant ID",
+  "transfer_policy": "largest remaining debtor and creditor each step, then lexical immutable ID; no global-minimum promise",
+  "valid_expenses": [
+    {
+      "id": "equal-three",
+      "participant_ids": [
+        "A",
+        "B",
+        "C"
+      ],
+      "total": "120000",
+      "paid": {
+        "A": "120000"
+      },
+      "split": {
+        "mode": "equal",
+        "values": {
+          "A": "1",
+          "B": "1",
+          "C": "1"
+        }
+      },
+      "expected_paid": {
+        "A": "120000",
+        "B": "0",
+        "C": "0"
+      },
+      "expected_shares": {
+        "A": "40000",
+        "B": "40000",
+        "C": "40000"
+      }
+    },
+    {
+      "id": "equal-extra-paise",
+      "participant_ids": [
+        "C",
+        "A",
+        "B"
+      ],
+      "total": "10000",
+      "paid": {
+        "A": "10000"
+      },
+      "split": {
+        "mode": "equal",
+        "values": {
+          "C": "1",
+          "B": "1",
+          "A": "1"
+        }
+      },
+      "expected_paid": {
+        "A": "10000",
+        "B": "0",
+        "C": "0"
+      },
+      "expected_shares": {
+        "A": "3334",
+        "B": "3333",
+        "C": "3333"
+      }
+    },
+    {
+      "id": "one-paise-many-people",
+      "participant_ids": [
+        "D",
+        "C",
+        "B",
+        "A"
+      ],
+      "total": "1",
+      "paid": {
+        "D": "1"
+      },
+      "split": {
+        "mode": "equal",
+        "values": {
+          "D": "1",
+          "C": "1",
+          "B": "1",
+          "A": "1"
+        }
+      },
+      "expected_paid": {
+        "A": "0",
+        "B": "0",
+        "C": "0",
+        "D": "1"
+      },
+      "expected_shares": {
+        "A": "1",
+        "B": "0",
+        "C": "0",
+        "D": "0"
+      }
+    },
+    {
+      "id": "payer-excluded",
+      "participant_ids": [
+        "A",
+        "B",
+        "C"
+      ],
+      "total": "90000",
+      "paid": {
+        "A": "90000"
+      },
+      "split": {
+        "mode": "equal",
+        "values": {
+          "B": "1",
+          "C": "1"
+        }
+      },
+      "expected_paid": {
+        "A": "90000",
+        "B": "0",
+        "C": "0"
+      },
+      "expected_shares": {
+        "A": "0",
+        "B": "45000",
+        "C": "45000"
+      }
+    },
+    {
+      "id": "exact-selected",
+      "participant_ids": [
+        "A",
+        "B",
+        "C"
+      ],
+      "total": "100000",
+      "paid": {
+        "A": "100000"
+      },
+      "split": {
+        "mode": "exact",
+        "values": {
+          "A": "20000",
+          "B": "35000",
+          "C": "45000"
+        }
+      },
+      "expected_paid": {
+        "A": "100000",
+        "B": "0",
+        "C": "0"
+      },
+      "expected_shares": {
+        "A": "20000",
+        "B": "35000",
+        "C": "45000"
+      }
+    },
+    {
+      "id": "exact-excluded-payer",
+      "participant_ids": [
+        "A",
+        "B",
+        "C"
+      ],
+      "total": "50000",
+      "paid": {
+        "B": "50000"
+      },
+      "split": {
+        "mode": "exact",
+        "values": {
+          "A": "50000"
+        }
+      },
+      "expected_paid": {
+        "A": "0",
+        "B": "50000",
+        "C": "0"
+      },
+      "expected_shares": {
+        "A": "50000",
+        "B": "0",
+        "C": "0"
+      }
+    },
+    {
+      "id": "percent-basic",
+      "participant_ids": [
+        "A",
+        "B",
+        "C"
+      ],
+      "total": "100000",
+      "paid": {
+        "A": "100000"
+      },
+      "split": {
+        "mode": "percent",
+        "values": {
+          "A": "50",
+          "B": "30",
+          "C": "20"
+        }
+      },
+      "expected_paid": {
+        "A": "100000",
+        "B": "0",
+        "C": "0"
+      },
+      "expected_shares": {
+        "A": "50000",
+        "B": "30000",
+        "C": "20000"
+      }
+    },
+    {
+      "id": "percent-rounding",
+      "participant_ids": [
+        "A",
+        "B",
+        "C"
+      ],
+      "total": "5",
+      "paid": {
+        "C": "5"
+      },
+      "split": {
+        "mode": "percent",
+        "values": {
+          "B": "50.00",
+          "A": "50.00"
+        }
+      },
+      "expected_paid": {
+        "A": "0",
+        "B": "0",
+        "C": "5"
+      },
+      "expected_shares": {
+        "A": "3",
+        "B": "2",
+        "C": "0"
+      }
+    },
+    {
+      "id": "percent-basis-points",
+      "participant_ids": [
+        "A",
+        "B",
+        "C"
+      ],
+      "total": "10000",
+      "paid": {
+        "A": "10000"
+      },
+      "split": {
+        "mode": "percent",
+        "values": {
+          "A": "33.33",
+          "B": "33.33",
+          "C": "33.34"
+        }
+      },
+      "expected_paid": {
+        "A": "10000",
+        "B": "0",
+        "C": "0"
+      },
+      "expected_shares": {
+        "A": "3333",
+        "B": "3333",
+        "C": "3334"
+      }
+    },
+    {
+      "id": "shares-two-one-one",
+      "participant_ids": [
+        "A",
+        "B",
+        "C"
+      ],
+      "total": "120000",
+      "paid": {
+        "A": "120000"
+      },
+      "split": {
+        "mode": "shares",
+        "values": {
+          "A": "2",
+          "B": "1",
+          "C": "1"
+        }
+      },
+      "expected_paid": {
+        "A": "120000",
+        "B": "0",
+        "C": "0"
+      },
+      "expected_shares": {
+        "A": "60000",
+        "B": "30000",
+        "C": "30000"
+      }
+    },
+    {
+      "id": "shares-decimal",
+      "participant_ids": [
+        "A",
+        "B",
+        "C"
+      ],
+      "total": "4",
+      "paid": {
+        "A": "4"
+      },
+      "split": {
+        "mode": "shares",
+        "values": {
+          "A": "1.5",
+          "B": "0.5",
+          "C": "0"
+        }
+      },
+      "expected_paid": {
+        "A": "4",
+        "B": "0",
+        "C": "0"
+      },
+      "expected_shares": {
+        "A": "3",
+        "B": "1",
+        "C": "0"
+      }
+    },
+    {
+      "id": "shares-four-decimal-rounding",
+      "participant_ids": [
+        "A",
+        "B",
+        "C"
+      ],
+      "total": "2",
+      "paid": {
+        "C": "2"
+      },
+      "split": {
+        "mode": "shares",
+        "values": {
+          "A": "0.0001",
+          "B": "0.0002",
+          "C": "0.0000"
+        }
+      },
+      "expected_paid": {
+        "A": "0",
+        "B": "0",
+        "C": "2"
+      },
+      "expected_shares": {
+        "A": "1",
+        "B": "1",
+        "C": "0"
+      }
+    },
+    {
+      "id": "multiple-payers",
+      "participant_ids": [
+        "A",
+        "B",
+        "C"
+      ],
+      "total": "120000",
+      "paid": {
+        "A": "90000",
+        "B": "30000"
+      },
+      "split": {
+        "mode": "equal",
+        "values": {
+          "A": "1",
+          "B": "1",
+          "C": "1"
+        }
+      },
+      "expected_paid": {
+        "A": "90000",
+        "B": "30000",
+        "C": "0"
+      },
+      "expected_shares": {
+        "A": "40000",
+        "B": "40000",
+        "C": "40000"
+      }
+    },
+    {
+      "id": "normalize-uninvolved",
+      "participant_ids": [
+        "D",
+        "C",
+        "B",
+        "A"
+      ],
+      "total": "100",
+      "paid": {
+        "B": "100"
+      },
+      "split": {
+        "mode": "exact",
+        "values": {
+          "C": "100"
+        }
+      },
+      "expected_paid": {
+        "A": "0",
+        "B": "100",
+        "C": "0",
+        "D": "0"
+      },
+      "expected_shares": {
+        "A": "0",
+        "B": "0",
+        "C": "100",
+        "D": "0"
+      }
+    },
+    {
+      "id": "maximum-bill",
+      "participant_ids": [
+        "A",
+        "B",
+        "C"
+      ],
+      "total": "1000000000",
+      "paid": {
+        "A": "1000000000"
+      },
+      "split": {
+        "mode": "equal",
+        "values": {
+          "A": "1",
+          "B": "1"
+        }
+      },
+      "expected_paid": {
+        "A": "1000000000",
+        "B": "0",
+        "C": "0"
+      },
+      "expected_shares": {
+        "A": "500000000",
+        "B": "500000000",
+        "C": "0"
+      }
+    }
+  ],
+  "invalid_expenses": [
+    {
+      "id": "zero-total",
+      "participant_ids": [
+        "A",
+        "B",
+        "C"
+      ],
+      "total": "0",
+      "paid": {
+        "A": "120000"
+      },
+      "split": {
+        "mode": "equal",
+        "values": {
+          "A": "1",
+          "B": "1",
+          "C": "1"
+        }
+      }
+    },
+    {
+      "id": "negative-total",
+      "participant_ids": [
+        "A",
+        "B",
+        "C"
+      ],
+      "total": "-1",
+      "paid": {
+        "A": "120000"
+      },
+      "split": {
+        "mode": "equal",
+        "values": {
+          "A": "1",
+          "B": "1",
+          "C": "1"
+        }
+      }
+    },
+    {
+      "id": "numeric-total",
+      "participant_ids": [
+        "A",
+        "B",
+        "C"
+      ],
+      "total": 100,
+      "paid": {
+        "A": "120000"
+      },
+      "split": {
+        "mode": "equal",
+        "values": {
+          "A": "1",
+          "B": "1",
+          "C": "1"
+        }
+      }
+    },
+    {
+      "id": "float-total",
+      "participant_ids": [
+        "A",
+        "B",
+        "C"
+      ],
+      "total": 100.0,
+      "paid": {
+        "A": "120000"
+      },
+      "split": {
+        "mode": "equal",
+        "values": {
+          "A": "1",
+          "B": "1",
+          "C": "1"
+        }
+      }
+    },
+    {
+      "id": "fractional-paise",
+      "participant_ids": [
+        "A",
+        "B",
+        "C"
+      ],
+      "total": "100.00",
+      "paid": {
+        "A": "120000"
+      },
+      "split": {
+        "mode": "equal",
+        "values": {
+          "A": "1",
+          "B": "1",
+          "C": "1"
+        }
+      }
+    },
+    {
+      "id": "scientific-total",
+      "participant_ids": [
+        "A",
+        "B",
+        "C"
+      ],
+      "total": "1e5",
+      "paid": {
+        "A": "120000"
+      },
+      "split": {
+        "mode": "equal",
+        "values": {
+          "A": "1",
+          "B": "1",
+          "C": "1"
+        }
+      }
+    },
+    {
+      "id": "leading-zero-total",
+      "participant_ids": [
+        "A",
+        "B",
+        "C"
+      ],
+      "total": "0120000",
+      "paid": {
+        "A": "120000"
+      },
+      "split": {
+        "mode": "equal",
+        "values": {
+          "A": "1",
+          "B": "1",
+          "C": "1"
+        }
+      }
+    },
+    {
+      "id": "nan-total",
+      "participant_ids": [
+        "A",
+        "B",
+        "C"
+      ],
+      "total": "NaN",
+      "paid": {
+        "A": "120000"
+      },
+      "split": {
+        "mode": "equal",
+        "values": {
+          "A": "1",
+          "B": "1",
+          "C": "1"
+        }
+      }
+    },
+    {
+      "id": "infinite-total",
+      "participant_ids": [
+        "A",
+        "B",
+        "C"
+      ],
+      "total": "Infinity",
+      "paid": {
+        "A": "120000"
+      },
+      "split": {
+        "mode": "equal",
+        "values": {
+          "A": "1",
+          "B": "1",
+          "C": "1"
+        }
+      }
+    },
+    {
+      "id": "negative-zero-total",
+      "participant_ids": [
+        "A",
+        "B",
+        "C"
+      ],
+      "total": "-0",
+      "paid": {
+        "A": "120000"
+      },
+      "split": {
+        "mode": "equal",
+        "values": {
+          "A": "1",
+          "B": "1",
+          "C": "1"
+        }
+      }
+    },
+    {
+      "id": "whitespace-total",
+      "participant_ids": [
+        "A",
+        "B",
+        "C"
+      ],
+      "total": " 120000",
+      "paid": {
+        "A": "120000"
+      },
+      "split": {
+        "mode": "equal",
+        "values": {
+          "A": "1",
+          "B": "1",
+          "C": "1"
+        }
+      }
+    },
+    {
+      "id": "newline-total",
+      "participant_ids": [
+        "A",
+        "B",
+        "C"
+      ],
+      "total": "120000\n",
+      "paid": {
+        "A": "120000"
+      },
+      "split": {
+        "mode": "equal",
+        "values": {
+          "A": "1",
+          "B": "1",
+          "C": "1"
+        }
+      }
+    },
+    {
+      "id": "over-maximum",
+      "participant_ids": [
+        "A",
+        "B",
+        "C"
+      ],
+      "total": "1000000001",
+      "paid": {
+        "A": "120000"
+      },
+      "split": {
+        "mode": "equal",
+        "values": {
+          "A": "1",
+          "B": "1",
+          "C": "1"
+        }
+      }
+    },
+    {
+      "id": "payer-short",
+      "participant_ids": [
+        "A",
+        "B",
+        "C"
+      ],
+      "total": "120000",
+      "paid": {
+        "A": "119999"
+      },
+      "split": {
+        "mode": "equal",
+        "values": {
+          "A": "1",
+          "B": "1",
+          "C": "1"
+        }
+      }
+    },
+    {
+      "id": "payer-over",
+      "participant_ids": [
+        "A",
+        "B",
+        "C"
+      ],
+      "total": "120000",
+      "paid": {
+        "A": "120001"
+      },
+      "split": {
+        "mode": "equal",
+        "values": {
+          "A": "1",
+          "B": "1",
+          "C": "1"
+        }
+      }
+    },
+    {
+      "id": "negative-payer",
+      "participant_ids": [
+        "A",
+        "B",
+        "C"
+      ],
+      "total": "120000",
+      "paid": {
+        "A": "120001",
+        "B": "-1"
+      },
+      "split": {
+        "mode": "equal",
+        "values": {
+          "A": "1",
+          "B": "1",
+          "C": "1"
+        }
+      }
+    },
+    {
+      "id": "fractional-payer",
+      "participant_ids": [
+        "A",
+        "B",
+        "C"
+      ],
+      "total": "120000",
+      "paid": {
+        "A": "120000.0"
+      },
+      "split": {
+        "mode": "equal",
+        "values": {
+          "A": "1",
+          "B": "1",
+          "C": "1"
+        }
+      }
+    },
+    {
+      "id": "numeric-payer",
+      "participant_ids": [
+        "A",
+        "B",
+        "C"
+      ],
+      "total": "120000",
+      "paid": {
+        "A": 120000
+      },
+      "split": {
+        "mode": "equal",
+        "values": {
+          "A": "1",
+          "B": "1",
+          "C": "1"
+        }
+      }
+    },
+    {
+      "id": "unknown-payer",
+      "participant_ids": [
+        "A",
+        "B",
+        "C"
+      ],
+      "total": "120000",
+      "paid": {
+        "D": "120000"
+      },
+      "split": {
+        "mode": "equal",
+        "values": {
+          "A": "1",
+          "B": "1",
+          "C": "1"
+        }
+      }
+    },
+    {
+      "id": "empty-payers",
+      "participant_ids": [
+        "A",
+        "B",
+        "C"
+      ],
+      "total": "120000",
+      "paid": {},
+      "split": {
+        "mode": "equal",
+        "values": {
+          "A": "1",
+          "B": "1",
+          "C": "1"
+        }
+      }
+    },
+    {
+      "id": "empty-beneficiaries",
+      "participant_ids": [
+        "A",
+        "B",
+        "C"
+      ],
+      "total": "120000",
+      "paid": {
+        "A": "120000"
+      },
+      "split": {
+        "mode": "equal",
+        "values": {}
+      }
+    },
+    {
+      "id": "unknown-beneficiary",
+      "participant_ids": [
+        "A",
+        "B",
+        "C"
+      ],
+      "total": "120000",
+      "paid": {
+        "A": "120000"
+      },
+      "split": {
+        "mode": "equal",
+        "values": {
+          "D": "1"
+        }
+      }
+    },
+    {
+      "id": "equal-zero-selection",
+      "participant_ids": [
+        "A",
+        "B",
+        "C"
+      ],
+      "total": "120000",
+      "paid": {
+        "A": "120000"
+      },
+      "split": {
+        "mode": "equal",
+        "values": {
+          "A": "0"
+        }
+      }
+    },
+    {
+      "id": "equal-numeric-selection",
+      "participant_ids": [
+        "A",
+        "B",
+        "C"
+      ],
+      "total": "120000",
+      "paid": {
+        "A": "120000"
+      },
+      "split": {
+        "mode": "equal",
+        "values": {
+          "A": 1
+        }
+      }
+    },
+    {
+      "id": "unknown-mode",
+      "participant_ids": [
+        "A",
+        "B",
+        "C"
+      ],
+      "total": "120000",
+      "paid": {
+        "A": "120000"
+      },
+      "split": {
+        "mode": "random",
+        "values": {
+          "A": "1"
+        }
+      }
+    },
+    {
+      "id": "missing-values",
+      "participant_ids": [
+        "A",
+        "B",
+        "C"
+      ],
+      "total": "120000",
+      "paid": {
+        "A": "120000"
+      },
+      "split": {
+        "mode": "equal"
+      }
+    },
+    {
+      "id": "nonobject-values",
+      "participant_ids": [
+        "A",
+        "B",
+        "C"
+      ],
+      "total": "120000",
+      "paid": {
+        "A": "120000"
+      },
+      "split": {
+        "mode": "equal",
+        "values": [
+          "A"
+        ]
+      }
+    },
+    {
+      "id": "exact-short",
+      "participant_ids": [
+        "A",
+        "B",
+        "C"
+      ],
+      "total": "120000",
+      "paid": {
+        "A": "120000"
+      },
+      "split": {
+        "mode": "exact",
+        "values": {
+          "A": "60000",
+          "B": "35000"
+        }
+      }
+    },
+    {
+      "id": "exact-over",
+      "participant_ids": [
+        "A",
+        "B",
+        "C"
+      ],
+      "total": "120000",
+      "paid": {
+        "A": "120000"
+      },
+      "split": {
+        "mode": "exact",
+        "values": {
+          "A": "120001"
+        }
+      }
+    },
+    {
+      "id": "exact-negative",
+      "participant_ids": [
+        "A",
+        "B",
+        "C"
+      ],
+      "total": "120000",
+      "paid": {
+        "A": "120000"
+      },
+      "split": {
+        "mode": "exact",
+        "values": {
+          "A": "120001",
+          "B": "-1"
+        }
+      }
+    },
+    {
+      "id": "exact-fraction",
+      "participant_ids": [
+        "A",
+        "B",
+        "C"
+      ],
+      "total": "120000",
+      "paid": {
+        "A": "120000"
+      },
+      "split": {
+        "mode": "exact",
+        "values": {
+          "A": "120000.00"
+        }
+      }
+    },
+    {
+      "id": "percent-short",
+      "participant_ids": [
+        "A",
+        "B",
+        "C"
+      ],
+      "total": "120000",
+      "paid": {
+        "A": "120000"
+      },
+      "split": {
+        "mode": "percent",
+        "values": {
+          "A": "99.99"
+        }
+      }
+    },
+    {
+      "id": "percent-over",
+      "participant_ids": [
+        "A",
+        "B",
+        "C"
+      ],
+      "total": "120000",
+      "paid": {
+        "A": "120000"
+      },
+      "split": {
+        "mode": "percent",
+        "values": {
+          "A": "100.01"
+        }
+      }
+    },
+    {
+      "id": "percent-three-decimals",
+      "participant_ids": [
+        "A",
+        "B",
+        "C"
+      ],
+      "total": "120000",
+      "paid": {
+        "A": "120000"
+      },
+      "split": {
+        "mode": "percent",
+        "values": {
+          "A": "33.333",
+          "B": "66.667"
+        }
+      }
+    },
+    {
+      "id": "percent-negative",
+      "participant_ids": [
+        "A",
+        "B",
+        "C"
+      ],
+      "total": "120000",
+      "paid": {
+        "A": "120000"
+      },
+      "split": {
+        "mode": "percent",
+        "values": {
+          "A": "101",
+          "B": "-1"
+        }
+      }
+    },
+    {
+      "id": "percent-float",
+      "participant_ids": [
+        "A",
+        "B",
+        "C"
+      ],
+      "total": "120000",
+      "paid": {
+        "A": "120000"
+      },
+      "split": {
+        "mode": "percent",
+        "values": {
+          "A": 100.0
+        }
+      }
+    },
+    {
+      "id": "percent-leading-zero",
+      "participant_ids": [
+        "A",
+        "B",
+        "C"
+      ],
+      "total": "120000",
+      "paid": {
+        "A": "120000"
+      },
+      "split": {
+        "mode": "percent",
+        "values": {
+          "A": "0100"
+        }
+      }
+    },
+    {
+      "id": "shares-zero",
+      "participant_ids": [
+        "A",
+        "B",
+        "C"
+      ],
+      "total": "120000",
+      "paid": {
+        "A": "120000"
+      },
+      "split": {
+        "mode": "shares",
+        "values": {
+          "A": "0",
+          "B": "0.0000"
+        }
+      }
+    },
+    {
+      "id": "shares-five-decimals",
+      "participant_ids": [
+        "A",
+        "B",
+        "C"
+      ],
+      "total": "120000",
+      "paid": {
+        "A": "120000"
+      },
+      "split": {
+        "mode": "shares",
+        "values": {
+          "A": "0.00001"
+        }
+      }
+    },
+    {
+      "id": "shares-negative",
+      "participant_ids": [
+        "A",
+        "B",
+        "C"
+      ],
+      "total": "120000",
+      "paid": {
+        "A": "120000"
+      },
+      "split": {
+        "mode": "shares",
+        "values": {
+          "A": "2",
+          "B": "-1"
+        }
+      }
+    },
+    {
+      "id": "shares-scientific",
+      "participant_ids": [
+        "A",
+        "B",
+        "C"
+      ],
+      "total": "120000",
+      "paid": {
+        "A": "120000"
+      },
+      "split": {
+        "mode": "shares",
+        "values": {
+          "A": "1e2"
+        }
+      }
+    },
+    {
+      "id": "shares-nan",
+      "participant_ids": [
+        "A",
+        "B",
+        "C"
+      ],
+      "total": "120000",
+      "paid": {
+        "A": "120000"
+      },
+      "split": {
+        "mode": "shares",
+        "values": {
+          "A": "NaN"
+        }
+      }
+    },
+    {
+      "id": "shares-infinite",
+      "participant_ids": [
+        "A",
+        "B",
+        "C"
+      ],
+      "total": "120000",
+      "paid": {
+        "A": "120000"
+      },
+      "split": {
+        "mode": "shares",
+        "values": {
+          "A": "Infinity"
+        }
+      }
+    },
+    {
+      "id": "shares-bare-decimal",
+      "participant_ids": [
+        "A",
+        "B",
+        "C"
+      ],
+      "total": "120000",
+      "paid": {
+        "A": "120000"
+      },
+      "split": {
+        "mode": "shares",
+        "values": {
+          "A": ".5"
+        }
+      }
+    },
+    {
+      "id": "shares-trailing-point",
+      "participant_ids": [
+        "A",
+        "B",
+        "C"
+      ],
+      "total": "120000",
+      "paid": {
+        "A": "120000"
+      },
+      "split": {
+        "mode": "shares",
+        "values": {
+          "A": "1."
+        }
+      }
+    },
+    {
+      "id": "shares-unknown-id",
+      "participant_ids": [
+        "A",
+        "B",
+        "C"
+      ],
+      "total": "120000",
+      "paid": {
+        "A": "120000"
+      },
+      "split": {
+        "mode": "shares",
+        "values": {
+          "D": "1"
+        }
+      }
+    },
+    {
+      "id": "nonobject-split",
+      "participant_ids": [
+        "A",
+        "B",
+        "C"
+      ],
+      "total": "120000",
+      "paid": {
+        "A": "120000"
+      },
+      "split": []
+    },
+    {
+      "id": "duplicate-participants",
+      "participant_ids": [
+        "A",
+        "A",
+        "B"
+      ],
+      "total": "120000",
+      "paid": {
+        "A": "120000"
+      },
+      "split": {
+        "mode": "equal",
+        "values": {
+          "A": "1",
+          "B": "1",
+          "C": "1"
+        }
+      }
+    },
+    {
+      "id": "empty-participants",
+      "participant_ids": [],
+      "total": "120000",
+      "paid": {
+        "A": "120000"
+      },
+      "split": {
+        "mode": "equal",
+        "values": {
+          "A": "1",
+          "B": "1",
+          "C": "1"
+        }
+      }
+    },
+    {
+      "id": "invalid-participant-id",
+      "participant_ids": [
+        "A",
+        null,
+        "B"
+      ],
+      "total": "120000",
+      "paid": {
+        "A": "120000"
+      },
+      "split": {
+        "mode": "equal",
+        "values": {
+          "A": "1",
+          "B": "1",
+          "C": "1"
+        }
+      }
+    },
+    {
+      "id": "participant-string",
+      "participant_ids": "ABC",
+      "total": "120000",
+      "paid": {
+        "A": "120000"
+      },
+      "split": {
+        "mode": "equal",
+        "values": {
+          "A": "1",
+          "B": "1",
+          "C": "1"
+        }
+      }
+    },
+    {
+      "id": "nonobject-paid",
+      "participant_ids": [
+        "A",
+        "B",
+        "C"
+      ],
+      "total": "120000",
+      "paid": [],
+      "split": {
+        "mode": "equal",
+        "values": {
+          "A": "1",
+          "B": "1",
+          "C": "1"
+        }
+      }
+    },
+    {
+      "id": "unicode-digits-total",
+      "participant_ids": [
+        "A",
+        "B",
+        "C"
+      ],
+      "total": "١٢٠٠٠٠",
+      "paid": {
+        "A": "120000"
+      },
+      "split": {
+        "mode": "equal",
+        "values": {
+          "A": "1",
+          "B": "1",
+          "C": "1"
+        }
+      }
+    },
+    {
+      "id": "fullwidth-digits-total",
+      "participant_ids": [
+        "A",
+        "B",
+        "C"
+      ],
+      "total": "１２００００",
+      "paid": {
+        "A": "120000"
+      },
+      "split": {
+        "mode": "equal",
+        "values": {
+          "A": "1",
+          "B": "1",
+          "C": "1"
+        }
+      }
+    },
+    {
+      "id": "unicode-space-total",
+      "participant_ids": [
+        "A",
+        "B",
+        "C"
+      ],
+      "total": "120000 ",
+      "paid": {
+        "A": "120000"
+      },
+      "split": {
+        "mode": "equal",
+        "values": {
+          "A": "1",
+          "B": "1",
+          "C": "1"
+        }
+      }
+    },
+    {
+      "id": "overlong-total",
+      "participant_ids": [
+        "A",
+        "B",
+        "C"
+      ],
+      "total": "11111111111111111111111111111111111111111",
+      "paid": {
+        "A": "120000"
+      },
+      "split": {
+        "mode": "equal",
+        "values": {
+          "A": "1",
+          "B": "1",
+          "C": "1"
+        }
+      }
+    },
+    {
+      "id": "overlong-shares",
+      "participant_ids": [
+        "A",
+        "B",
+        "C"
+      ],
+      "total": "120000",
+      "paid": {
+        "A": "120000"
+      },
+      "split": {
+        "mode": "shares",
+        "values": {
+          "A": "11111111111111111111111111111111111111111"
+        }
+      }
+    },
+    {
+      "id": "unicode-shares",
+      "participant_ids": [
+        "A",
+        "B",
+        "C"
+      ],
+      "total": "120000",
+      "paid": {
+        "A": "120000"
+      },
+      "split": {
+        "mode": "shares",
+        "values": {
+          "A": "١.٥"
+        }
+      }
+    },
+    {
+      "id": "null-participants",
+      "participant_ids": null,
+      "total": "120000",
+      "paid": {
+        "A": "120000"
+      },
+      "split": {
+        "mode": "equal",
+        "values": {
+          "A": "1",
+          "B": "1",
+          "C": "1"
+        }
+      }
+    }
+  ],
+  "transfers": [
+    {
+      "id": "SD-01",
+      "balances": {
+        "Asha": "-50000",
+        "Bharat": "0",
+        "Charu": "50000"
+      },
+      "expected_transfers": [
+        {
+          "sender": "Asha",
+          "recipient": "Charu",
+          "amount": "50000"
+        }
+      ]
+    },
+    {
+      "id": "SD-02",
+      "balances": {
+        "Asha": "0",
+        "Bharat": "0",
+        "Charu": "0"
+      },
+      "expected_transfers": []
+    },
+    {
+      "id": "SD-03",
+      "balances": {
+        "Asha": "70000",
+        "Bharat": "10000",
+        "Charu": "-50000",
+        "Deepa": "-30000"
+      },
+      "expected_transfers": [
+        {
+          "sender": "Charu",
+          "recipient": "Asha",
+          "amount": "50000"
+        },
+        {
+          "sender": "Deepa",
+          "recipient": "Asha",
+          "amount": "20000"
+        },
+        {
+          "sender": "Deepa",
+          "recipient": "Bharat",
+          "amount": "10000"
+        }
+      ]
+    },
+    {
+      "id": "SD-04",
+      "balances": {
+        "Asha": "-30000",
+        "Bharat": "0",
+        "Charu": "30000"
+      },
+      "expected_transfers": [
+        {
+          "sender": "Asha",
+          "recipient": "Charu",
+          "amount": "30000"
+        }
+      ]
+    },
+    {
+      "id": "SD-05",
+      "balances": {
+        "Asha": "-10000",
+        "Bharat": "10000",
+        "Charu": "0"
+      },
+      "expected_transfers": [
+        {
+          "sender": "Asha",
+          "recipient": "Bharat",
+          "amount": "10000"
+        }
+      ]
+    },
+    {
+      "id": "SD-06",
+      "balances": {
+        "Asha": "-50000",
+        "Bharat": "0",
+        "Charu": "50000"
+      },
+      "expected_transfers": [
+        {
+          "sender": "Asha",
+          "recipient": "Charu",
+          "amount": "50000"
+        }
+      ],
+      "note": "An unconfirmed report has no accepted ledger effect. Suppressing a duplicate Pay button belongs to the API/mobile payment flow, not this pure proposal function."
+    },
+    {
+      "id": "SD-07-group-one",
+      "balances": {
+        "Asha": "-50000",
+        "Bharat": "50000"
+      },
+      "expected_transfers": [
+        {
+          "sender": "Asha",
+          "recipient": "Bharat",
+          "amount": "50000"
+        }
+      ],
+      "note": "Call separately from group two; no cross-group aggregation."
+    },
+    {
+      "id": "SD-07-group-two",
+      "balances": {
+        "Bharat": "-50000",
+        "Charu": "50000"
+      },
+      "expected_transfers": [
+        {
+          "sender": "Bharat",
+          "recipient": "Charu",
+          "amount": "50000"
+        }
+      ],
+      "note": "Call separately from group one; currency separation is enforced by the caller. P0 is INR only."
+    },
+    {
+      "id": "SD-08-stable-ids",
+      "balances": {
+        "id-D": "-10000",
+        "id-B": "10000",
+        "id-C": "-10000",
+        "id-A": "10000"
+      },
+      "expected_transfers": [
+        {
+          "sender": "id-C",
+          "recipient": "id-A",
+          "amount": "10000"
+        },
+        {
+          "sender": "id-D",
+          "recipient": "id-B",
+          "amount": "10000"
+        }
+      ],
+      "note": "Display names and input order do not participate in tie-breaking."
+    },
+    {
+      "id": "SD-08-paise",
+      "balances": {
+        "C": "-1",
+        "A": "2",
+        "B": "-1"
+      },
+      "expected_transfers": [
+        {
+          "sender": "B",
+          "recipient": "A",
+          "amount": "1"
+        },
+        {
+          "sender": "C",
+          "recipient": "A",
+          "amount": "1"
+        }
+      ]
+    },
+    {
+      "id": "aggregate-over-bill-cap",
+      "balances": {
+        "A": "3000000000",
+        "B": "-3000000000"
+      },
+      "expected_transfers": [
+        {
+          "sender": "B",
+          "recipient": "A",
+          "amount": "3000000000"
+        }
+      ]
+    },
+    {
+      "id": "resort-after-each-payment",
+      "balances": {
+        "A": "100000",
+        "B": "90000",
+        "C": "-95000",
+        "D": "-95000"
+      },
+      "expected_transfers": [
+        {
+          "sender": "C",
+          "recipient": "A",
+          "amount": "95000"
+        },
+        {
+          "sender": "D",
+          "recipient": "B",
+          "amount": "90000"
+        },
+        {
+          "sender": "D",
+          "recipient": "A",
+          "amount": "5000"
+        }
+      ]
+    },
+    {
+      "id": "payment-to-unproposed-recipient",
+      "balances": {
+        "Asha": "-30000",
+        "Bharat": "-20000",
+        "Charu": "50000"
+      },
+      "expected_transfers": [
+        {
+          "sender": "Asha",
+          "recipient": "Charu",
+          "amount": "30000"
+        },
+        {
+          "sender": "Bharat",
+          "recipient": "Charu",
+          "amount": "20000"
+        }
+      ],
+      "note": "Asha paid Bharat20000 after SD-01; recompute from actual receipt instead of original bilateral debts."
+    },
+    {
+      "id": "empty-ledger",
+      "balances": {},
+      "expected_transfers": []
+    }
+  ],
+  "invalid_transfers": [
+    {
+      "id": "nonzero-sum",
+      "balances": {
+        "A": "-1",
+        "B": "2"
+      }
+    },
+    {
+      "id": "float-balance",
+      "balances": {
+        "A": 1.0,
+        "B": "-1"
+      }
+    },
+    {
+      "id": "numeric-balance",
+      "balances": {
+        "A": 1,
+        "B": "-1"
+      }
+    },
+    {
+      "id": "leading-zero-balance",
+      "balances": {
+        "A": "01",
+        "B": "-1"
+      }
+    },
+    {
+      "id": "negative-zero-balance",
+      "balances": {
+        "A": "-0"
+      }
+    },
+    {
+      "id": "exponent-balance",
+      "balances": {
+        "A": "1e2",
+        "B": "-100"
+      }
+    },
+    {
+      "id": "blank-id",
+      "balances": {
+        "": "0"
+      }
+    },
+    {
+      "id": "nonobject-balances",
+      "balances": []
+    },
+    {
+      "id": "overlong-balance",
+      "balances": {
+        "A": "11111111111111111111111111111111111111111",
+        "B": "-11111111111111111111111111111111111111111"
+      }
+    },
+    {
+      "id": "unicode-minus-balance",
+      "balances": {
+        "A": "−1",
+        "B": "1"
+      }
+    },
+    {
+      "id": "unicode-digit-balance",
+      "balances": {
+        "A": "١",
+        "B": "-1"
+      }
+    }
+  ],
+  "native_replay": {
+    "source_path": "research/results/native_accounting_fixture.json",
+    "participants": [
+      "A",
+      "B",
+      "C"
+    ],
+    "events": [
+      {
+        "id": "E1",
+        "type": "expense",
+        "total": "50000",
+        "paid": {
+          "A": "0",
+          "B": "50000",
+          "C": "0"
+        },
+        "share": {
+          "A": "50000",
+          "B": "0",
+          "C": "0"
+        },
+        "expected_net_after": {
+          "A": "-50000",
+          "B": "50000",
+          "C": "0"
+        }
+      },
+      {
+        "id": "E2",
+        "type": "expense",
+        "total": "50000",
+        "paid": {
+          "A": "0",
+          "B": "0",
+          "C": "50000"
+        },
+        "share": {
+          "A": "0",
+          "B": "50000",
+          "C": "0"
+        },
+        "expected_net_after": {
+          "A": "-50000",
+          "B": "0",
+          "C": "50000"
+        }
+      },
+      {
+        "id": "P2",
+        "type": "manual_bookkeeping_payment",
+        "sender": "A",
+        "recipient": "C",
+        "amount": "20000",
+        "real_transfer": false,
+        "expected_net_after": {
+          "A": "-30000",
+          "B": "0",
+          "C": "30000"
+        }
+      },
+      {
+        "id": "E3",
+        "type": "expense",
+        "total": "10000",
+        "paid": {
+          "A": "10000",
+          "B": "0",
+          "C": "0"
+        },
+        "share": {
+          "A": "3334",
+          "B": "3333",
+          "C": "3333"
+        },
+        "expected_net_after": {
+          "A": "-23334",
+          "B": "-3333",
+          "C": "26667"
+        }
+      },
+      {
+        "id": "E4",
+        "type": "expense",
+        "total": "120000",
+        "paid": {
+          "A": "90000",
+          "B": "30000",
+          "C": "0"
+        },
+        "share": {
+          "A": "40000",
+          "B": "40000",
+          "C": "40000"
+        },
+        "expected_net_after": {
+          "A": "26666",
+          "B": "-13333",
+          "C": "-13333"
+        }
+      }
+    ],
+    "expected_final_net": {
+      "A": "26666",
+      "B": "-13333",
+      "C": "-13333"
+    },
+    "source_note": "Transcription of synthetic native UI observations; not a Splitwise export"
+  },
+  "ledger_scenarios": [
+    {
+      "id": "SD-01",
+      "participants": [
+        "Asha",
+        "Bharat",
+        "Charu"
+      ],
+      "expenses": [
+        {
+          "total": "50000",
+          "paid": {
+            "Bharat": "50000"
+          },
+          "split": {
+            "mode": "exact",
+            "values": {
+              "Asha": "50000"
+            }
+          }
+        },
+        {
+          "total": "50000",
+          "paid": {
+            "Charu": "50000"
+          },
+          "split": {
+            "mode": "exact",
+            "values": {
+              "Bharat": "50000"
+            }
+          }
+        }
+      ],
+      "settlements": [],
+      "expected_balances": {
+        "Asha": "-50000",
+        "Bharat": "0",
+        "Charu": "50000"
+      }
+    },
+    {
+      "id": "SD-02",
+      "participants": [
+        "Asha",
+        "Bharat",
+        "Charu"
+      ],
+      "expenses": [
+        {
+          "total": "30000",
+          "paid": {
+            "Bharat": "30000"
+          },
+          "split": {
+            "mode": "exact",
+            "values": {
+              "Asha": "30000"
+            }
+          }
+        },
+        {
+          "total": "30000",
+          "paid": {
+            "Charu": "30000"
+          },
+          "split": {
+            "mode": "exact",
+            "values": {
+              "Bharat": "30000"
+            }
+          }
+        },
+        {
+          "total": "30000",
+          "paid": {
+            "Asha": "30000"
+          },
+          "split": {
+            "mode": "exact",
+            "values": {
+              "Charu": "30000"
+            }
+          }
+        }
+      ],
+      "settlements": [],
+      "expected_balances": {
+        "Asha": "0",
+        "Bharat": "0",
+        "Charu": "0"
+      }
+    },
+    {
+      "id": "SD-04",
+      "participants": [
+        "Asha",
+        "Bharat",
+        "Charu"
+      ],
+      "expenses": [
+        {
+          "total": "50000",
+          "paid": {
+            "Bharat": "50000"
+          },
+          "split": {
+            "mode": "exact",
+            "values": {
+              "Asha": "50000"
+            }
+          }
+        },
+        {
+          "total": "50000",
+          "paid": {
+            "Charu": "50000"
+          },
+          "split": {
+            "mode": "exact",
+            "values": {
+              "Bharat": "50000"
+            }
+          }
+        }
+      ],
+      "settlements": [
+        {
+          "sender": "Asha",
+          "recipient": "Charu",
+          "amount": "20000"
+        }
+      ],
+      "expected_balances": {
+        "Asha": "-30000",
+        "Bharat": "0",
+        "Charu": "30000"
+      }
+    },
+    {
+      "id": "SD-05",
+      "participants": [
+        "Asha",
+        "Bharat",
+        "Charu"
+      ],
+      "expenses": [
+        {
+          "total": "60000",
+          "paid": {
+            "Bharat": "60000"
+          },
+          "split": {
+            "mode": "exact",
+            "values": {
+              "Asha": "60000"
+            }
+          }
+        },
+        {
+          "total": "50000",
+          "paid": {
+            "Charu": "50000"
+          },
+          "split": {
+            "mode": "exact",
+            "values": {
+              "Bharat": "50000"
+            }
+          }
+        }
+      ],
+      "settlements": [
+        {
+          "sender": "Asha",
+          "recipient": "Charu",
+          "amount": "50000"
+        }
+      ],
+      "expected_balances": {
+        "Asha": "-10000",
+        "Bharat": "10000",
+        "Charu": "0"
+      }
+    }
+  ],
+  "maximum_numeric_characters": 40
+}
