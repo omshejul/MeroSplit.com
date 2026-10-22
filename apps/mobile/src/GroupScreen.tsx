@@ -14,11 +14,15 @@ type Props = {
   onConfirmReceipt: (attempt: NonNullable<Group['payment_attempts']>[number]) => void;
 };
 export const position = (name: string, value: string) => BigInt(value) > 0n ? `${name} ${name === 'You' ? 'are' : 'is'} owed ${formatMoney(value)}` : BigInt(value) < 0n ? `${name} ${name === 'You' ? 'owe' : 'owes'} ${formatMoney((-BigInt(value)).toString())}` : `${name} ${name === 'You' ? 'are' : 'is'} settled up`;
+const displayDate = (value: string) => {
+  const date = new Date(`${value}T12:00:00`);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+};
 
 export default function GroupScreen({ group, accepted, pending, busy, local, selfId, onAdd, onExpense, onSettle, onReverse, onSettings, onSync, onDiscard, onReview, onConfirmReceipt }: Props) {
   const [section, setSection] = useState('Bills');
   const [search, setSearch] = useState('');
-  const expenses = group.expenses.filter(expense => `${expense.description} ${expense.notes}`.toLowerCase().includes(search.trim().toLowerCase()));
+  const expenses = group.expenses.filter(expense => group.expenses.length < 5 || `${expense.description} ${expense.notes}`.toLowerCase().includes(search.trim().toLowerCase()));
   const name = (id: string) => id === selfId ? 'You' : group.participants.find(person => person.id === id)?.name ?? 'Former member';
   const balance = BigInt(group.balances[selfId] ?? '0');
   const needsAttention = pending.some(command => command.state !== 'pending' || !!command.error);
@@ -57,7 +61,7 @@ export default function GroupScreen({ group, accepted, pending, busy, local, sel
       </Pressable>)}
     </View>
     {section === 'Bills' && <>
-      {group.expenses.length >= 5 ? searchField : group.expenses.length > 0 && <Disclosure title="Find a bill">{searchField}</Disclosure>}
+      {group.expenses.length >= 5 && searchField}
       {!expenses.length && <View style={s.empty}>
         <Icon name="bill" size={32} />
         <Text style={ui.section}>{search.trim() ? 'No matching bills' : 'Your first bill goes here'}</Text>
@@ -68,7 +72,7 @@ export default function GroupScreen({ group, accepted, pending, busy, local, sel
         <View style={ui.rowBody}>
           <Text style={ui.rowTitle}>{expense.description}{expense.deleted ? ' · Deleted' : ''}</Text>
           <Text style={ui.rowSub}>{Object.entries(expense.paid).filter(([, amount]) => BigInt(amount) > 0n).map(([id, amount]) => `${name(id)} paid ${formatMoney(amount)}`).join(', ')}</Text>
-          <Text style={ui.rowSub}>{expense.date}</Text>
+          <Text style={ui.rowSub}>{displayDate(expense.date)}</Text>
         </View>
         <View style={s.trailing}><Text style={s.amount}>{formatMoney(expense.total)}</Text><Icon name="next" size={18} color={colors.muted} /></View>
       </Pressable>)}
@@ -131,7 +135,7 @@ export function ExpenseDetail({ expense, group, busy, canEdit, onEdit, onDelete,
     <View style={s.summary}>
       
       <Text style={ui.numeric}>{formatMoney(expense.total)}</Text>
-      <Text style={ui.caption}>{group.name} · {expense.date}</Text>
+      <Text style={ui.caption}>{group.name} · {displayDate(expense.date)}</Text>
     </View>
     {expense.deleted ? <>
       <Text style={ui.notice}>This bill was deleted. Its original split is kept so you can restore it.</Text>

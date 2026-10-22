@@ -91,7 +91,7 @@ export default function ExpenseForm({ group, expense, selfId, busy, onSave, init
   const label = (id: string) => {
     const person = group.participants.find(value => value.id === id)!;
     const matching = group.participants.filter(value => value.name === person.name);
-    return `${person.name}${matching.length > 1 ? ` (${matching.findIndex(value => value.id === id) + 1})` : ''}${id === selfId ? ' (you)' : ''}`;
+    return `${person.name}${matching.length > 1 ? ` (${matching.findIndex(value => value.id === id) + 1})` : ''}${id === selfId && person.name.trim().toLowerCase() !== 'you' ? ' (you)' : ''}`;
   };
   function change(patch: Partial<ExpenseFormDraft>) {
     const next = { ...draft, ...patch }; setDraft(next); setError(''); onDraftChange?.(next);
@@ -192,7 +192,7 @@ export default function ExpenseForm({ group, expense, selfId, busy, onSave, init
       </View>}
     </View>
     <View style={styles.section}>
-      <Summary title="Date and notes" value={`${draft.date === today() ? 'Today' : draft.date}${draft.notes ? ' · Note added' : ''}`} open={detailsOpen} disabled={disabled} onPress={() => setDetailsOpen(value => !value)} />
+      <Summary title="Date and notes" value={`${draft.date === today() ? 'Today' : new Date(`${draft.date}T12:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}${draft.notes ? ' · Note added' : ''}`} open={detailsOpen} disabled={disabled} onPress={() => setDetailsOpen(value => !value)} />
       {detailsOpen && <View style={styles.reveal}>
         <DateField label="Date" value={draft.date} onChange={date => change({ date })} disabled={disabled} />
         <Field label="Notes (optional)" value={draft.notes} onChange={notes => change({ notes })} multiline maxLength={2000} disabled={disabled} />
