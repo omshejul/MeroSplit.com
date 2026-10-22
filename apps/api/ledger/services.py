@@ -108,6 +108,7 @@ def snapshot(group):
         "name": group.name,
         "version": group.version,
         "archived": group.archived,
+        "is_direct": group.is_direct,
         "owner_id": group.owner_id,
         "participants": [{"id": str(p.id), "name": p.name, "user_id": p.user_id} for p in participants],
         "expenses": [expense_dict(e) for e in expenses],
@@ -190,6 +191,9 @@ def snapshot(group):
 @transaction.atomic
 def create_group(actor, payload):
     get_user_model().objects.select_for_update().get(pk=actor.pk)
+    # Keep pre-flag creation receipts replayable after the schema adds its default.
+    if not payload.get("is_direct", False):
+        payload = {key: value for key, value in payload.items() if key != "is_direct"}
     previous, fingerprint = previous_result(actor, payload["command_id"], "create_group", payload)
     if previous:
         visible_group(actor, previous["id"])
@@ -197,9 +201,13 @@ def create_group(actor, payload):
     ids = [p["id"] for p in payload["participants"]]
     if len(set(ids)) != len(ids) or payload["self_participant_id"] not in ids:
         raise AccountingError("Participants must be unique and include the creator")
+    if payload.get("is_direct", False) and len(ids) != 2:
+        raise AccountingError("A direct ledger requires exactly two participants")
     if Group.objects.filter(id=payload["id"]).exists() or Participant.objects.filter(id__in=ids).exists():
         raise HttpError(409, "A supplied ID is already in use")
-    group = Group.objects.create(id=payload["id"], name=payload["name"], owner=actor)
+    group = Group.objects.create(
+        id=payload["id"], name=payload["name"], owner=actor, is_direct=payload.get("is_direct", False)
+    )
     Participant.objects.bulk_create(
         [
             Participant(

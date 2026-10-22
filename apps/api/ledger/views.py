@@ -15,7 +15,7 @@ def invite_page(request, token):
     response = render(
         request,
         "ledger/invite.html",
-        {"data": data, "token": token, "signed_in": request.user.is_authenticated},
+        {"data": data, "token": token, "viewer_id": request.user.pk},
     )
     response["Cache-Control"] = "no-store"
     response["Referrer-Policy"] = "no-referrer"

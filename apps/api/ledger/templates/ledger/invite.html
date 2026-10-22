@@ -5,18 +5,20 @@
 <p>Balance in paise: {{ data.balance }}. Positive means owed to you. No money moves on this page.</p>
 <p>The link shows your involved records. Signing in does not claim this participant until the organizer approves.</p>
 {% csrf_token %}
-{% if not signed_in %}
+{% if not viewer_id %}
 <form id="login"><label>Email <input id="email" type="email" autocomplete="username" required></label>
 <label>Password <input id="password" type="password" autocomplete="current-password" required></label>
 <button type="submit">Sign in</button><button id="signup" type="button">Create account</button></form>
 {% else %}<button id="claim" type="button">Request this participant claim</button>{% endif %}
 <p id="status" role="status"></p>
-<div id="actions"></div><pre id="records"></pre>
+<pre id="opening"></pre><div id="actions"></div><pre id="records"></pre>
 {{ data|json_script:"review-data" }}
 {{ token|json_script:"invite-token" }}
+{{ viewer_id|json_script:"viewer-id" }}
 <script>
 const data = JSON.parse(document.getElementById('review-data').textContent);
 const token = JSON.parse(document.getElementById('invite-token').textContent);
+const viewerId = JSON.parse(document.getElementById('viewer-id').textContent);
 const status = document.getElementById('status');
 const csrf = document.querySelector('[name=csrfmiddlewaretoken]').value;
 const command = () => ({command_id: crypto.randomUUID()});
@@ -27,7 +29,7 @@ async function call(path, method='GET', body) {
   if (!response.ok) throw new Error(result.detail || result.errors?.map(e=>e.message).join(' ') || 'Request could not be completed.');
   return result;
 }
-document.getElementById('records').textContent = JSON.stringify({expenses:data.expenses,settlements:data.settlements}, null, 2);
+document.getElementById('records').textContent = JSON.stringify({participants:data.participants,opening_balance:data.opening_balance,expenses:data.expenses,settlements:data.settlements}, null, 2);
 async function login(signup) {
   await call('/_allauth/browser/v1/auth/' + (signup ? 'signup' : 'login'), 'POST', {email:document.getElementById('email').value,password:document.getElementById('password').value});
   location.reload();
@@ -41,10 +43,16 @@ function button(label, action) {
   const element=document.createElement('button');element.textContent=label;element.type='button';element.onclick=()=>action().then(()=>location.reload()).catch(showError);document.getElementById('actions').appendChild(element);
 }
 async function memberActions() {
-  if (!document.getElementById('claim')) return;
+  if (!viewerId) return;
   const group = await call('/api/v1/groups/'+data.group_id);
-  if (group.opening_balance && !group.opening_balance.accepted) button('Acknowledge opening balance',()=>call('/api/v1/groups/'+group.id+'/opening-balances/'+group.opening_balance.id+'/acknowledge','POST',command()));
-  for (const attempt of group.payment_attempts || []) if (attempt.recipient===data.participant.id && ['reported','recorded','cancelled'].includes(attempt.state)) button('Confirm received '+(attempt.recorded_amount || attempt.amount)+' paise',()=>call('/api/v1/groups/'+group.id+'/payment-attempts/'+attempt.id+'/confirm','POST',command()));
+  const member = group.participants.find(person=>person.id===data.participant.id);
+  const opening = group.opening_balance;
+  if (opening) {
+    const balances = group.participants.map(person=>({name:person.name,amount:opening.balances[person.id] || '0'}));
+    document.getElementById('opening').textContent = (opening.accepted ? 'Accepted opening balance' : 'Proposed opening balance — not yet included in totals')+'\nAll amounts are paise. Positive means owed to that person.\n'+JSON.stringify({source:opening.source,cutoff:opening.cutoff,your_amount:opening.balances[data.participant.id] || '0',balances},null,2);
+    if (member?.user_id===viewerId && !opening.accepted && !Object.hasOwn(opening.acknowledgments,data.participant.id) && (opening.balances[data.participant.id] || '0') !== '0') button('I agree to this opening balance',async()=>{if (!confirm('Agree to '+opening.balances[data.participant.id]+' paise from '+opening.source+' as of '+opening.cutoff+'? This affects balances once everyone required agrees.')) return; await call('/api/v1/groups/'+group.id+'/opening-balances/'+opening.id+'/acknowledge','POST',command());});
+  }
+  for (const attempt of group.payment_attempts || []) if (member?.user_id===viewerId && attempt.recipient===data.participant.id && ['reported','recorded','cancelled'].includes(attempt.state)) button('Confirm received '+(attempt.recorded_amount || attempt.amount)+' paise',()=>call('/api/v1/groups/'+group.id+'/payment-attempts/'+attempt.id+'/confirm','POST',command()));
 }
 memberActions().catch(error=>{ if(!error.message.includes('not found')) showError(error); });
 </script></body></html>

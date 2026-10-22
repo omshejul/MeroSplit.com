@@ -26,6 +26,7 @@ class GroupIn(Command):
     name: Annotated[str, Field(min_length=1, max_length=120, pattern=r"\S")]
     self_participant_id: UUID
     participants: Annotated[list[Person], Field(min_length=1, max_length=100)]
+    is_direct: bool = False
 
 
 class Split(Input):

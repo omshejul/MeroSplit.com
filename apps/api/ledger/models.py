@@ -11,6 +11,7 @@ class Group(models.Model):
     owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
     version = models.PositiveIntegerField(default=0)
     archived = models.BooleanField(default=False)
+    is_direct = models.BooleanField(default=False)
 
 
 class Participant(models.Model):

@@ -87,6 +87,16 @@ def guest_view(token):
             "group_name": group.name,
             "participant": {"id": person, "name": invite.participant.name},
             "balance": state["balances"][person],
+            "opening_balance": (
+                {
+                    "amount": state["opening_balance"]["balances"].get(person, "0"),
+                    "source": state["opening_balance"]["source"],
+                    "cutoff": state["opening_balance"]["cutoff"],
+                    "accepted": state["opening_balance"]["accepted"],
+                }
+                if state["opening_balance"]
+                else None
+            ),
             "participants": [
                 {"id": p["id"], "name": p["name"]} for p in state["participants"] if p["id"] in involved
             ],
@@ -270,6 +280,8 @@ def add_participant(actor, group_id, payload):
     if previous:
         return previous
     writable(group)
+    if group.is_direct:
+        raise HttpError(409, "A direct ledger has exactly two participants")
     if group.participants.count() >= 100:
         raise HttpError(409, "Group participant limit reached")
     if Participant.objects.filter(id=payload["id"]).exists():

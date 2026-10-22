@@ -117,7 +117,9 @@ def duplicate_error(request, exc):
 def groups(request):
     return {
         "groups": list(
-            Group.objects.filter(participants__user=request.auth).values("id", "name", "version", "archived")
+            Group.objects.filter(participants__user=request.auth).values(
+                "id", "name", "version", "archived", "is_direct"
+            )
         )
     }
 

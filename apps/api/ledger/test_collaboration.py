@@ -177,6 +177,44 @@ def test_opening_vector_posts_only_after_every_nonzero_person_acknowledges(clien
     assert set(accepted["opening_balance"]["acknowledgments"]) >= {ids[1], ids[2]}
 
 
+def test_guest_can_reconcile_own_opening_without_other_people_balances(client, group):
+    group_id, ids, _ = group
+    borrower, creditor = account(), account()
+    _, token = link(client, borrower, group_id, ids[1])
+    link(client, creditor, group_id, ids[2])
+    body = {
+        "command_id": uid(),
+        "id": uid(),
+        "balances": {ids[0]: "0", ids[1]: "-1000", ids[2]: "1000"},
+        "source": "Reviewed prior balance <source>",
+        "cutoff": "2026-10-16",
+    }
+    assert send(client, "post", f"/groups/{group_id}/opening-balances", body).status_code == 200
+    guest = Client()
+    pending = send(guest, "get", f"/invites/{token}").json()
+    assert pending["balance"] == "0"
+    assert pending["opening_balance"] == {
+        "amount": "-1000",
+        "source": body["source"],
+        "cutoff": body["cutoff"],
+        "accepted": False,
+    }
+    assert pending["participants"] == [{"id": ids[1], "name": "B"}]
+    assert ids[2] not in json.dumps(pending)
+    page = guest.get(f"/invite/{token}")
+    assert page.status_code == 200
+    assert page.context["viewer_id"] is None
+    assert b"\\u003Csource\\u003E" in page.content
+    guest.force_login(borrower.actor)
+    assert guest.get(f"/invite/{token}").context["viewer_id"] == borrower.actor.pk
+    endpoint = f"/groups/{group_id}/opening-balances/{body['id']}/acknowledge"
+    for member in [borrower, creditor]:
+        assert send(member, "post", endpoint, {"command_id": uid()}).status_code == 200
+    accepted = send(guest, "get", f"/invites/{token}").json()
+    assert accepted["balance"] == "-1000"
+    assert accepted["opening_balance"] == {**pending["opening_balance"], "accepted": True}
+
+
 def test_payment_profiles_are_caller_owned_and_never_bank_verified(client, group):
     group_id, ids, _ = group
     member = account()
