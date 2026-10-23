@@ -1,15 +1,19 @@
 """Private, processed profile photos and bill attachments; no raw object uploads."""
 
+import base64
 import hashlib
 import io
 import logging
+import math
+import threading
 import warnings
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from datetime import timedelta
 from pathlib import PurePath
 from urllib.parse import quote
 
 import boto3
+import pypdfium2
 from botocore.config import Config
 from botocore.exceptions import BotoCoreError, ClientError
 from django.conf import settings
@@ -30,6 +34,7 @@ from .services import visible_group, writable
 MIB = 1024 * 1024
 URL_SECONDS = 300
 logger = logging.getLogger(__name__)
+_pdf_render_lock = threading.Lock()  # PDFium must not run concurrently across threads.
 
 
 class _Output(io.BytesIO):
@@ -376,7 +381,7 @@ def _remove_attachment(actor, group_id, expense_id, file_id) -> dict:
     return {"removed": True, "cleanup_pending": purge_files([file_id]) if file else False, "version": group.version}
 
 
-def download_url(actor, file_id) -> dict:
+def _visible_file(actor, file_id) -> UploadedFile:
     file = UploadedFile.objects.select_related("expense").filter(id=file_id, state="active").first()
     if not file:
         raise HttpError(404, "File not found")
@@ -387,6 +392,36 @@ def download_url(actor, file_id) -> dict:
         _bill(actor, file.expense.group_id, file.expense_id)
     else:
         raise HttpError(404, "File not found")
+    return file
+
+
+def pdf_thumbnail(actor, file_id) -> dict:
+    file = _visible_file(actor, file_id)
+    if file.content_type != "application/pdf":
+        raise HttpError(404, "PDF not found")
+    try:
+        with _storage().get_object(Bucket=settings.R2_BUCKET, Key=file.object_key)["Body"] as body:
+            data = body.read(20 * MIB + 1)
+        if len(data) > 20 * MIB:
+            raise ValueError("PDF exceeds the attachment limit")
+        with _pdf_render_lock, pypdfium2.PdfDocument(data) as document:
+            if not len(document):
+                raise ValueError("PDF has no pages")
+            page = document[0]
+            width, height = page.get_size()
+            if not all(math.isfinite(value) and value > 0 for value in (width, height)):
+                raise ValueError("Invalid page size")
+            with closing(page.render(scale=min(1, 224 / max(width, height)), draw_annots=False, limit_image_cache=True)) as bitmap:
+                with bitmap.to_pil() as image, image.convert("RGB") as rgb, io.BytesIO() as output:
+                    rgb.save(output, "JPEG", quality=80)
+                    image_data = base64.b64encode(output.getvalue()).decode("ascii")
+        return {"data_url": f"data:image/jpeg;base64,{image_data}"}
+    except (BotoCoreError, ClientError, pypdfium2.PdfiumError, ValueError, OSError) as exc:
+        raise HttpError(503, "Preview unavailable; tap the file to open it or retry the preview") from exc
+
+
+def download_url(actor, file_id) -> dict:
+    file = _visible_file(actor, file_id)
     try:
         url = _storage().generate_presigned_url(
             "get_object", Params={

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import BillPeople from './BillPeople';
 import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { expenseBalanceChange, formatMoney } from './accounting';
 import { Text } from 'react-native-paper';
@@ -94,7 +95,7 @@ function PaymentRow({ payment, accepted, group, selfId, busy, onPayment }: Pick<
   const status = payment.reversed ? `${presentation.status} · No bank refund` : presentation.status;
   return <Pressable accessibilityRole="button" accessibilityLabel={`Payment, ${presentation.title}, ${formatMoney(payment.amount)}, ${status}, ${displayDate(payment.date)}`}
     disabled={busy} style={({ pressed }) => [ui.row, s.paymentRow, pressed && s.pressed]} onPress={() => onPayment(payment)}>
-    <Icon name="payment" size={18} color={colors.muted} />
+    <Icon name={payment.reversed ? 'refresh' : 'payment'} size={18} color={colors.muted} />
     <Text style={[ui.rowSub, s.paymentSentence, { color: colors.text }]}>{presentation.title} {formatMoney(payment.amount)}<Text style={ui.rowSub}>{presentation.status !== 'Receipt unconfirmed' && ` · ${status}`} · {displayDate(payment.date)}</Text></Text>
   </Pressable>;
 }
@@ -125,8 +126,8 @@ function RecordSummary({ title, amount, amountColor, children }: { title: string
 
 function ParticipantAmountRow({ name, amount }: { name: string; amount: string }) {
   const { ui } = useUI();
-  return <View style={ui.row}>
-    <Avatar name={name} /><Text numberOfLines={1} ellipsizeMode="tail" accessibilityLabel={name} style={[ui.rowTitle, s.flex]}>{name}</Text><AmountText amount={amount} />
+  return <View style={[ui.row, { flexWrap: 'wrap' }]}>
+    <Avatar name={name} /><Text accessibilityLabel={name} style={[ui.rowTitle, s.flex, { minWidth: 120 }]}>{name}</Text><AmountText amount={amount} style={{ marginLeft: 'auto' }} />
   </View>;
 }
 
@@ -149,6 +150,7 @@ export default function GroupScreen({ noticeVisibility, group, accepted, pending
     && [attempt.sender, attempt.recipient].every(id => group.participants.some(person => person.id === id && !person.removed))
     && !group.settlements.some(settlement => settlement.reversed && (settlement.id === attempt.settlement_id || settlement.attempt_id === attempt.id)));
   const transfers = personalTransfers(group, selfId);
+  const celebrateSettled = pending.length === 0 && accepted.balances?.[selfId] === '0';
   const rows: GroupTransaction[] = group.transactions ?? (group.read_mode === 'summary' ? expenses : [...expenses].reverse()).map(bill => ({ kind: 'bill', date: bill.date, bill }));
   const payments = personalSettlements(group, selfId);
   return <View style={s.content}>
@@ -162,7 +164,7 @@ export default function GroupScreen({ noticeVisibility, group, accepted, pending
     </View>}
     {receipts.map(attempt => <ReceiptRequest key={attempt.id} attempt={attempt} groupName={group.name} senderName={participantName(group.participants, selfId, attempt.sender)} disabled={busy || pending.length > 0} onConfirm={onConfirmReceipt} />)}
     <HistoryPages history={group.history?.attempts} resource="attempts" busy={busy} onPage={onHistoryPage} />
-    {!transfers.length && <Text style={ui.caption}>All settled</Text>}
+    {!transfers.length && <Text style={celebrateSettled ? ui.numeric : ui.caption}>{celebrateSettled ? '🎉 All settled' : 'All settled'}</Text>}
     {transfers.map(transfer => <PersonalTransferRow key={`${transfer.sender}:${transfer.recipient}`} transfer={transfer} group={group} selfId={selfId} disabled={busy || !!group.archived || pending.length > 0} onSettle={onSettle} />)}
     <Text style={ui.caption}>Bills and payments</Text>
       {(rows.length >= 5 || !!(group.history?.[historyResource]?.next_cursor || group.history?.[historyResource]?.previous?.length || group.history?.[historyResource]?.query)) && <BillSearch value={search} onChange={setSearch} onSearch={() => onHistoryPage?.(historyResource, 'search', search.trim())} showSubmit={group.read_mode === 'summary'} busy={busy} />}
@@ -181,6 +183,11 @@ export default function GroupScreen({ noticeVisibility, group, accepted, pending
   </View>;
 }
 
+function RecordAttribution({ action, name }: { action: string; name?: string | null }) {
+  const { ui } = useUI();
+  return <Text style={ui.caption}>{action} by {name || 'unknown'}</Text>;
+}
+
 export function PaymentDetail({ payment, group, selfId, busy, canReverse, onReverse }: { payment: Settlement; group: Group; selfId: string; busy: boolean; canReverse: boolean; onReverse: () => void }) {
   const { palette: colors, ui } = useUI();
   const name = (id: string) => participantName(group.participants, selfId, id);
@@ -189,39 +196,42 @@ export function PaymentDetail({ payment, group, selfId, busy, canReverse, onReve
   return <View style={s.content}>
     <RecordSummary title={row.title} amount={payment.amount} amountColor={row.cashflow === '0' ? colors.text : balanceColor(row.cashflow, colors)}>
       <Text style={ui.caption}>{group.name} · {displayDate(payment.date)} · {row.status}</Text>
+      <RecordAttribution action="Marked paid" name={payment.recorded_by_name} />
+      {payment.reversed && <RecordAttribution action="Reversed" name={payment.reversal?.actor_name} />}
     </RecordSummary>
     {payment.reversed ? <Text style={ui.notice}>This payment record was reversed. No bank transfer was reversed.</Text>
-      : <>{involved && <Disclosure title="Payment options"><Button title="Reverse record" kind="danger" disabled={busy || !canReverse || group.archived || [payment.sender, payment.recipient].some(id => group.participants.find(person => person.id === id)?.removed)} onPress={onReverse} /><Text style={ui.caption}>Reverses this record, not a bank transfer.</Text></Disclosure>}</>}
+      : <>{involved && <View style={s.section}><Button title="Reverse record" kind="danger" disabled={busy || !canReverse || group.archived || [payment.sender, payment.recipient].some(id => group.participants.find(person => person.id === id)?.removed)} onPress={onReverse} /><Text style={ui.caption}>Reverses this record, not a bank transfer.</Text></View>}</>}
   </View>;
 }
 
-export function ExpenseDetail({ noticeVisibility, expense, group, selfId, busy, canEdit, onEdit, onReverse }: { noticeVisibility?: NoticeVisibility; expense: Expense; group: Group; selfId: string; busy: boolean; canEdit: boolean; onEdit: () => void; onReverse: () => void }) {
+export function ExpenseDetail({ noticeVisibility, expense, group, selfId, busy, canEdit, onEdit, onReverse, attachments }: { noticeVisibility?: NoticeVisibility; expense: Expense; group: Group; selfId: string; busy: boolean; canEdit: boolean; onEdit: () => void; onReverse: () => void; attachments?: React.ReactNode }) {
   const { palette: colors, ui } = useUI();
   const hasCategory = !!expense.category && !['general', 'other'].includes(expense.category);
   const change = expenseBalanceChange(expense, selfId);
+  const payers = group.participants.filter(person => BigInt(expense.paid[person.id] ?? '0') > 0n);
+  const sharing = group.participants.filter(person => Object.hasOwn(expense.split.values, person.id));
   return <View style={s.content}>
     <VisibleExpense groupId={group.id} expense={expense} visibility={(group.expenses.find(value => value.id === expense.id) ?? group.focused_expense) === expense ? noticeVisibility : undefined}><RecordSummary title={expense.description} amount={expense.total}>
       <Text style={[ui.body, { color: balanceColor(change, colors) }]}>{billImpact(change)}</Text>
       <Text style={ui.caption}>{group.name} · {displayDate(expense.date)}</Text>
+      <RecordAttribution action="Added" name={expense.added_by} />
+      {expense.deleted && <RecordAttribution action="Reversed" name={expense.reversal?.actor_name} />}
     </RecordSummary></VisibleExpense>
     {expense.deleted ? <Text style={ui.notice}>Bill record reversed. The original and its reversal are kept in history.</Text>
       : <Button title="Edit bill" icon="bill" kind="primary" disabled={busy || !canEdit} onPress={onEdit} />}
-    <View style={s.section}>
-      <Text style={ui.section}>Who paid?</Text>
-      {group.participants.filter(person => BigInt(expense.paid[person.id] ?? '0') > 0n).map(person => <ParticipantAmountRow key={person.id} name={person.name} amount={expense.paid[person.id] ?? '0'} />)}
-    </View>
-    <View style={s.section}>
-      <Text style={ui.section}>Split between</Text>
+    {attachments}
+    <BillPeople title="Who paid?" summary={`${payers.length} people`} inline={payers.length <= 1} disabled={busy}>
+      {payers.map(person => <ParticipantAmountRow key={person.id} name={person.name} amount={expense.paid[person.id] ?? '0'} />)}
+    </BillPeople>
+    <BillPeople title="Split between" summary={`${sharing.length} people`} inline={sharing.length <= 1} disabled={busy}>
       <Text style={ui.caption}>{expense.split.mode === 'equal' ? 'Shared equally' : expense.split.mode === 'exact' ? 'Exact amounts' : expense.split.mode === 'percent' ? 'By percentage' : 'By shares'}</Text>
-      {group.participants.filter(person => Object.hasOwn(expense.split.values, person.id)).map(person => <ParticipantAmountRow key={person.id} name={person.name} amount={expense.shares[person.id] ?? '0'} />)}
-    </View>
-    {(!!expense.notes || hasCategory) && <Disclosure title="Notes and details">
+      {sharing.map(person => <ParticipantAmountRow key={person.id} name={person.name} amount={expense.shares[person.id] ?? '0'} />)}
+    </BillPeople>
+    {(!!expense.notes || hasCategory) && <View style={s.section}>
       {!!expense.notes && <Text style={ui.body}>{expense.notes}</Text>}
       {hasCategory && <Text style={ui.caption}>Category: {expense.category}</Text>}
-    </Disclosure>}
-    {!expense.deleted && <Disclosure title="Bill options">
-      <Button title="Reverse record" kind="danger" disabled={busy || !canEdit} onPress={onReverse} />
-    </Disclosure>}
+    </View>}
+    {!expense.deleted && <Button title="Reverse record" kind="danger" disabled={busy || !canEdit} onPress={onReverse} />}
     {!canEdit && <Text style={ui.caption}>{group.archived ? 'Reopen this group in settings before changing a bill.' : 'Send or discard saved changes before changing this bill.'}</Text>}
   </View>;
 }

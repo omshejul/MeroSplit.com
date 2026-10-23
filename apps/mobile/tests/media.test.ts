@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
 import { ApiError, request } from '../src/api.ts';
-import { freshMediaUrl, readPrivateMedia, uploadMedia, validateMedia } from '../src/media.ts';
+import { freshMediaUrl, mediaThumbnail, readPrivateMedia, uploadMedia, validateMedia } from '../src/media.ts';
 import type { PickedMedia } from '../src/media.ts';
 import type { Session } from '../src/types.ts';
 
@@ -118,4 +118,20 @@ test('Metadata rejects insecure or already expired bearer URLs before passing th
     const send: typeof request = async <T>(): Promise<T> => result as T;
     await assert.rejects(freshMediaUrl(session, 'media-1', send), /file link is unavailable/);
   }
+});
+
+test('PDF thumbnails use an authorized in-memory image; photos retain fresh private URLs', async () => {
+  const pdf = { id: 'file/id', name: 'Receipt.pdf', content_type: 'application/pdf', size: 1000 }, paths: string[] = [];
+  const image = 'data:image/jpeg;base64,/9j/';
+  const send: typeof request = async <T>(active: Session, path: string): Promise<T> => {
+    assert.equal(active, session); paths.push(path);
+    return (path.endsWith('/thumbnail') ? { data_url: image } : { url: 'https://private.test/photo', expires_at: expires() }) as T;
+  };
+  assert.equal(await mediaThumbnail(session, pdf, send), image);
+  assert.equal(await mediaThumbnail(session, { ...pdf, content_type: 'image/jpeg' }, send), 'https://private.test/photo');
+  assert.deepEqual(paths, ['/media/file%2Fid/thumbnail', '/media/file%2Fid/url']);
+  for (const data_url of ['https://third-party.test/thumbnail', 'data:text/html;base64,PHNjcmlwdD4=', image + 'x'.repeat(100_000), null]) {
+    await assert.rejects(mediaThumbnail(session, pdf, async <T>() => ({ data_url }) as T), /preview is unavailable/);
+  }
+  await assert.rejects(mediaThumbnail(session, pdf, async () => { throw new ApiError(404, 'File not found'); }), error => error instanceof ApiError && error.status === 404);
 });

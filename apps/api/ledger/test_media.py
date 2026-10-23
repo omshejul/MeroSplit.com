@@ -34,7 +34,7 @@ pytestmark = pytest.mark.django_db
 
 class FakeS3:
     def __init__(self):
-        self.objects, self.puts, self.deletes, self.signatures = {}, [], [], []
+        self.objects, self.puts, self.deletes, self.signatures, self.reads = {}, [], [], [], []
         self.fail_put = self.fail_delete = self.after_put = None
 
     def put_object(self, **data):
@@ -54,6 +54,10 @@ class FakeS3:
     def generate_presigned_url(self, method, **data):
         self.signatures.append((method, data))
         return f"https://private.example.invalid/{data['Params']['Key']}?temporary=signature"
+
+    def get_object(self, **data):
+        self.reads.append(data["Key"])
+        return {"Body": io.BytesIO(self.objects[data["Key"]])}
 
 
 @pytest.fixture

@@ -30,7 +30,7 @@ test('Me mounts Connect MCP on native and web, with current account key, session
     myName: 'One', vpa: '', push: {}, unavailable: [], commands: [], groups: [], expired: false,
     legacy: [], legacySelf: {}, recoveries: [], ui: {}, saveName() {},
     AccountHeader: 'AccountHeader', View: 'View', ProfileSettings: 'ProfileSettings', AccountNotifications: 'AccountNotifications',
-    SettingsRow: 'SettingsRow', Disclosure: 'Disclosure', Button: 'Button', Text: 'Text', SavedChanges: 'SavedChanges', LegacyRecords: 'LegacyRecords' };
+    ExportData: 'ExportData', SettingsRow: 'SettingsRow', Disclosure: 'Disclosure', Button: 'Button', Text: 'Text', SavedChanges: 'SavedChanges', LegacyRecords: 'LegacyRecords' };
   const busyChanges: boolean[] = [];
   env.setBusy = (value: boolean) => busyChanges.push(value);
   for (const os of ['ios', 'android', 'web']) {
@@ -39,6 +39,8 @@ test('Me mounts Connect MCP on native and web, with current account key, session
       env.busy = busy;
       const mounted = elements(render(env)).filter(node => node.type === MCPSettings);
       assert.equal(mounted.length, 1, `${os} Me must mount Connect MCP, not merely import it`);
+      const exports = elements(render(env)).filter(node => node.type === 'ExportData');
+      assert.equal(exports.length, 1); assert.equal(exports[0].props.key, env.owner); assert.equal(exports[0].props.busy, busy);
       const settings = mounted[0];
       assert.equal(settings.props.key, env.owner);
       assert.equal(settings.props.session, env.session);
@@ -55,6 +57,6 @@ test('Me mounts Connect MCP on native and web, with current account key, session
   assert.equal(changed.props.key, next.owner);
   assert.equal(changed.props.session, next.session);
   for (const away of [{ screen: 'group' }, { tab: 'Groups' }, { session: null }]) {
-    assert.equal(elements(render({ ...env, ...away })).some(node => node.type === MCPSettings), false);
+    assert.equal(elements(render({ ...env, ...away })).some(node => node.type === MCPSettings || node.type === 'ExportData'), false);
   }
 });

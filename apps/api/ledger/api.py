@@ -35,7 +35,15 @@ from .history_reads import (
     payment_attempt_detail,
     settlement_detail,
 )
-from .media import avatar_for, download_url, list_attachments, remove_attachment, remove_avatar, upload_file
+from .media import (
+    avatar_for,
+    download_url,
+    list_attachments,
+    pdf_thumbnail,
+    remove_attachment,
+    remove_avatar,
+    upload_file,
+)
 from .models import Group
 from .otp import client_network
 from .payments import change_payment, launch_details, prepare_payment, profile_for, update_profile
@@ -308,6 +316,13 @@ def attachment_remove(request, group_id: UUID, expense_id: UUID, file_id: UUID):
 @api.get("/media/{file_id}/url")
 def media_url(request, file_id: UUID):
     return download_url(request.auth, file_id)
+
+
+@api.get("/media/{file_id}/thumbnail")
+def media_thumbnail(request, file_id: UUID):
+    response = JsonResponse(pdf_thumbnail(request.auth, file_id))
+    response["Cache-Control"] = "private, no-store"
+    return response
 
 
 @api.put("/me/payment-profile")

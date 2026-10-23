@@ -13,7 +13,7 @@ function production(name: string) {
   const helpers = source.statements.filter(node => ts.isVariableStatement(node) && node.declarationList.declarations.some(d => ['billImpact', 'participantName', 'displayDate', 's'].includes(d.name.getText(source)))).map(node => node.getText(source)).join('\n');
   const node = source.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === name); assert.ok(node);
   const code = ts.transpile(`${helpers}\n${node.getText(source).replace(/^export (?:default )?/, '')}\nreturn ${name};`, { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React });
-  return new Function('env', `with(env) { ${code} }`)({ React, expenseBalanceChange, formatMoney, paymentPresentation, personalSettlements, personalTransfers, useState: (initial: unknown) => [initial, () => {}], Text: 'Text', View: 'View', Pressable: 'Pressable', Icon: 'Icon', Button: 'Button', RecordSummary: 'RecordSummary', ParticipantAmountRow: 'ParticipantAmountRow', TransactionRow: 'TransactionRow', VisibleExpense: 'VisibleExpense', HistoryPages: 'HistoryPages', BillSearch: 'BillSearch', PaymentRow: 'PaymentRow', BillTimelineRow: 'BillTimelineRow', Disclosure: 'Disclosure', StyleSheet: { create: (styles: unknown) => styles }, radii: { surface: 16 }, balanceColor: (amount: string) => BigInt(amount) < 0n ? 'negative' : 'positive', useUI: () => ({ ui: {}, palette: {} }) });
+  return new Function('env', `with(env) { ${code} }`)({ React, expenseBalanceChange, formatMoney, paymentPresentation, personalSettlements, personalTransfers, useState: (initial: unknown) => [initial, () => {}], Text: 'Text', View: 'View', Pressable: 'Pressable', Icon: 'Icon', Button: 'Button', RecordSummary: 'RecordSummary', ParticipantAmountRow: 'ParticipantAmountRow', TransactionRow: 'TransactionRow', VisibleExpense: 'VisibleExpense', HistoryPages: 'HistoryPages', BillSearch: 'BillSearch', PaymentRow: 'PaymentRow', BillTimelineRow: 'BillTimelineRow', Disclosure: 'Disclosure', BillPeople: 'BillPeople', RecordAttribution: 'RecordAttribution', PersonalTransferRow: 'PersonalTransferRow', PendingChangeRow: 'PendingChangeRow', StyleSheet: { create: (styles: unknown) => styles }, radii: { surface: 16 }, balanceColor: (amount: string) => BigInt(amount) < 0n ? 'negative' : 'positive', useUI: () => ({ ui: { numeric: { fontSize: 32, fontWeight: '600' }, caption: { fontSize: 14 } }, palette: {} }) });
 }
 function elements(tree: unknown): Element[] {
   if (Array.isArray(tree)) return tree.flatMap(elements);
@@ -77,6 +77,8 @@ test('compact payments retain exact confirmation and reversal truth in text and 
     assert.ok(text(tree).includes(`Noor paid you ${formatMoney('334')}`));
     assert.equal(text(tree).includes(status), status !== 'Receipt unconfirmed'); assert.ok(tree.props.accessibilityLabel.includes(status));
     assert.ok(tree.props.accessibilityLabel.includes('18 Oct 2026'));
+    assert.ok(elements(tree).some(node => node.type === 'Icon' && node.props.name === (reversed ? 'refresh' : 'payment')));
+    assert.ok(!elements(tree).some(node => node.type === 'RecordAttribution'));
     assert.ok(!/bank verified|bank confirmed|refunded/i.test(text(tree)));
   }
 });
@@ -139,4 +141,36 @@ test('saved bill details expose one guarded reversal action and retain reversed 
   assert.ok(text(retained).includes('The original and its reversal are kept in history.'));
   assert.equal(elements(retained).find(node => node.type === 'RecordSummary')!.props.amount, '1001');
   assert.ok(elements(retained).some(node => node.type === 'ParticipantAmountRow' && node.props.amount === '1001'));
+});
+
+
+test('settled presentation celebrates only a known accepted zero without pending work', () => {
+  const render = production('GroupScreen');
+  const value = { ...group, balances: { self: '0', other: '0' }, expenses: [], settlements: [], transfers: [], activity: [] };
+  const base = { group: value, accepted: value, selfId: 'self', pending: [], busy: false };
+  const heading = elements(render(base)).find(node => node.type === 'Text' && text(node) === '🎉 All settled')!;
+  assert.equal(heading.props.style.fontSize, 32); assert.equal(heading.props.numberOfLines, undefined);
+  for (const props of [
+    { pending: [{ state: 'pending' }] },
+    { accepted: { ...value, balances: {} } },
+    { accepted: { ...value, balances: { self: '100' } } },
+    { pending: [{ state: 'pending' }], accepted: { ...value, balances: { self: '100' } } },
+  ]) {
+    const tree = render({ ...base, ...props });
+    assert.ok(!text(tree).includes('🎉')); assert.ok(text(tree).includes('All settled'));
+  }
+  assert.ok(!text(render({ ...base, group: { ...value, transfers: [{ sender: 'self', recipient: 'other', amount: '100' }] } })).includes('All settled'));
+});
+
+
+test('detail attribution is short, truthful about missing actors and absent from compact rows', () => {
+  const render = production('RecordAttribution');
+  assert.equal(text(render({ action: 'Added', name: 'Recorder' })), 'Added by Recorder');
+  assert.equal(text(render({ action: 'Reversed', name: null })), 'Reversed by unknown');
+  const payment = { id: 'p', sender: 'self', recipient: 'other', amount: '100', reversed: true, recorded_by_name: 'Actual recorder', reversal: { actor_name: 'Actual reverser' } };
+  const tree = production('PaymentDetail')({ payment, group, selfId: 'self', busy: false, canReverse: true });
+  assert.deepEqual(elements(tree).filter(node => node.type === 'RecordAttribution').map(node => [node.props.action, node.props.name]), [['Marked paid', 'Actual recorder'], ['Reversed', 'Actual reverser']]);
+  const bill = { id: 'b', description: 'Lunch', total: '100', paid: { self: '100' }, shares: { self: '100' }, split: { mode: 'equal', values: { self: '1' } }, deleted: true, added_by: 'Actual creator', reversal: { actor_name: 'Another reverser' } };
+  const detail = production('ExpenseDetail')({ expense: bill, group: { ...group, expenses: [bill] }, selfId: 'self', busy: false, canEdit: true });
+  assert.deepEqual(elements(detail).filter(node => node.type === 'RecordAttribution').map(node => [node.props.action, node.props.name]), [['Added', 'Actual creator'], ['Reversed', 'Another reverser']]);
 });

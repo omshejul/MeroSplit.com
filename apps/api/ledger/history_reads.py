@@ -156,6 +156,13 @@ def settlement_dict(payment):
             "date": payment.date.isoformat() if payment.date else None, "attempt_id": str(payment.attempt_id) if payment.attempt_id else None, "reversed": payment.reversed}
 
 
+def detail_actor(group, actor_id):
+    if actor_id is None:
+        return None
+    person = group.participants.filter(user_id=actor_id).select_related("user").first()
+    return participant_display_name(person) if person else None
+
+
 def reversal_record(group, kind, original):
     record = group.changes.alias(record_identity=Coalesce(
         KeyTextTransform("settlement_id", "data"), KeyTextTransform("id", "data"),
@@ -164,7 +171,7 @@ def reversal_record(group, kind, original):
         return None
     fields = ("id", "version", "description", "total", "paid", "shares", "split", "date", "category") if kind == "expense_reversed" else ("id", "sender", "recipient", "amount", "method", "date")
     return {"id": str(record.id), "sequence": record.sequence, "created_at": record.created_at.isoformat(),
-            "kind": "bill_reversed" if kind == "expense_reversed" else "payment_reversed",
+            "kind": "bill_reversed" if kind == "expense_reversed" else "payment_reversed", "actor_name": detail_actor(group, record.actor_id),
             "reversal_of": original["id"], "original": {key: record.data.get(key, original[key]) for key in fields}}
 
 
@@ -195,7 +202,8 @@ def settlement_detail(actor, group_id, settlement_id, *, version=None):
     payment = group.settlements.filter(pk=settlement_id).first()
     if not payment:
         raise HttpError(404, "Payment record not found")
-    result = {**settlement_dict(payment), "read_mode": "detail", "group_id": str(group.id), "group_version": group.version}
+    result = {**settlement_dict(payment), "read_mode": "detail", "group_id": str(group.id), "group_version": group.version,
+              "recorded_by_name": detail_actor(group, payment.recorded_by_id) if payment.method != "splitwise_import" else None}
     if payment.reversed and (reversal := reversal_record(group, "settlement_reversed", result)):
         result["reversal"] = reversal
     return result
@@ -387,7 +395,9 @@ def expense_detail(actor, group_id, expense_id, *, version=None):
     expense = group.expenses.filter(id=expense_id).first()
     if not expense:
         raise HttpError(404, "Expense not found")
-    result = {**expense_dict(expense), "read_mode": "detail", "group_id": str(group.id), "group_version": group.version}
+    creation = group.changes.filter(kind="expense_saved", data__id=str(expense.id), data__version=1).order_by("id").first()
+    result = {**expense_dict(expense), "read_mode": "detail", "group_id": str(group.id), "group_version": group.version,
+              "added_by": detail_actor(group, creation.actor_id) if creation and not creation.data.get("source") else None}
     if expense.deleted and (reversal := reversal_record(group, "expense_reversed", result)):
         result["reversal"] = reversal
     return result

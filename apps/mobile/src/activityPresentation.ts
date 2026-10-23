@@ -36,7 +36,7 @@ export function activityPresentation(item: ActivityItem) {
   }
   const cashflow = item.kind !== 'payment_recorded' || !item.payment || item.payment.reversed ? '0'
     : ((item.payment.recipient.is_self ? 1n : 0n) - (item.payment.sender.is_self ? 1n : 0n)) * BigInt(item.payment.amount);
-  const icon = item.kind.startsWith('bill_') ? 'bill' : item.kind.startsWith('payment_') ? 'pay'
+  const icon = item.kind.startsWith('bill_') ? 'bill' : item.kind === 'payment_reversed' ? 'refresh' : item.kind.startsWith('payment_') ? 'pay'
     : item.kind === 'member_removed' ? 'remove' : item.kind.startsWith('member_') ? 'personAdd' : 'groups';
   return { title, target, cashflow: String(cashflow), amount: item.payment?.amount, icon } as const;
 }

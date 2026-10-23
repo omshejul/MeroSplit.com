@@ -90,6 +90,13 @@ export async function freshMediaUrl(session: Session, id: string, send: typeof r
   return result.url;
 }
 
+export async function mediaThumbnail(session: Session, media: MediaMetadata, send: typeof request = request): Promise<string> {
+  if (media.content_type !== 'application/pdf') return freshMediaUrl(session, media.id, send);
+  const result = await send<{ data_url: string }>(session, `/media/${encodeURIComponent(media.id)}/thumbnail`);
+  if (typeof result.data_url !== 'string' || !/^data:image\/jpeg;base64,[A-Za-z0-9+/]+=*$/.test(result.data_url) || result.data_url.length > 100_000) throw new Error('The file preview is unavailable.');
+  return result.data_url;
+}
+
 // Read links are requested at the moment of use. One refresh covers expiry while
 // downloading without retaining a bearer URL in SQLite or retrying indefinitely.
 export async function readPrivateMedia<T>(session: Session, id: string, read: (url: string) => Promise<T>, send: typeof request = request): Promise<T> {

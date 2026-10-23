@@ -1,13 +1,13 @@
-import React, { useMemo, useRef, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import React, { useRef, useState } from 'react';
+import { StyleSheet, View } from 'react-native';
 import { Checkbox, Text } from 'react-native-paper';
 import * as Crypto from 'expo-crypto';
 import { formatMoney, integer, rupeesToPaise, validateExpense } from './accounting';
 import type { Amounts, Split } from './accounting';
 import type { Expense, Group } from './types';
-import { Button, DateField, ErrorText, Icon, useUI } from './ui';
-import type { Palette } from './ui';
+import { Button, DateField, ErrorText, useUI } from './ui';
 import { AmountField, RadioChoice, TextField } from './FormFields';
+import BillPeople from './BillPeople';
 
 export type ExpenseFormDraft = {
   schemaVersion: 1; groupId: string; expenseId: string | null; id: string; expenseVersion: number;
@@ -72,15 +72,6 @@ function Choice({ title, selected, disabled, onPress, role = 'checkbox' }: { tit
     ? <RadioChoice label={title} value={title} selected={selected} disabled={disabled} onPress={onPress} />
     : <Checkbox.Item label={title} status={selected ? 'checked' : 'unchecked'} disabled={disabled} onPress={onPress} accessibilityLabel={title} labelStyle={ui.body} mode="android" />;
 }
-function Summary({ title, value, open, disabled, onPress }: { title: string; value: string; open: boolean; disabled: boolean; onPress: () => void }) {
-  const { palette: colors, ui } = useUI();
-  const styles = useMemo(() => makeStyles(colors), [colors]);
-  return <Pressable accessibilityRole="button" accessibilityLabel={`${title}. ${value}`} accessibilityState={{ expanded: open, disabled }} disabled={disabled}
-    onPress={onPress} style={({ pressed }) => [styles.summary, pressed && { opacity: 0.7 }]}>
-    <View style={ui.rowBody}><Text style={ui.label}>{title}</Text><Text style={ui.rowTitle}>{value}</Text></View>
-    <View style={{ transform: [{ rotate: open ? '180deg' : '0deg' }] }}><Icon name="down" size={20} /></View>
-  </Pressable>;
-}
 
 type ExpenseSelectionProps = {
   participants: Group['participants']; draft: ExpenseFormDraft; disabled: boolean; preserveRemoved: boolean;
@@ -89,8 +80,7 @@ type ExpenseSelectionProps = {
 const splitModes = { equal: 'Equally', exact: 'Exact amounts', percent: 'Percentages', shares: 'Shares' } as const;
 
 function PayerFields({ participants, draft, disabled, preserveRemoved, label, onChange, status, onToggle }: ExpenseSelectionProps & { onToggle: (id: string) => void }) {
-  const { palette, ui } = useUI();
-  const styles = useMemo(() => makeStyles(palette), [palette]);
+  const { ui } = useUI();
   return <View style={styles.reveal}>
     {participants.filter(person => !person.removed || draft.payerIds.includes(person.id)).map(person => <View key={`payer-${person.id}`} style={styles.field}>
       <Choice title={label(person.id)} selected={draft.payerIds.includes(person.id)} disabled={disabled || (preserveRemoved && !!person.removed)} onPress={() => onToggle(person.id)} />
@@ -102,8 +92,7 @@ function PayerFields({ participants, draft, disabled, preserveRemoved, label, on
 }
 
 function SplitFields({ participants, draft, disabled, preserveRemoved, label, onChange, status }: ExpenseSelectionProps) {
-  const { palette, ui } = useUI();
-  const styles = useMemo(() => makeStyles(palette), [palette]);
+  const { ui } = useUI();
   return <View style={styles.reveal}>
     {participants.filter(person => !person.removed || draft.participantIds.includes(person.id)).map(person => <Choice key={`share-${person.id}`} title={label(person.id)} selected={draft.participantIds.includes(person.id)} disabled={disabled || (preserveRemoved && !!person.removed)}
       onPress={() => onChange({ participantIds: draft.participantIds.includes(person.id) ? draft.participantIds.filter(id => id !== person.id) : [...draft.participantIds, person.id] })} />)}
@@ -121,11 +110,9 @@ function SplitFields({ participants, draft, disabled, preserveRemoved, label, on
 }
 
 export default function ExpenseForm({ group, expense, selfId, busy, onSave, initialDraft, onDraftChange }: Props) {
-  const { palette: colors, ui } = useUI();
-  const styles = useMemo(() => makeStyles(colors), [colors]);
+  const { ui } = useUI();
   const [restored] = useState(() => startingDraft(group, expense, selfId, initialDraft));
   const [draft, setDraft] = useState(restored.draft), [error, setError] = useState(restored.warning), [saving, setSaving] = useState(false);
-  const [payersOpen, setPayersOpen] = useState(false), [splitOpen, setSplitOpen] = useState(false), [detailsOpen, setDetailsOpen] = useState(false);
   const lock = useRef(false), disabled = busy || saving;
   const acceptedExpense = group.expenses.find(value => value.id === draft.id);
   const label = (id: string) => {
@@ -145,18 +132,13 @@ export default function ExpenseForm({ group, expense, selfId, busy, onSave, init
   async function save() {
     if (lock.current || busy || group.archived) return;
     setError('');
-    let reveal: 'details' | 'payers' | 'split' | null = null;
     try {
       if (!draft.description.trim() || draft.description.trim().length > 200) throw new Error('Enter a description of up to 200 characters.');
-      reveal = 'details';
       if (!/^\d{4}-\d{2}-\d{2}$/.test(draft.date) || Number.isNaN(Date.parse(draft.date)) || new Date(draft.date).toISOString().slice(0, 10) !== draft.date) throw new Error('Choose a valid date.');
       if (draft.notes.length > 2000) throw new Error('Notes can contain up to 2,000 characters.');
-      reveal = null;
       const total = rupeesToPaise(draft.amount);
-      reveal = 'payers';
       if (!draft.payerIds.length) throw new Error('Choose someone who paid.');
       const paid = Object.fromEntries(draft.payerIds.map(id => [id, draft.payerIds.length === 1 ? total : paise(draft.payerAmounts[id] ?? '')]));
-      reveal = 'split';
       if (!draft.participantIds.length) throw new Error('Choose someone to share this expense.');
       const split: Split = { mode: draft.mode, values: Object.fromEntries(draft.participantIds.map(id => [id,
         draft.mode === 'equal' ? '1' : draft.mode === 'exact' ? paise(draft.splitValues[id] ?? '') : draft.splitValues[id] ?? '',
@@ -167,21 +149,17 @@ export default function ExpenseForm({ group, expense, selfId, busy, onSave, init
           BigInt(vectors.shares[person.id] ?? '0') !== BigInt(acceptedExpense?.shares[person.id] ?? '0')))) {
         throw new Error('Keep removed people’s paid amounts and shares unchanged.');
       }
-      reveal = null;
       lock.current = true; setSaving(true);
       await onSave({ id: draft.id, version: draft.expenseVersion, description: draft.description.trim(), total, ...vectors, split,
         date: draft.date, notes: draft.notes, category: expense?.category ?? 'general', deleted: false });
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : 'Could not save the expense. Try again.';
-      if (reveal === 'details') setDetailsOpen(true);
-      if (reveal === 'payers' || message.startsWith('Payers must')) setPayersOpen(true);
-      else if (reveal === 'split') setSplitOpen(true);
       setError(message);
     }
     finally { lock.current = false; setSaving(false); }
   }
   const people = draft.participantIds.map(label);
-  const between = people.length ? `${people.length === group.participants.filter(person => !person.removed).length && !draft.participantIds.some(id => group.participants.find(person => person.id === id)?.removed) ? 'Everyone' : people.join(', ')} · ${splitModes[draft.mode].toLowerCase()}` : 'Choose people';
+  const between = people.length ? `${people.length === group.participants.filter(person => !person.removed).length && !draft.participantIds.some(id => group.participants.find(person => person.id === id)?.removed) ? 'Everyone' : `${people.length} people`} · ${splitModes[draft.mode].toLowerCase()}` : 'Choose people';
   let splitStatus = '', payerStatus = '';
   try {
     if (draft.mode === 'exact' || draft.mode === 'percent') {
@@ -203,30 +181,24 @@ export default function ExpenseForm({ group, expense, selfId, busy, onSave, init
     {expense && expense.version !== draft.expenseVersion && <Text style={ui.notice}>A newer edit exists. Review it before saving this older draft.</Text>}
     <AmountField autoCorrect={false} label="Amount (₹)" value={draft.amount} onChangeText={amount => change({ amount })} placeholder="0" editable={!disabled} />
     <TextField autoCorrect={false} label="Description" value={draft.description} onChangeText={description => change({ description })} placeholder="What was it for?" maxLength={200} editable={!disabled} />
-    <View style={styles.section}>
-      <Summary title="Who paid?" value={draft.payerIds.map(label).join(', ') || 'Choose who paid'} open={payersOpen} disabled={disabled} onPress={() => setPayersOpen(value => !value)} />
-      {payersOpen && <PayerFields participants={group.participants} draft={draft} disabled={disabled} preserveRemoved={!!acceptedExpense}
-        label={label} onChange={change} status={payerStatus} onToggle={togglePayer} />}
-    </View>
-    <View style={styles.section}>
-      <Summary title="Split between" value={between} open={splitOpen} disabled={disabled} onPress={() => setSplitOpen(value => !value)} />
-      {splitOpen && <SplitFields participants={group.participants} draft={draft} disabled={disabled} preserveRemoved={!!acceptedExpense}
-        label={label} onChange={change} status={splitStatus} />}
-    </View>
+    <BillPeople title="Who paid?" summary={draft.payerIds.length === 1 ? label(draft.payerIds[0]) : draft.payerIds.length ? `${draft.payerIds.length} people` : 'Choose who paid'}
+      inline={group.participants.filter(person => !person.removed || draft.payerIds.includes(person.id)).length === 1} disabled={disabled}>
+      <PayerFields participants={group.participants} draft={draft} disabled={disabled} preserveRemoved={!!acceptedExpense}
+        label={label} onChange={change} status={payerStatus} onToggle={togglePayer} />
+    </BillPeople>
+    <BillPeople title="Split between" summary={between} inline={group.participants.filter(person => !person.removed || draft.participantIds.includes(person.id)).length === 1} disabled={disabled}>
+      <SplitFields participants={group.participants} draft={draft} disabled={disabled} preserveRemoved={!!acceptedExpense}
+        label={label} onChange={change} status={splitStatus} />
+    </BillPeople>
     <DateField label="Date" value={draft.date} onChange={date => change({ date })} disabled={disabled} />
-    <View style={styles.section}>
-      <Summary title="Notes" value={draft.notes ? 'Note added' : 'Add a note'} open={detailsOpen} disabled={disabled} onPress={() => setDetailsOpen(value => !value)} />
-      {detailsOpen && <View style={styles.reveal}>
-        <TextField autoCorrect={false} label="Notes (optional)" value={draft.notes} onChangeText={notes => change({ notes })} multiline style={styles.notes} maxLength={2000} editable={!disabled} />
-      </View>}
-    </View>
+    <TextField autoCorrect={false} label="Notes (optional)" value={draft.notes} onChangeText={notes => change({ notes })} multiline style={styles.notes} maxLength={2000} editable={!disabled} />
+    {!expense && <Text style={ui.caption}>Save the bill to add a photo or PDF.</Text>}
     {!!error && <ErrorText live>{error}</ErrorText>}
     <Button title={saving ? 'Saving…' : 'Save bill'} onPress={() => void save()} disabled={disabled || group.archived} kind="primary" icon="check" />
   </View>;
 }
 
-const makeStyles = (colors: Palette) => StyleSheet.create({
+const styles = StyleSheet.create({
   form: { gap: 12 }, field: { gap: 7 },
-  notes: { minHeight: 100, textAlignVertical: 'top' }, section: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
-  summary: { minHeight: 56, paddingVertical: 8, flexDirection: 'row', alignItems: 'center', gap: 12 }, reveal: { gap: 12, paddingBottom: 12 },
+  notes: { minHeight: 100, textAlignVertical: 'top' }, reveal: { gap: 12, paddingBottom: 12 },
 });

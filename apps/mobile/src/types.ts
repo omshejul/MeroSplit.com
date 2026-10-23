@@ -3,9 +3,10 @@ import type { Amounts, Split, Transfer } from './accounting';
 export type Participant = { id: string; name: string; recorded_name?: string; email?: string; user_id?: number | null; removed?: boolean; payment_profile?: { vpa: string; version: number; bank_verified: false } | null };
 export type Expense = {
   id: string; version: number; description: string; total: string;
+  added_by?: string | null; reversal?: { actor_name?: string | null };
   paid: Amounts; shares: Amounts; split: Split; date: string; category: string; notes: string; deleted: boolean;
 };
-export type Settlement = { id: string; sender: string; recipient: string; amount: string; provenance?: string; method?: string; recorded_by?: number; date?: string | null; attempt_id?: string | null; reversed?: boolean };
+export type Settlement = { id: string; sender: string; recipient: string; amount: string; provenance?: string; method?: string; recorded_by?: number; recorded_by_name?: string | null; reversal?: { actor_name?: string | null }; date?: string | null; attempt_id?: string | null; reversed?: boolean };
 export type BillRow = Pick<Expense, 'id' | 'version' | 'description' | 'total' | 'paid' | 'shares' | 'date' | 'category' | 'deleted'>;
 export type GroupTransaction = { kind: 'bill'; date: string | null; bill: BillRow } | { kind: 'payment'; date: string | null; payment: Settlement };
 export type ActivityTarget = { kind: 'bill'; groupId: string; expenseId: string } | { kind: 'payment'; groupId: string; settlementId: string } | { kind: 'group'; groupId: string };

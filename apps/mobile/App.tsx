@@ -47,6 +47,7 @@ import OAuthContinuation from './src/OAuthContinuation';
 import { changeGroupMembership } from './src/groupMembership';
 import type { PushTarget } from './src/notifications';
 import BillAttachments from './src/BillAttachments';
+import ExportData from './src/ExportData';
 import { clearAccountMediaUploads, clearMediaPreviews } from './src/media';
 import type { CachedGroup, Command, Expense, Group, LegacyRecovery, Session, Settlement, HistoryResource, ActivityPage, ActivityTarget, BillRow } from './src/types';
 import { Button, Disclosure, IconAction, SettingsRow, UIProvider, useUI, type Palette } from './src/ui';
@@ -204,10 +205,12 @@ function AppContent() {
     await syncAccount(session);
   }
   async function withBill(active: Session, group: Group, id?: string): Promise<Group> {
-    if (!id || group.expenses.some(value => value.id === id) || group.focused_expense?.id === id) return group;
+    if (!id) return group;
+    const cached = group.expenses.find(value => value.id === id) ?? (group.focused_expense?.id === id ? group.focused_expense : undefined);
+    if (cached && ('added_by' in cached || !isOnline())) return group;
     const detail = await request<Expense & { group_version: number; group_id: string }>(active, `/groups/${group.id}/expenses/${encodeURIComponent(id)}?version=${group.version}`);
     if (detail.group_version !== group.version || detail.group_id !== group.id) throw new Error('This bill changed. Refresh the group and try again.');
-    return { ...group, focused_expense: detail };
+    return { ...group, expenses: group.expenses.map(value => value.id === id ? detail : value), focused_expense: detail };
   }
   async function openBill(bill: BillRow) {
     await perform(async () => {
@@ -219,10 +222,11 @@ function AppContent() {
     });
   }
   async function withPayment(active: Session, group: Group, id: string): Promise<Group> {
-    if (group.settlements.some(value => value.id === id) || group.focused_settlement?.id === id) return group;
+    const cached = group.settlements.find(value => value.id === id) ?? (group.focused_settlement?.id === id ? group.focused_settlement : undefined);
+    if (cached && ('recorded_by_name' in cached || !isOnline())) return group;
     const payment = await request<Settlement & { group_version: number }>(active, `/groups/${group.id}/settlements/${encodeURIComponent(id)}?version=${group.version}`);
     if (payment.id !== id || payment.group_version !== group.version) throw new Error('This payment changed. Refresh and try again.');
-    return { ...group, focused_settlement: payment };
+    return { ...group, settlements: group.settlements.map(value => value.id === id ? payment : value), focused_settlement: payment };
   }
   async function openPayment(id: string) {
     await perform(async () => {
@@ -642,8 +646,15 @@ function AppContent() {
   }
   async function exportSaved() {
     const db = await getDatabase();
+    if (ownerRef.current !== owner) return;
     const drafts = await db.getAllAsync<{ group_id: string; body: string }>('SELECT group_id,body FROM drafts WHERE owner=?', owner);
+    if (ownerRef.current !== owner) return;
     await shareJson('merosplit-saved-changes', { groups, unavailable_groups: unavailable, pending_commands: commands, drafts: drafts.map(row => ({ id: row.group_id, data: JSON.parse(row.body) })) });
+  }
+  async function exportAccount() {
+    if (!session || ownerRef.current !== owner) return;
+    const data = await request(session, '/account/export');
+    if (ownerRef.current === owner && activeSessionRef.current?.token === session.token) await shareJson('merosplit-account', data);
   }
   function beginEmailLink(link: EmailLink) {
     const previous = emailProof.current;
@@ -797,9 +808,9 @@ function AppContent() {
       {screen === 'home' && session && returns.filter(value => value.launch === 'opened' || value.decision !== null || value.launch === 'opening').slice(0, 1).map(value => <Button key={value.attemptId} title="Review payment" disabled={busy} onPress={() => launch(async () => { const group = await fetchGroup(session, value.groupId); await saveGroup(await getDatabase(), owner, group, 'shared'); setGroupId(group.id); setReturnAttemptId(value.attemptId); setTransfer({ sender: value.sender, recipient: value.recipient, amount: value.amount }); navigate('settle'); })} />)}
       {screen === 'create' && session && <CreateGroupForm direct={direct} busy={busy} onCreate={values => launch(() => createGroup(values))} />}
       {screen === 'group' && selected && preview && <>{!!previewError && <Text>{previewError}</Text>}<GroupScreen noticeVisibility={noticeVisibility} key={`${owner}|${groupId}`} group={preview} accepted={selected.group} pending={pending} durable={storageIsDurable()} busy={busy} selfId={selfId} onHistoryPage={(resource, direction, query) => { void historyPage(resource, direction, query).catch(() => {}); }} onConfirmReceipt={attempt => showAlert('Confirm receipt?', `Check your bank app for ${formatMoney(attempt.recorded_amount ?? attempt.amount)}. This acknowledges a record; it does not verify the bank transfer.`, [{ text: 'Cancel', style: 'cancel' }, { text: 'Received', onPress: () => { void groupAction(`/payment-attempts/${attempt.id}/confirm`, {}).catch(() => {}); } }])} onExpense={value => { void openBill(value).catch(() => {}); }} onPayment={value => { void openPayment(value.id).catch(() => {}); }} onSettle={value => { setReturnAttemptId(null); setTransfer(value); navigate('settle'); }} onReverse={value => confirm('Reverse payment record?', 'Balances will change. No bank transfer is reversed.', () => reversePayment(value))} onSync={() => launch(() => sync())} onReview={value => launch(() => reviewChange(value))} onDiscard={value => value.path === '/groups' ? confirm('Discard unsent group?', 'This removes unsent bills and drafts for this group. Already accepted records will return when connected.', async () => { await discardUnsentGroup(await getDatabase(), owner, value.group_id); setGroupId(null); navigate('home'); }) : confirm('Discard unsent change?', 'This removes your saved change. If it already reached the server, accepted records will remain.', async () => { await discardCommand(await getDatabase(), owner, value.command_id); })} /></>}
-      {screen === 'expenseDetail' && selected && expense && <><ExpenseDetail noticeVisibility={noticeVisibility} selfId={selfId} expense={expense} group={selected.group} busy={busy} canEdit={!pending.length && !selected.group.archived} onEdit={() => launch(() => openExpense(expense))} onReverse={() => confirm('Reverse bill record?', 'Creates a reversal record and updates balances. The original bill stays in history.', () => reverseExpense(expense))} />
-        {!expense.deleted && (!(selected.group.expenses.some(value => value.id === expense.id) || selected.group.focused_expense?.id === expense.id) ? <Text style={ui.caption}>Pending sync</Text> : <BillAttachments key={`${owner}|${groupId}|${expense.id}`} session={session} groupId={selected.group.id} expenseId={expense.id} revision={selected.group.version} readOnly={selected.group.archived || !!pending.length} busy={busy}
-          onBusyChange={value => { lock.current = value; setBusy(value); }} onChanged={async () => { if (!session) return; const scope = accountOwner(session); const updated = await fetchGroup(session, selected.group.id); await saveGroup(await getDatabase(), scope, updated, 'shared'); await load(scope); }} />)}
+      {screen === 'expenseDetail' && selected && expense && <><ExpenseDetail noticeVisibility={noticeVisibility} selfId={selfId} expense={expense} group={selected.group} busy={busy} canEdit={!pending.length && !selected.group.archived} onEdit={() => launch(() => openExpense(expense))} onReverse={() => confirm('Reverse bill record?', 'Creates a reversal record and updates balances. The original bill stays in history.', () => reverseExpense(expense))} attachments={
+        !expense.deleted && (!(selected.group.expenses.some(value => value.id === expense.id) || selected.group.focused_expense?.id === expense.id) ? <Text style={ui.caption}>Pending sync</Text> : <BillAttachments key={`${owner}|${groupId}|${expense.id}`} session={session} groupId={selected.group.id} expenseId={expense.id} revision={selected.group.version} readOnly={selected.group.archived || !!pending.length} busy={busy}
+          onBusyChange={value => { lock.current = value; setBusy(value); }} onChanged={async () => { if (!session) return; const scope = accountOwner(session); const updated = await fetchGroup(session, selected.group.id); await saveGroup(await getDatabase(), scope, updated, 'shared'); await load(scope); }} />)} />
       </>}
       {screen === 'expense' && selected && <ExpenseForm key={`${owner}|${groupId}|${expenseId ?? 'new'}`} group={expense && !selected.group.expenses.some(value => value.id === expense.id) ? { ...selected.group, expenses: [...selected.group.expenses, expense] } : selected.group} expense={reviewInput ?? expense} selfId={selfId} busy={busy} initialDraft={draft ?? undefined} onDraftChange={value => { setHasDrafts(true); const scope = owner, id = groupId!; draftWrites.current = draftWrites.current.then(async () => saveDraft(await getDatabase(), scope, id, value)).catch(error => setNotice(`Could not save draft: ${error.message}`, 'error')); }} onSave={saveExpense} onCancel={back} />}
       {screen === 'review' && selected && reviewCommand && <SavedChangeScreen command={reviewCommand} group={selected.group} busy={busy} onDiscard={() => confirm('Discard this unsent change?', 'Accepted records remain. Your saved change will be removed from this phone.', async () => { await discardCommand(await getDatabase(), owner, reviewCommand.command_id); setReviewCommand(null); navigate('group'); })} onEditSaved={value => { setReviewInput(value); setDraft(null); setExpenseId(reviewCommand.method === 'PUT' ? value.id : null); navigate('expense'); }} />}
@@ -824,8 +835,7 @@ function AppContent() {
           <AccountNotifications key={owner} session={session} push={push} busy={busy} onBusyChange={value => { lock.current = value; setBusy(value); }} />
           <MCPSettings key={owner} session={session} busy={busy} onBusyChange={value => { lock.current = value; setBusy(value); }} />
         <View><SettingsRow label="Import from Splitwise" icon="import" disabled={busy} onPress={() => navigate('import')} />
-          <SettingsRow label="Export account" icon="export" disabled={busy} onPress={() => launch(async () => { await shareJson('merosplit-account', await request(session, '/account/export')); })} /></View>
-        <Disclosure title="Saved changes and recovery"><Button title="Export saved changes and recovery records" disabled={busy} onPress={() => launch(exportSaved)} /></Disclosure>
+          <ExportData key={owner} busy={busy} onAccount={() => perform(exportAccount).catch(() => {})} onSaved={() => perform(exportSaved).catch(() => {})} /></View>
         {!!unavailable.length && <Text style={[ui.notice, ui.warning]}>Access to {unavailable.length === 1 ? 'a group has' : 'some groups have'} ended. Saved work is kept for export.</Text>}
         <SavedChanges commands={commands} groups={groups} busy={busy} expired={expired} onOpen={row => launch(() => openGroup(row))} onDiscard={value => confirm('Discard saved change?', 'Export first if needed. This removes only your unsent change. A request already accepted by the server is kept there.', async () => { await discardCommand(await getDatabase(), owner, value.command_id); })} onRetry={() => launch(sync)} />
         <LegacyRecords groups={legacy} email={session.email} selected={legacySelf} busy={busy} onSelect={(id, person) => setLegacySelf(value => ({ ...value, [id]: person }))}
