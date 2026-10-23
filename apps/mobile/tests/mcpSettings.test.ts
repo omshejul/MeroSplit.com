@@ -15,6 +15,7 @@ function button(tree: unknown, title: string) { const value = elements(tree).fin
 const session = { token: 'synthetic-one', baseUrl: 'https://example.invalid/', email: 'one@example.invalid', userId: '1' };
 function harness(os = 'ios') {
   const slots: any[] = [], effects: (() => void)[] = [], calls: any[] = [], shares: any[] = [], urls: string[] = [], busy: boolean[] = [];
+  const viewport = { height: 667, width: 375, fontScale: 1 }, insets = { top: 20, bottom: 0, left: 0, right: 0 };
   const listeners = new Map<string, (event: any) => void>(); let index = 0, focused = 0;
   let input = { session, busy: false, onBusyChange: (value: boolean) => busy.push(value) };
   let request: (session: unknown, path: string, method: string) => Promise<unknown> = async () => ({ connections: [] });
@@ -32,7 +33,8 @@ function harness(os = 'ios') {
   };
   const modules: Record<string, unknown> = {
     react: { ...React, default: React },
-    'react-native': { View: 'View', Platform: { OS: os }, Linking: { openURL: async (value: string) => { urls.push(value); } }, Share: { share: async (value: unknown) => { shares.push(value); } } },
+    'react-native-safe-area-context': { useSafeAreaInsets: () => insets },
+    'react-native': { useWindowDimensions: () => viewport, View: 'View', Platform: { OS: os }, Linking: { openURL: async (value: string) => { urls.push(value); } }, Share: { share: async (value: unknown) => { shares.push(value); } } },
     'react-native-paper': { Text: 'Text', Dialog: { Title: 'Title', Actions: 'Actions' } },
     './api': { request: (active: unknown, path: string, method = 'GET') => { calls.push({ session: active, path, method }); return request(active, path, method); } },
     './DialogParts': { DialogScrollBody: 'ScrollBody' }, './KeyboardDialog': { __esModule: true, default: 'KeyboardDialog' },
@@ -46,7 +48,7 @@ function harness(os = 'ios') {
     (fn: () => void) => fn(),
   );
   return {
-    calls, shares, urls, busy, listeners,
+    calls, shares, urls, busy, listeners, viewport, insets,
     respond(handler: typeof request) { request = handler; },
     render(next: Partial<typeof input> = {}) { input = { ...input, ...next }; index = 0; const tree = exports.default(input); one(tree, 'SettingsRow').props.rowRef.current = { focus: () => focused++ }; return tree; },
     async flush() { effects.splice(0).forEach(effect => effect()); await turn(); },
@@ -132,4 +134,44 @@ test('web Escape closes and restores trigger focus while a busy dialog retains i
   app.listeners.get('keydown')!(event); assert.equal(prevented, 1);
   assert.equal(one(app.render(), 'KeyboardDialog').props.visible, true); app.unmount();
   assert.equal(app.listeners.size, 0);
+});
+
+
+test('the changing safe viewport bounds Paper iOS content, not just its outer shadow layer', () => {
+  const createElement = (type: unknown, props: object, ...children: unknown[]): Element => ({ type, props, children });
+  const shared = ts.createSourceFile('KeyboardDialog.tsx', readFileSync(new URL('../src/KeyboardDialog.tsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const declaration = shared.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === 'KeyboardDialog')!;
+  const renderDialog = new Function('env', `with(env) { ${ts.transpile(declaration.getText(shared).replace('export default ', ''), { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React })}; return KeyboardDialog; }`)(
+    { React: { createElement }, Dialog: 'PaperDialog', Portal: 'Portal', KeyboardAvoidingView: 'KeyboardBoundary' });
+  // Execute the INSTALLED iOS Surface style partition. Its container has two
+  // layers: flexShrink goes outside; maxHeight constrains the content inside.
+  // This checks the actual forwarding boundary, not native text/Yoga layout.
+  const surface = ts.createSourceFile('Surface.tsx', readFileSync(new URL('../node_modules/react-native-paper/src/components/Surface.tsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const declarations = surface.statements.filter(ts.isVariableStatement).flatMap(node => node.declarationList.declarations);
+  const fields = declarations.find(node => node.name.getText(surface) === 'outerLayerStyleProperties')!;
+  const ios = declarations.find(node => node.name.getText(surface) === 'SurfaceIOS')!;
+  const splitModule: any = {};
+  new Function('exports', ts.transpile(readFileSync(new URL('../node_modules/react-native-paper/src/utils/splitStyles.ts', import.meta.url), 'utf8'), { module: ts.ModuleKind.CommonJS }))(splitModule);
+  const renderSurface = new Function('env', `with(env) { ${ts.transpile(`const ${fields.getText(surface)}; const ${ios.getText(surface)};`, { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React })}; return SurfaceIOS; }`)(
+    { React: { createElement, useMemo: (fn: () => unknown) => fn() }, Animated: { View: 'IOSLayer' },
+      StyleSheet: { flatten: (value: unknown) => Object.assign({}, ...[value].flat(Infinity)) },
+      splitStyles: splitModule.splitStyles, forwardRef: (fn: Function) => fn, getStyleForShadowLayer: () => ({}) });
+  function contentStyle(props: Record<string, any>) {
+    const dialog = one(renderDialog({ ...props, children: [] }), 'PaperDialog');
+    const outer = renderSurface({ container: true, elevation: 0, style: dialog.props.style }, null) as Element;
+    assert.equal(outer.props.style.flexShrink, 1);
+    return (outer.children[0] as Element).props.style;
+  }
+  assert.equal(contentStyle({ visible: true, onDismiss() {} }).maxHeight, undefined, 'other shared dialogs keep their original sizing');
+  const app = harness(); let previous = 0;
+  for (const height of [375, 667, 844]) {
+    app.viewport.height = height; app.viewport.fontScale = 3.1;
+    app.insets.top = 20; app.insets.bottom = 34;
+    const dialog = one(app.render(), 'KeyboardDialog');
+    const content = contentStyle(dialog.props);
+    assert.ok(Number.isFinite(content.maxHeight));
+    assert.ok(content.maxHeight > previous && content.maxHeight <= height - app.insets.top - app.insets.bottom);
+    assert.equal(content.height, undefined, 'normal content keeps its intrinsic height instead of filling the viewport');
+    previous = content.maxHeight;
+  }
 });

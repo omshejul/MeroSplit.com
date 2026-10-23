@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Linking, Platform, Share, View } from 'react-native';
+import { Linking, Platform, Share, useWindowDimensions, View } from 'react-native';
 import { Dialog, Text } from 'react-native-paper';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { request } from './api';
 import { DialogScrollBody } from './DialogParts';
 import KeyboardDialog from './KeyboardDialog';
@@ -10,6 +11,7 @@ import { Button, ErrorText, SettingsRow, useUI } from './ui';
 type Connection = { id: string; client_name: string };
 export default function MCPSettings({ session, busy, onBusyChange }: { session: Session; busy: boolean; onBusyChange: (value: boolean) => void }) {
   const { ui } = useUI();
+  const { height } = useWindowDimensions(), { top, bottom } = useSafeAreaInsets();
   const [open, setOpen] = useState(false), [connections, setConnections] = useState<Connection[] | null>(null), [error, setError] = useState('');
   const [loading, setLoading] = useState(false), [working, setWorking] = useState(false);
   const row = useRef<React.ComponentRef<typeof View>>(null), mounted = useRef(true), inFlight = useRef(false), revision = useRef(0);
@@ -46,7 +48,7 @@ export default function MCPSettings({ session, busy, onBusyChange }: { session: 
   }
   return <>
     <SettingsRow rowRef={row} icon="settings" label="Connect MCP" disabled={disabled} onPress={() => { if (!disabled && !inFlight.current) { setOpen(true); void load(); } }} />
-    <KeyboardDialog visible={open} dismissable={!disabled} onDismiss={close}>
+    <KeyboardDialog visible={open} dismissable={!disabled} onDismiss={close} maxHeight={Math.max(0, height - top - bottom)}>
       <Dialog.Title>Connect MCP</Dialog.Title>
       <DialogScrollBody maxHeight={440} gap={12}>
         <Text style={ui.caption}>Let an assistant read your groups and record bills or payments. It cannot send money.</Text>
