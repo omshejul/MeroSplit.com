@@ -822,6 +822,7 @@ function AppContent() {
         <AccountHeader key={owner} session={session} name={myName} busy={busy} onBusyChange={value => { lock.current = value; setBusy(value); }} />
         <View><ProfileSettings key={owner} name={myName} vpa={vpa} busy={busy} onSaveName={saveName} onSaveUPI={value => perform(async () => { const result = await request<{ vpa: string }>(session, '/me/payment-profile', 'PUT', { vpa: value }); setVpa(result.vpa); }, false)} onAppearance={value => perform(() => changeAppearance(value), false)} />
           <AccountNotifications key={owner} session={session} push={push} busy={busy} onBusyChange={value => { lock.current = value; setBusy(value); }} />
+          <MCPSettings key={owner} session={session} busy={busy} onBusyChange={value => { lock.current = value; setBusy(value); }} />
         <View><SettingsRow label="Import from Splitwise" icon="import" disabled={busy} onPress={() => navigate('import')} />
           <SettingsRow label="Export account" icon="export" disabled={busy} onPress={() => launch(async () => { await shareJson('merosplit-account', await request(session, '/account/export')); })} /></View>
         <Disclosure title="Saved changes and recovery"><Button title="Export saved changes and recovery records" disabled={busy} onPress={() => launch(exportSaved)} /></Disclosure>
