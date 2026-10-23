@@ -1,6 +1,6 @@
-# SplitDumb implementation
+# MeroSplit implementation
 
-Django/PostgreSQL owns accepted shared records. Expo React Native owns local drafts/cache/outbox. Build functions and plain controls only. No visual design, paid features, OCR, attachments, recurrence or multi-currency in this implementation.
+Django/PostgreSQL owns accepted records. Expo React Native owns account-scoped drafts/cache/outbox. The phases below record historical milestones; their test counts and deployment claims do not establish acceptance of later source. Current metadata is 0.3.5/native build 13. OCR, subscriptions, recurrence and multi-currency remain outside this scope.
 
 ## Phases and exit checks
 
@@ -59,3 +59,11 @@ Android normal-control acceptance passed on product commit7c6d8eac, including re
 Abstraction check: one optional boolean on the existing group replaces a separate friendship model. Screens call the existing accounting, storage and fetch functions. No form engine, global state store, navigation framework, repository or new service was added. Safe-area handling is the only new native dependency. Removed the unused diagnostic screen/self-test modules. Provisional-group cleanup needs one guarded SQLite transaction across cache, outbox and drafts; separate deletions would leave stranded data.
 
 Independent final source review found no remaining blocker and repeated the type check. It checked account-scoped loads and drafts, explicit saved-change review, atomic group cleanup, pause restoration and payment-attempt linkage. These are source-review conclusions; manual acceptance is recorded separately. Keep these explicit guards rather than collapsing financial writes into a generic command or form framework.
+
+## Current unified source checkpoint
+
+Implemented source adds the 10-minute unread-email policy, generic immediate notifications for new unclaimed bill participants, personal group leave/private hide/restore, and OAuth MCP on the existing ASGI service. Atomic migration 0016 keeps historical notices/digests at policy 0 and leaves final Python/database defaults 1 for fresh inserts, including old API writers. Per-recipient/policy open-digest uniqueness preserves old held audit records alongside new work. Proof and provider retry lifetimes remain distinct from reminder timing. Migration 0019 defaults private hidden to false in Python and PostgreSQL.
+
+The portable ChatGPT/Codex plugin and Claude Code adapter share one skill/endpoint. Core-schema, documented DCR contract and CLI validation are recorded separately because the official generic MCP schema rejects OpenAI's documented extension fields. No host installation, directory approval or live OAuth/write acceptance follows from packaging.
+
+Abstraction check: plain transactional membership functions reuse existing receipts and outbox. A complete index refresh acknowledges departure without reading the revoked group and keeps unsent work. Shared KeyboardDialog/DialogScrollBody/CancelDialogActions replace repeated JSX without moving form state or financial callbacks. Focused SQLite/PostgreSQL/component tests and TypeScript cover source behavior; earlier test counts above remain historical. Publication, runtime two-worker/host checks, controlled email acceptance and native keyboard/layout acceptance belong to the publisher after the final source freeze.

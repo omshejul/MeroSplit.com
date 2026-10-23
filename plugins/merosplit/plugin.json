@@ -1,0 +1,31 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "merosplit",
+  "version": "0.1.0",
+  "description": "View shared expenses and record bills or external payments with your existing MeroSplit permissions.",
+  "author": {
+    "name": "Om Shejul",
+    "url": "https://merosplit.omshejul.com"
+  },
+  "homepage": "https://merosplit.omshejul.com/mcp/setup",
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "MeroSplit",
+        "shortDescription": "Shared expenses and payment records",
+        "developerName": "Om Shejul",
+        "category": "Productivity",
+        "capabilities": [
+          "Read",
+          "Write"
+        ],
+        "websiteURL": "https://merosplit.omshejul.com",
+        "privacyPolicyURL": "https://merosplit.omshejul.com/privacy",
+        "defaultPrompt": [
+          "Show what I owe in MeroSplit.",
+          "Add a shared bill to my MeroSplit group."
+        ]
+      }
+    }
+  }
+}

@@ -16,4 +16,3 @@ export function GroupMembershipActions({ hidden, busy, canLeave, blockedReason, 
     {(blockedReason || explanation) ? <Text style={ui.caption}>{blockedReason || explanation}</Text> : null}
   </View>;
 }
-

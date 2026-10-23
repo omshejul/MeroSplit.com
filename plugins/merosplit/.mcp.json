@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "merosplit": {
+      "type": "http",
+      "url": "https://merosplit.omshejul.com/mcp"
+    }
+  }
+}

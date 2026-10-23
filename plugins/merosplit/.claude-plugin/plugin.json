@@ -1,0 +1,10 @@
+{
+  "name": "merosplit",
+  "version": "0.1.0",
+  "description": "View shared expenses and record bills or external payments with your existing MeroSplit permissions.",
+  "author": {
+    "name": "Om Shejul",
+    "url": "https://merosplit.omshejul.com"
+  },
+  "homepage": "https://merosplit.omshejul.com/mcp/setup"
+}
