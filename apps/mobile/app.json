@@ -11,6 +11,9 @@
       "supportsTablet": false,
       "bundleIdentifier": "com.omshejul.splitdumb",
       "buildNumber": "8",
+      "associatedDomains": [
+        "applinks:merosplit.omshejul.com"
+      ],
       "infoPlist": {
         "LSApplicationQueriesSchemes": [
           "upi",
@@ -29,6 +32,19 @@
     "android": {
       "package": "com.omshejul.splitdumb",
       "versionCode": 8,
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "category": ["BROWSABLE", "DEFAULT"],
+          "data": [
+            {"scheme": "https", "host": "merosplit.omshejul.com", "pathPrefix": "/app/sign-in/"},
+            {"scheme": "https", "host": "merosplit.omshejul.com", "pathPrefix": "/app/groups/"},
+            {"scheme": "https", "host": "merosplit.omshejul.com", "pathPrefix": "/app/invite/"},
+            {"scheme": "https", "host": "merosplit.omshejul.com", "pathPrefix": "/invite/"}
+          ]
+        }
+      ],
       "adaptiveIcon": {
         "backgroundColor": "#FFFFFF",
         "foregroundImage": "./assets/android-icon-foreground.png"

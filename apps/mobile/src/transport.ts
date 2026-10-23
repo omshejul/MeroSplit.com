@@ -1,7 +1,8 @@
 import type { Session } from './types.ts';
+import { accountRequest } from './accountRequests.ts';
 
 export function sessionRequest(session: Session, path: string, init: RequestInit = {}, fetcher: typeof fetch = fetch): Promise<Response> {
-  return fetcher(`${session.baseUrl}${path}`, { ...init, headers: { ...init.headers, 'X-Session-Token': session.token } });
+  return accountRequest(() => fetcher(`${session.baseUrl}${path}`, { ...init, headers: { ...init.headers, 'X-Session-Token': session.token } }));
 }
 
 export async function signOut(session: Session): Promise<void> {

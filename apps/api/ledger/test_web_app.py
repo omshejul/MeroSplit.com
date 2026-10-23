@@ -140,7 +140,10 @@ def test_verified_app_associations_are_direct_public_json_for_get_and_head(path)
         assert all(not fingerprint.startswith("A3:D5:") for fingerprint in target["sha256_cert_fingerprints"])
     else:
         details = response.json()["applinks"]["details"]
-        assert details == [{"appIDs": ["M4K84L4TKR.com.omshejul.splitdumb"], "components": [{"/": "/app/sign-in/*"}]}]
+        assert details == [{"appIDs": ["M4K84L4TKR.com.omshejul.splitdumb"], "components": [
+            {"/": "/app/sign-in/*"}, {"/": "/app/groups/*"},
+            {"/": "/app/invite/*"}, {"/": "/invite/*"},
+        ]}]
     head = browser.head(path)
     assert head.status_code == 200 and head.content == b""
     assert head["Content-Type"] == response["Content-Type"]

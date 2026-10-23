@@ -1,27 +1,6 @@
 import type { Session } from './types';
 
-let paused = false;
-const inFlight = new Set<Promise<Response>>();
-
-export class BrowserAuthTransitionError extends Error {
-  constructor() { super('Signing in. Please wait before continuing.'); }
-}
-export function browserRequestsPaused(): boolean { return paused; }
-export async function pauseBrowserRequests(): Promise<void> {
-  paused = true;
-  await Promise.allSettled([...inFlight]);
-}
-export function resumeBrowserRequests(): void { paused = false; }
-
-// Fetch resolves after response headers: server-side writes have completed. App's
-// auth-generation checks reject any older body parsing or UI work that finishes later.
-export function browserAccountRequest(send: () => Promise<Response>): Promise<Response> {
-  if (paused) return Promise.reject(new BrowserAuthTransitionError());
-  const pending = send();
-  inFlight.add(pending);
-  void pending.then(() => inFlight.delete(pending), () => inFlight.delete(pending));
-  return pending;
-}
+export { AuthTransitionError as BrowserAuthTransitionError, accountRequestsPaused as browserRequestsPaused, pauseAccountRequests as pauseBrowserRequests, resumeAccountRequests as resumeBrowserRequests, accountRequest as browserAccountRequest } from './accountRequests.ts';
 
 export type BrowserUser = { id: string | number; email: string; display_name?: string };
 export function makeBrowserSession(baseUrl: string, user: BrowserUser): Session {

@@ -1,4 +1,4 @@
-"""Public, verified application associations for the canonical email-link route."""
+"""Public application associations for canonical sign-in and ledger routes."""
 
 from django.http import JsonResponse
 from django.views.decorators.http import require_safe
@@ -6,7 +6,10 @@ from django.views.decorators.http import require_safe
 APPLE_ASSOCIATION = {
     "applinks": {
         "details": [
-            {"appIDs": ["M4K84L4TKR.com.omshejul.splitdumb"], "components": [{"/": "/app/sign-in/*"}]}
+            {"appIDs": ["M4K84L4TKR.com.omshejul.splitdumb"], "components": [
+                {"/": "/app/sign-in/*"}, {"/": "/app/groups/*"},
+                {"/": "/app/invite/*"}, {"/": "/invite/*"},
+            ]}
         ]
     }
 }

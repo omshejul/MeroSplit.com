@@ -1,8 +1,16 @@
 import React, { useState } from 'react';
-import { ActivityIndicator, View } from 'react-native';
+import { ActivityIndicator, ScrollView, View } from 'react-native';
 import { Text } from 'react-native-paper';
 import { TextField } from './FormFields';
 import { Button, useUI } from './ui';
+import { AppFrame, pageContentStyle, ScreenHeader } from './AppNavigation';
+
+export function EmailLinkScreen({ title, busy, children }: { title: string; busy: boolean; children: React.ReactNode }) {
+  return <AppFrame>
+    <ScreenHeader title={title} busy={busy} />
+    <ScrollView contentContainerStyle={pageContentStyle} keyboardShouldPersistTaps="handled">{children}</ScrollView>
+  </AppFrame>;
+}
 
 export function EmailLinkStatus({ opening, error, sent, canRenew, busy, onRetry, onRenew, onSignIn }: { opening: boolean; error: string; sent: boolean; canRenew: boolean; busy: boolean; onRetry: () => void; onRenew: () => void; onSignIn: () => void }) {
   const { ui } = useUI();

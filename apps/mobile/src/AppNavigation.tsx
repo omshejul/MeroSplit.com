@@ -1,7 +1,19 @@
 import React from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
 import { Text } from 'react-native-paper';
 import { Icon, IconAction, radii, useUI } from './ui';
+
+export function AppFrame({ children, onTouchStart }: { children: React.ReactNode; onTouchStart?: () => void }) {
+  const { palette, dark } = useUI();
+  return <SafeAreaView style={{ flex: 1, backgroundColor: palette.background }} edges={['top', 'bottom']} onTouchStart={onTouchStart}>
+    <StatusBar style={dark ? 'light' : 'dark'} />
+    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>{children}</KeyboardAvoidingView>
+  </SafeAreaView>;
+}
+
+export const pageContentStyle = { padding: 16, gap: 12, paddingBottom: 24, ...(Platform.OS === 'web' ? { width: '100%' as const, maxWidth: 760, alignSelf: 'center' as const } : {}) };
 
 export function ScreenHeader({ title, busy, onBack, children }: { title: string; busy: boolean; onBack?: () => void; children?: React.ReactNode }) {
   const { palette } = useUI();
