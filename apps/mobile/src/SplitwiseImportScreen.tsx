@@ -2,8 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, TextInput, View } from 'react-native';
 import { RadioButton } from 'react-native-paper';
 import * as Crypto from 'expo-crypto';
-import * as DocumentPicker from 'expo-document-picker';
-import { File, Paths } from 'expo-file-system';
+import { pickSplitwiseCsv } from './csvFile';
 import { accountOwner, request } from './api';
 import { formatMoney, integer } from './accounting';
 import { getDatabase } from './native';
@@ -17,7 +16,6 @@ export type SplitwiseImportScreenProps = {
   session: Session; busy: boolean; onBusyChange: (busy: boolean) => void;
   onImported: (group: Group, alreadyImported: boolean) => void; onCancel: () => void;
 };
-const MAX_FILE_BYTES = 1_048_576;
 const balanceText = (value: string) => integer(value, true) > 0n ? `Is owed ${formatMoney(value)}`
   : integer(value, true) < 0n ? `Owes ${formatMoney((-integer(value, true)).toString())}` : 'Settled up';
 
@@ -48,25 +46,14 @@ export default function SplitwiseImportScreen({ session, busy, onBusyChange, onI
     finally { lock.current = false; if (current()) setWorking(false); onBusyChange(false); }
   }
   async function pickFile() {
-    const result = await DocumentPicker.getDocumentAsync({ type: '*/*', multiple: false, copyToCacheDirectory: true });
-    if (result.canceled) return;
-    const asset = result.assets[0], file = new File(asset.uri);
-    try {
-      if (!current()) return;
-      setPreview(null); setCsv(''); setSelfIndex(null); setPayers({});
-      if (!asset.name.toLowerCase().endsWith('.csv')) throw new Error('Choose the CSV export from a Splitwise group.');
-      if ((asset.size ?? file.size) > MAX_FILE_BYTES) throw new Error('Choose a CSV file up to 1 MB.');
-      const contents = await file.text();
-      const resultPreview = await request<SplitwisePreview>(session, '/imports/splitwise/preview', 'POST', { csv: contents });
-      if (!current()) return;
-      setCsv(contents); setPreview(resultPreview); setSelfIndex(null); setPayers({});
-      setName(asset.name.replace(/\.csv$/i, '').replace(/[_-]+/g, ' ').trim().slice(0, 100));
-    } finally {
-      // Only remove the picker copy in our cache, never the user's source file.
-      try { if (file.uri.startsWith(`${Paths.cache.uri.replace(/\/$/, '')}/`) && file.exists) file.delete(); }
-      catch { /* A cache cleanup failure must not turn a valid preview into an error. */ }
-    }
+    const file = await pickSplitwiseCsv(); if (!file || !current()) return;
+    setPreview(null); setCsv(''); setSelfIndex(null); setPayers({});
+    const resultPreview = await request<SplitwisePreview>(session, '/imports/splitwise/preview', 'POST', { csv: file.contents });
+    if (!current()) return;
+    setCsv(file.contents); setPreview(resultPreview); setSelfIndex(null); setPayers({});
+    setName(file.name.replace(/\.csv$/i, '').replace(/[_-]+/g, ' ').trim().slice(0, 100));
   }
+
   async function finishImport() {
     const db = await getDatabase();
     if (!pending) {
@@ -81,7 +68,7 @@ export default function SplitwiseImportScreen({ session, busy, onBusyChange, onI
   }
   async function openExisting() {
     if (!preview?.duplicate_group) return;
-    const group = await request<Group>(session, `/groups/${preview.duplicate_group.id}`);
+    const group = await request<Group>(session, `/groups/${preview.duplicate_group.id}/summary`);
     await saveGroup(await getDatabase(), scope, group, 'shared');
     if (current()) onImported(group, true);
   }

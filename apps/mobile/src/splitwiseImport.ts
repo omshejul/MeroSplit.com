@@ -35,7 +35,7 @@ export async function retrySplitwiseImport(db: Database, session: Session, send:
   const owner = accountOwner(session), pending = await readPendingSplitwiseImport(db, session);
   if (!pending) throw new Error('There is no saved import to retry.');
   const receipt = await send<SplitwiseImportReceipt>(session, '/imports/splitwise', 'POST', pending);
-  const group = await send<Group>(session, `/groups/${receipt.id}`);
+  const group = await send<Group>(session, `/groups/${receipt.id}/summary`);
   if (group.id !== receipt.id) throw new Error('The imported group could not be read. Retry to recover your saved import.');
   await db.withExclusiveTransactionAsync(async tx => {
     await saveGroup(tx, owner, group, 'shared');

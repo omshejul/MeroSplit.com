@@ -95,6 +95,19 @@ export function addExpense(balances: Amounts, paid: Amounts, shares: Amounts, si
   return result;
 }
 
+/** A bill changes the balance by paid minus the already allocated share, not its gross total. */
+export function expenseBalanceChange(expense: { paid: Amounts; shares: Amounts; deleted?: boolean }, selfId: string): string {
+  if (expense.deleted) return '0';
+  return (integer(expense.paid[selfId] ?? '0') - integer(expense.shares[selfId] ?? '0')).toString();
+}
+
+/** Direction of an accepted settlement record, not proof of receipt or a pending payment attempt. */
+export function settlementCashflow(payment: { sender: string; recipient: string; amount: string; reversed?: boolean }, selfId: string): string {
+  if (payment.reversed) return '0';
+  const direction = (payment.recipient === selfId ? 1n : 0n) - (payment.sender === selfId ? 1n : 0n);
+  return direction === 0n ? '0' : (direction * integer(payment.amount)).toString();
+}
+
 export function addSettlement(balances: Amounts, sender: string, recipient: string, amount: string): Amounts {
   const value = integer(amount);
   if (!(sender in balances) || !(recipient in balances) || sender === recipient || value <= 0n || value > MAX_AMOUNT) {

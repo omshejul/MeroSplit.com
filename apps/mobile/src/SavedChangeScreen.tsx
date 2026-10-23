@@ -16,7 +16,7 @@ export default function SavedChangeScreen({ command, group, busy, onDiscard, onE
   const { palette: colors, ui } = useUI();
   const s = useMemo(() => makeStyles(colors), [colors]);
   const body = command.body;
-  const current = group.expenses.find(expense => expense.id === body.id);
+  const current = group.expenses.find(expense => expense.id === body.id) ?? (group.focused_expense?.id === body.id ? group.focused_expense : undefined);
   const path = `/groups/${group.id}/expenses`;
   const creating = command.method === 'POST' && command.path === path;
   const updating = command.method === 'PUT' && command.path === `${path}/${body.id}`;

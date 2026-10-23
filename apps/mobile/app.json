@@ -12,6 +12,7 @@
       "bundleIdentifier": "com.omshejul.splitdumb",
       "buildNumber": "6",
       "infoPlist": {
+        "LSApplicationQueriesSchemes": ["upi", "gpay"],
         "NSAppTransportSecurity": {
           "NSAllowsLocalNetworking": true
         }
@@ -53,6 +54,7 @@
         }
       ],
       "./plugins/with-monochrome.cjs",
+      "./plugins/with-upi.cjs",
       [
         "expo-splash-screen",
         {

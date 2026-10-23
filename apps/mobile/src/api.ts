@@ -1,5 +1,8 @@
 import type { Command, Expense, Group, LegacyRecovery, Session } from './types';
-import { acceptCommand, bindLegacyGroup, markCommand, pendingCommands, readGroup, readLegacyRecovery, readLegacySource } from './storage.ts';
+import { sessionRequest } from './transport.ts';
+export { requestEmailCode, confirmEmailCode, signOut as endSession } from './transport.ts';
+export type { EmailCodeChallenge } from './transport.ts';
+import { acceptCommand, bindLegacyGroup, markCommand, pendingCommands, readGroup, readLegacyRecovery, readLegacySource, reconcileGroupCache, readVisibleGroup } from './storage.ts';
 import type { Database } from './storage.ts';
 import { legacyMatchesServer, previewPending } from './ledger.ts';
 
@@ -18,12 +21,12 @@ export function expensePayload(expense: Expense, updating = false): Record<strin
 export async function request<T>(session: Session, path: string, method = 'GET', body?: unknown, responseType: 'json' | 'text' = 'json'): Promise<T> {
   const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 15_000);
   try {
-    const response = await fetch(`${session.baseUrl}/api/v1${path}`, {
-      method, headers: { 'Content-Type': 'application/json', 'X-Session-Token': session.token },
+    const response = await sessionRequest(session, `/api/v1${path}`, {
+      method, headers: { 'Content-Type': 'application/json' },
       body: body === undefined ? undefined : JSON.stringify(body), signal: controller.signal,
-    }).catch(() => { throw new Error('Could not connect. Your saved changes remain on this phone. Retry when online.'); });
+    }).catch(() => { throw new Error('Could not connect. Keep this app open and retry when online.'); });
     if (responseType === 'text' && response.ok) return await response.text() as T;
-    if (!response.headers.get('content-type')?.includes('json')) throw new ApiError(response.ok ? 502 : response.status, 'The service is temporarily unavailable. Your saved changes remain on this phone. Try again later.');
+    if (!response.headers.get('content-type')?.includes('json')) throw new ApiError(response.ok ? 502 : response.status, 'The service is temporarily unavailable. Try again later.');
     const data = await response.json();
     if (!response.ok) throw new ApiError(response.status, String(data.detail ?? data.error ?? `Request failed (${response.status})`));
     return data as T;
@@ -32,7 +35,7 @@ export async function request<T>(session: Session, path: string, method = 'GET',
 
 // Never replay a command under another account or backend. GET follows the
 // idempotent write so a lost response can be recovered by retrying the same ID.
-export async function syncOutbox(db: Database, session: Session): Promise<Record<string, unknown>[]> {
+export async function syncOutbox(db: Database, session: Session, mode: 'full' | 'summary' = 'full'): Promise<Record<string, unknown>[]> {
   const owner = accountOwner(session);
   const receipts: Record<string, unknown>[] = [];
   for (const command of await pendingCommands(db, owner)) {
@@ -41,7 +44,7 @@ export async function syncOutbox(db: Database, session: Session): Promise<Record
     try {
       const receipt = await request<Record<string, unknown>>(session, command.path, command.method, command.body);
       writeAccepted = true;
-      const group = await request<Group>(session, `/groups/${command.group_id}`);
+      const group = await fetchGroup(session, command.group_id, mode);
       await acceptCommand(db, owner, command.command_id, group);
       receipts.push(receipt);
     } catch (error) {
@@ -52,6 +55,31 @@ export async function syncOutbox(db: Database, session: Session): Promise<Record
     }
   }
   return receipts;
+}
+
+export async function fetchGroup(session: Session, id: string, mode: 'full' | 'summary' = 'summary'): Promise<Group> {
+  const group = await request<Group>(session, `/groups/${encodeURIComponent(id)}${mode === 'summary' ? '/summary' : ''}`);
+  if (mode === 'summary' && (group.read_mode !== 'summary' || !group.history || !group.totals)) throw new Error('Could not load the complete group balance. Try again.');
+  return group;
+}
+
+// The complete authorized index is the pruning boundary. Changed groups still
+// use complete snapshots; untouched versions need neither another GET nor a write.
+export async function refreshGroups(db: Database, session: Session, mode: 'full' | 'summary' = 'full'): Promise<string[]> {
+  const owner = accountOwner(session), index = await request<{ groups: { id: string; version: number }[] }>(session, '/groups');
+  if (!Array.isArray(index.groups) || new Set(index.groups.map(row => row.id)).size !== index.groups.length || index.groups.some(row => !row.id || !Number.isSafeInteger(row.version))) throw new Error('The group refresh was incomplete. Try again.');
+  const snapshots: Group[] = [];
+  const complete = (group: Group | undefined): group is Group => !!group && Array.isArray(group.participants) && Array.isArray(group.expenses) && Array.isArray(group.settlements) && Array.isArray(group.transfers) && Array.isArray(group.activity) && !!group.balances;
+  for (const row of index.groups) {
+    const cached = await (mode === 'summary' ? readVisibleGroup : readGroup)(db, owner, row.id);
+    if (cached?.kind === 'shared' && complete(cached.group) && cached.group.id === row.id && cached.group.version === row.version && (mode === 'summary' ? cached.group.read_mode === 'summary' : !cached.group.read_mode)) snapshots.push(cached.group);
+    else {
+      const group = await fetchGroup(session, row.id, mode);
+      if (!complete(group) || group.id !== row.id || group.version < row.version) throw new Error('The group refresh was incomplete. Try again.');
+      snapshots.push(group);
+    }
+  }
+  return reconcileGroupCache(db, owner, snapshots);
 }
 
 // Called only after the person explicitly chooses this account and their name.
@@ -95,22 +123,4 @@ export async function claimLegacyGroup(db: Database, session: Session, groupId: 
   }
   await bindLegacyGroup(db, owner, { ...source, selfId, status, reason }, canonical, commands);
   return { status, groupId, reason };
-}
-
-type AuthResult = { meta?: { session_token?: string; is_authenticated?: boolean }; data?: { user?: { id: string | number; email?: string } }; errors?: { message?: string }[] };
-export async function authenticate(baseUrl: string, email: string, password: string, signup: boolean): Promise<Session> {
-  const normalized = baseUrl.trim().replace(/\/+$/, '');
-  if (!/^https?:\/\/[^/]+(?:\/[^?#]*)?$/.test(normalized)) throw new Error('Enter an HTTP(S) server URL without a query.');
-  const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 15_000);
-  try {
-    const response = await fetch(`${normalized}/_allauth/app/v1/auth/${signup ? 'signup' : 'login'}`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: email.trim(), password }), signal: controller.signal,
-    }).catch(() => { throw new Error('Could not connect. Check your connection and try signing in again.'); });
-    if (!response.headers.get('content-type')?.includes('json')) throw new Error('Sign-in is temporarily unavailable. Try again later.');
-    const data = await response.json() as AuthResult;
-    if (!response.ok || !data.meta?.session_token || !data.data?.user || data.meta.is_authenticated === false) {
-      throw new Error(data.errors?.map(error => error.message).filter(Boolean).join(' ') || 'Sign-in is incomplete. Check your details or required email verification.');
-    }
-    return { token: data.meta.session_token, userId: String(data.data.user.id), email: data.data.user.email ?? email.trim(), baseUrl: normalized };
-  } finally { clearTimeout(timer); }
 }

@@ -5,7 +5,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { accountOwner, request } from '../src/api.ts';
-import { migrate, readDraft, readGroup, saveDraft } from '../src/storage.ts';
+import { migrate, readDraft, readVisibleGroup, saveDraft } from '../src/storage.ts';
 import { readPendingSplitwiseImport, retrySplitwiseImport, SPLITWISE_IMPORT_DRAFT, startSplitwiseImport } from '../src/splitwiseImport.ts';
 import type { SplitwiseImportReceipt, SplitwiseImportRequest } from '../src/splitwiseImport.ts';
 import type { Group, Session } from '../src/types.ts';
@@ -13,7 +13,7 @@ import { sqliteAdapter } from './sqlite.ts';
 
 const session: Session = { baseUrl: 'https://example.test', userId: '1', email: 'qa@example.test', token: 'synthetic' };
 const body: SplitwiseImportRequest = { command_id: 'command-1', id: 'group-1', csv: 'synthetic CSV content', name: 'Trip', self_index: 0, payers: { '7': 1 } };
-const group: Group = { id: body.id, name: body.name, version: 1, participants: [{ id: 'A', name: 'Asha', user_id: 1 }, { id: 'B', name: 'Kabir' }], expenses: [], settlements: [], balances: { A: '2500', B: '-2500' }, transfers: [], activity: [] };
+const group: Group = { read_mode: 'summary', totals: { spending: '5000', paid: { A: '5000', B: '0' }, shares: { A: '2500', B: '2500' } }, history: { bills: { next_cursor: null }, activity: { next_cursor: null }, settlements: { next_cursor: null }, attempts: { next_cursor: null } }, id: body.id, name: body.name, version: 1, participants: [{ id: 'A', name: 'Asha', user_id: 1 }, { id: 'B', name: 'Kabir' }], expenses: [], settlements: [], balances: { A: '2500', B: '-2500' }, transfers: [], activity: [] };
 const receipt: SplitwiseImportReceipt = { id: group.id, version: group.version, already_imported: false };
 const accepted: typeof request = async <T>(_session: Session, path: string): Promise<T> => (path === '/imports/splitwise' ? receipt : group) as T;
 
@@ -28,14 +28,14 @@ test('Confirm saves immutable full request before POST and clears it only with a
     const send: typeof request = async <T>(active: Session, path: string, method = 'GET', sent?: unknown): Promise<T> => {
       calls.push(`${method} ${path}`); assert.equal(active, session);
       assert.deepEqual(await readPendingSplitwiseImport(db, session), body);
-      assert.equal(await readGroup(db, owner, group.id), null);
+      assert.equal(await readVisibleGroup(db, owner, group.id), null);
       if (method === 'POST') assert.deepEqual(sent, body);
       return (method === 'POST' ? receipt : group) as T;
     };
     assert.deepEqual(await retrySplitwiseImport(db, session, send), { group, alreadyImported: false });
-    assert.deepEqual(calls, ['POST /imports/splitwise', 'GET /groups/group-1']);
-    assert.deepEqual((await readGroup(db, owner, group.id))?.group, group);
-    assert.equal((await readGroup(db, owner, group.id))?.kind, 'shared');
+    assert.deepEqual(calls, ['POST /imports/splitwise', 'GET /groups/group-1/summary']);
+    assert.deepEqual((await readVisibleGroup(db, owner, group.id))?.group, group);
+    assert.equal((await readVisibleGroup(db, owner, group.id))?.kind, 'shared');
     assert.equal(await readPendingSplitwiseImport(db, session), null);
   } finally { raw.close(); }
 });
@@ -72,15 +72,15 @@ test('Readback failure retains request and repeat receipt may open the existing 
     };
     await assert.rejects(retrySplitwiseImport(db, session, fail), /Readback offline/);
     assert.deepEqual(await readPendingSplitwiseImport(db, session), body);
-    assert.equal(await readGroup(db, accountOwner(session), group.id), null);
+    assert.equal(await readVisibleGroup(db, accountOwner(session), group.id), null);
     const existing = { ...group, id: 'original-imported-group' };
     const recover: typeof request = async <T>(_session: Session, path: string): Promise<T> => {
       if (path === '/imports/splitwise') return { ...receipt, id: existing.id, already_imported: true } as T;
-      assert.equal(path, `/groups/${existing.id}`); return existing as T;
+      assert.equal(path, `/groups/${existing.id}/summary`); return existing as T;
     };
     assert.deepEqual(await retrySplitwiseImport(db, session, recover), { group: existing, alreadyImported: true });
-    assert.equal(await readGroup(db, accountOwner(session), body.id), null);
-    assert.deepEqual((await readGroup(db, accountOwner(session), existing.id))?.group, existing);
+    assert.equal(await readVisibleGroup(db, accountOwner(session), body.id), null);
+    assert.deepEqual((await readVisibleGroup(db, accountOwner(session), existing.id))?.group, existing);
   } finally { raw.close(); }
 });
 
@@ -90,11 +90,11 @@ test('SQLite failure rolls cache and draft deletion back together, then retry re
     await migrate(db); await startSplitwiseImport(db, session, body);
     raw.exec("CREATE TRIGGER fail_import_clear BEFORE DELETE ON drafts BEGIN SELECT RAISE(ABORT, 'interrupted cache commit'); END;");
     await assert.rejects(retrySplitwiseImport(db, session, accepted), /interrupted cache commit/);
-    assert.equal(await readGroup(db, accountOwner(session), group.id), null);
+    assert.equal(await readVisibleGroup(db, accountOwner(session), group.id), null);
     assert.deepEqual(await readPendingSplitwiseImport(db, session), body);
     raw.exec('DROP TRIGGER fail_import_clear;');
     await retrySplitwiseImport(db, session, accepted);
-    assert.deepEqual((await readGroup(db, accountOwner(session), group.id))?.group, group);
+    assert.deepEqual((await readVisibleGroup(db, accountOwner(session), group.id))?.group, group);
     assert.equal(await readPendingSplitwiseImport(db, session), null);
   } finally { raw.close(); }
 });
@@ -112,8 +112,8 @@ test('Account and server boundaries isolate pending imports and saved groups', a
     await saveDraft(db, accountOwner(session), 'other-bill', { description: 'Keep this bill draft' });
     await retrySplitwiseImport(db, session, accepted);
     assert.equal((await readPendingSplitwiseImport(db, otherAccount))?.name, 'Other person');
-    assert.equal(await readGroup(db, accountOwner(otherAccount), group.id), null);
-    assert.equal(await readGroup(db, accountOwner(otherServer), group.id), null);
+    assert.equal(await readVisibleGroup(db, accountOwner(otherAccount), group.id), null);
+    assert.equal(await readVisibleGroup(db, accountOwner(otherServer), group.id), null);
     assert.deepEqual(await readDraft(db, accountOwner(session), 'other-bill'), { description: 'Keep this bill draft' });
   } finally { raw.close(); }
 });
@@ -142,6 +142,6 @@ test('A failed persistence step sends nothing and a mismatched readback cannot c
     const mismatch: typeof request = async <T>(_session: Session, path: string): Promise<T> => (path === '/imports/splitwise' ? receipt : { ...group, id: 'wrong-group' }) as T;
     await assert.rejects(retrySplitwiseImport(db, session, mismatch), /could not be read/);
     assert.deepEqual(await readPendingSplitwiseImport(db, session), body);
-    assert.equal(await readGroup(db, accountOwner(session), 'wrong-group'), null);
+    assert.equal(await readVisibleGroup(db, accountOwner(session), 'wrong-group'), null);
   } finally { raw.close(); }
 });

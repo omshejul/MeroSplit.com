@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
-import { accountOwner, ApiError, authenticate, request, syncOutbox } from '../src/api.ts';
+import { accountOwner, ApiError, requestEmailCode, confirmEmailCode, request, syncOutbox } from '../src/api.ts';
 import { migrate, enqueue, pendingCommands, readGroup, saveGroup, replaceCommand } from '../src/storage.ts';
 import { sqliteAdapter } from './sqlite.ts';
 import type { Command, Group, Session } from '../src/types.ts';
@@ -53,12 +53,18 @@ test('Lost responses retry the same command, conflicts remain durable and accoun
 test('Native auth uses allauth response and an account/backend ownership key', async () => {
   const original = globalThis.fetch;
   globalThis.fetch = async (url, options) => {
-    assert.equal(String(url), 'https://example.invalid/_allauth/app/v1/auth/signup');
-    assert.deepEqual(JSON.parse(String(options?.body)), { email: 'person@example.invalid', password: 'synthetic-password' });
+    if (String(url).endsWith('/code/request')) {
+      assert.deepEqual(JSON.parse(String(options?.body)), { email: 'person@example.invalid' });
+      return Response.json({ meta: { session_token: 'pre-auth' }, data: { challenge_id: 'synthetic-challenge', expires_in: 180, retry_after: 60 } });
+    }
+    assert.equal(String(url), 'https://example.invalid/_allauth/app/v1/auth/code/confirm');
+    assert.deepEqual(JSON.parse(String(options?.body)), { challenge_id: 'synthetic-challenge', code: '0123' });
+    assert.equal((options?.headers as Record<string, string>)['X-Session-Token'], 'pre-auth');
     return Response.json({ meta: { session_token: 'test-session', is_authenticated: true }, data: { user: { id: 17, email: 'person@example.invalid' } } });
   };
   try {
-    const result = await authenticate('https://example.invalid/', 'person@example.invalid', 'synthetic-password', true);
+    const challenge = await requestEmailCode('https://example.invalid/', 'person@example.invalid');
+    const result = await confirmEmailCode('https://example.invalid/', challenge.challengeId, '0123');
     assert.equal(result.userId, '17'); assert.equal(result.token, 'test-session');
     assert.notEqual(accountOwner(result), accountOwner({ ...result, baseUrl: 'https://other.invalid' }));
   } finally { globalThis.fetch = original; }
@@ -68,7 +74,7 @@ test('Connection failures hide native diagnostics while HTTP conflicts keep thei
   const original = globalThis.fetch;
   try {
     globalThis.fetch = async () => { throw new TypeError('java.net.UnknownHostException: private.host.internal'); };
-    for (const action of [() => request(session, '/groups'), () => authenticate(session.baseUrl, session.email, 'synthetic-password', false)]) {
+    for (const action of [() => request(session, '/groups'), () => requestEmailCode(session.baseUrl, session.email)]) {
       await assert.rejects(action(), error => error instanceof Error && /Could not connect/.test(error.message) && !/java\.net|private\.host/.test(error.message));
     }
     globalThis.fetch = async () => Response.json({ detail: 'Accepted revision changed.' }, { status: 409 });

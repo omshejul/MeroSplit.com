@@ -28,3 +28,6 @@ minimumReleaseAgeExclude:
   - expo-dev-launcher@58.0.14
   - expo-application@58.1.2
   - expo-notifications@58.1.5
+  - expo-splash-screen@58.0.10
+patchedDependencies:
+  expo-sqlite@58.0.13: patches/expo-sqlite@58.0.13.patch

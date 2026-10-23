@@ -1,12 +1,21 @@
 // Explicit integration command. Creates synthetic accounts/groups, never bank transfers.
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { authenticate, expensePayload, request } from '../src/api.ts';
+import { readFileSync } from 'node:fs';
+import { requestEmailCode, confirmEmailCode, expensePayload, request } from '../src/api.ts';
 import { validateExpense } from '../src/accounting.ts';
 import type { Group, Session } from '../src/types.ts';
 
 const base = process.env.API_URL ?? 'http://127.0.0.1:8000';
-const signup = () => authenticate(base, `mobile-${randomUUID()}@example.invalid`, `Synthetic-${randomUUID()}!`, true);
+const outbox = process.env.FAKE_EMAIL_OUTBOX;
+if (!outbox || !['127.0.0.1', 'localhost'].includes(new URL(base).hostname)) throw new Error('Run against the local fake email provider and set FAKE_EMAIL_OUTBOX. No real inboxes are used.');
+const signup = async () => {
+  const email = `mobile-${randomUUID()}@example.invalid`, challenge = await requestEmailCode(base, email);
+  const messages = JSON.parse(readFileSync(outbox, 'utf8')).messages as { recipient: string; text: string }[];
+  const code = messages.findLast(message => message.recipient === email)?.text.match(/\b[0-9]{4}\b/)?.[0];
+  if (!code) throw new Error('The local fake provider did not capture a code.');
+  return confirmEmailCode(base, challenge.challengeId, code);
+};
 const a = await signup(), b = await signup(), groupId = randomUUID(), ids = [randomUUID(), randomUUID()].sort();
 const post = <T>(session: Session, path: string, body: Record<string, unknown> = {}) => request<T>(session, path, 'POST', { ...body, command_id: randomUUID() });
 const snapshot = (session = a) => request<Group>(session, `/groups/${groupId}`);
@@ -48,7 +57,7 @@ async function prepare(amount: string) {
 const attemptId = await prepare('10000');
 assert.equal(await prepare('10000'), attemptId, 'existing attempt reused across different command IDs');
 const details = await request<{ direct_launch_supported: boolean; bank_verified: boolean }>(b, `/groups/${groupId}/payment-attempts/${attemptId}/launch`);
-assert.equal(details.direct_launch_supported, false); assert.equal(details.bank_verified, false);
+assert.equal(typeof details.direct_launch_supported, 'boolean'); assert.equal(details.bank_verified, false);
 await post(b, `/groups/${groupId}/payment-attempts/${attemptId}/report`);
 assert.equal((await snapshot()).balances[ids[0]], '45000', 'payer report does not post');
 await post(a, `/groups/${groupId}/payment-attempts/${attemptId}/confirm`);

@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Appearance, Platform, Pressable, StyleSheet, useColorScheme, View } from 'react-native';
-import { Button as PaperButton, MD3DarkTheme, MD3LightTheme, PaperProvider, Text, useTheme } from 'react-native-paper';
+import { Button as PaperButton, IconButton as PaperIconButton, Tooltip, MD3DarkTheme, MD3LightTheme, PaperProvider, Text, useTheme } from 'react-native-paper';
 import type { MD3Theme } from 'react-native-paper';
 import { savedAppearance, saveAppearance } from './native';
 import type { AppearancePreference } from './native';
@@ -20,6 +20,10 @@ import UserGroupIcon from '@hugeicons/core-free-icons/UserGroupIcon';
 import UserMultipleIcon from '@hugeicons/core-free-icons/UserMultipleIcon';
 import Wallet01Icon from '@hugeicons/core-free-icons/Wallet01Icon';
 import Calendar03Icon from '@hugeicons/core-free-icons/Calendar03Icon';
+import Refresh01Icon from '@hugeicons/core-free-icons/Refresh01Icon';
+import Delete02Icon from '@hugeicons/core-free-icons/Delete02Icon';
+import Download01Icon from '@hugeicons/core-free-icons/Download01Icon';
+import Upload01Icon from '@hugeicons/core-free-icons/Upload01Icon';
 
 export type Palette = { background: string; surface: string; text: string; muted: string; accent: string; soft: string; line: string; outline: string; error: string; positive: string; negative: string; info: string; warning: string };
 export const radii = { control: 12, surface: 16, navigation: 20 } as const;
@@ -28,7 +32,7 @@ const darkColors: Palette = { background: '#111111', surface: '#1C1C1C', text: '
 export const balanceColor = (value: string | bigint, palette: Palette) => BigInt(value) > 0n ? palette.positive : BigInt(value) < 0n ? palette.negative : palette.muted;
 const makeInputColors = (palette: Palette) => ({ selectionColor: Platform.OS === 'ios' ? palette.accent : palette.line, cursorColor: palette.accent, selectionHandleColor: palette.accent });
 const inputColors = makeInputColors(colors);
-const icons = { add: Add01Icon, down: ArrowDown01Icon, back: ArrowLeft01Icon, next: ArrowRight01Icon, check: CheckmarkCircle01Icon, history: Clock01Icon, bill: Invoice01Icon, settings: Settings01Icon, me: UserCircleIcon, groups: UserGroupIcon, people: UserMultipleIcon, pay: Wallet01Icon };
+const icons = { add: Add01Icon, down: ArrowDown01Icon, back: ArrowLeft01Icon, next: ArrowRight01Icon, check: CheckmarkCircle01Icon, history: Clock01Icon, bill: Invoice01Icon, settings: Settings01Icon, me: UserCircleIcon, groups: UserGroupIcon, people: UserMultipleIcon, pay: Wallet01Icon, remove: Delete02Icon, refresh: Refresh01Icon, export: Download01Icon, import: Upload01Icon };
 export type IconName = keyof typeof icons;
 export function Icon({ name, size = 22, color }: { name: IconName; size?: number; color?: string }) {
   const { palette } = useUI();
@@ -97,11 +101,15 @@ export function Button({ title, onPress, disabled = false, kind = 'secondary', i
     icon={icon ? ({ size, color }) => <Icon name={icon} size={size} color={color} /> : undefined}
     buttonColor={kind === 'danger' ? colors.error : undefined} style={{ borderRadius: radii.control }} contentStyle={{ minHeight: Platform.OS === 'ios' ? 44 : 48 }} labelStyle={{ fontSize: 16, fontWeight: '600' }}>{title}</PaperButton>;
 }
+export function IconAction({ name, label, onPress, disabled = false, hint }: { name: IconName; label: string; onPress: () => void; disabled?: boolean; hint?: string }) {
+  return <Tooltip title={hint ?? label}><PaperIconButton accessibilityLabel={label} accessibilityHint={hint} disabled={disabled} onPress={onPress} hitSlop={4} size={22} style={{ width: 44, height: 44, margin: 0 }} icon={({ size, color }) => <Icon name={name} size={size} color={color} />} /></Tooltip>;
+}
 const dateText = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 export function DateField({ label, value, onChange, disabled = false }: { label: string; value: string; onChange: (value: string) => void; disabled?: boolean }) {
   const { palette: colors, ui, dark } = useUI();
   const [open, setOpen] = useState(false);
   const parsed = new Date(`${value}T12:00:00`), valid = !Number.isNaN(parsed.getTime()) && dateText(parsed) === value;
+  if (Platform.OS === 'web') return <View style={{ gap: 4 }}><Text style={ui.label}>{label}</Text>{React.createElement('input', { type: 'date', 'aria-label': label, value, disabled, onChange: (event: React.ChangeEvent<HTMLInputElement>) => onChange(event.target.value), style: { minHeight: 44, padding: '0 12px', borderRadius: radii.control, border: `1px solid ${colors.outline}`, backgroundColor: colors.surface, color: colors.text, font: 'inherit', colorScheme: dark ? 'dark' : 'light' } })}</View>;
   return <View style={{ gap: 8 }}><Text style={ui.label}>{label}</Text>
     <PaperButton mode="outlined" accessibilityLabel={`${label}: ${value || 'Choose date'}`} disabled={disabled} onPress={() => setOpen(true)} icon={({ color, size }) => <HugeiconsIcon icon={Calendar03Icon} color={color} size={size} />} contentStyle={{ minHeight: Platform.OS === 'ios' ? 44 : 48 }} style={{ borderRadius: radii.control }}>
       {valid ? parsed.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Choose date'}
@@ -131,8 +139,8 @@ const makeUI = (colors: Palette) => StyleSheet.create({
   label: { fontSize: 14, lineHeight: 20, fontWeight: '500', color: colors.muted },
   numeric: { fontSize: 32, lineHeight: 40, fontWeight: '600', color: colors.text, fontVariant: ['tabular-nums'] },
   input: { minHeight: 48, paddingHorizontal: 12, paddingVertical: 10, borderRadius: radii.control, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.outline, color: colors.text, fontSize: 17 },
-  row: { minHeight: 56, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', gap: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
-  rowBody: { flex: 1, gap: 3 },
+  row: { minHeight: 52, paddingVertical: 6, flexDirection: 'row', alignItems: 'center', gap: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
+  rowBody: { flex: 1, minWidth: 0, gap: 2 },
   rowTitle: { fontSize: 17, lineHeight: 23, fontWeight: '500', color: colors.text },
   rowSub: { fontSize: 14, lineHeight: 20, color: colors.muted },
   avatar: { width: 36, height: 36, borderRadius: radii.control, backgroundColor: colors.soft, alignItems: 'center', justifyContent: 'center' },

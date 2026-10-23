@@ -1,0 +1,76 @@
+diff --git a/build/WebConfiguration.d.ts b/build/WebConfiguration.d.ts
+index f82d3617f98430b90aacd81e9e06b5c2a39e1637..06ef5f4a8ec12dfd7ad68e3eace5ed473e4801ff 100644
+--- a/build/WebConfiguration.d.ts
++++ b/build/WebConfiguration.d.ts
+@@ -11,6 +11,8 @@ export interface SQLiteWebOptions {
+      * A build from another revision may fail to load.
+      */
+     wasmURL?: string;
++  /** Use only tab-scoped memory; skip unavailable OPFS access handles. */
++  memoryOnly?: boolean;
+ }
+ /**
+  * Configures how `expo-sqlite` runs on web.
+diff --git a/src/WebConfiguration.ts b/src/WebConfiguration.ts
+index ed29d84fbe3b49b106971238443270b91d32562d..f215c3e9705a270c9553ef550b87b758e1eba365 100644
+--- a/src/WebConfiguration.ts
++++ b/src/WebConfiguration.ts
+@@ -13,6 +13,8 @@ export interface SQLiteWebOptions {
+    * A build from another revision may fail to load.
+    */
+   wasmURL?: string;
++  /** Use only tab-scoped memory; skip unavailable OPFS access handles. */
++  memoryOnly?: boolean;
+ }
+ 
+ /**
+diff --git a/web/SQLiteModule.ts b/web/SQLiteModule.ts
+index 7fe4903617adf56586db6dbca8636f433564ad57..46e08348e247e312883b9f5dbc945637467fc0c5 100644
+--- a/web/SQLiteModule.ts
++++ b/web/SQLiteModule.ts
+@@ -432,6 +432,12 @@ export class SQLiteModule extends NativeModule {
+   }
+ 
+   configureWeb(options: SQLiteWebOptions): void {
++    if (worker != null && options.memoryOnly === true && webOptions.memoryOnly !== true && options.wasmURL === webOptions.wasmURL) {
++      // An OPFS open may fail in private browsing after starting the worker.
++      // Discard that failed VFS state before explicitly selecting memory mode.
++      worker.terminate();
++      worker = null;
++    }
+     if (worker != null) {
+       // Fast Refresh runs the same call again after a database is open.
+       if (options.wasmURL === webOptions.wasmURL) return;
+diff --git a/web/worker.ts b/web/worker.ts
+index 8564322163531ab7bf90bd68b60d584550acacb6..08475e86d94d5cfbe78063417ab154462bd26840 100644
+--- a/web/worker.ts
++++ b/web/worker.ts
+@@ -55,7 +55,7 @@ const MAX_INT32 = 0x7fffffff;
+ const MIN_INT32 = -0x80000000;
+ 
+ let _sqlite3: SQLiteAPI | null = null;
+-let _vfs: AccessHandlePoolVFS | null = null;
++let _vfs: AccessHandlePoolVFS | MemoryVFS | null = null;
+ let _vfsMemory: MemoryVFS | null = null;
+ let _webOptions: SQLiteWebOptions = {};
+ 
+@@ -774,7 +774,7 @@ async function maybeFinalizeAllStatements(sqlite3: SQLiteAPI, dbEntity: Database
+ 
+ async function maybeInitAsync(): Promise<{
+   sqlite3: SQLiteAPI;
+-  vfs: AccessHandlePoolVFS;
++  vfs: AccessHandlePoolVFS | MemoryVFS;
+   vfsMemory: MemoryVFS;
+ }> {
+   if (!_sqlite3) {
+@@ -785,7 +785,9 @@ async function maybeInitAsync(): Promise<{
+     }
+ 
+     if (_vfs == null) {
+-      _vfs = await AccessHandlePoolVFS.create(VFS_NAME_PERSISTENT, module);
++      _vfs = _webOptions.memoryOnly
++        ? await MemoryVFS.create(VFS_NAME_PERSISTENT, module)
++        : await AccessHandlePoolVFS.create(VFS_NAME_PERSISTENT, module);
+       if (_vfs == null) {
+         throw new Error('Failed to initialize AccessHandlePoolVFS');
+       }

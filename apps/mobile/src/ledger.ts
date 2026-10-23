@@ -30,12 +30,15 @@ export function legacyMatchesServer(legacy: Group, canonical: Group): boolean {
 
 // Accepted balances remain untouched. This is explicitly a pending preview.
 export function previewPending(accepted: Group, commands: Command[]): Group {
+  if (accepted.read_mode === 'summary' && commands.some(command => command.group_id === accepted.id && command.base_version !== accepted.version)) throw new Error('Balances show accepted records. Sync or review saved changes before previewing a new total.');
   let group: Group = JSON.parse(JSON.stringify(accepted));
+  if (group.focused_expense && !group.expenses.some(value => value.id === group.focused_expense!.id)) group.expenses.push(group.focused_expense);
   for (const command of commands.filter(row => row.group_id === accepted.id)) {
     const body = command.body;
     if (/\/expenses(?:\/[^/]+)?$/.test(command.path) && command.method !== 'DELETE') {
       const input = body as unknown as Omit<Expense, 'shares'>;
       const before = group.expenses.find(expense => expense.id === input.id);
+      if (group.read_mode === 'summary' && command.method === 'PUT' && !before) throw new Error('Open this saved bill online to review its pending balance.');
       if (before && !before.deleted) group.balances = addExpense(group.balances, before.paid, before.shares, -1n);
       const vectors = validateExpense(input.total, input.paid, input.split, group.participants.map(p => p.id));
       group.balances = addExpense(group.balances, vectors.paid, vectors.shares);
@@ -43,6 +46,7 @@ export function previewPending(accepted: Group, commands: Command[]): Group {
     } else if (command.method === 'DELETE' && command.path.includes('/expenses/')) {
       const id = command.path.split('/').at(-1);
       const before = group.expenses.find(expense => expense.id === id);
+      if (group.read_mode === 'summary' && !before) throw new Error('Open this saved bill online to review its pending balance.');
       if (before && !before.deleted) group.balances = addExpense(group.balances, before.paid, before.shares, -1n);
       group.expenses = group.expenses.map(expense => expense.id === id ? { ...expense, deleted: true } : expense);
     } else if (command.path.endsWith('/settlements')) {
@@ -53,12 +57,14 @@ export function previewPending(accepted: Group, commands: Command[]): Group {
       }
     } else if (command.path.endsWith('/restore') && command.path.includes('/expenses/')) {
       const id = command.path.split('/').at(-2), expense = group.expenses.find(value => value.id === id);
+      if (group.read_mode === 'summary' && !expense) throw new Error('Open this saved bill online to review its pending balance.');
       if (expense?.deleted) {
         group.balances = addExpense(group.balances, expense.paid, expense.shares);
         group.expenses = group.expenses.map(value => value.id === id ? { ...value, deleted: false } : value);
       }
     } else if (command.path.endsWith('/reverse') && command.path.includes('/settlements/')) {
       const id = command.path.split('/').at(-2), settlement = group.settlements.find(value => value.id === id);
+      if (group.read_mode === 'summary' && !settlement) throw new Error('Load this payment online to review its pending balance.');
       if (settlement && !settlement.reversed) {
         group.balances = addSettlement(group.balances, settlement.recipient, settlement.sender, settlement.amount);
         group.settlements = group.settlements.map(value => value.id === id ? { ...value, reversed: true } : value);

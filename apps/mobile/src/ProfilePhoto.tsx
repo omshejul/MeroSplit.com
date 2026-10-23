@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Alert, Pressable, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
+import { Alert } from './alerts';
 import * as Crypto from 'expo-crypto';
 import { IconButton, Menu } from 'react-native-paper';
 import { HugeiconsIcon } from '@hugeicons/react-native';

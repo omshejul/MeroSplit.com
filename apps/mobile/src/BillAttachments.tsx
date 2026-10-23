@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Alert, Pressable, Text, View } from 'react-native';
+import { Platform, Pressable, Text, View } from 'react-native';
+import { Alert } from './alerts';
 import * as Crypto from 'expo-crypto';
 import { IconButton, Menu } from 'react-native-paper';
 import { HugeiconsIcon } from '@hugeicons/react-native';
@@ -106,7 +107,7 @@ export default function BillAttachments({ session, groupId, expenseId, revision,
         </Menu>}
       </View>)}
       {pending && <><Text style={[ui.notice, ui.warning]}>{pending.file.name}: upload not confirmed. Retry safely without adding a copy.</Text><Button title="Retry upload" disabled={disabled || readOnly} onPress={() => void run(finishUpload)} /></>}
-      {editable && !pending && items.length < 10 && <Button title="Add attachment" icon="add" disabled={disabled} onPress={() => Alert.alert('Add attachment', undefined, [
+      {editable && !pending && items.length < 10 && <Button title="Add attachment" icon="add" disabled={disabled} onPress={() => Platform.OS === 'web' ? void run(() => add(false)) : Alert.alert('Add attachment', undefined, [
         { text: 'Cancel', style: 'cancel' }, { text: 'Photo', onPress: () => void run(() => add(true)) }, { text: 'Files', onPress: () => void run(() => add(false)) },
       ])} />}
       {!loading && readOnly && <Text style={ui.caption}>Read-only while archived or waiting to sync.</Text>}

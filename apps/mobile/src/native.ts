@@ -7,6 +7,8 @@ import type { Database } from './storage';
 import type { Session } from './types';
 
 let database: Promise<Database> | undefined;
+export function storageIsDurable(): boolean { return true; }
+export function isOnline(): boolean { return true; }
 export function getDatabase(): Promise<Database> {
   database ??= (async () => {
     const db = await SQLite.openDatabaseAsync('splitdumb.db');

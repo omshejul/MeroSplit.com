@@ -5,6 +5,7 @@
   "version": "0.3.3",
   "main": "index.ts",
   "dependencies": {
+    "@expo/metro-runtime": "~58.0.14",
     "@expo/vector-icons": "^15.1.1",
     "@hugeicons/core-free-icons": "^4.3.5",
     "@hugeicons/react-native": "^1.0.16",
@@ -25,10 +26,13 @@
     "expo-status-bar": "~58.0.3",
     "expo-system-ui": "~58.0.6",
     "react": "19.3.0",
+    "react-dom": "19.3.0",
     "react-native": "0.88.0",
     "react-native-paper": "5.15.3",
+    "react-native-qrcode-svg": "^6.3.26",
     "react-native-safe-area-context": "~5.10.1",
-    "react-native-svg": "15.16.0"
+    "react-native-svg": "15.16.0",
+    "react-native-web": "^0.21.4"
   },
   "devDependencies": {
     "@types/node": "^24.19.2",
@@ -42,7 +46,8 @@
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
     "test": "node --experimental-strip-types --test tests/*.test.ts",
-    "test:server": "node --experimental-strip-types tests/server-smoke.ts"
+    "test:server": "node --experimental-strip-types tests/server-smoke.ts",
+    "export:web": "node scripts/export-web.mjs"
   },
   "private": true,
   "type": "module"

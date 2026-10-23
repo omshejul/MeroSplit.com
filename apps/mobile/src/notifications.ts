@@ -1,5 +1,5 @@
 import { accountOwner, ApiError, request } from './api.ts';
-import type { Group, Session } from './types.ts';
+import type { Expense, Group, Session } from './types.ts';
 
 export type PushPermission = 'ask' | 'granted' | 'denied';
 export type PushDevice = { provider: 'expo'; token: string; platform: 'ios' | 'android' };
@@ -47,8 +47,15 @@ export function notificationForAccount(session: Session | null, data: unknown): 
 export async function notificationTarget(session: Session, data: unknown, send: typeof request = request): Promise<PushTarget | null> {
   if (!notificationForAccount(session, data) || !uuid.test(data.group_id ?? '') || !uuid.test(data.expense_id ?? '')) return null;
   try {
-    const group = await send<Group>(session, `/groups/${data.group_id}`);
+    let group = await send<Group>(session, `/groups/${data.group_id}/summary`);
     if (group.id !== data.group_id) return null;
-    return { group, expenseId: group.expenses.some(expense => expense.id === data.expense_id && !expense.deleted) ? data.expense_id : null };
+    if (group.read_mode === 'summary' && !group.expenses.some(expense => expense.id === data.expense_id)) {
+      try {
+        const detail = await send<Expense & { group_id: string; group_version: number }>(session, `/groups/${group.id}/expenses/${data.expense_id}?version=${group.version}`);
+        if (detail.group_id !== group.id || detail.group_version !== group.version) return null;
+        group = { ...group, focused_expense: detail };
+      } catch (error) { if (!(error instanceof ApiError && error.status === 404)) throw error; }
+    }
+    return { group, expenseId: (group.expenses.some(expense => expense.id === data.expense_id && !expense.deleted) || group.focused_expense?.id === data.expense_id && !group.focused_expense.deleted) ? data.expense_id : null };
   } catch { return null; }
 }

@@ -96,7 +96,7 @@ test('Offline unregister retains the retry identity, expired session401 safely c
 
 test('Push taps fetch only the authorized current-account group and select an existing bill', async () => {
   const send: typeof request = async <T>(active: Session, path: string, method = 'GET'): Promise<T> => {
-    assert.equal(active, session); assert.equal(path, `/groups/${groupId}`); assert.equal(method, 'GET'); return group as T;
+    assert.equal(active, session); assert.equal(path, `/groups/${groupId}/summary`); assert.equal(method, 'GET'); return group as T;
   };
   assert.deepEqual(await notificationTarget(session, data, send), { group, expenseId });
   const missing = { ...group, expenses: [] };
@@ -114,4 +114,16 @@ test('Wrong-account, malformed, revoked and unavailable push taps safely fall ba
   assert.equal(requests, 0); assert.equal(await notificationTarget(session, data, denied), null); assert.equal(requests, 1);
   assert.equal(notificationForAccount(null, data), false); assert.equal(notificationForAccount(session, { ...data, recipient_user_id: '2' }), false);
   assert.equal(notificationForAccount(session, data), true);
+});
+
+
+test('A push for an older bill loads one pinned detail without downloading all history', async () => {
+  const summary = { ...group, read_mode: 'summary' as const, version: 7, expenses: [] };
+  const detail = { ...group.expenses[0], group_id: groupId, group_version: 7 };
+  const paths: string[] = [];
+  const send: typeof request = async <T>(_active: Session, path: string): Promise<T> => { paths.push(path); return (path.endsWith('/summary') ? summary : detail) as T; };
+  const target = await notificationTarget(session, data, send);
+  assert.equal(target?.expenseId, expenseId);
+  assert.equal(target?.group.focused_expense?.id, expenseId);
+  assert.deepEqual(paths, [`/groups/${groupId}/summary`, `/groups/${groupId}/expenses/${expenseId}?version=7`]);
 });
