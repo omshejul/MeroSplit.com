@@ -87,15 +87,16 @@ function TransactionRow({ icon, title, amount, cashflow, label, busy, onPress, c
 }
 
 function PaymentRow({ payment, accepted, group, selfId, busy, onPayment }: Pick<Props, 'accepted' | 'group' | 'selfId' | 'busy' | 'onPayment'> & { payment: Settlement }) {
-  const { ui } = useUI();
+  const { palette: colors, ui } = useUI();
   const isAccepted = accepted.settlements.some(record => record.id === payment.id) || accepted.transactions?.some(record => record.kind === 'payment' && record.payment.id === payment.id);
   if (!isAccepted) return null;
   const presentation = paymentPresentation(payment, selfId, id => participantName(group.participants, selfId, id));
-  return <TransactionRow icon="payment" title={presentation.title} amount={payment.amount} cashflow={presentation.cashflow} busy={busy} onPress={() => onPayment(payment)}
-    label={`Payment, ${presentation.title}, ${formatMoney(payment.amount)}, ${presentation.status}, ${displayDate(payment.date)}`}>
-    <Text style={ui.rowSub}>Payment · {payment.reversed ? 'Record reversed · No bank refund' : presentation.status}</Text>
-    <Text style={ui.rowSub}>{displayDate(payment.date)}</Text>
-  </TransactionRow>;
+  const status = payment.reversed ? `${presentation.status} · No bank refund` : presentation.status;
+  return <Pressable accessibilityRole="button" accessibilityLabel={`Payment, ${presentation.title}, ${formatMoney(payment.amount)}, ${status}, ${displayDate(payment.date)}`}
+    disabled={busy} style={({ pressed }) => [ui.row, s.paymentRow, pressed && s.pressed]} onPress={() => onPayment(payment)}>
+    <Icon name="payment" size={18} color={colors.muted} />
+    <Text style={[ui.rowSub, s.paymentSentence, { color: colors.text }]}>{presentation.title} {formatMoney(payment.amount)}<Text style={ui.rowSub}> · {status} · {displayDate(payment.date)}</Text></Text>
+  </Pressable>;
 }
 
 function BillTimelineRow({ expense, group, selfId, busy, onExpense, noticeVisibility }: Pick<Props, 'group' | 'selfId' | 'busy' | 'onExpense' | 'noticeVisibility'> & { expense: BillRow }) {
@@ -232,6 +233,8 @@ const s = StyleSheet.create({
   section: { gap: 10, paddingVertical: 4 },
   receipt: { gap: 12, padding: 12, borderRadius: radii.surface },
   trailing: { flexShrink: 0, gap: 4, alignItems: 'flex-end' },
+  paymentRow: { minHeight: 44, paddingVertical: 8, alignItems: 'flex-start' },
+  paymentSentence: { flex: 1, minWidth: 0, fontWeight: '400' },
   empty: { gap: 10, alignItems: 'center', paddingVertical: 20 },
   pressed: { opacity: 0.65 },
   search: { flexDirection: 'row', alignItems: 'center', gap: 8 },

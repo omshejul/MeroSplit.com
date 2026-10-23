@@ -9,10 +9,10 @@ type Element = { type: unknown; props: Record<string, any>; children: unknown[] 
 const React = { createElement: (type: unknown, props: Record<string, any> | null, ...children: unknown[]): Element => ({ type, props: props ?? {}, children }) };
 const source = ts.createSourceFile('GroupScreen.tsx', readFileSync(new URL('../src/GroupScreen.tsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
 function production(name: string) {
-  const helpers = source.statements.filter(node => ts.isVariableStatement(node) && node.declarationList.declarations.some(d => ['billImpact', 'participantName', 'displayDate'].includes(d.name.getText(source)))).map(node => node.getText(source)).join('\n');
+  const helpers = source.statements.filter(node => ts.isVariableStatement(node) && node.declarationList.declarations.some(d => ['billImpact', 'participantName', 'displayDate', 's'].includes(d.name.getText(source)))).map(node => node.getText(source)).join('\n');
   const node = source.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === name); assert.ok(node);
   const code = ts.transpile(`${helpers}\n${node.getText(source)}\nreturn ${name};`, { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React });
-  return new Function('env', `with(env) { ${code} }`)({ React, expenseBalanceChange, formatMoney, paymentPresentation, Text: 'Text', TransactionRow: 'TransactionRow', VisibleExpense: 'VisibleExpense', balanceColor: (amount: string) => BigInt(amount) < 0n ? 'negative' : 'positive', useUI: () => ({ ui: {}, palette: {} }) });
+  return new Function('env', `with(env) { ${code} }`)({ React, expenseBalanceChange, formatMoney, paymentPresentation, Text: 'Text', Pressable: 'Pressable', Icon: 'Icon', TransactionRow: 'TransactionRow', VisibleExpense: 'VisibleExpense', StyleSheet: { create: (styles: unknown) => styles }, radii: { surface: 16 }, balanceColor: (amount: string) => BigInt(amount) < 0n ? 'negative' : 'positive', useUI: () => ({ ui: {}, palette: {} }) });
 }
 function elements(tree: unknown): Element[] {
   if (Array.isArray(tree)) return tree.flatMap(elements);
@@ -41,15 +41,54 @@ test('self-paid multipayer bill stays a bill and visibly shows exact paid/share 
   assert.ok(text(deleted).includes('No balance impact'));
 });
 
-test('only accepted payments render the explicit Payment cue; reversal and receipt uncertainty stay visible', () => {
+test('accepted payment is a compact, wrapping sentence with an unboxed icon and the same details action', () => {
   const render = production('PaymentRow');
   const payment = { id: 'record', sender: 'self', recipient: 'other', amount: '334', method: 'manual_record', date: null };
-  const base = { group, selfId: 'self', busy: false, onPayment() {}, payment };
+  const opened: unknown[] = [];
+  const base = { group, selfId: 'self', busy: false, onPayment: (value: unknown) => opened.push(value), payment };
   assert.equal(render({ ...base, accepted: { settlements: [] } }), null);
   const tree = render({ ...base, accepted: { settlements: [payment] } });
-  assert.equal(tree.props.icon, 'payment'); assert.equal(tree.props.title, 'You paid Noor'); assert.equal(tree.props.cashflow, '-334');
-  assert.ok(text(tree).includes('Payment · Receipt unconfirmed')); assert.ok(text(tree).includes('Date unavailable'));
-  const reversed = { ...payment, reversed: true };
-  const history = render({ ...base, payment: reversed, accepted: { settlements: [], transactions: [{ kind: 'payment', payment: reversed }] } });
-  assert.equal(history.props.cashflow, '0'); assert.ok(text(history).includes('Payment · Record reversed · No bank refund'));
+  assert.equal(tree.type, 'Pressable'); assert.equal(tree.props.accessibilityRole, 'button');
+  assert.equal(tree.props.accessibilityLabel, `Payment, You paid Noor, ${formatMoney('334')}, Receipt unconfirmed, Date unavailable`);
+  const nodes = elements(tree), sentence = nodes.find(node => node.type === 'Text')!;
+  assert.ok(text(sentence).startsWith(`You paid Noor ${formatMoney('334')}`));
+  assert.ok(text(sentence).includes('Receipt unconfirmed')); assert.ok(text(sentence).includes('Date unavailable'));
+  assert.ok(nodes.some(node => node.type === 'Icon' && node.props.name === 'payment' && node.props.size === 18));
+  assert.ok(!nodes.some(node => ['TransactionRow', 'IconBadge', 'AmountText'].includes(String(node.type))));
+  assert.ok(nodes.filter(node => node.type === 'Text').every(node => !node.props.numberOfLines && !node.props.ellipsizeMode));
+  const styles = Object.assign({}, ...tree.props.style({ pressed: false }).filter(Boolean));
+  assert.ok(styles.minHeight >= 44); assert.ok(styles.paddingVertical > 0);
+  assert.equal(styles.paddingTop, undefined); assert.equal(styles.paddingBottom, undefined);
+  tree.props.onPress(); assert.equal(opened[0], payment);
+  assert.equal(render({ ...base, busy: true, accepted: { settlements: [payment] } }).props.disabled, true);
+});
+
+test('compact payments retain exact confirmation and reversal truth in text and their accessible label', () => {
+  const render = production('PaymentRow');
+  for (const [method, reversed, status] of [
+    ['manual_record', false, 'Receipt unconfirmed'],
+    ['recipient_confirmed', false, 'Recipient confirmed'],
+    ['manual_then_confirmed', false, 'Recipient confirmed'],
+    ['recipient_confirmed', true, 'Record reversed · No bank refund'],
+  ] as const) {
+    const payment = { id: 'record', sender: 'other', recipient: 'self', amount: '334', method, reversed, date: '2026-10-18' };
+    const tree = render({ group, selfId: 'self', busy: false, payment, accepted: { settlements: [], transactions: [{ kind: 'payment', payment }] } });
+    assert.ok(text(tree).includes(`Noor paid you ${formatMoney('334')}`));
+    assert.ok(text(tree).includes(status)); assert.ok(tree.props.accessibilityLabel.includes(status));
+    assert.ok(tree.props.accessibilityLabel.includes('18 Oct 2026'));
+    assert.ok(!/bank verified|bank confirmed|refunded/i.test(text(tree)));
+  }
+});
+
+test('long names and exact large payment amounts remain in the same unconstrained text flow', () => {
+  const render = production('PaymentRow');
+  const name = 'Alexandra Examplewithaverylongfamilyname', amount = '1234567890123456789012345678901234567890';
+  const payment = { id: 'long-record', sender: 'other', recipient: 'self', amount, date: null };
+  const tree = render({ group: { ...group, participants: [{ id: 'other', name }] }, selfId: 'self', busy: false, payment, accepted: { settlements: [payment] } });
+  const sentence = elements(tree).find(node => node.type === 'Text')!;
+  assert.ok(text(sentence).includes(`${name} paid you ${formatMoney(amount)}`));
+  assert.ok(tree.props.accessibilityLabel.includes(formatMoney(amount)));
+  const styles = Object.assign({}, ...sentence.props.style.filter(Boolean));
+  assert.equal(styles.flex, 1); assert.equal(styles.minWidth, 0); assert.equal(styles.fontWeight, '400');
+  assert.equal(sentence.props.allowFontScaling, undefined);
 });
