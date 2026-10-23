@@ -123,14 +123,18 @@ def test_creation_rollback_and_edit_never_add_another_recipient_notice(client, g
     assert ExpenseNotice.objects.count() == 1 and ExpenseNotice.objects.get().expense_version == 1
 
 
-@pytest.mark.parametrize("change", ["deleted_restored", "archived_unarchived", "involvement_removed"])
-def test_cancelled_creation_is_not_replayed_by_restore_or_archive_roundtrip(client, group, recipient, clock, providers, configured, change):
+@pytest.mark.parametrize("change", ["reversed", "archived_unarchived", "involvement_removed"])
+def test_cancelled_creation_is_not_replayed_by_reversal_or_archive_roundtrip(client, group, recipient, clock, providers, configured, change):
     enable(recipient)
     register(recipient)
     body = add_bill(client, group)
-    if change == "deleted_restored":
-        assert send(client, "delete", f"/groups/{group[0]}/expenses/{body['id']}", {"command_id": uid(), "version": 1}).status_code == 200
-        assert send(client, "post", f"/groups/{group[0]}/expenses/{body['id']}/restore", {"command_id": uid(), "version": 2}).status_code == 200
+    if change == "reversed":
+        assert len(feed(recipient)["notices"]) == 1
+        reversal = {"command_id": uid(), "version": 1}
+        for _ in range(2):
+            assert send(client, "post", f"/groups/{group[0]}/expenses/{body['id']}/reverse", reversal).status_code == 200
+        notice = ExpenseNotice.objects.get(expense_id=body["id"])
+        assert notice.cancelled_at is not None and not notice.email_eligible
     elif change == "archived_unarchived":
         for value in (True, False):
             assert send(client, "post", f"/groups/{group[0]}/archive", {"command_id": uid(), "archived": value}).status_code == 200

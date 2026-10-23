@@ -338,8 +338,8 @@ def test_csv_export_reconciles_and_escapes_user_formula_fields(client, group):
     assert (
         send(
             client,
-            "delete",
-            f"/groups/{group_id}/expenses/{deleted['id']}",
+            "post",
+            f"/groups/{group_id}/expenses/{deleted['id']}/reverse",
             {"command_id": uid(), "version": 1},
         ).status_code
         == 200

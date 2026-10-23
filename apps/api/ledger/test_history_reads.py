@@ -162,7 +162,7 @@ def test_version_change_restarts_pages_and_detail_instead_of_mixing_revisions(cl
     first = get_page(client, group_id, "bills").json()
     edited = expense(ids)
     edited.update(id=str(bills[0].id), version=1, date="2030-01-01")
-    assert send(client, "put", f"/groups/{group_id}/expenses/{bills[0].id}", edited).status_code == 409  # Deleted bills require restore.
+    assert send(client, "put", f"/groups/{group_id}/expenses/{bills[0].id}", edited).status_code == 409  # Reversed bills cannot be edited.
     edited.update(id=str(bills[1].id))
     assert send(client, "put", f"/groups/{group_id}/expenses/{bills[1].id}", edited).status_code == 200
     assert get_page(client, group_id, "bills", cursor=first["next_cursor"]).status_code == 409
