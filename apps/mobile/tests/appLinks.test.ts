@@ -115,6 +115,6 @@ test('Expo associations stay on exact canonical HTTPS routes, preserving custom 
   const { expo } = JSON.parse(readFileSync(new URL('../app.json', import.meta.url), 'utf8'));
   assert.deepEqual(expo.ios.associatedDomains, ['applinks:merosplit.omshejul.com']);
   assert.deepEqual(expo.android.intentFilters, [{ action: 'VIEW', autoVerify: true, category: ['BROWSABLE', 'DEFAULT'], data: ['/app/sign-in/', '/app/groups/', '/app/invite/', '/invite/'].map(pathPrefix => ({ scheme: 'https', host: 'merosplit.omshejul.com', pathPrefix })) }]);
-  assert.equal(expo.scheme, 'splitdumb'); assert.equal(expo.version, '0.3.7'); assert.equal(expo.ios.buildNumber, '15'); assert.equal(expo.android.versionCode, 15);
+  assert.equal(expo.scheme, 'splitdumb'); assert.equal(expo.version, '0.3.8'); assert.equal(expo.ios.buildNumber, '16'); assert.equal(expo.android.versionCode, 16);
   assert.deepEqual(expo.ios.infoPlist.LSApplicationQueriesSchemes, ['upi', 'gpay', 'phonepe', 'paytmmp', 'credpay', 'bhim', 'amazonpay']);
 });
