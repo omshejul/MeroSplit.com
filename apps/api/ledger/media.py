@@ -4,16 +4,17 @@ import base64
 import hashlib
 import io
 import logging
-import math
+import subprocess
+import sys
+import tempfile
 import threading
 import warnings
-from contextlib import closing, contextmanager
+from contextlib import contextmanager
 from datetime import timedelta
-from pathlib import PurePath
+from pathlib import Path, PurePath
 from urllib.parse import quote
 
 import boto3
-import pypdfium2
 from botocore.config import Config
 from botocore.exceptions import BotoCoreError, ClientError
 from django.conf import settings
@@ -34,7 +35,11 @@ from .services import visible_group, writable
 MIB = 1024 * 1024
 URL_SECONDS = 300
 logger = logging.getLogger(__name__)
-_pdf_render_lock = threading.Lock()  # PDFium must not run concurrently across threads.
+_thumbnail_slots = threading.BoundedSemaphore(1)  # At most one child per API worker.
+_THUMBNAIL_WAIT = 0.25
+_THUMBNAIL_DEADLINE = 5
+_THUMBNAIL_MAX_OUTPUT = 64 * 1024
+_THUMBNAIL_RENDERER = Path(__file__).with_name("pdf_thumbnail_renderer.py")
 
 
 class _Output(io.BytesIO):
@@ -395,29 +400,44 @@ def _visible_file(actor, file_id) -> UploadedFile:
     return file
 
 
+def _render_pdf_thumbnail(data: bytes) -> bytes:
+    # Anonymous output is unlinked immediately; the child caps its file size.
+    with tempfile.TemporaryFile() as output:
+        # run() kills and reaps on timeout instead of abandoning native work.
+        subprocess.run(
+            [sys.executable, "-I", "-B", str(_THUMBNAIL_RENDERER)],
+            stdout=output, stderr=subprocess.DEVNULL, env={}, close_fds=True, start_new_session=True,
+            input=data, timeout=_THUMBNAIL_DEADLINE, check=True,
+        )
+        output.seek(0)
+        result = output.read(_THUMBNAIL_MAX_OUTPUT + 1)
+    if not result or len(result) > _THUMBNAIL_MAX_OUTPUT or not result.endswith(b"\xff\xd9"):
+        raise ValueError("Invalid preview output")
+    with Image.open(io.BytesIO(result)) as image:
+        if image.format != "JPEG" or not all(0 < value <= 224 for value in image.size):
+            raise ValueError("Invalid preview image")
+        image.verify()
+    return result
+
+
 def pdf_thumbnail(actor, file_id) -> dict:
     file = _visible_file(actor, file_id)
     if file.content_type != "application/pdf":
         raise HttpError(404, "PDF not found")
+    unavailable = "Preview unavailable; tap the file to open it or retry the preview"
+    if not _thumbnail_slots.acquire(timeout=_THUMBNAIL_WAIT):
+        raise HttpError(503, unavailable)
     try:
         with _storage().get_object(Bucket=settings.R2_BUCKET, Key=file.object_key)["Body"] as body:
             data = body.read(20 * MIB + 1)
         if len(data) > 20 * MIB:
             raise ValueError("PDF exceeds the attachment limit")
-        with _pdf_render_lock, pypdfium2.PdfDocument(data) as document:
-            if not len(document):
-                raise ValueError("PDF has no pages")
-            page = document[0]
-            width, height = page.get_size()
-            if not all(math.isfinite(value) and value > 0 for value in (width, height)):
-                raise ValueError("Invalid page size")
-            with closing(page.render(scale=min(1, 224 / max(width, height)), draw_annots=False, limit_image_cache=True)) as bitmap:
-                with bitmap.to_pil() as image, image.convert("RGB") as rgb, io.BytesIO() as output:
-                    rgb.save(output, "JPEG", quality=80)
-                    image_data = base64.b64encode(output.getvalue()).decode("ascii")
+        image_data = base64.b64encode(_render_pdf_thumbnail(data)).decode("ascii")
         return {"data_url": f"data:image/jpeg;base64,{image_data}"}
-    except (BotoCoreError, ClientError, pypdfium2.PdfiumError, ValueError, OSError) as exc:
-        raise HttpError(503, "Preview unavailable; tap the file to open it or retry the preview") from exc
+    except (BotoCoreError, ClientError, subprocess.SubprocessError, ValueError, OSError) as exc:
+        raise HttpError(503, unavailable) from exc
+    finally:
+        _thumbnail_slots.release()
 
 
 def download_url(actor, file_id) -> dict:

@@ -320,7 +320,10 @@ def media_url(request, file_id: UUID):
 
 @api.get("/media/{file_id}/thumbnail")
 def media_thumbnail(request, file_id: UUID):
-    response = JsonResponse(pdf_thumbnail(request.auth, file_id))
+    try:
+        response = JsonResponse(pdf_thumbnail(request.auth, file_id))
+    except HttpError as exc:
+        response = http_error(request, exc)
     response["Cache-Control"] = "private, no-store"
     return response
 
