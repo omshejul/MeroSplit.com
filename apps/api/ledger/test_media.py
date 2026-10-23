@@ -412,7 +412,7 @@ def test_storage_missing_fails_safely_without_accepted_photo(client, settings):
     assert UploadedFile.objects.filter(state="active").count() == 0
 
 
-def test_account_deletion_removes_own_files_but_keeps_shared_bill_evidence(client, bill, group, storage, django_capture_on_commit_callbacks):
+def test_account_deletion_removes_own_files_including_shared_receipts(client, bill, group, storage, django_capture_on_commit_callbacks):
     group_id, _, path = bill
     other = account()
     link(client, other, group_id, group[1][1])
@@ -422,12 +422,45 @@ def test_account_deletion_removes_own_files_but_keeps_shared_bill_evidence(clien
         assert send(client, "delete", "/account").status_code == 200
     assert UploadedFile.objects.get(id=avatar_id).state == "deleted"
     assert UploadedFile.objects.get(id=avatar_id).purged
-    assert UploadedFile.objects.get(id=bill_file_id).state == "active"
-    assert send(other, "get", f"/media/{bill_file_id}/url").status_code == 200
+    assert UploadedFile.objects.get(id=bill_file_id).state == "deleted"
+    assert UploadedFile.objects.get(id=bill_file_id).purged
+    assert UploadedFile.objects.get(id=avatar_id).object_key == f"deleted/{avatar_id}"
+    assert UploadedFile.objects.get(id=bill_file_id).object_key == f"deleted/{bill_file_id}"
+    assert send(other, "get", f"/media/{bill_file_id}/url").status_code == 404
     with django_capture_on_commit_callbacks(execute=True):
         assert send(other, "delete", "/account").status_code == 200
     file = UploadedFile.objects.get(id=bill_file_id)
     assert file.state == "deleted" and file.purged and file.expense_id is None
+    assert not storage.objects
+
+
+def test_account_deletion_blocks_shared_file_while_failed_physical_cleanup_retries(client, bill, group, storage, django_capture_on_commit_callbacks):
+    other = account()
+    link(client, other, bill[0], group[1][1])
+    file_id = post_file(client, bill[2], name="Private receipt.png").json()["attachment"]["id"]
+    storage.fail_delete = EndpointConnectionError(endpoint_url="https://storage.invalid")
+    with django_capture_on_commit_callbacks(execute=True):
+        assert send(client, "delete", "/account").status_code == 200
+    file = UploadedFile.objects.get(pk=file_id)
+    assert file.state == "deleted" and not file.purged
+    assert file.name == file.source_hash == "" and file.uploaded_by_id is None
+    assert send(other, "get", f"/media/{file_id}/url").status_code == 404
+    storage.fail_delete = None
+    assert media.purge_stale_files() == {"cleaned": 1, "pending": 0}
+    file.refresh_from_db()
+    assert file.purged and file.object_key == f"deleted/{file_id}" and file.expense_id is None
+    assert not storage.objects
+
+
+def test_account_deletion_clears_key_of_previously_removed_avatar(client, storage, django_capture_on_commit_callbacks):
+    file_id = post_file(client).json()["avatar"]["id"]
+    assert send(client, "delete", "/me/avatar").status_code == 200
+    file = UploadedFile.objects.get(pk=file_id)
+    assert file.purged and file.object_key.startswith("avatars/")
+    with django_capture_on_commit_callbacks(execute=True):
+        assert send(client, "delete", "/account").status_code == 200
+    file.refresh_from_db()
+    assert file.purged and file.object_key == f"deleted/{file_id}"
     assert not storage.objects
 
 
@@ -455,6 +488,7 @@ def test_inflight_avatar_cannot_survive_account_deletion(client, storage):
     assert UploadedFile.objects.filter(state="active").count() == 0
     assert not storage.objects
     assert all(file.purged for file in UploadedFile.objects.all())
+    assert all(file.object_key == f"deleted/{file.id}" for file in UploadedFile.objects.all())
 
 
 def test_manual_cleanup_purges_old_pending_and_deleted_but_preserves_active_and_recent(client, storage):

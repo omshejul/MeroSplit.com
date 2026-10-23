@@ -99,7 +99,7 @@ export default function BillAttachments({ session, groupId, expenseId, revision,
         </Pressable>
         {editable && <Button title="Remove" accessibilityLabel={`Remove ${item.name}`} kind="text" disabled={disabled || !!pending} onPress={() => remove(item)} />}
       </View>)}
-      {pending && <><Text style={ui.notice}>{pending.file.name} is saved on this phone. Retry to confirm the same upload without adding another copy. You can leave this screen and finish later.</Text><Button title="Retry upload" disabled={disabled || readOnly} onPress={() => void run(finishUpload)} /></>}
+      {pending && <><Text style={[ui.notice, ui.warning]}>{pending.file.name} is saved on this phone. Retry to confirm the same upload without adding another copy. You can leave this screen and finish later.</Text><Button title="Retry upload" disabled={disabled || readOnly} onPress={() => void run(finishUpload)} /></>}
       {editable && !pending && items.length < 10 && <><Button title="Add photo" disabled={disabled} onPress={() => void run(() => add(true))} /><Button title="Add PDF or image from Files" disabled={disabled} onPress={() => void run(() => add(false))} /></>}
       {!loading && !editable && <Text style={ui.caption}>{readOnly ? 'Attachments are read-only while this group is archived or changes are waiting to sync.' : 'You can view attachments here.'}</Text>}
       {items.length >= 10 && <Text style={ui.caption}>This bill has the maximum of 10 attachments.</Text>}

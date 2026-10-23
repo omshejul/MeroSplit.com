@@ -1,0 +1,47 @@
+import time
+
+from django.conf import settings
+from django.core.management.base import BaseCommand, CommandError
+from django.db import close_old_connections
+from django.utils import timezone
+
+from ledger.models import ExpensePushDelivery
+from ledger.push import check_pending_bill_receipts, send_pending_bill_notifications
+
+
+class Command(BaseCommand):
+    help = "Deliver committed new-bill notifications; run once or poll as a supervised worker."
+
+    def add_arguments(self, parser):
+        parser.add_argument("--loop", action="store_true")
+        parser.add_argument("--interval", type=float, default=5)
+        parser.add_argument("--limit", type=int, default=100)
+        parser.add_argument(
+            "--retry-failed", action="store_true", help="Retry failed rows with their original event IDs"
+        )
+
+    def handle(self, *args, **options):
+        if settings.PUSH_PROVIDER != "expo":
+            raise CommandError("PUSH_PROVIDER=expo must be configured before starting the worker")
+        if not 1 <= options["limit"] <= 1000 or not 1 <= options["interval"] <= 3600:
+            raise CommandError("Use limit 1–1000 and interval 1–3600 seconds")
+        if options["retry_failed"]:
+            # A known ticket retries receipt lookup only; never resend an uncertain accepted push.
+            ExpensePushDelivery.objects.filter(state="failed").exclude(provider_id="").update(
+                state="queued", due_at=timezone.now(), lease_until=None, last_error=""
+            )
+            ExpensePushDelivery.objects.filter(state="failed", provider_id="").update(
+                state="pending", attempts=0, due_at=timezone.now(), lease_until=None, last_error=""
+            )
+        try:
+            while True:
+                close_old_connections()
+                count = send_pending_bill_notifications(limit=options["limit"])
+                receipts = check_pending_bill_receipts(limit=options["limit"])
+                if count or receipts or not options["loop"]:
+                    self.stdout.write(f"Processed {count} bill notifications and {receipts} receipts")
+                if not options["loop"]:
+                    return
+                time.sleep(options["interval"])
+        except KeyboardInterrupt:
+            return

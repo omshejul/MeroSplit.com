@@ -72,7 +72,7 @@ function MemberSettings({ group, selfId, local, busy, onAction, onLocalAdd, onEx
     && (opening.balances[selfId] ?? '0') !== '0' && !Object.hasOwn(opening.acknowledgments, selfId);
   const name = (id: string) => group.participants.find(person => person.id === id)?.name ?? 'Former member';
   const note = (section: string) => feedback?.section === section
-    ? <Text style={feedback.error ? ui.error : ui.notice} accessibilityLiveRegion="polite" accessibilityRole={feedback.error ? 'alert' : undefined}>{feedback.text}</Text>
+    ? <Text style={feedback.error ? ui.error : [ui.notice, ui.success]} accessibilityLiveRegion="polite" accessibilityRole={feedback.error ? 'alert' : undefined}>{feedback.text}</Text>
     : null;
 
   async function perform(section: string, work: () => Promise<void>, success?: string) {
@@ -177,7 +177,7 @@ function MemberSettings({ group, selfId, local, busy, onAction, onLocalAdd, onEx
 
     {!local && <Disclosure title="Previous balances" initialOpen={needsOpeningAgreement}>
       {opening ? <>
-        <Text style={ui.notice}>{opening.accepted ? 'Agreed and included in balances.' : 'Waiting for agreement. Not included in balances yet.'}</Text>
+        <Text style={[ui.notice, opening.accepted ? ui.success : ui.warning]}>{opening.accepted ? 'Agreed and included in balances.' : 'Waiting for agreement. Not included in balances yet.'}</Text>
         <Text style={ui.body}>From {opening.source}</Text><Text style={ui.caption}>As of {opening.cutoff}</Text>
         {group.participants.map(person => <View key={person.id} style={ui.row}>
           <View style={ui.rowBody}><Text style={ui.rowTitle}>{person.name}{person.id === selfId ? ' (you)' : ''}</Text>

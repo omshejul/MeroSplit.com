@@ -390,7 +390,7 @@ def test_csv_export_reconciles_and_escapes_user_formula_fields(client, group):
     assert next(e for e in exported["group"]["expenses"] if e["id"] == bill["id"])["description"] == "\t=2+2"
 
 
-def test_account_deactivation_revokes_tokens_and_preserves_other_members_history(client, group):
+def test_account_deletion_revokes_tokens_and_preserves_other_members_history(client, group):
     group_id, ids, _ = group
     member = account()
     link(client, member, group_id, ids[1])
@@ -416,10 +416,7 @@ def test_account_deactivation_revokes_tokens_and_preserves_other_members_history
     assert erased["user_id"] is None
     assert erased["payment_profile"] is None
     assert client.actor.email not in json.dumps(retained)
-    user = get_user_model().objects.get(pk=client.actor.pk)
-    assert user.is_active is False
-    assert user.has_usable_password() is False
-    assert user.email == ""
+    assert not get_user_model().objects.filter(pk=client.actor.pk).exists()
 
 
 def test_last_linked_account_deletion_removes_group_with_payment_history(client, group):

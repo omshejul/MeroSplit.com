@@ -255,9 +255,13 @@ def save_expense(actor, group_id, payload, expense_id=None):
         if group.expenses.count() >= 10_000:
             raise HttpError(409, "Group reached its tested expense limit")
         expense = Expense.objects.create(id=payload["id"], group=group, **fields)
-    return record_change(
+    result = record_change(
         group, actor, payload["command_id"], fingerprint, "expense_saved", expense_dict(expense)
     )
+    if expense_id is None:
+        from .push import queue_new_bill
+        queue_new_bill(expense, actor)
+    return result
 
 
 @transaction.atomic

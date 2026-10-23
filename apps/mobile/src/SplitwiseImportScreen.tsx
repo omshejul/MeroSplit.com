@@ -88,7 +88,7 @@ export default function SplitwiseImportScreen({ session, busy, onBusyChange, onI
   return <View style={styles.form}>
     {checking ? <Text style={ui.caption}>Checking for a saved import…</Text> : pending ? <>
       <Text style={ui.section}>{pending.name}</Text>
-      <Text style={ui.notice}>This import was saved before sending. Retry to finish or recover it. The same file and choices will be used, so it won't create another copy.</Text>
+      <Text style={[ui.notice, ui.warning]}>This import was saved before sending. Retry to finish or recover it. The same file and choices will be used, so it won't create another copy.</Text>
       <Button title={working ? 'Finishing import…' : 'Retry saved import'} kind="primary" disabled={disabled} onPress={() => void run(finishImport)} />
       <Button title="Close for now" kind="text" disabled={disabled} onPress={onCancel} />
     </> : <>
@@ -116,7 +116,7 @@ export default function SplitwiseImportScreen({ session, busy, onBusyChange, onI
               onPress={() => setPayers(values => ({ ...values, [String(row.row)]: index }))} disabled={disabled} mode="android" labelStyle={ui.body} accessibilityLabel={`${member} paid CSV row ${row.row}`} />)}
           </View>)}
           <Text style={ui.caption}>The export shows net amounts, so original payer and split details may be incomplete. Check the balances before importing. Recorded payments do not send money.</Text>
-          {preview.warnings.map((warning, index) => <Text key={index} style={ui.notice}>{warning}</Text>)}
+          {preview.warnings.map((warning, index) => <Text key={index} style={[ui.notice, ui.warning]}>{warning}</Text>)}
           <Button title={working ? 'Importing…' : 'Confirm import'} kind="primary" disabled={disabled || !name.trim() || selfIndex === null || preview.unresolved.some(row => payers[String(row.row)] === undefined)} onPress={() => void run(finishImport)} />
         </>}
       </>}

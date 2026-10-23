@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { formatMoney } from './accounting';
 import { Text } from 'react-native-paper';
 import type { Command, Expense, Group, Settlement } from './types';
-import { Avatar, Button, Disclosure, Icon, radii, useUI } from './ui';
+import { Avatar, balanceColor, Button, Disclosure, Icon, radii, useUI } from './ui';
 import type { Palette } from './ui';
 
 type Transfer = { sender: string; recipient: string; amount: string };
@@ -37,18 +37,18 @@ export default function GroupScreen({ group, accepted, pending, busy, local, sel
   return <View style={s.content}>
     <View style={s.summary}>
       <Text style={ui.caption}>{balance > 0n ? 'You are owed' : balance < 0n ? 'You owe' : 'Your balance'}</Text>
-      <Text style={ui.numeric}>{balance === 0n ? 'All settled' : formatMoney((balance < 0n ? -balance : balance).toString())}</Text>
+      <Text style={[ui.numeric, { color: balanceColor(balance, colors) }]}>{balance === 0n ? 'All settled' : formatMoney((balance < 0n ? -balance : balance).toString())}</Text>
       <Text style={ui.caption}>{pending.length ? 'Includes your changes saved on this phone' : local ? 'Saved on this phone' : 'In this group'}</Text>
     </View>
     {group.archived && <Text style={ui.notice}>This group is archived. Reopen it in settings to add bills or record payments.{receipts.length > 0 ? ' You can still confirm money received.' : ''}</Text>}
     <Button title="Add a bill" icon="add" kind="primary" disabled={busy || group.archived} onPress={onAdd} />
     {pending.length > 0 && <View style={s.section}>
-      <Text style={ui.notice}>{needsAttention ? 'Some saved changes need your attention.' : 'Saved on this phone. Waiting to sync.'} Other people see the shared records until these changes are sent.</Text>
+      <Text style={[ui.notice, ui.warning]}>{needsAttention ? 'Some saved changes need your attention.' : 'Saved on this phone. Waiting to sync.'} Other people see the shared records until these changes are sent.</Text>
       <Disclosure title={`${pending.length} saved ${pending.length === 1 ? 'change' : 'changes'}`} initialOpen={needsAttention}>
         {needsAttention && <Button title="Retry sync" disabled={busy} onPress={onSync} />}
         {pending.map(command => <View key={command.command_id} style={s.section}>
           <Text style={ui.rowTitle}>{String(command.body.description ?? 'Group change')}</Text>
-          <Text style={ui.caption}>{command.state === 'pending' ? 'Waiting to sync' : command.error ?? 'Needs review'}</Text>
+          <Text style={[ui.caption, { color: colors.warning }]}>{command.state === 'pending' ? 'Waiting to sync' : command.error ?? 'Needs review'}</Text>
           {command.state !== 'pending' && ['POST', 'PUT'].includes(command.method) && command.path.includes('/expenses') && <Button title="Review my saved change" disabled={busy} onPress={() => onReview(command)} />}
           <Button kind="text" title={command.path === '/groups' ? 'Discard unsent group' : 'Discard this saved change'} disabled={busy} onPress={() => onDiscard(command)} />
         </View>)}
@@ -56,7 +56,7 @@ export default function GroupScreen({ group, accepted, pending, busy, local, sel
     </View>}
     {receipts.map(attempt => <View key={attempt.id} style={s.receipt}>
       <Text style={ui.section}>Did you get {formatMoney(attempt.recorded_amount ?? attempt.amount)} from {name(attempt.sender)}?</Text>
-      <Text style={ui.caption}>{group.name}. {attempt.state === 'cancelled' ? 'The earlier report was cancelled. ' : ''}Check your bank or UPI app before confirming.</Text>
+      <Text style={[ui.caption, { color: colors.warning }]}>{group.name}. {attempt.state === 'cancelled' ? 'The earlier report was cancelled. ' : ''}Check your bank or UPI app before confirming.</Text>
       <Button title={`Yes, I got ${formatMoney(attempt.recorded_amount ?? attempt.amount)}`} icon="check" disabled={busy || pending.length > 0} onPress={() => onConfirmReceipt(attempt)} />
     </View>)}
     <View style={s.tabs} accessibilityRole="tablist">
@@ -85,7 +85,7 @@ export default function GroupScreen({ group, accepted, pending, busy, local, sel
         {group.settlements.map(payment => <View key={payment.id} style={s.payment}>
           <Text style={ui.rowTitle}>{name(payment.sender)} paid {name(payment.recipient)}</Text>
           <Text style={s.amount}>{formatMoney(payment.amount)}</Text>
-          <Text style={ui.caption}>{payment.reversed ? 'Record reversed' : payment.method === 'recipient_confirmed' || payment.method === 'manual_then_confirmed' ? 'Receipt confirmed by the recipient' : 'Recorded outside the app. Receipt not confirmed.'}</Text>
+          <Text style={[ui.caption, { color: payment.reversed ? colors.warning : payment.method === 'recipient_confirmed' || payment.method === 'manual_then_confirmed' ? colors.positive : colors.warning }]}>{payment.reversed ? 'Record reversed' : payment.method === 'recipient_confirmed' || payment.method === 'manual_then_confirmed' ? 'Receipt confirmed by the recipient' : 'Recorded outside the app. Receipt not confirmed.'}</Text>
           {!payment.reversed && <Button title="Reverse record" accessibilityLabel={`Reverse ${formatMoney(payment.amount)} payment from ${name(payment.sender)} to ${name(payment.recipient)}`} kind="text" disabled={busy || group.archived || pending.length > 0} onPress={() => onReverse(payment)} />}
         </View>)}
       </Disclosure>}
@@ -96,7 +96,7 @@ export default function GroupScreen({ group, accepted, pending, busy, local, sel
         <Avatar name={name(person.id)} />
         <View style={ui.rowBody}>
           <Text style={ui.rowTitle}>{name(person.id)}</Text>
-          <Text style={ui.rowSub}>{position(name(person.id), group.balances[person.id] ?? '0')}</Text>
+          <Text style={[ui.rowSub, { color: balanceColor(group.balances[person.id] ?? '0', colors) }]}>{position(name(person.id), group.balances[person.id] ?? '0')}</Text>
           {pending.length > 0 && <Text style={ui.rowSub}>Shared record: {position(name(person.id), accepted.balances[person.id] ?? '0')}</Text>}
         </View>
       </View>)}
@@ -104,10 +104,10 @@ export default function GroupScreen({ group, accepted, pending, busy, local, sel
         <Text style={ui.section}>Pay back</Text>
         <Text style={ui.caption}>A simpler plan for this group. Your bills stay the same.</Text>
         {group.transfers.map((transfer, index) => <View key={index} style={s.transfer}>
-          <Text style={ui.rowTitle}>{name(transfer.sender)} {transfer.sender === selfId ? 'owe' : 'owes'} {name(transfer.recipient)} {formatMoney(transfer.amount)}</Text>
+          <Text style={[ui.rowTitle, { color: transfer.sender === selfId ? colors.negative : transfer.recipient === selfId ? colors.positive : colors.text }]}>{name(transfer.sender)} {transfer.sender === selfId ? 'owe' : 'owes'} {name(transfer.recipient)} {formatMoney(transfer.amount)}</Text>
           <Button title={`Record ${formatMoney(transfer.amount)}`} accessibilityLabel={`Record ${formatMoney(transfer.amount)} from ${name(transfer.sender)} to ${name(transfer.recipient)}`} icon="pay" disabled={busy || group.archived} onPress={() => onSettle(transfer)} />
         </View>)}
-        {!group.transfers.length && <Text style={ui.body}>Everyone is settled up.</Text>}
+        {!group.transfers.length && <Text style={[ui.body, ui.success]}>Everyone is settled up.</Text>}
         <Text style={ui.caption}>Already paid outside the app? Record it here. No money is sent by this app.</Text>
         <Disclosure title="How fewer payments work">
           <Text style={ui.body}>Each person keeps the same total to pay or receive. The plan combines repayments within {group.name}, so you may pay someone other than the person who paid a bill.</Text>

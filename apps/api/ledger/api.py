@@ -35,6 +35,7 @@ from .schemas import (
     OpeningIn,
     ParticipantIn,
     ProfileIn,
+    PushDeviceIn,
     Revision,
     SettlementIn,
     SplitwiseImportIn,
@@ -106,6 +107,7 @@ def duplicate_error(request, exc):
     constraint = getattr(getattr(exc.__cause__, "diag", None), "constraint_name", "") or ""
     if constraint not in {
         "actor_command_once",
+        "one_push_token",
         "one_user_per_group",
         "one_active_payment_attempt",
         "one_splitwise_source_per_owner",
@@ -325,3 +327,15 @@ def account_delete(request):
 @api.post("/groups/{group_id}/participants", response=WriteResult)
 def participant_add(request, group_id: UUID, body: ParticipantIn):
     return add_participant(request.auth, group_id, body.model_dump(mode="json"))
+
+
+@api.put("/me/push-devices/{installation_id}")
+def push_device_register(request, installation_id: UUID, body: PushDeviceIn):
+    from .push import register_device
+    return register_device(request, installation_id, body.model_dump())
+
+
+@api.delete("/me/push-devices/{installation_id}")
+def push_device_remove(request, installation_id: UUID):
+    from .push import remove_device
+    return remove_device(request.auth, installation_id)

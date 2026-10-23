@@ -194,8 +194,19 @@ def purge_files(ids) -> bool:
     pending = False
     for file in UploadedFile.objects.filter(id__in=ids, purged=False).exclude(state="active"):
         try:
-            _storage().delete_object(Bucket=settings.R2_BUCKET, Key=file.object_key)
-            UploadedFile.objects.filter(id=file.id).exclude(state="active").update(purged=True)
+            parts = file.object_key.split("/")
+            scope = f"avatar:{parts[1]}" if parts[0] == "avatars" else f"bill:{parts[2]}"
+            with _media_lock(scope):
+                current = UploadedFile.objects.filter(id=file.id, purged=False).exclude(state="active").first()
+                if not current:
+                    continue
+                _storage().delete_object(Bucket=settings.R2_BUCKET, Key=current.object_key)
+                fields = {"purged": True}
+                if current.state == "deleted" and current.uploaded_by_id is None and current.avatar_owner_id is None:
+                    # No in-flight PUT can now recreate this key. Remove the old
+                    # avatar user ID/path association after confirmed cleanup.
+                    fields.update(object_key=f"deleted/{current.id}", expense=None)
+                UploadedFile.objects.filter(id=current.id).exclude(state="active").update(**fields)
         except (BotoCoreError, ClientError, HttpError):
             pending = True
             logger.warning("Private media cleanup pending", extra={"file_id": str(file.id)})

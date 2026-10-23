@@ -3,14 +3,14 @@
     "name": "MeroSplit",
     "slug": "splitdumb",
     "scheme": "splitdumb",
-    "version": "0.3.2",
+    "version": "0.3.3",
     "orientation": "portrait",
     "icon": "./assets/android-icon-monochrome.png",
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.omshejul.splitdumb",
-      "buildNumber": "5",
+      "buildNumber": "6",
       "infoPlist": {
         "NSAppTransportSecurity": {
           "NSAllowsLocalNetworking": true
@@ -19,13 +19,14 @@
     },
     "android": {
       "package": "com.omshejul.splitdumb",
-      "versionCode": 5,
+      "versionCode": 6,
       "adaptiveIcon": {
         "backgroundColor": "#FFFFFF",
         "foregroundImage": "./assets/android-icon-monochrome.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "googleServicesFile": "./google-services.json"
     },
     "web": {
       "favicon": "./assets/android-icon-monochrome.png"
@@ -36,9 +37,29 @@
       "expo-sharing",
       "@react-native-community/datetimepicker",
       "expo-font",
-      ["expo-image-picker", {"photosPermission": "Choose a profile photo or a bill image for MeroSplit.", "cameraPermission": false, "microphonePermission": false}],
+      [
+        "expo-notifications",
+        {
+          "defaultChannel": "shared-bills",
+          "enableRemoteNotifications": true,
+          "enableBackgroundRemoteNotifications": false
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Choose a profile photo or a bill image for MeroSplit.",
+          "cameraPermission": false,
+          "microphonePermission": false
+        }
+      ],
       "./plugins/with-monochrome.cjs"
     ],
-    "primaryColor": "#161616"
+    "primaryColor": "#161616",
+    "extra": {
+      "eas": {
+        "projectId": "7b058184-31a7-41e9-96e1-5a752b7bf14f"
+      }
+    }
   }
 }

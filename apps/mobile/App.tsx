@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, AppState, BackHandler, KeyboardAvoidingView, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, AppState, BackHandler, KeyboardAvoidingView, Linking, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import * as Crypto from 'expo-crypto';
@@ -16,15 +16,17 @@ import MembersScreen from './src/MembersScreen';
 import SavedChangeScreen from './src/SavedChangeScreen';
 import SplitwiseImportScreen from './src/SplitwiseImportScreen';
 import ProfilePhoto from './src/ProfilePhoto';
+import PushSettings, { usePushNotifications } from './src/PushSettings';
+import type { PushTarget } from './src/notifications';
 import BillAttachments from './src/BillAttachments';
 import { clearMediaPreviews } from './src/media';
 import type { CachedGroup, Command, Expense, Group, Session, Settlement } from './src/types';
-import { Avatar, Button, Disclosure, Icon, UIProvider, radii, useUI, type Palette, type AppearancePreference } from './src/ui';
+import { Avatar, balanceColor, Button, Disclosure, Icon, UIProvider, radii, useUI, type Palette, type AppearancePreference } from './src/ui';
 import { SegmentedButtons, Switch, Text } from 'react-native-paper';
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL ?? (Platform.OS === 'android' ? 'http://10.0.2.2:8000' : 'http://localhost:8000');
 const uuid = () => Crypto.randomUUID();
-type Screen = 'home' | 'create' | 'group' | 'expense' | 'expenseDetail' | 'settle' | 'members' | 'login' | 'review' | 'activity' | 'profile' | 'sync' | 'data' | 'import';
+type Screen = 'home' | 'create' | 'group' | 'expense' | 'expenseDetail' | 'settle' | 'members' | 'login' | 'review' | 'activity' | 'profile' | 'sync' | 'data' | 'import' | 'notifications';
 type Transfer = { sender: string; recipient: string; amount: string };
 function Input({ label, value, onChange, secret = false }: { label: string; value: string; onChange: (value: string) => void; secret?: boolean }) {
   const { ui, inputColors } = useUI();
@@ -38,12 +40,19 @@ function AppContent() {
   const [screen, setScreen] = useState<Screen>('home'), [tab, setTab] = useState('Groups'), [groupId, setGroupId] = useState<string | null>(null);
   const [expenseId, setExpenseId] = useState<string | null>(null), [draft, setDraft] = useState<ExpenseFormDraft | null>(null), [transfer, setTransfer] = useState<Transfer | undefined>();
   const [reviewCommand, setReviewCommand] = useState<Command | null>(null), [reviewInput, setReviewInput] = useState<Expense | undefined>();
-  const [busy, setBusy] = useState(false), [paused, setPaused] = useState(false), [notice, setNotice] = useState('');
+  const [busy, setBusy] = useState(false), [paused, setPaused] = useState(false), [feedback, setFeedback] = useState({ text: '', tone: 'info' as 'info' | 'success' | 'warning' | 'error' });
+  const notice = feedback.text;
+  const setNotice = (text: string, tone: typeof feedback.tone = 'info') => setFeedback({ text, tone });
   const [email, setEmail] = useState(''), [password, setPassword] = useState(''), [signup, setSignup] = useState(false);
   const [groupName, setGroupName] = useState(''), [myName, setMyName] = useState('You'), [people, setPeople] = useState(['', '']);
   const [vpa, setVpa] = useState('');
   const owner = session && !local ? accountOwner(session) : 'local', ownerRef = useRef(owner); ownerRef.current = owner;
-  const lock = useRef(false), draftWrites = useRef(Promise.resolve());
+  const lock = useRef(false), draftWrites = useRef(Promise.resolve()), activeSessionRef = useRef(session); activeSessionRef.current = session;
+  const [pushTarget, setPushTarget] = useState<{ token: string; target: PushTarget | null } | null>(null);
+  const push = usePushNotifications(session, {
+    onOpen: async target => { if (session) setPushTarget({ token: session.token, target }); },
+    onForeground: async () => { if (ready && session && !local && !paused && !lock.current) launch(() => sync()); },
+  });
   const selected = groups.find(row => row.group.id === groupId) ?? null;
   const pending = commands.filter(command => command.group_id === groupId);
   const selfId = selected?.group.participants.find(person => !local && session && String(person.user_id) === session.userId)?.id ?? (local ? selected?.group.participants[0]?.id : undefined) ?? '';
@@ -55,7 +64,7 @@ function AppContent() {
     ownerRef.current = value && !privateMode ? accountOwner(value) : 'local';
     setSession(value); setLocal(privateMode); setGroups([]); setCommands([]); setGroupId(null); setExpenseId(null); setDraft(null); setVpa(''); setScreen('home');
     setReviewCommand(null); setReviewInput(undefined);
-    void load(ownerRef.current).catch(error => setNotice(error.message));
+    void load(ownerRef.current).catch(error => setNotice(error.message, 'error'));
   }
   async function load(scope = owner) {
     const db = await getDatabase(), rows = await listGroups(db, scope), queue = await pendingCommands(db, scope);
@@ -65,7 +74,7 @@ function AppContent() {
     if (lock.current) throw new Error('Please wait for the current action.');
     lock.current = true; setBusy(true); setNotice('');
     try { return await action(); }
-    catch (error) { setNotice(error instanceof Error ? error.message : 'Could not save. Please try again.'); throw error; }
+    catch (error) { setNotice(error instanceof Error ? error.message : 'Could not save. Please try again.', 'error'); throw error; }
     finally { await load().catch(() => {}); lock.current = false; setBusy(false); }
   }
   const launch = (action: () => Promise<unknown>) => { void perform(action).catch(() => {}); };
@@ -83,14 +92,46 @@ function AppContent() {
     if (!session || local || paused) throw new Error('Sign in and turn on sync to retry.');
     await syncAccount(session);
   }
-  useEffect(() => { void Promise.all([savedSession(), savedSyncPaused()]).then(([value, syncPaused]) => { setPaused(syncPaused); if (value) { changeScope(value, false); setEmail(value.email); setMyName(value.email.split('@')[0]); } }).catch(() => setNotice('Could not restore sign-in. Your saved records remain on this phone.')).finally(() => setReady(true)); }, []);
-  useEffect(() => { if (ready) void load().catch(error => setNotice(error.message)); }, [owner, ready]);
+  useEffect(() => { void Promise.all([savedSession(), savedSyncPaused()]).then(([value, syncPaused]) => { setPaused(syncPaused); if (value) { changeScope(value, false); setEmail(value.email); setMyName(value.email.split('@')[0]); } }).catch(() => setNotice('Could not restore sign-in. Your saved records remain on this phone.', 'error')).finally(() => setReady(true)); }, []);
+  useEffect(() => { if (ready) void load().catch(error => setNotice(error.message, 'error')); }, [owner, ready]);
   useEffect(() => {
     if (!ready || !session || local || paused) return;
     if (!lock.current) launch(() => sync());
     const listener = AppState.addEventListener('change', state => { if (state === 'active' && !lock.current) launch(() => sync()); });
     return () => listener.remove();
   }, [owner, ready, paused, session?.token]);
+  useEffect(() => {
+    if (!ready || busy || !pushTarget) return;
+    setPushTarget(null);
+    if (!session || pushTarget.token !== session.token) return;
+    const active = session, scope = accountOwner(active);
+    launch(async () => {
+      await draftWrites.current;
+      let target = pushTarget.target;
+      if (target) {
+        try {
+          const group = await request<Group>(active, `/groups/${target.group.id}`);
+          target = { group, expenseId: group.expenses.some(value => value.id === target?.expenseId && !value.deleted) ? target.expenseId : null };
+        } catch { target = null; }
+      }
+      if (target) await saveGroup(await getDatabase(), scope, target.group, 'shared');
+      if (activeSessionRef.current?.token !== active.token) return;
+      changeScope(active, false); setTab('Groups');
+      if (target) {
+        setGroups([{ kind: 'shared', group: target.group }]); setGroupId(target.group.id);
+        setExpenseId(target.expenseId); setScreen(target.expenseId ? 'expenseDetail' : 'group');
+      } else setNotice('This bill is no longer available. Your groups are still here.');
+    });
+  }, [ready, busy, pushTarget, session?.token]);
+  async function endPushSession(active: Session) {
+    await push.disable().catch(() => {});
+    const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 15_000);
+    try {
+      const response = await fetch(`${active.baseUrl}/_allauth/app/v1/auth/session`, { method: 'DELETE', headers: { 'X-Session-Token': active.token }, signal: controller.signal }).catch(() => { throw new Error('Could not connect to sign out. Your records remain on this phone. Try again when online.'); });
+      if (!response.ok && response.status !== 401) throw new Error('Could not sign out. Try again.');
+    } finally { clearTimeout(timer); }
+    await push.clear(); setPushTarget(null);
+  }
   function back() {
     if (screen === 'expense' || screen === 'expenseDetail' || screen === 'settle' || screen === 'members' || screen === 'review') navigate('group');
     else navigate('home');
@@ -104,9 +145,9 @@ function AppContent() {
     else await enqueue(await getDatabase(), owner, value);
     if (session && !local && !paused) {
       try { await syncOutbox(await getDatabase(), session); return; }
-      catch (error) { setNotice(`Saved on this phone. ${error instanceof Error ? error.message : 'Retry sync when online.'}`); return; }
+      catch (error) { setNotice(`Saved on this phone. ${error instanceof Error ? error.message : 'Retry sync when online.'}`, 'warning'); return; }
     }
-    setNotice('Saved on this phone. Waiting to sync.');
+    setNotice('Saved on this phone. Waiting to sync.', 'warning');
   }
   async function localSave(group: Group, kind: string, data: Record<string, unknown>) {
     const activity = { sequence: group.version, actor_id: null, kind, data, created_at: new Date().toISOString() };
@@ -174,17 +215,17 @@ function AppContent() {
   const direct = tab === 'Friends';
   const visibleGroups = groups.filter(row => !!row.group.is_direct === direct);
   const groupPeople = groups.filter(row => !row.group.is_direct).flatMap(row => row.group.participants.filter(person => !local && session ? String(person.user_id) !== session.userId : person.id !== row.group.participants[0]?.id).map(person => ({ row, person })));
-  const title = screen === 'home' ? (tab === 'Friends' ? 'People' : tab === 'Account' ? 'Me' : tab) : screen === 'login' ? (signup ? 'Create account' : 'Sign in') : screen === 'create' ? (direct ? 'Add a person' : 'New group') : screen === 'expense' ? (expenseId ? 'Edit bill' : 'Add a bill') : screen === 'expenseDetail' ? expense?.description ?? 'Bill' : screen === 'settle' ? 'Record a payment' : screen === 'members' ? 'Group settings' : screen === 'review' ? 'Review your bill' : screen === 'activity' ? 'History' : screen === 'profile' ? 'Your UPI address' : screen === 'sync' ? 'Sync settings' : screen === 'data' ? 'Your data' : screen === 'import' ? 'Import from Splitwise' : selected?.group.name ?? 'Group';
+  const title = screen === 'home' ? (tab === 'Friends' ? 'People' : tab === 'Account' ? 'Me' : tab) : screen === 'login' ? (signup ? 'Create account' : 'Sign in') : screen === 'create' ? (direct ? 'Add a person' : 'New group') : screen === 'expense' ? (expenseId ? 'Edit bill' : 'Add a bill') : screen === 'expenseDetail' ? expense?.description ?? 'Bill' : screen === 'settle' ? 'Record a payment' : screen === 'members' ? 'Group settings' : screen === 'review' ? 'Review your bill' : screen === 'activity' ? 'History' : screen === 'profile' ? 'Your UPI address' : screen === 'notifications' ? 'Notifications' : screen === 'sync' ? 'Sync settings' : screen === 'data' ? 'Your data' : screen === 'import' ? 'Import from Splitwise' : selected?.group.name ?? 'Group';
   if (!ready) return <SafeAreaView style={[s.screen, s.loading]}><ActivityIndicator color={colors.accent} /><Text style={ui.caption}>Opening your groups…</Text></SafeAreaView>;
   return <SafeAreaView style={s.screen} edges={['top', 'bottom']}><StatusBar style={dark ? 'light' : 'dark'} /><KeyboardAvoidingView style={s.screen} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
     <View style={s.header}>{screen !== 'home' && <Button title={screen === 'expense' || screen === 'settle' || screen === 'create' ? 'Cancel' : 'Back'} kind="text" icon="back" disabled={busy} onPress={back} />}<Text style={s.title}>{title}</Text>{busy && <ActivityIndicator accessibilityLabel="Working" color={colors.accent} />}</View>
     <ScrollView key={`${owner}|${screen}|${groupId ?? ''}`} contentContainerStyle={s.content} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag"
       refreshControl={session && !local && !paused && (screen === 'home' || screen === 'group') ? <RefreshControl refreshing={busy} tintColor={colors.accent} colors={[colors.accent]} onRefresh={() => launch(() => sync())} /> : undefined}>
-      {!!notice && <Text accessibilityLiveRegion="polite" style={ui.notice}>{notice}</Text>}
+      {!!notice && <Text accessibilityLiveRegion="polite" accessibilityRole={feedback.tone === 'error' ? 'alert' : undefined} style={[ui.notice, feedback.tone === 'success' ? ui.success : feedback.tone === 'warning' ? ui.warning : feedback.tone === 'error' ? ui.error : undefined]}>{notice}</Text>}
       {screen === 'home' && (tab === 'Groups' || tab === 'Friends') && <>
         {session ? <SegmentedButtons value={local ? 'phone' : 'shared'} onValueChange={value => { if ((value === 'phone') !== local) changeScope(session, value === 'phone'); }} buttons={[{ value: 'phone', label: 'On this phone', disabled: busy }, { value: 'shared', label: 'Shared', disabled: busy }]} /> : <Text style={ui.caption}>Saved on this phone. No account needed.</Text>}
         {!visibleGroups.length && <View style={s.empty}><View style={s.emptyIcon}><Icon name={direct ? 'people' : 'groups'} size={34} /></View><Text style={ui.section}>{direct ? 'Share a bill with someone' : 'Who are you sharing with?'}</Text><Text style={ui.caption}>{direct ? 'Keep bills with one person here.' : 'Make a group for a trip, your home or dinner.'}</Text></View>}
-        {!!visibleGroups.length && <View style={s.groupList}>{visibleGroups.map(row => { const me = row.group.participants.find(person => !local && session ? String(person.user_id) === session.userId : person.id === row.group.participants[0]?.id); return <Pressable key={row.group.id} accessibilityRole="button" disabled={busy} style={s.groupRow} onPress={() => launch(() => openGroup(row))}><View style={s.groupMark}>{direct ? <Avatar name={row.group.name} /> : <Icon name="groups" size={24} />}</View><View style={ui.rowBody}><Text style={ui.rowTitle}>{row.group.name}{row.group.archived ? ' (archived)' : ''}</Text><Text style={ui.rowSub}>{me ? position('You', row.group.balances[me.id] ?? '0') : 'See who owes whom'}</Text>{commands.some(value => value.group_id === row.group.id) && <Text style={s.pending}>Waiting to sync</Text>}</View><Icon name="next" size={18} color={colors.muted} /></Pressable>; })}</View>}
+        {!!visibleGroups.length && <View style={s.groupList}>{visibleGroups.map(row => { const me = row.group.participants.find(person => !local && session ? String(person.user_id) === session.userId : person.id === row.group.participants[0]?.id); return <Pressable key={row.group.id} accessibilityRole="button" disabled={busy} style={s.groupRow} onPress={() => launch(() => openGroup(row))}><View style={s.groupMark}>{direct ? <Avatar name={row.group.name} /> : <Icon name="groups" size={24} />}</View><View style={ui.rowBody}><Text style={ui.rowTitle}>{row.group.name}{row.group.archived ? ' (archived)' : ''}</Text><Text style={[ui.rowSub, me && { color: balanceColor(row.group.balances[me.id] ?? '0', colors) }]}>{me ? position('You', row.group.balances[me.id] ?? '0') : 'See who owes whom'}</Text>{commands.some(value => value.group_id === row.group.id) && <Text style={s.pending}>Waiting to sync</Text>}</View><Icon name="next" size={18} color={colors.muted} /></Pressable>; })}</View>}
         <Button title={direct ? 'Add a person' : 'New group'} icon="add" kind={!visibleGroups.length ? 'primary' : 'secondary'} disabled={busy} onPress={() => { setGroupName(''); setPeople(['']); navigate('create'); }} />
         {direct && !!groupPeople.length && <Text style={ui.section}>People in your groups</Text>}
         {direct && groupPeople.map(({ row, person }) => <Pressable key={`${row.group.id}|${person.id}`} accessibilityRole="button" disabled={busy} style={ui.row} onPress={() => launch(() => openGroup(row))}><Avatar name={person.name} /><View style={ui.rowBody}><Text style={ui.rowTitle}>{person.name}</Text><Text style={ui.rowSub}>{row.group.name}</Text></View><Icon name="next" size={18} color={colors.muted} /></Pressable>)}
@@ -202,7 +243,7 @@ function AppContent() {
           else {
             const id = uuid(), create: Command = { command_id: id, group_id: group.id, method: 'POST', path: '/groups', body: { command_id: id, id: group.id, name: group.name, participants: participants.map(({ id, name }) => ({ id, name })), self_participant_id: participants[0].id, is_direct: direct }, state: 'pending', error: null };
             await publishLocal(db, owner, group, [create]);
-            if (session && !paused) { try { await syncOutbox(db, session); } catch (error) { setNotice(`Saved on this phone. ${error instanceof Error ? error.message : 'Retry sync.'}`); } }
+            if (session && !paused) { try { await syncOutbox(db, session); } catch (error) { setNotice(`Saved on this phone. ${error instanceof Error ? error.message : 'Retry sync.'}`, 'warning'); } }
           }
           setGroupId(group.id); setExpenseId(null); setDraft(null); setScreen('group');
         })} />
@@ -212,7 +253,7 @@ function AppContent() {
         {!expense.deleted && (paused && session && !local ? <Text style={ui.caption}>Turn on sync to view bill attachments.</Text> : !local && !selected.group.expenses.some(value => value.id === expense.id) ? <Text style={ui.caption}>Sync this bill before adding attachments.</Text> : <BillAttachments key={`${owner}|${groupId}|${expense.id}`} session={!local ? session : null} groupId={selected.group.id} expenseId={expense.id} revision={selected.group.version} readOnly={selected.group.archived || !!pending.length} busy={busy}
           onBusyChange={value => { lock.current = value; setBusy(value); }} onChanged={async () => { if (!session) return; const scope = accountOwner(session); const updated = await request<Group>(session, `/groups/${selected.group.id}`); await saveGroup(await getDatabase(), scope, updated, 'shared'); await load(scope); }} />)}
       </>}
-      {screen === 'expense' && selected && <ExpenseForm key={`${owner}|${groupId}|${expenseId ?? 'new'}`} group={selected.group} expense={reviewInput ?? (expenseId ? selected.group.expenses.find(value => value.id === expenseId) : undefined)} selfId={selfId} busy={busy} initialDraft={draft ?? undefined} onDraftChange={value => { const scope = owner, id = groupId!; draftWrites.current = draftWrites.current.then(async () => saveDraft(await getDatabase(), scope, id, value)).catch(error => setNotice(`Could not save draft: ${error.message}`)); }} onSave={saveExpense} onCancel={back} />}
+      {screen === 'expense' && selected && <ExpenseForm key={`${owner}|${groupId}|${expenseId ?? 'new'}`} group={selected.group} expense={reviewInput ?? (expenseId ? selected.group.expenses.find(value => value.id === expenseId) : undefined)} selfId={selfId} busy={busy} initialDraft={draft ?? undefined} onDraftChange={value => { const scope = owner, id = groupId!; draftWrites.current = draftWrites.current.then(async () => saveDraft(await getDatabase(), scope, id, value)).catch(error => setNotice(`Could not save draft: ${error.message}`, 'error')); }} onSave={saveExpense} onCancel={back} />}
       {screen === 'review' && selected && reviewCommand && <SavedChangeScreen command={reviewCommand} group={selected.group} busy={busy} onDiscard={() => confirm('Discard this unsent change?', 'Accepted records remain. Your saved change will be removed from this phone.', async () => { await discardCommand(await getDatabase(), owner, reviewCommand.command_id); setReviewCommand(null); navigate('group'); })} onEditSaved={value => { setReviewInput(value); setDraft(null); setExpenseId(reviewCommand.method === 'PUT' ? value.id : null); navigate('expense'); }} />}
       {screen === 'settle' && selected && preview && <SettleForm key={`${owner}|${groupId}`} group={preview} initial={transfer} busy={busy} onSave={savePayment} onCancel={back} />}
       {screen === 'members' && selected && <MembersScreen key={`${owner}|${groupId}`} group={selected.group} selfId={selfId} local={local} busy={busy} onAction={groupAction} onLocalAdd={name => perform(async () => { const person = { id: uuid(), name: name.trim() }; if (!person.name || person.name.length > 120) throw new Error('Enter a name up to 120 characters.'); if (selected.group.is_direct) throw new Error('A friend ledger has two people.'); await localSave(recalculateLocal({ ...selected.group, version: selected.group.version + 1, participants: [...selected.group.participants, person] }), 'participant_added', { name: person.name }); })} onExport={exportGroup} onPublish={local && session ? () => perform(async () => {
@@ -220,19 +261,20 @@ function AppContent() {
         const queue: Command[] = [{ command_id: id, group_id: group.id, method: 'POST', path: '/groups', body: { command_id: id, id: group.id, name: group.name, is_direct: !!group.is_direct, participants: group.participants.map(({ id, name }) => ({ id, name })), self_participant_id: selfId }, state: 'pending', error: null }];
         for (const value of group.expenses.filter(value => !value.deleted)) { const id = uuid(); queue.push({ command_id: id, group_id: group.id, method: 'POST', path: `/groups/${group.id}/expenses`, body: { command_id: id, ...expensePayload(value) }, state: 'pending', error: null }); }
         for (const value of group.settlements.filter(value => !value.reversed)) { const id = uuid(); queue.push({ command_id: id, group_id: group.id, method: 'POST', path: `/groups/${group.id}/settlements`, body: { command_id: id, id: value.id, sender: value.sender, recipient: value.recipient, amount: value.amount, date: value.date }, state: 'pending', error: null }); }
-        await publishLocal(db, accountOwner(session), group, queue); changeScope(session, false); if (!paused) { await syncOutbox(db, session); await load(accountOwner(session)); } setNotice('Account copy saved. The original remains on this phone.');
+        await publishLocal(db, accountOwner(session), group, queue); changeScope(session, false); if (!paused) { await syncOutbox(db, session); await load(accountOwner(session)); } setNotice('Account copy saved. The original remains on this phone.', 'success');
       }) : undefined} />}
       {screen === 'activity' && <>
         {!groups.some(row => row.group.activity.length || row.group.expenses.length) && <Text style={ui.caption}>No changes yet. Add a bill to get started.</Text>}
         {groups.flatMap(row => row.group.activity.map((raw, index) => ({ row, value: raw as { kind: string; data: { id?: string; description?: string }; created_at?: string }, index }))).sort((a, b) => (b.value.created_at ?? '').localeCompare(a.value.created_at ?? '')).map(({ row, value, index }) => { const record = row.group.expenses.find(expense => expense.id === value.data?.id); const labels: Record<string, string> = { expense_saved: 'Expense saved', manual_settlement: 'Payment recorded', opening_proposed: 'Opening balances proposed', opening_acknowledged: 'Opening balances acknowledged', expense_added: 'Expense added', expense_updated: 'Expense edited', expense_deleted: 'Expense deleted', expense_restored: 'Expense restored', settlement_recorded: 'Payment recorded', settlement_reversed: 'Payment record reversed', group_created: 'Group created', participant_added: 'Member added', opening_balance_proposed: 'Opening balances proposed', opening_balance_acknowledged: 'Opening balances acknowledged' }; return <Pressable accessibilityRole="button" key={`${row.group.id}|${index}`} style={s.row} onPress={() => launch(async () => { await openGroup(row); if (record) { setExpenseId(record.id); setScreen('expenseDetail'); } })}><Text style={ui.section}>{labels[value.kind] ?? value.kind.replaceAll('_', ' ')}</Text><Text>{row.group.name}{record ? ` · ${record.description}` : ''}</Text>{value.created_at && <Text>{new Date(value.created_at).toLocaleString()}</Text>}</Pressable>; })}
         {groups.filter(row => !row.group.activity.length).flatMap(row => row.group.expenses.map(value => <Pressable accessibilityRole="button" key={`${row.group.id}|${value.id}`} style={s.row} onPress={() => launch(async () => { await openGroup(row); setExpenseId(value.id); setScreen('expenseDetail'); })}><Text>{value.description}{value.deleted ? ' (deleted)' : ''} · {row.group.name}</Text><Text>{value.date} · {formatMoney(value.total)}</Text></Pressable>))}
       </>}
-      {screen === 'login' && <><Text style={ui.caption}>Sign in to share groups with other people.</Text><Input label="Email" value={email} onChange={setEmail} /><Input label="Password" value={password} onChange={setPassword} secret /><Button title={signup ? 'Create account' : 'Sign in'} kind="primary" disabled={busy} onPress={() => launch(async () => { const value = await authenticate(API_URL, email, password, signup); await saveSession(value); changeScope(value, false); setPassword(''); setMyName(value.email.split('@')[0]); if (!paused) { try { await syncAccount(value); } catch { setNotice('Signed in. Saved bills are available. Try sync again when connected.'); } } })} /><Button title={signup ? 'I already have an account' : 'Create an account'} kind="text" disabled={busy} onPress={() => { setNotice(''); setSignup(value => !value); }} /><Text style={ui.caption}>Email checks and password recovery are not available in this pilot.</Text></>}
+      {screen === 'login' && <><Text style={ui.caption}>Sign in to share groups with other people.</Text><Input label="Email" value={email} onChange={setEmail} /><Input label="Password" value={password} onChange={setPassword} secret /><Button title={signup ? 'Create account' : 'Sign in'} kind="primary" disabled={busy} onPress={() => launch(async () => { const value = await authenticate(API_URL, email, password, signup); if (session) await endPushSession(session); await saveSession(value); changeScope(value, false); setPassword(''); setMyName(value.email.split('@')[0]); if (!paused) { try { await syncAccount(value); } catch { setNotice('Signed in. Saved bills are available. Try sync again when connected.', 'warning'); } } })} /><Button title={signup ? 'I already have an account' : 'Create an account'} kind="text" disabled={busy} onPress={() => { setNotice(''); setSignup(value => !value); }} /><Text style={ui.caption}>Email checks and password recovery are not available in this pilot.</Text></>}
       {screen === 'home' && tab === 'Account' && <>
         <View style={s.profile}><Avatar name={myName} /><View style={ui.rowBody}><Text style={ui.section}>{myName}</Text><Text style={ui.caption}>{session?.email ?? 'Using this phone without an account'}</Text></View></View>
         {!session && <Button title="Sign in to share groups" kind="primary" onPress={() => { setSignup(false); navigate('login'); }} />}
         <View style={s.groupList}>
           {session && <><Pressable accessibilityRole="button" disabled={busy || paused} style={s.groupRow} onPress={() => launch(async () => { const me = await request<{ payment_profile: { vpa: string } | null }>(session, '/me'); setVpa(me.payment_profile?.vpa ?? ''); navigate('profile'); })}><Icon name="pay" /><View style={ui.rowBody}><Text style={ui.rowTitle}>Your UPI address</Text><Text style={ui.caption}>{paused ? 'Turn on sync to load it' : 'For people paying you back'}</Text></View><Icon name="next" size={18} /></Pressable>
+          <Pressable accessibilityRole="button" disabled={busy} style={s.groupRow} onPress={() => navigate('notifications')}><Icon name="history" /><View style={ui.rowBody}><Text style={ui.rowTitle}>Notifications</Text><Text style={ui.caption}>{push.state.enabled ? 'New bill alerts are on' : 'Choose alerts for shared bills'}</Text></View><Icon name="next" size={18} /></Pressable>
           <Pressable accessibilityRole="button" disabled={busy} style={s.groupRow} onPress={() => navigate('sync')}><Icon name="check" /><View style={ui.rowBody}><Text style={ui.rowTitle}>Sync settings</Text><Text style={ui.caption}>{paused ? 'Paused' : `${commands.length} saved ${commands.length === 1 ? 'change' : 'changes'} waiting`}</Text></View><Icon name="next" size={18} /></Pressable></>}
           <Pressable accessibilityRole="button" disabled={busy} style={s.groupRow} onPress={() => navigate('activity')}><Icon name="history" /><View style={ui.rowBody}><Text style={ui.rowTitle}>History</Text><Text style={ui.caption}>Bills, edits and payments</Text></View><Icon name="next" size={18} /></Pressable>
           <Pressable accessibilityRole="button" disabled={busy} style={s.groupRow} onPress={() => navigate('data')}><Icon name="settings" /><View style={ui.rowBody}><Text style={ui.rowTitle}>Your data</Text><Text style={ui.caption}>Export and account options</Text></View><Icon name="next" size={18} /></Pressable>
@@ -241,27 +283,29 @@ function AppContent() {
           buttons={[{ value: 'system', label: 'System', disabled: busy }, { value: 'light', label: 'Light', disabled: busy }, { value: 'dark', label: 'Dark', disabled: busy }]} /></View>
         {session && (paused ? <Text style={ui.caption}>Turn on sync to manage your profile photo and import from Splitwise.</Text> : <ProfilePhoto key={accountOwner(session)} session={session} busy={busy} onBusyChange={value => { lock.current = value; setBusy(value); }} />)}
         <Button title="Import from Splitwise" icon="bill" disabled={busy || (!!session && paused)} onPress={() => { if (!session) { setSignup(false); navigate('login'); } else { if (local) changeScope(session, false); navigate('import'); } }} />
-        <Text style={ui.caption}>MeroSplit 0.3.2 · Indian rupees</Text>
+        <Text style={ui.caption}>MeroSplit 0.3.3 · Indian rupees</Text>
       </>}
       {screen === 'import' && session && <SplitwiseImportScreen key={accountOwner(session)} session={session} busy={busy}
         onBusyChange={value => { lock.current = value; setBusy(value); }} onCancel={back}
-        onImported={(group, alreadyImported) => { if (ownerRef.current !== accountOwner(session)) return; setGroups(rows => [...rows.filter(row => row.group.id !== group.id), { kind: 'shared', group }]); setGroupId(group.id); setExpenseId(null); setTab('Groups'); setScreen('group'); setNotice(alreadyImported ? 'Already imported. Opened the existing group.' : 'Splitwise import complete.'); }} />}
+        onImported={(group, alreadyImported) => { if (ownerRef.current !== accountOwner(session)) return; setGroups(rows => [...rows.filter(row => row.group.id !== group.id), { kind: 'shared', group }]); setGroupId(group.id); setExpenseId(null); setTab('Groups'); setScreen('group'); setNotice(alreadyImported ? 'Already imported. Opened the existing group.' : 'Splitwise import complete.', 'success'); }} />}
       {screen === 'profile' && session && <>
-        <Input label="Your UPI address" value={vpa} onChange={setVpa} /><Text style={ui.caption}>People can use this to pay you. Check it carefully. It is entered by you and is not bank verified.</Text><Button title="Save UPI address" kind="primary" disabled={busy || paused} onPress={() => launch(async () => { await request(session, '/me/payment-profile', 'PUT', { vpa }); setNotice('UPI address saved.'); })} />
+        <Input label="Your UPI address" value={vpa} onChange={setVpa} /><Text style={ui.caption}>People can use this to pay you. Check it carefully. It is entered by you and is not bank verified.</Text><Button title="Save UPI address" kind="primary" disabled={busy || paused} onPress={() => launch(async () => { await request(session, '/me/payment-profile', 'PUT', { vpa }); setNotice('UPI address saved.', 'success'); })} />
       </>}
+      {screen === 'notifications' && session && <PushSettings push={push} busy={busy} onBusyChange={value => { lock.current = value; setBusy(value); }} />}
       {screen === 'sync' && session && <>
-        <Text style={ui.section}>{paused ? 'Sync is paused' : 'Sync is on'}</Text><Text style={ui.caption}>{local ? 'Groups on this phone stay private. Open Shared groups to sync with your account.' : 'Shared groups refresh when you open the app or return to it. Pull down on a group to refresh.'}</Text>
-        {!!commands.length && <Text style={ui.notice}>{commands.length} saved {commands.length === 1 ? 'change is' : 'changes are'} waiting to sync.</Text>}
-        <View style={ui.row}><View style={ui.rowBody}><Text style={ui.rowTitle}>Sync shared groups</Text><Text style={ui.caption}>{paused ? 'Paused' : 'On'}</Text></View><Switch accessibilityLabel="Sync shared groups" value={!paused} disabled={busy || local} onValueChange={enabled => launch(async () => { await saveSyncPaused(!enabled); setPaused(!enabled); if (enabled) await syncAccount(session); })} /></View>
+        <Text style={[ui.section, { color: paused ? colors.warning : colors.info }]}>{paused ? 'Sync is paused' : 'Sync is on'}</Text><Text style={ui.caption}>{local ? 'Groups on this phone stay private. Open Shared groups to sync with your account.' : 'Shared groups refresh when you open the app or return to it. Pull down on a group to refresh.'}</Text>
+        {!!commands.length && <Text style={[ui.notice, ui.warning]}>{commands.length} saved {commands.length === 1 ? 'change is' : 'changes are'} waiting to sync.</Text>}
+        <View style={ui.row}><View style={ui.rowBody}><Text style={ui.rowTitle}>Sync shared groups</Text><Text style={ui.caption}>{paused ? 'Paused' : 'On'}</Text></View><Switch accessibilityLabel="Sync shared groups" value={!paused} disabled={busy || local} trackColor={{ false: colors.outline, true: '#007AFF' }} thumbColor="#FFFFFF" ios_backgroundColor={colors.outline} onValueChange={enabled => launch(async () => { await saveSyncPaused(!enabled); setPaused(!enabled); if (enabled) await syncAccount(session); })} /></View>
         {!local && !paused && <Button title="Try sync again" disabled={busy} onPress={() => launch(() => sync())} />}
       </>}
       {screen === 'data' && <>
         <Text style={ui.caption}>For a group's bills, open that group's settings and choose Export.</Text>
+        <Button title="Privacy policy" kind="text" onPress={() => launch(() => Linking.openURL(`${API_URL}/privacy`))} /><Button title="Help and support" kind="text" onPress={() => launch(() => Linking.openURL(`${API_URL}/support`))} />
         {session && <>
           <Button title="Export account" disabled={busy || paused} onPress={() => launch(async () => { await shareJson('merosplit-account', await request(session, '/account/export')); })} />
           <Disclosure title="Account options"><Button title="Switch account" disabled={busy} kind="text" onPress={() => { setSignup(false); navigate('login'); }} />
-          <Button title="Sign out" disabled={busy} onPress={() => confirm('Sign out?', 'Account records and unsent account changes will be removed from this phone. Groups stored only on this phone remain. Synced records stay in your account.', async () => { await draftWrites.current; const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 15_000); try { const response = await fetch(`${session.baseUrl}/_allauth/app/v1/auth/session`, { method: 'DELETE', headers: { 'X-Session-Token': session.token }, signal: controller.signal }).catch(() => { throw new Error('Could not connect to sign out. Your records remain on this phone. Try again when online.'); }); if (!response.ok && response.status !== 401) throw new Error('Could not sign out. Try again.'); } finally { clearTimeout(timer); } await wipeAccount(await getDatabase(), accountOwner(session)); await clearMediaPreviews(); await saveSession(null); changeScope(null, true); })} />
-          <Button title="Delete account" kind="danger" disabled={busy || paused} onPress={() => confirm('Delete account?', 'Export first. Sign-in and personal details will be removed. Shared history remains anonymized for other people. Unsent account changes are removed from this phone.', async () => { await request(session, '/account', 'DELETE'); await draftWrites.current; await wipeAccount(await getDatabase(), accountOwner(session)); await clearMediaPreviews(); await saveSession(null); changeScope(null, true); })} /></Disclosure>
+          <Button title="Sign out" disabled={busy} onPress={() => confirm('Sign out?', 'Account records and unsent account changes will be removed from this phone. Groups stored only on this phone remain. Synced records stay in your account.', async () => { await draftWrites.current; await endPushSession(session); await wipeAccount(await getDatabase(), accountOwner(session)); await clearMediaPreviews(); await saveSession(null); changeScope(null, true); })} />
+          <Button title="Delete account" kind="danger" disabled={busy} onPress={() => confirm('Delete account?', 'Export first. Your account, uploads and content you added will be removed. Other members keep anonymous bill amounts, splits and payment history. Unsent account changes are removed from this phone. Phone-only groups remain.', async () => { await push.disable().catch(() => {}); await request(session, '/account', 'DELETE'); await push.clear(); setPushTarget(null); await draftWrites.current; await wipeAccount(await getDatabase(), accountOwner(session)); await clearMediaPreviews(); await saveSession(null); changeScope(null, true); })} /></Disclosure>
         </>}
       </>}
     </ScrollView>
@@ -278,7 +322,7 @@ const makeStyles = (colors: Palette) => StyleSheet.create({
   groupList: { backgroundColor: colors.surface, borderRadius: radii.surface, paddingHorizontal: 12 },
   groupRow: { minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
   groupMark: { width: 36, height: 36, borderRadius: radii.control, backgroundColor: colors.soft, alignItems: 'center', justifyContent: 'center' },
-  pending: { fontSize: 13, color: colors.accent },
+  pending: { fontSize: 13, color: colors.warning },
   empty: { paddingVertical: 16, gap: 10 }, emptyIcon: { width: 48, height: 48, borderRadius: radii.control, backgroundColor: colors.soft, alignItems: 'center', justifyContent: 'center', marginBottom: 6 },
   profile: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 8 },
   tabs: { flexDirection: 'row', backgroundColor: colors.surface, marginHorizontal: 16, marginBottom: 8, borderRadius: radii.navigation, padding: 4, gap: 4 },

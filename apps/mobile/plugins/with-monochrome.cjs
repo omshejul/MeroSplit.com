@@ -5,8 +5,8 @@ module.exports = config => {
     mod.modResults = AndroidConfig.Colors.assignColorValue(mod.modResults, { name: 'merosplit_accent', value });
     return mod;
   };
-  config = withAndroidColors(config, accent('#161616'));
-  config = withAndroidColorsNight(config, accent('#F5F5F5'));
+  config = withAndroidColors(config, accent('#075DB4'));
+  config = withAndroidColorsNight(config, accent('#83B9FF'));
   config = withAndroidStyles(config, mod => {
     mod.modResults = AndroidConfig.Styles.assignStylesValue(mod.modResults, {
       add: true, parent: AndroidConfig.Styles.getAppThemeGroup(), name: 'colorAccent', value: '@color/merosplit_accent',
@@ -18,8 +18,9 @@ module.exports = config => {
     // Expo's scene delegate creates this window and forwards activation here.
     const activation = `  public override func applicationDidBecomeActive(_ application: UIApplication) {
     super.applicationDidBecomeActive(application)
-    window?.tintColor = .label
+    window?.tintColor = .systemBlue
   }`;
+    mod.modResults.contents = mod.modResults.contents.replace(activation.replace('.systemBlue', '.label'), activation);
     if (!mod.modResults.contents.includes(activation)) {
       if (!mod.modResults.contents.includes(anchor) || mod.modResults.contents.includes('func applicationDidBecomeActive(')) {
         throw new Error('Check the AppDelegate activation hook before applying its monochrome tint.');

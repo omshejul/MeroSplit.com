@@ -193,3 +193,53 @@ class UploadedFile(models.Model):
             ),
             models.CheckConstraint(condition=Q(state__in=["pending", "active", "deleted"]), name="uploaded_file_state"),
         ]
+
+
+class PushDevice(models.Model):
+    id = models.UUIDField(primary_key=True)  # Installation ID, kept across account changes.
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    session = models.ForeignKey("sessions.Session", on_delete=models.CASCADE)
+    provider = models.CharField(max_length=16)
+    token = models.CharField(max_length=4096)
+    token_hash = models.CharField(max_length=64)
+    platform = models.CharField(max_length=7)
+    revision = models.PositiveIntegerField(default=1)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["provider", "token_hash"], name="one_push_token"),
+            models.CheckConstraint(condition=Q(platform__in=["ios", "android"]), name="push_device_platform"),
+        ]
+
+
+class ExpensePushDelivery(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    expense = models.ForeignKey(Expense, on_delete=models.CASCADE)
+    recipient = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    device = models.ForeignKey(PushDevice, on_delete=models.CASCADE)
+    device_revision = models.PositiveIntegerField()
+    event_id = models.UUIDField()
+    state = models.CharField(max_length=8, default="pending")
+    attempts = models.PositiveIntegerField(default=0)
+    due_at = models.DateTimeField()
+    lease_id = models.UUIDField(null=True)
+    lease_until = models.DateTimeField(null=True)
+    provider_id = models.CharField(max_length=200, blank=True)
+    ticketed_at = models.DateTimeField(null=True)
+    receipt_attempts = models.PositiveIntegerField(default=0)
+    last_error = models.CharField(max_length=40, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    sent_at = models.DateTimeField(null=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["expense", "device", "device_revision"], name="one_bill_push_per_device_binding"
+            ),
+            models.CheckConstraint(
+                condition=Q(state__in=["pending", "sending", "queued", "checking", "sent", "skipped", "failed"]),
+                name="expense_push_state",
+            ),
+        ]
+        indexes = [models.Index(fields=["state", "due_at"], name="expense_push_due")]

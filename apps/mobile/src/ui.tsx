@@ -21,17 +21,18 @@ import UserMultipleIcon from '@hugeicons/core-free-icons/UserMultipleIcon';
 import Wallet01Icon from '@hugeicons/core-free-icons/Wallet01Icon';
 import Calendar03Icon from '@hugeicons/core-free-icons/Calendar03Icon';
 
-export type Palette = { background: string; surface: string; text: string; muted: string; accent: string; soft: string; line: string; outline: string; error: string };
+export type Palette = { background: string; surface: string; text: string; muted: string; accent: string; soft: string; line: string; outline: string; error: string; positive: string; negative: string; info: string; warning: string };
 export const radii = { control: 12, surface: 16, navigation: 20 } as const;
-const colors: Palette = { background: '#F7F7F7', surface: '#FFFFFF', text: '#161616', muted: '#626262', accent: '#161616', soft: '#ECECEC', line: '#D4D4D4', outline: '#8A8A8A', error: '#333333' };
-const darkColors: Palette = { background: '#111111', surface: '#1C1C1C', text: '#F5F5F5', muted: '#B5B5B5', accent: '#F5F5F5', soft: '#2D2D2D', line: '#444444', outline: '#808080', error: '#E0E0E0' };
+const colors: Palette = { background: '#F7F7F7', surface: '#FFFFFF', text: '#161616', muted: '#626262', accent: '#075DB4', soft: '#ECECEC', line: '#D4D4D4', outline: '#8A8A8A', error: '#B42318', positive: '#176B3A', negative: '#B42318', info: '#075DB4', warning: '#8A5300' };
+const darkColors: Palette = { background: '#111111', surface: '#1C1C1C', text: '#F5F5F5', muted: '#B5B5B5', accent: '#83B9FF', soft: '#2D2D2D', line: '#444444', outline: '#808080', error: '#FF9B93', positive: '#78D9A0', negative: '#FF9B93', info: '#83B9FF', warning: '#F2C266' };
+export const balanceColor = (value: string | bigint, palette: Palette) => BigInt(value) > 0n ? palette.positive : BigInt(value) < 0n ? palette.negative : palette.muted;
 const makeInputColors = (palette: Palette) => ({ selectionColor: Platform.OS === 'ios' ? palette.accent : palette.line, cursorColor: palette.accent, selectionHandleColor: palette.accent });
 const inputColors = makeInputColors(colors);
 const icons = { add: Add01Icon, down: ArrowDown01Icon, back: ArrowLeft01Icon, next: ArrowRight01Icon, check: CheckmarkCircle01Icon, history: Clock01Icon, bill: Invoice01Icon, settings: Settings01Icon, me: UserCircleIcon, groups: UserGroupIcon, people: UserMultipleIcon, pay: Wallet01Icon };
 export type IconName = keyof typeof icons;
 export function Icon({ name, size = 22, color }: { name: IconName; size?: number; color?: string }) {
   const { palette } = useUI();
-  return <HugeiconsIcon icon={icons[name]} size={size} color={color ?? palette.accent} strokeWidth={1.7} />;
+  return <HugeiconsIcon icon={icons[name]} size={size} color={color ?? palette.text} strokeWidth={1.7} />;
 }
 function makeTheme(palette: Palette, dark: boolean): MD3Theme {
   const colors = palette, onAccent = dark ? '#161616' : '#FFFFFF';
@@ -137,6 +138,8 @@ const makeUI = (colors: Palette) => StyleSheet.create({
   avatar: { width: 36, height: 36, borderRadius: radii.control, backgroundColor: colors.soft, alignItems: 'center', justifyContent: 'center' },
   initials: { fontSize: 17, fontWeight: '600', color: colors.accent },
   notice: { backgroundColor: colors.surface, borderLeftWidth: 3, borderLeftColor: colors.accent, borderRadius: radii.surface, padding: 12, color: colors.text, fontSize: 14, lineHeight: 21 },
+  success: { color: colors.positive, borderLeftColor: colors.positive },
+  warning: { color: colors.warning, borderLeftColor: colors.warning },
   error: { color: colors.error, fontSize: 15, lineHeight: 22 },
   disclosure: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
   disclosureHeading: { minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },

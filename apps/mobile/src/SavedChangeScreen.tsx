@@ -49,7 +49,7 @@ export default function SavedChangeScreen({ command, group, busy, onDiscard, onE
       <Text style={ui.section}>{expense.description}</Text>
       <Text style={ui.numeric}>{formatMoney(expense.total)}</Text>
       <Text style={ui.caption}>{expense.date}</Text>
-      {expense.deleted && <Text style={ui.notice}>Deleted. This bill is not included in balances.</Text>}
+      {expense.deleted && <Text style={[ui.notice, ui.warning]}>Deleted. This bill is not included in balances.</Text>}
       <Text style={ui.label}>Who paid?</Text>
       {group.participants.filter(person => (expense.paid[person.id] ?? '0') !== '0').map(person => <View key={person.id} style={s.person}>
         <Text style={s.name}>{person.name}</Text><Text style={s.amount}>{formatMoney(expense.paid[person.id])}</Text>
@@ -69,7 +69,7 @@ export default function SavedChangeScreen({ command, group, busy, onDiscard, onE
 
   return <View style={s.content}>
     <Text style={ui.caption}>{group.name}</Text>
-    <Text style={ui.notice}>{expenseCommand ? 'Your change is saved on this phone. Compare both versions before choosing what to keep.' : 'This action is saved on this phone until it can be sent or you discard it.'}</Text>
+    <Text style={[ui.notice, ui.warning]}>{expenseCommand ? 'Your change is saved on this phone. Compare both versions before choosing what to keep.' : 'This action is saved on this phone until it can be sent or you discard it.'}</Text>
     <View style={s.section}>
       <Text accessibilityRole="header" style={ui.section}>{expenseCommand ? 'My saved bill' : 'My saved change'}</Text>
       {saved ? summary(saved) : <Text accessibilityRole="alert" style={ui.body}>{issue}</Text>}
@@ -79,9 +79,9 @@ export default function SavedChangeScreen({ command, group, busy, onDiscard, onE
         <Text accessibilityRole="header" style={ui.section}>Latest bill</Text>
         {current ? summary(current) : <Text style={ui.body}>This bill is not in the group's latest records.</Text>}
       </View>
-      {creating && current && <Text style={ui.notice}>This bill already exists and will not be overwritten here. Leave your change saved or discard it below.</Text>}
-      {updating && current?.deleted && <Text style={ui.notice}>Restore the latest bill before editing it.</Text>}
-      {updating && !current && <Text style={ui.notice}>The latest bill is no longer available. Your saved change will not recreate it automatically.</Text>}
+      {creating && current && <Text style={[ui.notice, ui.warning]}>This bill already exists and will not be overwritten here. Leave your change saved or discard it below.</Text>}
+      {updating && current?.deleted && <Text style={[ui.notice, ui.warning]}>Restore the latest bill before editing it.</Text>}
+      {updating && !current && <Text style={[ui.notice, ui.warning]}>The latest bill is no longer available. Your saved change will not recreate it automatically.</Text>}
     </>}
     <View style={s.section}>
       {canEdit && <Button title="Edit my bill" kind="primary" disabled={busy} onPress={editSaved} />}

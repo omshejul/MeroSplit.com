@@ -110,3 +110,9 @@ class SplitwiseImportIn(SplitwisePreviewIn, Command):
 
 class SplitwiseImportResult(WriteResult):
     already_imported: bool
+
+
+class PushDeviceIn(Input):
+    provider: Literal["expo"]
+    token: Annotated[str, Field(min_length=1, max_length=4096, pattern=r"^(ExpoPushToken|ExponentPushToken)\[[A-Za-z0-9_-]+\]$")]
+    platform: Literal["ios", "android"]
