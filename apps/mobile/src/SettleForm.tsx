@@ -60,7 +60,7 @@ export default function SettleForm({ group, initial, busy, selfId, onSave, onRev
     if (quote.amount !== payment.amount || quote.vpa !== target.vpa || quote.recipient !== target.name) throw new Error('The amount or recipient changed. Review the payment again.');
     const url = buildUPIUrl(quote);
     if (Platform.OS === 'web') { setWebQuote({ quote, url, target }); return; }
-    await openUPIPayment(quote, app!.id, { amount: payment.amount, ...target }, Linking.openURL);
+    await openUPIPayment(quote, app!.id, { amount: payment.amount, ...target }, url => Linking.openURL(url));
     if (mounted.current) setNotice('Check your UPI app. Record only the money you actually paid.');
   }
   async function pay(app?: UPIApp) {
@@ -70,7 +70,7 @@ export default function SettleForm({ group, initial, busy, selfId, onSave, onRev
       if (app && chooser) { const selected = chooser; setChooser(null); await handoff(selected.payment, selected.target, app); return; }
       const payment = { sender, recipient, amount: rupeesToPaise(amount) }, target = validateUPIPayment(group, selfId, payment);
       if (Platform.OS === 'web') { await handoff(payment, target); return; }
-      const apps = await availableUPIApps(Platform.OS, Linking.canOpenURL);
+      const apps = await availableUPIApps(Platform.OS, url => Linking.canOpenURL(url));
       if (!mounted.current) return;
       if (!apps.length) throw new Error('No UPI app is available here. Use the payment address in your UPI app.');
       if (apps.length === 1) await handoff(payment, target, apps[0]);
@@ -140,7 +140,7 @@ export default function SettleForm({ group, initial, busy, selfId, onSave, onRev
       <Text selectable style={ui.body}>{webQuote.quote.vpa}</Text>
       <Button title="Copy UPI address" kind="text" disabled={disabled} onPress={() => void copy(webQuote.quote.vpa)} />
       <Button title="Copy payment link" kind="text" disabled={disabled} onPress={() => void copy(webQuote.url)} />
-      <Button title="Open UPI app on this device" disabled={disabled} onPress={() => void openUPIPayment(webQuote.quote, 'upi', { amount: webQuote.quote.amount, ...webQuote.target }, Linking.openURL).catch(cause => setError(cause.message))} />
+      <Button title="Open UPI app on this device" disabled={disabled} onPress={() => void openUPIPayment(webQuote.quote, 'upi', { amount: webQuote.quote.amount, ...webQuote.target }, url => Linking.openURL(url)).catch(cause => setError(cause.message))} />
       <Text style={ui.caption}>Scan with your phone. Record only after you have paid.</Text>
     </View>}
     {activeAttempt?.state === 'reported' && sender === selfId && <Text style={ui.caption}>This payment is already reported. Check it before paying again.</Text>}
