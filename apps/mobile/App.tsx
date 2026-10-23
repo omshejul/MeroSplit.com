@@ -25,6 +25,7 @@ import SavedChangeScreen from './src/SavedChangeScreen';
 import SplitwiseImportScreen from './src/SplitwiseImportScreen';
 import AccountHeader from './src/AccountHeader';
 import GroupList from './src/GroupList';
+import Mascot from './src/Mascot';
 import { AppFrame, pageContentStyle, ScreenHeader, AppTabs } from './src/AppNavigation';
 import { EmailSignIn, CodeSignIn } from './src/SignInForms';
 import { captureEmailLink, forgetEmailProof, subscribeEmailLinks, type EmailLink, type EmailTarget } from './src/emailLink';
@@ -60,6 +61,8 @@ function AppContent() {
   const s = makeStyles(colors);
   const [session, setSession] = useState<Session | null>(null), [ready, setReady] = useState(false), [expired, setExpired] = useState(false);
   const [storageError, setStorageError] = useState(''), [hasDrafts, setHasDrafts] = useState(false);
+  const [verifiedEmptyOwner, setVerifiedEmptyOwner] = useState('');
+  const [online, setOnline] = useState(isOnline);
   const [groups, setGroups] = useState<CachedGroup[]>([]), [commands, setCommands] = useState<Command[]>([]);
   const [screen, setScreen] = useState<Screen>('home'), [tab, setTab] = useState('Groups'), [groupId, setGroupId] = useState<string | null>(null);
   const [expenseId, setExpenseId] = useState<string | null>(null), [draft, setDraft] = useState<ExpenseFormDraft | null>(null), [transfer, setTransfer] = useState<Transfer | undefined>();
@@ -86,7 +89,7 @@ function AppContent() {
   const [vpa, setVpa] = useState('');
   const [returnAttemptId, setReturnAttemptId] = useState<string | null>(null);
   const [returns, setReturns] = useState<PaymentReturn[]>([]), [settlementId, setSettlementId] = useState<string | null>(null);
-  const [activity, setActivity] = useState<ActivityPage | null>(null), [activityError, setActivityError] = useState('');
+  const [activity, setActivity] = useState<(ActivityPage & { firstPage: boolean }) | null>(null), [activityError, setActivityError] = useState('');
   const activityOwner = useRef(''), groupVersions = useRef('');
   const [legacy, setLegacy] = useState<Group[]>([]), [recoveries, setRecoveries] = useState<LegacyRecovery[]>([]), [unavailable, setUnavailable] = useState<Group[]>([]);
   const [legacySelf, setLegacySelf] = useState<Record<string, string>>({});
@@ -115,6 +118,7 @@ function AppContent() {
   function measureViewport() { scroll.current?.measureInWindow((x, y, width, height) => setViewport({ x, y, width, height })); }
   function navigate(value: Screen) { setNotice(''); setScreen(value); }
   function changeScope(value: Session | null) {
+    setVerifiedEmptyOwner('');
     ownerRef.current = value ? accountOwner(value) : '';
     activeSessionRef.current = value;
     setSession(value); setExpired(false); setGroups([]); setCommands([]); setLegacy([]); setRecoveries([]); setUnavailable([]); setLegacySelf({});
@@ -176,6 +180,7 @@ function AppContent() {
     }, false);
   }
   async function syncAccount(active: Session) {
+    setVerifiedEmptyOwner('');
     const db = await getDatabase(), scope = accountOwner(active);
     await readProfile(active);
     let writeError: unknown;
@@ -185,6 +190,7 @@ function AppContent() {
     if (ownerRef.current !== scope) return;
     if (activeGroupRef.current && removed.includes(activeGroupRef.current)) { setGroupId(null); setScreen('home'); setNotice('You no longer have access to that group.', 'warning'); }
     if (writeError) throw writeError;
+    if (activeSessionRef.current?.token === active.token) setVerifiedEmptyOwner(scope);
   }
   async function sync() {
     if (!session) throw new Error('Sign in to continue.');
@@ -232,7 +238,7 @@ function AppContent() {
         if (page.read_mode !== 'activity' || !Array.isArray(page.items) || more && page.revision !== activity?.revision) throw new Error('Activity changed. Refresh to see the latest.');
         if (activeSessionRef.current?.token !== active.token) return;
         activityOwner.current = accountOwner(active);
-        setActivity(page); requestAnimationFrame(() => scroll.current?.scrollTo({ y: 0, animated: false }));
+        setActivity({ ...page, firstPage: !more }); requestAnimationFrame(() => scroll.current?.scrollTo({ y: 0, animated: false }));
       } catch (error) {
         if (activeSessionRef.current?.token !== active.token) return;
         if (error instanceof ApiError && error.status === 409) { setActivity(null); activityOwner.current = ''; }
@@ -328,6 +334,12 @@ function AppContent() {
     window.addEventListener('beforeunload', warn);
     return () => window.removeEventListener('beforeunload', warn);
   }, [commands.length, hasDrafts]);
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const update = () => setOnline(isOnline());
+    window.addEventListener('online', update); window.addEventListener('offline', update);
+    return () => { window.removeEventListener('online', update); window.removeEventListener('offline', update); };
+  }, []);
   function openMe() { setTab('Account'); navigate('home'); }
   useEffect(() => {
     if (!challenge && !emailRequested) return;
@@ -559,7 +571,7 @@ function AppContent() {
   }
   async function sendSignInCode() {
     setEmailRequested(false);
-    const value = await requestEmailCode(API_URL, email);
+    const value = await requestEmailCode(API_URL, email, true);
     setChallenge(value); setRetryAt(Date.now() + value.retryAfter * 1000); setCode(''); setClock(Date.now());
   }
   async function finishSignIn() {
@@ -729,6 +741,7 @@ function AppContent() {
     forgetEmailProof(); initialEmailLink.current = null; emailProof.current = null; emailEntryRef.current = null; setEmailEntry(null);
     authHeldRef.current = false; resumeAccountRequests(); queueCookieCheck();
   }
+  const mascotEligible = online && isOnline() && !busy && !expired && !notice && !commands.length && !hasDrafts && !legacy.length && !recoveries.length && !unavailable.length && !returns.length;
   const direct = tab === 'Friends';
   const visibleGroups = groups.filter(row => direct ? !!session && visiblePeopleSummary(row.group, session.userId, commands.some(command => command.group_id === row.group.id)) : !row.group.is_direct);
   const title = screen === 'home' ? (tab === 'Friends' ? 'People' : tab === 'Account' ? 'Me' : tab) : screen === 'login' ? 'Sign in' : screen === 'create' ? (direct ? 'Add a person' : 'New group') : screen === 'expense' ? (expenseId ? 'Edit bill' : 'Add a bill') : screen === 'expenseDetail' ? expense?.description ?? 'Bill' : screen === 'settle' ? 'Payment' : screen === 'members' ? 'Group settings' : screen === 'review' ? 'Review your bill' : screen === 'paymentDetail' ? 'Payment record' : screen === 'import' ? 'Import from Splitwise' : selected?.group.name ?? 'Group';
@@ -739,6 +752,7 @@ function AppContent() {
       : <EmailLinkStatus opening={checkingCookie || emailEntry?.phase === 'opening' || emailEntry?.phase === 'target'} busy={busy} error={emailEntry?.error ?? ''} sent={!!emailEntry?.sent} canRenew={!!emailEntry?.id} onRetry={retryEmailLink} onRenew={() => void renewCurrentEmailLink()} onSignIn={leaveEmailLink} />}
   </EmailLinkScreen>;
   return <AppFrame onTouchStart={notices.engage}>
+    {screen === 'login' && !session && !challenge && !emailRequested && mascotEligible && <Mascot size="welcome" />}
     <ScreenHeader title={title} busy={busy} onBack={screen !== 'home' && (session || screen !== 'login') ? back : undefined}>
       {Platform.OS === 'web' && session && (screen === 'home' && tab !== 'Account' || screen === 'group') && <IconAction name="refresh" label="Refresh" disabled={busy} onPress={() => { if (screen === 'home' && tab === 'Activity') void refreshActivity().catch(() => {}); else launch(sync); }} />}
       {screen === 'group' && selected && <IconAction name="add" label="Add bill" disabled={busy || !!selected.group.archived} onPress={() => launch(() => openExpense())} />}
@@ -750,7 +764,7 @@ function AppContent() {
       {!!notice && <Text accessibilityLiveRegion="polite" accessibilityRole={feedback.tone === 'error' ? 'alert' : undefined} style={[ui.notice, feedback.tone === 'success' ? ui.success : feedback.tone === 'warning' ? ui.warning : feedback.tone === 'error' ? ui.error : undefined]}>{notice}</Text>}
       {expired && screen !== 'login' && <Button title="Sign in again" kind="primary" onPress={() => { setChallenge(null); setCode(''); navigate('login'); }} />}
       {screen === 'home' && (tab === 'Groups' || tab === 'Friends') && <>
-        <GroupList groups={visibleGroups} commands={commands} userId={session?.userId} busy={busy} direct={direct} onOpen={row => launch(() => openGroup(row))} />
+        <GroupList emptyVerified={mascotEligible && !!owner && verifiedEmptyOwner === owner} groups={visibleGroups} commands={commands} userId={session?.userId} busy={busy} direct={direct} onOpen={row => launch(() => openGroup(row))} />
         <Button title={direct ? 'Add person' : 'New group'} icon="add" kind={!visibleGroups.length ? 'primary' : 'secondary'} disabled={busy} onPress={() => navigate('create')} />
         {!!(legacy.length || unavailable.length) && <Button title="Review saved work" kind="text" onPress={openMe} />}
       </>}
@@ -766,7 +780,7 @@ function AppContent() {
       {screen === 'settle' && selected && preview && <SettleForm key={`${owner}|${groupId}`} group={preview} initial={transfer} busy={busy} selfId={selfId} onReviewAttempt={reviewPaymentAttempt} onPrepareUPI={prepareUPI} onCancelUPI={async id => { await groupAction(`/payment-attempts/${id}/cancel`, {}); await clearPaymentReturn(await getDatabase(), owner, id); await load(); }} returnPayment={returnPayment} onArmReturn={armPaymentReturn} onReturnPaymentChange={persistPaymentReturn} onResolveReturn={finishPaymentReturn} onSave={savePayment} onCancel={() => { setReturnAttemptId(null); back(); }} />}
       {screen === 'paymentDetail' && selected && settlement && <PaymentDetail payment={settlement} group={selected.group} selfId={selfId} busy={busy} canReverse={!pending.length && !selected.group.archived} onReverse={() => confirm('Reverse payment record?', 'Balances will change. No bank transfer is reversed.', () => reversePayment(settlement))} />}
       {screen === 'members' && selected && <MembersScreen key={`${owner}|${groupId}`} group={selected.group} selfId={selfId} busy={busy} onAction={groupAction} onExport={exportGroup} addPersonRequest={addPersonRequest} />}
-      {screen === 'home' && tab === 'Activity' && session && <ActivityScreen items={activity?.items ?? []} busy={busy} error={activityError} hasMore={!!activity?.next_cursor} onRefresh={() => { void refreshActivity().catch(() => {}); }} onLoadMore={() => { void refreshActivity(true).catch(() => {}); }} onOpen={target => { void openActivityTarget(target).catch(() => {}); }} />}
+      {screen === 'home' && tab === 'Activity' && session && <ActivityScreen emptyVerified={mascotEligible && activity?.firstPage === true && activityOwner.current === owner} items={activity?.items ?? []} busy={busy} error={activityError} hasMore={!!activity?.next_cursor} onRefresh={() => { void refreshActivity().catch(() => {}); }} onLoadMore={() => { void refreshActivity(true).catch(() => {}); }} onOpen={target => { void openActivityTarget(target).catch(() => {}); }} />}
       {screen === 'login' && <>
         {emailRequested ? <EmailLinkSent busy={busy} resendSeconds={Math.max(0, Math.ceil((retryAt - clock) / 1000))} onResend={() => launch(sendSignInLink)} onCode={() => setEmailRequested(false)} onChangeEmail={() => { setEmailRequested(false); setChallenge(null); setCode(''); }} />
           : !challenge ? <EmailSignIn email={email} busy={busy} onEmail={setEmail} sendLabel={Platform.OS === 'web' ? 'Email me a sign-in link' : undefined} onSend={() => launch(Platform.OS === 'web' ? sendSignInLink : sendSignInCode)}>

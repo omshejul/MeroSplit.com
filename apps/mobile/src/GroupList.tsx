@@ -1,4 +1,5 @@
 import React from 'react';
+import Mascot from './Mascot';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { Text } from 'react-native-paper';
 import { position } from './GroupScreen';
@@ -20,9 +21,12 @@ function GroupListRow({ row, waiting, userId, busy, onOpen }: { row: CachedGroup
     <Icon name="next" size={18} color={palette.muted} />
   </Pressable>;
 }
-export default function GroupList({ groups, commands, userId, busy, direct, onOpen }: { groups: CachedGroup[]; commands: Command[]; userId?: string; busy: boolean; direct: boolean; onOpen: (row: CachedGroup) => void }) {
+export default function GroupList({ groups, commands, userId, busy, direct, emptyVerified = false, onOpen }: { groups: CachedGroup[]; commands: Command[]; userId?: string; busy: boolean; direct: boolean; emptyVerified?: boolean; onOpen: (row: CachedGroup) => void }) {
   const { palette, ui } = useUI();
-  if (!groups.length) return <Text style={ui.caption}>{direct ? 'No people yet' : 'No groups yet'}</Text>;
+  if (!groups.length) {
+    const caption = <Text style={ui.caption}>{direct ? 'No people yet' : 'No groups yet'}</Text>;
+    return emptyVerified && !busy && !direct && !commands.length ? <Mascot size="empty">{caption}</Mascot> : caption;
+  }
   return <View style={[styles.list, { backgroundColor: palette.surface }]}>{groups.map(row => <GroupListRow key={row.group.id} row={row} waiting={commands.filter(value => value.group_id === row.group.id)} userId={userId} busy={busy} onOpen={() => onOpen(row)} />)}</View>;
 }
 const styles = StyleSheet.create({

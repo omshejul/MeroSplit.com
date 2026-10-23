@@ -32,10 +32,10 @@ export async function signOut(session: Session): Promise<void> {
 export type { EmailCodeChallenge } from './emailCode.ts';
 import { challengeFromResponse, emailCodeError } from './emailCode.ts';
 import type { EmailCodeChallenge, EmailCodeResponse } from './emailCode.ts';
-export async function requestEmailCode(baseUrl: string, email: string): Promise<EmailCodeChallenge> {
+export async function requestEmailCode(baseUrl: string, email: string, emailRemindersDisclosed = false): Promise<EmailCodeChallenge> {
   const base = sameOrigin(baseUrl);
   if (!csrf()) await fetch(`${base}/app/`, { credentials: 'same-origin' });
-  const response = await sessionRequest({ baseUrl: base } as Session, '/_allauth/browser/v1/auth/code/request', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: email.trim() }), signal: AbortSignal.timeout(15_000) });
+  const response = await sessionRequest({ baseUrl: base } as Session, '/_allauth/browser/v1/auth/code/request', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: email.trim(), email_reminders_disclosed: emailRemindersDisclosed }), signal: AbortSignal.timeout(15_000) });
   const data = await response.json() as EmailCodeResponse;
   if (!response.ok) throw new Error(emailCodeError(data, 'Could not request a sign-in code. Try again.'));
   return challengeFromResponse(data);

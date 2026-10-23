@@ -1,4 +1,5 @@
 import React from 'react';
+import Mascot from './Mascot';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { ActivityIndicator, Text } from 'react-native-paper';
 import { formatMoney } from './accounting';
@@ -7,16 +8,17 @@ import type { ActivityItem, ActivityTarget } from './types';
 import { AmountText, balanceColor, Button, Icon, IconBadge, useUI } from './ui';
 
 type Props = {
-  items: ActivityItem[]; busy: boolean; error?: string | null; hasMore?: boolean;
+  items: ActivityItem[]; busy: boolean; emptyVerified?: boolean; error?: string | null; hasMore?: boolean;
   onRefresh: () => void; onLoadMore?: () => void; onOpen: (target: ActivityTarget) => void;
 };
 
 /** This is an event feed. Only canonical bill content in its destination can mark a bill seen. */
-export default function ActivityScreen({ items, busy, error, hasMore, onRefresh, onLoadMore, onOpen }: Props) {
+export default function ActivityScreen({ items, busy, error, hasMore, emptyVerified = false, onRefresh, onLoadMore, onOpen }: Props) {
   const { ui } = useUI();
   return <View style={s.content}>
     {!!error && <View style={s.message}><Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={ui.error}>{error}</Text><Button title="Try again" disabled={busy} onPress={onRefresh} /></View>}
     {!items.length && !hasMore && !error && <View style={s.empty}>
+      {emptyVerified && !busy && <Mascot size="empty" />}
       {busy && <ActivityIndicator accessibilityLabel="Loading activity" />}
       <Text style={ui.caption}>{busy ? 'Loading activity…' : 'No activity yet'}</Text>
     </View>}

@@ -54,7 +54,7 @@ test('Native auth uses allauth response and an account/backend ownership key', a
   const original = globalThis.fetch;
   globalThis.fetch = async (url, options) => {
     if (String(url).endsWith('/code/request')) {
-      assert.deepEqual(JSON.parse(String(options?.body)), { email: 'person@example.invalid' });
+      assert.deepEqual(JSON.parse(String(options?.body)), { email: 'person@example.invalid', email_reminders_disclosed: false });
       return Response.json({ meta: { session_token: 'pre-auth' }, data: { challenge_id: 'synthetic-challenge', expires_in: 180, retry_after: 60 } });
     }
     assert.equal(String(url), 'https://example.invalid/_allauth/app/v1/auth/code/confirm');

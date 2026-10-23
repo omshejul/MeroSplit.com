@@ -27,10 +27,10 @@ async function postEmailCode(base: string, action: 'request' | 'confirm', body: 
     return { response, data: await response.json() as EmailCodeResponse };
   } finally { clearTimeout(timer); }
 }
-export async function requestEmailCode(baseUrl: string, email: string): Promise<EmailCodeChallenge> {
+export async function requestEmailCode(baseUrl: string, email: string, emailRemindersDisclosed = false): Promise<EmailCodeChallenge> {
   const base = baseUrl.trim().replace(/\/+$/, '');
   if (!/^https?:\/\/[^/]+(?:\/[^?#]*)?$/.test(base)) throw new Error('Open a valid MeroSplit server.');
-  const { response, data } = await postEmailCode(base, 'request', { email: email.trim() });
+  const { response, data } = await postEmailCode(base, 'request', { email: email.trim(), email_reminders_disclosed: emailRemindersDisclosed });
   if (!response.ok) throw new Error(emailCodeError(data, 'Could not request a sign-in code. Try again.'));
   const challenge = challengeFromResponse(data); preAuth.clear();
   if (data.meta?.session_token) preAuth.set(challenge.challengeId, data.meta.session_token);

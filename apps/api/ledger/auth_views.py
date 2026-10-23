@@ -37,8 +37,14 @@ class RequestEmailCodeView(APIView):
         if request.user.is_authenticated:
             return ConflictResponse(request)
         try:
-            data = request_email_code(normalized_email((self.data or {}).get("email")), client_network(request))
-        except ValidationError:
+            data = self.data or {}
+            if not isinstance(data, dict):
+                raise ValueError()
+            disclosed = data.get("email_reminders_disclosed", False)
+            if type(disclosed) is not bool or set(data) - {"email", "email_reminders_disclosed"}:
+                raise ValueError()
+            data = request_email_code(normalized_email(data.get("email")), client_network(request), email_reminders_disclosed=disclosed)
+        except (ValidationError, ValueError):
             return auth_error(request)
         except EmailCodeLimited:
             return auth_error(request, 429)
