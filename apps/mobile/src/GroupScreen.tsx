@@ -30,7 +30,10 @@ export default function GroupScreen({ group, accepted, pending, busy, selfId, on
   const name = (id: string) => id === selfId ? 'You' : group.participants.find(person => person.id === id)?.name ?? 'Former member';
   const balance = BigInt(group.balances[selfId] ?? '0');
   const needsAttention = pending.some(command => command.state !== 'pending' || !!command.error);
-  const receipts = (group.payment_attempts ?? []).filter(attempt => attempt.recipient === selfId && ['reported', 'recorded', 'cancelled'].includes(attempt.state));
+  const receipts = (group.payment_attempts ?? []).filter(attempt =>
+    attempt.recipient === selfId && ['reported', 'recorded', 'cancelled'].includes(attempt.state)
+    && [attempt.sender, attempt.recipient].every(id => group.participants.some(person => person.id === id && !person.removed))
+    && !group.settlements.some(settlement => settlement.reversed && (settlement.id === attempt.settlement_id || settlement.attempt_id === attempt.id)));
   const transfers = group.transfers.filter(transfer => BigInt(transfer.amount) > 0n && transfer.sender !== transfer.recipient && [transfer.sender, transfer.recipient].every(id => group.participants.some(person => person.id === id && !person.removed)));
   const purchases = group.expenses.filter(expense => !expense.deleted);
   const spending = purchases.reduce((total, expense) => total + BigInt(expense.total), 0n).toString();
