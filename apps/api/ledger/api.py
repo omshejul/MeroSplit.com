@@ -25,25 +25,30 @@ from .collaboration import (
     review_invite,
 )
 from .email_invites import send_person_invite, update_contact
+from .expense_notifications import foreground, mark_seen, notice_feed, preferences, update_preferences
 from .history_reads import expense_detail, group_summary, history_page
 from .media import avatar_for, download_url, list_attachments, remove_attachment, remove_avatar, upload_file
 from .models import Group
 from .otp import client_network
 from .payments import change_payment, launch_details, prepare_payment, profile_for, update_profile
 from .portability import accepted_export, account_export, csv_export, delete_account
+from .profiles import display_name, update_display_name
 from .schemas import (
     ArchiveIn,
     AttemptIn,
     Command,
     ContactIn,
+    DisplayNameIn,
     ExpenseIn,
     GroupIn,
     InviteIn,
+    NotificationPreferencesIn,
     OpeningIn,
     ParticipantIn,
     ProfileIn,
     PushDeviceIn,
     Revision,
+    SeenNoticesIn,
     SettlementIn,
     SplitwiseImportIn,
     SplitwiseImportResult,
@@ -224,10 +229,41 @@ def me(request):
     return {
         "id": request.auth.pk,
         "email": request.auth.email,
+        "display_name": display_name(request.auth),
         "email_verified": EmailAddress.objects.filter(user=request.auth, email__iexact=request.auth.email, verified=True).exists(),
         "payment_profile": profile_for(request.auth),
         "avatar": avatar_for(request.auth),
     }
+
+
+@api.put("/me/profile")
+def account_profile_update(request, body: DisplayNameIn):
+    return update_display_name(request.auth, body.display_name)
+
+
+@api.get("/me/notifications/preferences")
+def notification_preferences(request):
+    return preferences(request.auth)
+
+
+@api.put("/me/notifications/preferences")
+def notification_preferences_update(request, body: NotificationPreferencesIn):
+    return update_preferences(request.auth, body.expense_updates, body.email_reminders)
+
+
+@api.get("/me/notifications")
+def notifications(request, limit: int = 50, expense_ids: str = ""):
+    return notice_feed(request.auth, limit, expense_ids)
+
+
+@api.post("/me/notifications/seen")
+def notifications_seen(request, body: SeenNoticesIn):
+    return mark_seen(request.auth, body.model_dump(mode="json")["notices"])
+
+
+@api.post("/me/notifications/foreground")
+def notifications_foreground(request):
+    return foreground(request.auth)
 
 
 @api.post("/me/avatar")

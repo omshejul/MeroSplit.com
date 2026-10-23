@@ -273,3 +273,58 @@ class ExpensePushDelivery(models.Model):
             ),
         ]
         indexes = [models.Index(fields=["state", "due_at"], name="expense_push_due")]
+
+
+class NotificationPreference(models.Model):
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, primary_key=True)
+    expense_updates = models.BooleanField(default=True)
+    email_reminders = models.BooleanField(default=False)
+    email_enabled_at = models.DateTimeField(null=True)
+    foreground_at = models.DateTimeField(null=True)
+    last_digest_at = models.DateTimeField(null=True)
+
+
+class ExpenseDigest(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    recipient = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    recipient_email = models.EmailField()
+    payload = models.JSONField(default=dict)
+    state = models.CharField(max_length=9, default="pending")
+    due_at = models.DateTimeField()
+    first_attempt_at = models.DateTimeField(null=True)
+    accepted_at = models.DateTimeField(null=True)
+    attempts = models.PositiveIntegerField(default=0)
+    lease_id = models.UUIDField(null=True)
+    lease_until = models.DateTimeField(null=True)
+    provider_id = models.CharField(max_length=200, blank=True)
+    last_error = models.CharField(max_length=40, blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["recipient"], condition=Q(state__in=["pending", "sending", "held"]), name="one_open_expense_digest"),
+            models.CheckConstraint(condition=Q(state__in=["pending", "sending", "accepted", "cancelled", "held"]), name="expense_digest_state"),
+        ]
+        indexes = [models.Index(fields=["state", "due_at"], name="expense_digest_due"),
+                   models.Index(fields=["recipient", "first_attempt_at"], name="expense_digest_recency")]
+
+
+class ExpenseNotice(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    expense = models.ForeignKey(Expense, on_delete=models.CASCADE, related_name="notices")
+    recipient = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    expense_version = models.PositiveIntegerField()
+    created_at = models.DateTimeField()
+    push_due_at = models.DateTimeField()
+    push_processed_at = models.DateTimeField(null=True)
+    seen_at = models.DateTimeField(null=True)
+    cancelled_at = models.DateTimeField(null=True)
+    email_eligible = models.BooleanField(default=False)
+    digest = models.ForeignKey(ExpenseDigest, null=True, on_delete=models.SET_NULL, related_name="notices")
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["expense", "recipient"], name="one_notice_per_bill_recipient")]
+        indexes = [
+            models.Index(fields=["push_due_at", "id"], condition=Q(push_processed_at__isnull=True), name="expense_notice_push_due"),
+            models.Index(fields=["recipient", "-created_at", "-id"], condition=Q(seen_at__isnull=True, cancelled_at__isnull=True), name="expense_notice_unread"),
+            models.Index(fields=["recipient", "created_at", "id"], condition=Q(email_eligible=True, digest__isnull=True, seen_at__isnull=True, cancelled_at__isnull=True), name="expense_notice_email_due"),
+        ]

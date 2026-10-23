@@ -5,7 +5,7 @@ from typing import Annotated, Literal
 from uuid import UUID
 
 from ninja import Schema
-from pydantic import ConfigDict, Field, StrictInt, StrictStr
+from pydantic import ConfigDict, Field, StrictBool, StrictInt, StrictStr
 
 
 class Input(Schema):
@@ -82,6 +82,25 @@ class AttemptIn(Command):
 
 class ProfileIn(Input):
     vpa: Annotated[str, Field(min_length=3, max_length=254)]
+
+
+class DisplayNameIn(Input):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    display_name: Annotated[StrictStr, Field(min_length=1, max_length=120, pattern=r"\S")]
+
+
+class NotificationPreferencesIn(Input):
+    expense_updates: StrictBool
+    email_reminders: StrictBool
+
+
+class SeenNoticeIn(Input):
+    id: UUID
+    expense_version: Annotated[StrictInt, Field(ge=1)]
+
+
+class SeenNoticesIn(Input):
+    notices: Annotated[list[SeenNoticeIn], Field(max_length=100)]
 
 
 class ArchiveIn(Command):

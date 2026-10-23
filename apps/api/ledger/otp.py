@@ -175,6 +175,9 @@ def _verified_user(email: str):
         user.username, user.email = f"email-{uuid4().hex}", email
         user.set_unusable_password()
         user.save()
+        # The sign-in screen discloses daily unread reminders for new accounts.
+        from .models import NotificationPreference
+        NotificationPreference.objects.create(user=user, email_reminders=True, email_enabled_at=timezone.now())
     addresses = list(EmailAddress.objects.filter(user=user, email__iexact=email))
     if len(addresses) > 1:
         return None

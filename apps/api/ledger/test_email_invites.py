@@ -14,6 +14,8 @@ from .collaboration import invite_token
 from .models import CommandReceipt, Group, Invite, Participant
 from .test_api import authenticated_client, expense, send, uid
 from .test_api import client as client
+from .test_api import group as group
+from .test_collaboration import invite as manual_invite
 from .test_email_codes import mailbox as mailbox
 
 pytestmark = pytest.mark.django_db
@@ -55,6 +57,115 @@ def test_optional_contact_is_not_identity_or_automatic_email(client, direct, mai
     assert send(existing, "get", f"/groups/{group_id}").status_code == 404
     assert send(client, "post", "/groups", body).status_code == 200
     assert Group.objects.count() == 1
+
+
+def test_group_member_with_email_is_immediately_usable_without_sending_or_linking(client, group, mailbox):
+    group_id, people, _ = group
+    old_bill = expense(people)
+    assert send(client, "post", f"/groups/{group_id}/expenses", old_bill).status_code == 200
+    existing = verified_person()
+    added = {"command_id": uid(), "id": uid(), "name": " Added person ", "email": " FRIEND@example.invalid "}
+    path = f"/groups/{group_id}/participants"
+    response = send(client, "post", path, added)
+    assert response.status_code == 200, response.content
+    assert send(client, "post", path, added).json() == response.json()
+    person = Participant.objects.get(pk=added["id"])
+    assert person.name == "Added person" and person.contact_email == "friend@example.invalid" and person.user_id is None
+    state = send(client, "get", f"/groups/{group_id}").json()
+    assert added["id"] not in state["expenses"][0]["shares"] and state["balances"][added["id"]] == "0"
+    new_bill = expense(people + [added["id"]], beneficiaries=[3])
+    assert send(client, "post", f"/groups/{group_id}/expenses", new_bill).status_code == 200
+    assert send(existing, "get", f"/groups/{group_id}").status_code == 404
+    assert Participant.objects.count() == 4 and Invite.objects.count() == 0 and mailbox == []
+
+
+def test_group_email_claim_uses_existing_person_and_preserves_money_and_privacy(client, group, mailbox):
+    group_id, people, _ = group
+    assert send(client, "post", f"/groups/{group_id}/participants/{people[1]}/contact", {
+        "command_id": uid(), "email": "friend@example.invalid",
+    }).status_code == 200
+    assert send(client, "post", f"/groups/{group_id}/expenses", expense(people)).status_code == 200
+    before = send(client, "get", f"/groups/{group_id}").json()
+    command, sent = send_invite(client, group)
+    assert sent.status_code == 200 and sent.json()["invite"]["state"] == "sent"
+    assert send_invite(client, group, command)[1].json() == sent.json() and len(mailbox) == 1
+    recipient = verified_person(verified=False)
+    token = invite_token(command)
+    for actor in (verified_person("other@example.invalid"), recipient):
+        assert send(actor, "post", f"/invites/{token}/claim", {"command_id": uid()}).status_code == 403
+        assert send(actor, "get", f"/groups/{group_id}").status_code == 404
+    EmailAddress.objects.filter(user=recipient.actor).update(verified=True)
+    claimed = send(recipient, "post", f"/invites/{token}/claim", {"command_id": uid()})
+    assert claimed.status_code == 200, claimed.content
+    after = send(recipient, "get", f"/groups/{group_id}").json()
+    assert len(after["participants"]) == 3 and Participant.objects.get(pk=people[1]).user_id == recipient.actor.pk
+    for key in ("balances", "totals", "expenses", "settlements"):
+        assert after[key] == before[key]
+    assert all("email" not in person for person in after["participants"]) and after["invites"] == []
+
+
+def test_saving_group_contact_revokes_manual_pending_claim_and_requires_explicit_email(client, group, mailbox):
+    group_id, people, _ = group
+    command, token = manual_invite(client, group_id, people[1])
+    target = verified_person()
+    assert send(target, "post", f"/invites/{token}/claim", {"command_id": uid()}).status_code == 200
+    assert send(client, "post", f"/groups/{group_id}/participants/{people[1]}/contact", {
+        "command_id": uid(), "email": target.actor.email,
+    }).status_code == 200
+    assert Invite.objects.get(pk=command).revoked and mailbox == []
+    assert send(target, "post", f"/invites/{token}/claim", {"command_id": uid()}).status_code == 404
+    assert send(client, "post", f"/groups/{group_id}/invites/{command}/approve", {"command_id": uid()}).status_code == 409
+    assert send(client, "post", f"/groups/{group_id}/invites", {"command_id": uid(), "participant_id": people[1]}).status_code == 409
+    email_command, response = send_invite(client, group)
+    assert response.status_code == 200 and len(mailbox) == 1
+    assert send(target, "post", f"/invites/{invite_token(email_command)}/claim", {"command_id": uid()}).status_code == 200
+    assert Participant.objects.get(pk=people[1]).user_id == target.actor.pk
+
+
+def test_legacy_manual_token_with_saved_email_cannot_claim_or_approve(client, group, mailbox):
+    group_id, people, _ = group
+    command, token = manual_invite(client, group_id, people[1])
+    target = verified_person()
+    assert send(target, "post", f"/invites/{token}/claim", {"command_id": uid()}).status_code == 200
+    # Simulate pre-upgrade data: the old contact code did not revoke manual tokens.
+    Participant.objects.filter(pk=people[1]).update(contact_email=target.actor.email)
+    assert send(target, "post", f"/invites/{token}/claim", {"command_id": uid()}).status_code == 409
+    assert send(client, "post", f"/groups/{group_id}/invites/{command}/approve", {"command_id": uid()}).status_code == 409
+    assert Participant.objects.get(pk=people[1]).user_id is None and mailbox == []
+
+
+def test_email_pending_approval_requires_exact_verified_claimant(client, group, mailbox):
+    group_id, people, _ = group
+    assert send(client, "post", f"/groups/{group_id}/participants/{people[1]}/contact", {
+        "command_id": uid(), "email": "friend@example.invalid",
+    }).status_code == 200
+    command, response = send_invite(client, group)
+    assert response.status_code == 200
+    wrong = verified_person("wrong@example.invalid")
+    Invite.objects.filter(pk=command).update(claimant=wrong.actor)
+    assert send(client, "post", f"/groups/{group_id}/invites/{command}/approve", {"command_id": uid()}).status_code == 403
+    assert Participant.objects.get(pk=people[1]).user_id is None
+
+
+@pytest.mark.parametrize("invalid", ["outsider", "member", "archived", "removed"])
+def test_group_contact_and_email_invite_preserve_permissions(client, group, mailbox, invalid):
+    group_id, people, _ = group
+    actor = client
+    if invalid in ("outsider", "member"):
+        actor = verified_person()
+        if invalid == "member":
+            Participant.objects.filter(pk=people[2]).update(user=actor.actor)
+        expected = 404 if invalid == "outsider" else 403
+    elif invalid == "archived":
+        Group.objects.filter(pk=group_id).update(archived=True)
+        expected = 409
+    else:
+        Participant.objects.filter(pk=people[1]).update(removed=True)
+        expected = 409
+    for suffix in ("contact", "email-invite"):
+        payload = {"command_id": uid(), **({"email": "friend@example.invalid"} if suffix == "contact" else {})}
+        assert send(actor, "post", f"/groups/{group_id}/participants/{people[1]}/{suffix}", payload).status_code == expected
+    assert Invite.objects.count() == 0 and mailbox == []
 
 
 def test_explicit_invite_is_idempotent_and_locked_until_verified_claim(client, direct, mailbox):
@@ -105,14 +216,12 @@ def test_contact_update_later_revokes_stale_intended_recipient(client, direct, m
     assert send(outsider, "post", contact_path, {"command_id": uid(), "email": ""}).status_code == 404
 
 
-def test_missing_email_archived_and_nondirect_ledgers_do_not_send(client, direct, mailbox):
+def test_missing_email_and_archived_ledgers_do_not_send(client, direct, mailbox):
     group_id, people, _ = direct
     Participant.objects.filter(id=people[1]).update(contact_email="")
     assert send_invite(client, direct)[1].status_code == 422
     Participant.objects.filter(id=people[1]).update(contact_email="friend@example.invalid")
     Group.objects.filter(id=group_id).update(archived=True)
-    assert send_invite(client, direct)[1].status_code == 409
-    Group.objects.filter(id=group_id).update(archived=False, is_direct=False)
     assert send_invite(client, direct)[1].status_code == 409
     assert mailbox == [] and Invite.objects.count() == 0
 
@@ -131,18 +240,22 @@ def test_expired_revoked_or_removed_email_invitation_cannot_claim(client, direct
     assert Participant.objects.get(id=direct[1][1]).user_id is None
 
 
-def test_provider_failure_keeps_one_ledger_and_retries_same_immutable_delivery(client, direct, mailbox, monkeypatch):
+@pytest.mark.parametrize("ledger_fixture", ["direct", "group"])
+def test_provider_failure_keeps_one_ledger_and_retries_same_immutable_delivery(client, request, mailbox, monkeypatch, ledger_fixture):
+    ledger = request.getfixturevalue(ledger_fixture)
+    if ledger_fixture == "group":
+        Participant.objects.filter(pk=ledger[1][1]).update(contact_email="friend@example.invalid")
     deliveries = []
     def uncertain(recipient, subject, text, delivery_id, **kwargs):
         deliveries.append((recipient, subject, text, delivery_id, kwargs))
         raise email_delivery.EmailDeliveryUnavailable()
     monkeypatch.setattr(email_delivery, "send_email", uncertain)
-    command, failed = send_invite(client, direct)
+    command, failed = send_invite(client, ledger)
     assert failed.status_code == 200 and failed.json()["invite"]["state"] == "failed"
-    assert send_invite(client, direct, command)[1].status_code == 429
+    assert send_invite(client, ledger, command)[1].status_code == 429
     Invite.objects.filter(id=command).update(last_send_at=timezone.now() - timedelta(seconds=61))
     monkeypatch.setattr(email_delivery, "render_message", lambda *args, **kwargs: ("Changed text", "Changed HTML"))
-    _, retried = send_invite(client, direct, command)
+    _, retried = send_invite(client, ledger, command)
     assert retried.status_code == 200
     assert len(deliveries) == 2 and deliveries[0] == deliveries[1]
     assert Group.objects.count() == Invite.objects.count() == 1

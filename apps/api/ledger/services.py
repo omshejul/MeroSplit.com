@@ -12,6 +12,7 @@ from .models import (
     Change,
     CommandReceipt,
     Expense,
+    ExpenseNotice,
     Group,
     Invite,
     OpeningBalance,
@@ -19,6 +20,7 @@ from .models import (
     PaymentProfile,
     Settlement,
 )
+from .profiles import participant_display_name
 from .store_review import require_group_scope
 
 
@@ -129,7 +131,7 @@ def finance_state(participant_ids, expense_rows, settlement_rows, opening_balanc
 
 
 def snapshot(group):
-    participants = list(group.participants.order_by("id"))
+    participants = list(group.participants.select_related("user").order_by("id"))
     expenses = list(group.expenses.order_by("date", "id"))
     settlements = list(group.settlements.order_by("created_at", "id"))
     opening = OpeningBalance.objects.filter(group=group).first()
@@ -147,7 +149,8 @@ def snapshot(group):
         "is_direct": group.is_direct,
         "owner_id": group.owner_id,
         "participants": [
-            {"id": str(p.id), "name": p.name, "user_id": p.user_id, "removed": p.removed}
+            {"id": str(p.id), "name": participant_display_name(p), "recorded_name": p.name,
+             "user_id": p.user_id, "removed": p.removed}
             for p in participants
         ],
         "expenses": [expense_dict(e) for e in expenses],
@@ -343,6 +346,9 @@ def set_expense_deleted(actor, group_id, expense_id, payload, deleted):
     expense.deleted = deleted
     expense.version += 1
     expense.save(update_fields=["deleted", "version"])
+    if deleted:
+        from .expense_notifications import cancel_notices
+        cancel_notices(ExpenseNotice.objects.filter(expense=expense), "bill_deleted")
     keep_removed_balances_zero(group)
     return record_change(
         group,

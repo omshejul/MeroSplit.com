@@ -8,8 +8,8 @@ from django.db import IntegrityError, close_old_connections, connection, connect
 from django.test import Client
 from django.utils import timezone
 
-from .models import Expense, ExpensePushDelivery, Group, Participant, PushDevice
-from .push import claim_delivery, send_pending_bill_notifications
+from .models import Expense, ExpenseNotice, ExpensePushDelivery, Group, Participant, PushDevice
+from .push import claim_delivery, fanout_due_notices, send_pending_bill_notifications
 from .push_provider import PushFailure
 from .services import save_expense
 from .test_api import authenticated_client, expense, send, uid
@@ -59,6 +59,10 @@ def new_bill(client, group):
     payload = expense(group[1])
     response = send(client, "post", f"/groups/{group[0]}/expenses", payload)
     assert response.status_code == 200, response.content
+    # Existing provider/binding regressions operate after the new grace period.
+    ExpenseNotice.objects.filter(expense_id=payload["id"]).update(push_due_at=timezone.now())
+    ExpensePushDelivery.objects.filter(expense_id=payload["id"]).update(due_at=timezone.now())
+    fanout_due_notices()
     return payload
 
 
@@ -146,6 +150,8 @@ def test_delivery_generic_payload_and_no_network_transaction(client, group, join
         {
             "type": "new_bill",
             "event_id": str(ExpensePushDelivery.objects.get().event_id),
+            "notice_id": str(ExpensePushDelivery.objects.get().event_id),
+            "expense_version": 1,
             "recipient_user_id": str(joined[0].actor.pk),
             "group_id": group[0],
             "expense_id": payload["id"],

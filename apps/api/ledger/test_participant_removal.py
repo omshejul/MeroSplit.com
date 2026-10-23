@@ -74,6 +74,7 @@ def test_removal_preserves_history_revokes_access_invites_and_queued_push(client
     assert send(client, "post", f"/groups/{group_id}/archive", {
         "command_id": uid(), "archived": True,
     }).status_code == 200
+    assert ExpensePushDelivery.objects.get().last_error == "group_archived"
     assert remove(client, group_id, ids[1]).status_code == 200
     after = state(client, group_id)
     for key in ["expenses", "settlements", "balances", "totals"]:

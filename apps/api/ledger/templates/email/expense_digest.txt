@@ -1,0 +1,7 @@
+You have unread updates
+
+There are expense updates you have not seen yet.
+
+Open MeroSplit: {{ app_url }}
+
+To stop these emails, turn off Email reminders in Me > Notifications.

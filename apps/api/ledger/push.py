@@ -2,7 +2,7 @@
 
 import hashlib
 from datetime import timedelta
-from uuid import NAMESPACE_URL, uuid4, uuid5
+from uuid import uuid4
 
 from allauth.core.internal.sessionkit import get_session_user
 from allauth.headless import app_settings
@@ -15,7 +15,7 @@ from django.db.models import Q
 from django.utils import timezone
 from ninja.errors import HttpError
 
-from .models import ExpensePushDelivery, Group, Participant, PushDevice
+from .models import ExpenseNotice, ExpensePushDelivery, Group, NotificationPreference, Participant, PushDevice
 from .store_review import groups_for_actor, review_ids
 
 
@@ -62,6 +62,8 @@ def register_device(request, installation_id, payload):
                 for key, value in binding.items():
                     setattr(device, key, value)
                 device.save()
+            else:
+                device.save(update_fields=["updated_at"])
         else:
             device = PushDevice.objects.create(id=installation_id, **binding)
     return {"id": str(device.id), "enabled": True}
@@ -78,32 +80,72 @@ def remove_device(actor, installation_id):
 
 def queue_new_bill(expense, actor):
     """Called only by the normal CREATE transaction, never imports or edits."""
+    now = timezone.now()
     members = Participant.objects.filter(
         group=expense.group, user__is_active=True, removed=False,
-    ).exclude(user=actor)
+    ).exclude(user=actor).exclude(user_id__in=review_ids())
+    recipients = {person.user_id for person in members if int(expense.paid.get(str(person.id), "0")) > 0 or int(expense.shares.get(str(person.id), "0")) > 0}
+    prefs = {row.user_id: row for row in NotificationPreference.objects.filter(user_id__in=recipients)}
+    notices = []
+    for recipient in recipients:
+        pref = prefs.get(recipient)
+        enabled = not pref or pref.expense_updates
+        notices.append(ExpenseNotice(expense=expense, recipient_id=recipient, expense_version=expense.version,
+            created_at=now, push_due_at=now + timedelta(seconds=30), push_processed_at=None if enabled else now,
+            email_eligible=bool(enabled and pref and pref.email_reminders and pref.email_enabled_at)))
+    ExpenseNotice.objects.bulk_create(notices)
+    # Reserve existing bindings inside the bill transaction; grace-time fanout
+    # also captures newly available routes once, without replay on later registration.
+    _queue_devices(notices, now)
+
+
+def _queue_devices(notices, now):
+    targets = {}
+    for notice in notices:
+        if not notice.push_processed_at and not notice.seen_at and not notice.cancelled_at:
+            targets.setdefault(notice.recipient_id, []).append(notice)
+    if not targets:
+        return
     # Bill creation already holds the group lock. Rebinding/revocation must not
     # remove a selected device between this read and the delivery FK insert.
     devices = PushDevice.objects.select_for_update(of=("self",)).filter(
-        user_id__in=members.values("user_id"), session__expire_date__gt=timezone.now()
+        user_id__in=targets, session__expire_date__gt=now, updated_at__gte=now - timedelta(days=30)
     ).order_by("id")
-    event_id = uuid5(NAMESPACE_URL, f"merosplit:new_bill:{expense.id}")
     ExpensePushDelivery.objects.bulk_create(
         [
             ExpensePushDelivery(
-                expense=expense,
+                expense_id=notice.expense_id,
                 recipient_id=device.user_id,
                 device=device,
                 device_revision=device.revision,
-                event_id=event_id,
-                due_at=timezone.now(),
+                event_id=notice.id,
+                due_at=notice.push_due_at,
             )
             for device in devices
-        ]
+            for notice in targets[device.user_id]
+        ], ignore_conflicts=True,
     )
 
 
+def fanout_due_notices(*, limit=100):
+    from .expense_notifications import _eligible_notices
+    now = timezone.now()
+    with transaction.atomic():
+        notices = list(ExpenseNotice.objects.select_for_update(skip_locked=True, of=("self",))
+            .filter(push_processed_at__isnull=True, push_due_at__lte=now)
+            .select_related("expense__group", "recipient").order_by("push_due_at", "id")[:limit])
+        disabled = set(NotificationPreference.objects.filter(user_id__in=[notice.recipient_id for notice in notices], expense_updates=False).values_list("user_id", flat=True))
+        _queue_devices([notice for notice in _eligible_notices(notices) if notice.recipient_id not in disabled], now)
+        ExpenseNotice.objects.filter(id__in=[notice.id for notice in notices]).update(push_processed_at=now)
+    return len(notices)
+
+
 def eligible_delivery(delivery):
+    from .expense_notifications import eligible_notice, preferences
     device, expense = delivery.device, delivery.expense
+    notice = ExpenseNotice.objects.select_related("expense__group", "recipient").filter(expense=expense, recipient_id=delivery.recipient_id).first()
+    if not notice or notice.push_due_at > timezone.now() or not eligible_notice(notice) or not preferences(delivery.recipient)["expense_updates"]:
+        return False
     if review_ids() and not groups_for_actor(Group.objects.filter(pk=expense.group_id), delivery.recipient).exists():
         return False
     if (
@@ -117,6 +159,7 @@ def eligible_delivery(delivery):
         or expense.deleted
         or expense.group.archived
         or device.session.expire_date <= timezone.now()
+        or device.updated_at < timezone.now() - timedelta(days=30)
         or not Participant.objects.filter(
             group=expense.group, user_id=delivery.recipient_id, removed=False,
         ).exists()
@@ -155,6 +198,7 @@ def send_pending_bill_notifications(*, limit=100):
     # Import the single selected provider here; no network runs in ledger transactions.
     from .push_provider import PushFailure, send_bill_notification
 
+    fanout_due_notices(limit=limit)
     processed = 0
     for _ in range(limit):
         claimed = claim_delivery()
@@ -176,10 +220,15 @@ def send_pending_bill_notifications(*, limit=100):
         data = {
             "type": "new_bill",
             "event_id": str(delivery.event_id),
+            "notice_id": str(delivery.event_id),
             "recipient_user_id": str(delivery.recipient_id),
             "group_id": str(delivery.expense.group_id),
             "expense_id": str(delivery.expense_id),
         }
+        notice = ExpenseNotice.objects.filter(pk=delivery.event_id).first()
+        if not notice or not current.filter(state="sending", lease_until__gt=timezone.now()).exists():
+            continue
+        data["expense_version"] = notice.expense_version
         try:
             provider_id = send_bill_notification(delivery.device, data)
         except PushFailure as error:
@@ -194,7 +243,9 @@ def send_pending_bill_notifications(*, limit=100):
                     lease_until=None,
                 )
         else:
-            current.update(
+            # Seen/off may commit while the provider is already handling this
+            # request. Retain its ticket; subsequent work only polls the receipt.
+            ExpensePushDelivery.objects.filter(id=delivery_id, provider_id="").update(
                 state="queued",
                 provider_id=provider_id[:200],
                 ticketed_at=timezone.now(),

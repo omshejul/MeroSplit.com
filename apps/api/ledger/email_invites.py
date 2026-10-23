@@ -1,4 +1,4 @@
-"""Explicit email delivery and verified-address claims for two-person ledgers."""
+"""Explicit email delivery and verified-address claims for unclaimed participants."""
 
 from datetime import timedelta
 from urllib.parse import quote, urlsplit
@@ -12,6 +12,7 @@ from . import email_delivery
 from .collaboration import invite_token
 from .models import Change, Group, Invite, Participant
 from .otp import EmailCodeLimited, consume_limits
+from .profiles import display_name
 from .services import clean_contact_email, previous_result, record_change, visible_group, writable
 from .store_review import require_no_review_email
 
@@ -21,8 +22,6 @@ def _person(actor, group_id, participant_id):
     if group.owner_id != actor.pk:
         raise HttpError(403, "Only the organizer can invite this person")
     writable(group)
-    if not group.is_direct or group.participants.count() != 2:
-        raise HttpError(409, "Email invitations are for two-person ledgers")
     person = group.participants.filter(id=participant_id, user__isnull=True, removed=False).first()
     if not person:
         raise HttpError(409, "Choose an unclaimed person in this ledger")
@@ -39,7 +38,7 @@ def update_contact(actor, group_id, participant_id, payload):
     if email != person.contact_email:
         person.contact_email = email
         person.save(update_fields=["contact_email"])
-        Invite.objects.filter(participant=person, approved=False).exclude(intended_email="").update(revoked=True)
+        Invite.objects.filter(participant=person, approved=False).update(revoked=True)
     return record_change(group, actor, payload["command_id"], fingerprint, "contact_changed", {"participant_id": str(person.id)})
 
 
@@ -108,13 +107,13 @@ def send_person_invite(actor, group_id, participant_id, payload, origin, network
             )
             url = f"{invite.delivery_origin}/invite/{quote(token, safe='')}"
             text, html = email_delivery.render_message("invitation", {
-                "inviter_name": actor.get_full_name().strip() or "Someone", "invite_url": url,
+                "inviter_name": display_name(actor) or "Someone", "invite_url": url,
             })
             invite.email_payload = email_delivery.message_payload(
                 invite.intended_email, "Join your MeroSplit ledger", text, html,
             )
             invite.save(update_fields=["email_payload"])
-            Invite.objects.filter(participant=person, approved=False).exclude(id=invite.id).exclude(intended_email="").update(revoked=True)
+            Invite.objects.filter(participant=person, approved=False).exclude(id=invite.id).update(revoked=True)
             result = record_change(
                 group, actor, payload["command_id"], fingerprint, "email_invite_created",
                 {"id": str(invite.id), "participant_id": str(person.id)},
@@ -151,7 +150,7 @@ def claim_email_invite(actor, invite, payload):
         visible_group(actor, group.id)
         return previous
     writable(group)
-    if not group.is_direct or group.participants.count() != 2 or invite.participant.removed:
+    if invite.participant.removed:
         raise HttpError(409, "This invitation cannot be accepted")
     if invite.participant.user_id or Participant.objects.filter(group=group, user=actor).exists():
         raise HttpError(409, "This ledger is already linked to an account")

@@ -209,11 +209,13 @@ def _remove_authored_text(group, actor_id):
 
 @transaction.atomic
 def delete_account(actor):
-    from .models import PushDevice
+    from .models import ExpenseDigest, ExpenseNotice, NotificationPreference, PushDevice
     actor_id = actor.pk
     # Serialize with registration, ledger writes and logout before cascade collection.
     if not get_user_model().objects.select_for_update(no_key=True).filter(pk=actor_id).exists():
         return {"deleted": True}
+    # Digest builders take preference→notice; keep the same order during deletion.
+    NotificationPreference.objects.select_for_update().filter(user=actor).first()
     groups = list(
         Group.objects.filter(id__in=Group.objects.filter(
             Q(participants__user=actor) | Q(owner=actor) | Q(changes__actor=actor)
@@ -228,7 +230,11 @@ def delete_account(actor):
     files = UploadedFile.objects.filter(Q(avatar_owner=actor) | Q(uploaded_by=actor))
     media_ids = list(files.values_list("id", flat=True))
     files.update(state="deleted", purged=False, name="", source_hash="", size=0, uploaded_by=None, avatar_owner=None)
+    # Match fanout's notice→device order before cascading device deliveries.
+    ExpenseNotice.objects.filter(recipient=actor).delete()
     PushDevice.objects.filter(user=actor).delete()
+    ExpenseDigest.objects.filter(recipient=actor).delete()
+    NotificationPreference.objects.filter(user=actor).delete()
     for group in groups:
         if group.owner_id == actor.pk:
             successor = (

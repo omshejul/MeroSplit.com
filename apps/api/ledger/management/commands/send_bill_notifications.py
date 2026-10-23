@@ -5,6 +5,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import close_old_connections
 from django.utils import timezone
 
+from ledger.expense_notifications import send_pending_digests
 from ledger.models import ExpensePushDelivery
 from ledger.push import check_pending_bill_receipts, send_pending_bill_notifications
 
@@ -38,8 +39,9 @@ class Command(BaseCommand):
                 close_old_connections()
                 count = send_pending_bill_notifications(limit=options["limit"])
                 receipts = check_pending_bill_receipts(limit=options["limit"])
-                if count or receipts or not options["loop"]:
-                    self.stdout.write(f"Processed {count} bill notifications and {receipts} receipts")
+                digests = send_pending_digests(limit=options["limit"])
+                if count or receipts or digests or not options["loop"]:
+                    self.stdout.write(f"Processed {count} bill notifications, {receipts} receipts and {digests} unread digests")
                 if not options["loop"]:
                     return
                 time.sleep(options["interval"])

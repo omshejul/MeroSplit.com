@@ -1,12 +1,14 @@
 import re
 from datetime import timedelta
 
+from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.utils import timezone
 from ninja.errors import HttpError
 
 from .accounting import AccountingError
 from .models import Change, CommandReceipt, Group, PaymentAttempt, PaymentProfile, Settlement
+from .profiles import participant_display_name
 from .services import (
     keep_removed_balances_zero,
     people,
@@ -29,6 +31,8 @@ def profile_for(user):
 def update_profile(actor, vpa):
     if not re.fullmatch(r"[A-Za-z0-9._-]{2,}@[A-Za-z0-9.-]{2,}", vpa):
         raise AccountingError("Enter a UPI address; format checks do not verify its owner")
+    if not get_user_model().objects.select_for_update(no_key=True).filter(pk=actor.pk, is_active=True).exists():
+        raise HttpError(401, "Sign in again to update your payment profile")
     # Lock shared groups in the same order as other financial writes.
     groups = list(
         Group.objects.filter(participants__user=actor, participants__removed=False)
@@ -129,7 +133,7 @@ def prepare_payment(actor, group_id, payload):
 def launch_details(actor, group_id, attempt_id):
     with transaction.atomic():
         group = visible_group(actor, group_id, lock=True)
-        attempt = group.attempts.select_related("sender", "recipient").filter(id=attempt_id).first()
+        attempt = group.attempts.select_related("sender", "recipient__user").filter(id=attempt_id).first()
         if not attempt:
             raise HttpError(404, "Payment attempt not found")
         if attempt.sender.user_id != actor.pk:
@@ -152,7 +156,7 @@ def launch_details(actor, group_id, attempt_id):
             "vpa": attempt.payee,
             "amount": str(attempt.amount),
             "currency": "INR",
-            "recipient": attempt.recipient.name,
+            "recipient": participant_display_name(attempt.recipient),
             "note": "Group repayment",
             "bank_verified": False,
             "direct_launch_supported": True,

@@ -3,12 +3,14 @@
 from django.core import signing
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import F, Q
 from django.db.models.fields.json import KeyTextTransform
+from django.db.models.fields.tuple_lookups import TupleLessThan
 from django.utils import timezone
 from ninja.errors import HttpError
 
 from .models import Invite, OpeningBalance, PaymentProfile
+from .profiles import participant_display_name
 from .services import expense_dict, finance_state, visible_group
 
 CURSOR_SALT = "merosplit.group-history.v1"
@@ -96,9 +98,14 @@ def _page(actor, group, resource, limit=50, cursor=None, supplied=None):
 
     try:
         if after:
-            query = query.filter(**{f"{order}__lt": after[0]}) if resource == "activity" else query.filter(
-                Q(**{f"{order}__lt": after[0]}) | Q(**{order: after[0], "id__lt": after[1]})
-            )
+            if resource == "activity":
+                query = query.filter(**{f"{order}__lt": after[0]})
+            else:
+                if any(value is None for value in after):
+                    raise ValueError("Missing history position")
+                # Native row comparison reaches the composite index directly,
+                # rather than filtering all preceding rows through an OR.
+                query = query.filter(TupleLessThan((F(order), F("id")), tuple(after)))
         rows = list(query.order_by(f"-{order}", *([] if resource == "activity" else ["-id"]))[:limit + 1])
     except (ValidationError, ValueError, TypeError) as exc:
         raise HttpError(422, "Invalid history position") from exc
@@ -151,7 +158,7 @@ def expense_detail(actor, group_id, expense_id, *, version=None):
 def group_summary(actor, group_id, *, limit=50):
     _limit(limit)
     group = visible_group(actor, group_id, lock=True)
-    participants = list(group.participants.order_by("id"))
+    participants = list(group.participants.select_related("user").order_by("id"))
     opening = OpeningBalance.objects.filter(group=group).first()
     finance = finance_state(
         [person.id for person in participants],
@@ -175,7 +182,8 @@ def group_summary(actor, group_id, *, limit=50):
     return {
         "read_mode": "summary", "id": str(group.id), "name": group.name, "version": group.version,
         "archived": group.archived, "is_direct": group.is_direct, "owner_id": group.owner_id,
-        "participants": [{"id": str(person.id), "name": person.name, "user_id": person.user_id, "removed": person.removed,
+        "participants": [{"id": str(person.id), "name": participant_display_name(person), "recorded_name": person.name,
+                          "user_id": person.user_id, "removed": person.removed,
                           "payment_profile": profiles.get(person.user_id), **({"email": person.contact_email} if group.owner_id == actor.pk else {})}
                          for person in participants],
         **finance, "expenses": pages["bills"]["items"], "activity": pages["activity"]["items"],

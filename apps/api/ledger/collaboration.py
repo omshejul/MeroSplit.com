@@ -1,6 +1,8 @@
 import hashlib
 from datetime import timedelta
 
+from allauth.account.models import EmailAddress
+from django.contrib.auth import get_user_model
 from django.core import signing
 from django.db import transaction
 from django.db.models import Q
@@ -8,7 +10,8 @@ from django.utils import timezone
 from ninja.errors import HttpError
 
 from .accounting import AccountingError, propose_transfers
-from .models import ExpensePushDelivery, Invite, OpeningBalance, Participant
+from .expense_notifications import cancel_notices
+from .models import ExpenseNotice, ExpensePushDelivery, Invite, OpeningBalance, Participant
 from .services import (
     clean_contact_email,
     keep_removed_balances_zero,
@@ -52,6 +55,8 @@ def create_invite(actor, group_id, payload):
     ).first()
     if not participant:
         raise HttpError(409, "Choose an unclaimed participant in this group")
+    if participant.contact_email:
+        raise HttpError(409, "Use an email invitation for a person with a saved email")
     token = invite_token(payload["command_id"])
     invite = Invite.objects.create(
         id=payload["command_id"],
@@ -125,12 +130,17 @@ def guest_view(token):
 
 @transaction.atomic
 def claim_invite(actor, token, payload):
+    # Serialize new membership with account-wide display-name changes/deletion.
+    if not get_user_model().objects.select_for_update(no_key=True).filter(pk=actor.pk, is_active=True).exists():
+        raise HttpError(401, "Sign in again to accept this invitation")
     invite = valid_invite(token)
     group = invite.participant.group
     # Lock group before invite, consistently with organizer approval.
     group = type(group).objects.select_for_update().get(id=group.id)
     invite = valid_invite(token, lock=True)
     require_group_scope(actor, group)
+    if not invite.intended_email and invite.participant.contact_email:
+        raise HttpError(409, "Ask the organizer to send an email invitation for this person")
     if invite.intended_email:
         from .email_invites import claim_email_invite
         return claim_email_invite(actor, invite, payload)
@@ -155,6 +165,10 @@ def claim_invite(actor, token, payload):
 
 @transaction.atomic
 def review_invite(actor, group_id, invite_id, payload, approve):
+    if approve:
+        claimant_id = Invite.objects.filter(id=invite_id, participant__group_id=group_id, participant__group__owner_id=actor.pk).values_list("claimant_id", flat=True).first()
+        if claimant_id:
+            get_user_model().objects.select_for_update(no_key=True).filter(pk=claimant_id).exists()
     group = visible_group(actor, group_id, lock=True)
     if group.owner_id != actor.pk:
         raise HttpError(403, "Only the organizer can review participant claims")
@@ -172,6 +186,12 @@ def review_invite(actor, group_id, invite_id, payload, approve):
     if not invite:
         raise HttpError(404, "Invitation not found")
     if approve:
+        if invite.claimant_id != claimant_id:
+            raise HttpError(409, "The pending claim changed; review it again")
+        if not invite.intended_email and invite.participant.contact_email:
+            raise HttpError(409, "Send an email invitation before linking this person")
+        if invite.intended_email and not EmailAddress.objects.filter(user_id=invite.claimant_id, email__iexact=invite.intended_email, verified=True).exists():
+            raise HttpError(403, "The claimant must verify the email address that received this invitation")
         if (
             invite.revoked
             or invite.expires_at <= timezone.now()
@@ -282,6 +302,8 @@ def archive_group(actor, group_id, payload):
         return previous
     group.archived = payload["archived"]
     group.save(update_fields=["archived"])
+    if group.archived:
+        cancel_notices(ExpenseNotice.objects.filter(expense__group=group), "group_archived")
     return record_change(
         group,
         actor,
@@ -359,9 +381,10 @@ def remove_participant(actor, group_id, participant_id, payload):
     Invite.objects.filter(participant=person).update(revoked=True)
     involved_attempts.filter(state="prepared").update(state="cancelled")
     if person.user_id:
+        ExpenseNotice.objects.filter(expense__group=group, recipient_id=person.user_id).update(cancelled_at=timezone.now(), email_eligible=False)
         ExpensePushDelivery.objects.filter(
             expense__group=group, recipient_id=person.user_id,
-            state__in=["pending", "sending", "queued", "checking"],
+            state__in=["pending", "sending", "queued", "checking", "skipped"],
         ).update(state="skipped", last_error="member_removed", lease_id=None, lease_until=None)
     if group.is_direct:
         group.archived = True

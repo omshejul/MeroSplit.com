@@ -116,6 +116,17 @@ def test_keyset_pages_have_no_duplicates_or_omissions_with_ties_and_keep_deleted
     assert any(payment["date"] is None for payment in get_page(client, group_id, "settlements").json()["items"])
 
 
+@pytest.mark.parametrize("resource", ["bills", "settlements", "attempts"])
+@pytest.mark.parametrize("position,value", [(0, None), (0, "invalid-date"), (1, None), (1, "invalid-uuid")])
+def test_tuple_keyset_invalid_signed_positions_are_rejected(client, group, resource, position, value):
+    group_id, ids, _ = group
+    populate(group_id, ids, count=3, payments=3, attempts=3)
+    cursor = get_page(client, group_id, resource, limit=2).json()["next_cursor"]
+    payload = signing.loads(cursor, salt=CURSOR_SALT)
+    payload["after"][position] = value
+    assert get_page(client, group_id, resource, limit=2, cursor=signing.dumps(payload, salt=CURSOR_SALT)).status_code == 422
+
+
 def test_filters_and_signed_cursors_are_bound_to_account_group_resource_limit_and_view(client, group):
     group_id, ids, _ = group
     current, bills = populate(group_id, ids)
@@ -236,7 +247,7 @@ def test_ten_thousand_record_summary_has_bounded_bytes_queries_and_indexed_pages
 
     assert discarded(late_plan) <= 100, late_plan
     with capsys.disabled():
-        print(f"history benchmark: summary_bytes={len(encoded)} full_bytes={complete_bytes} queries={len(queries)} seconds={duration:.3f} page_explain_ms={plans}")
+        print(f"history benchmark: summary_bytes={len(encoded)} full_bytes={complete_bytes} queries={len(queries)} seconds={duration:.3f} page_explain_ms={plans} late_page_discarded={discarded(late_plan)}")
 
 
 @pytest.mark.django_db(transaction=True)
