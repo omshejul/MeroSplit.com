@@ -1,0 +1,31 @@
+{
+  "cli": {
+    "appVersionSource": "local",
+    "requireCommit": true
+  },
+  "build": {
+    "beta": {
+      "distribution": "store",
+      "credentialsSource": "remote",
+      "environment": "production",
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://api-production-fb6ac.up.railway.app"
+      },
+      "android": {
+        "buildType": "app-bundle"
+      }
+    }
+  },
+  "submit": {
+    "beta": {
+      "android": {
+        "track": "internal",
+        "releaseStatus": "completed"
+      },
+      "ios": {
+        "appleTeamId": "M4K84L4TKR",
+        "ascAppId": "6823916128"
+      }
+    }
+  }
+}
