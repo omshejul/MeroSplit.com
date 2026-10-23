@@ -47,7 +47,7 @@ details { margin-top: .75rem; } summary { cursor: pointer; } #actions { display:
 <div id="actions" aria-label="Actions for your account"></div>
 <section aria-labelledby="bills-title"><h2 id="bills-title">Bills</h2>
 {% for bill in review.expenses %}<article><div class="row"><h3>{{ bill.description }}</h3><strong>{{ bill.amount }}</strong></div>
-<p class="muted">{{ bill.date }}{% if bill.deleted %} · Deleted{% endif %}</p>
+<p class="muted">{{ bill.date }}{% if bill.deleted %} · Reversed{% endif %}</p>
 <p>{% for payer in bill.payers %}{{ payer.name }} paid {{ payer.amount }}{% if not forloop.last %} · {% endif %}{% endfor %}</p>
 <details><summary>Shares</summary><ul>{% for share in bill.shares %}<li><span>{{ share.name }}</span><span>{{ share.amount }}</span></li>{% endfor %}</ul></details>
 {% if bill.notes %}<details><summary>Notes</summary><p>{{ bill.notes }}</p></details>{% endif %}</article>

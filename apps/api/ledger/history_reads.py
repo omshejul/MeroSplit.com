@@ -156,6 +156,18 @@ def settlement_dict(payment):
             "date": payment.date.isoformat() if payment.date else None, "attempt_id": str(payment.attempt_id) if payment.attempt_id else None, "reversed": payment.reversed}
 
 
+def reversal_record(group, kind, original):
+    record = group.changes.alias(record_identity=Coalesce(
+        KeyTextTransform("settlement_id", "data"), KeyTextTransform("id", "data"),
+    )).filter(kind=kind, record_identity=original["id"]).order_by("-id").first()
+    if not record:
+        return None
+    fields = ("id", "version", "description", "total", "paid", "shares", "split", "date", "category") if kind == "expense_reversed" else ("id", "sender", "recipient", "amount", "method", "date")
+    return {"id": str(record.id), "sequence": record.sequence, "created_at": record.created_at.isoformat(),
+            "kind": "bill_reversed" if kind == "expense_reversed" else "payment_reversed",
+            "reversal_of": original["id"], "original": {key: record.data.get(key, original[key]) for key in fields}}
+
+
 def attempt_dict(attempt):
     payment = getattr(attempt, "settlement", None)
     return {"id": str(attempt.id), "sender": str(attempt.sender_id), "recipient": str(attempt.recipient_id),
@@ -183,7 +195,10 @@ def settlement_detail(actor, group_id, settlement_id, *, version=None):
     payment = group.settlements.filter(pk=settlement_id).first()
     if not payment:
         raise HttpError(404, "Payment record not found")
-    return {**settlement_dict(payment), "read_mode": "detail", "group_id": str(group.id), "group_version": group.version}
+    result = {**settlement_dict(payment), "read_mode": "detail", "group_id": str(group.id), "group_version": group.version}
+    if payment.reversed and (reversal := reversal_record(group, "settlement_reversed", result)):
+        result["reversal"] = reversal
+    return result
 
 
 def transaction_page(actor, group, limit=50, cursor=None, q=""):
@@ -255,7 +270,7 @@ def transaction_page(actor, group, limit=50, cursor=None, q=""):
     return {"read_mode": "page", "group_id": str(group.id), "version": group.version, "items": items, "next_cursor": next_cursor}
 
 
-ACTIVITY_KINDS = ["expense_saved", "expense_deleted", "expense_restored", "manual_settlement", "payment_confirm",
+ACTIVITY_KINDS = ["expense_saved", "expense_deleted", "expense_restored", "expense_reversed", "manual_settlement", "payment_confirm",
                   "settlement_reversed", "participant_added", "participant_claim_approved", "participant_removed",
                   "group_created", "group_archived", "group_unarchived"]
 
@@ -336,7 +351,7 @@ def account_activity(actor, *, limit=50, cursor=None):
             bill = bills.get(row.data.get("id"))
             if not bill or bill.group_id != row.group_id:
                 continue
-            item["kind"] = {"expense_deleted": "bill_deleted", "expense_restored": "bill_restored"}.get(row.kind, "bill_added" if row.data.get("version") == 1 else "bill_edited")
+            item["kind"] = {"expense_deleted": "bill_deleted", "expense_restored": "bill_restored", "expense_reversed": "bill_reversed"}.get(row.kind, "bill_added" if row.data.get("version") == 1 else "bill_edited")
             item["bill"] = {"id": str(bill.id), "description": bill.description, "deleted": bill.deleted}
         elif row.kind in ("manual_settlement", "payment_confirm", "settlement_reversed"):
             payment = payments.get(row.data.get("settlement_id") if row.kind == "payment_confirm" else row.data.get("id"))
@@ -372,7 +387,10 @@ def expense_detail(actor, group_id, expense_id, *, version=None):
     expense = group.expenses.filter(id=expense_id).first()
     if not expense:
         raise HttpError(404, "Expense not found")
-    return {**expense_dict(expense), "read_mode": "detail", "group_id": str(group.id), "group_version": group.version}
+    result = {**expense_dict(expense), "read_mode": "detail", "group_id": str(group.id), "group_version": group.version}
+    if expense.deleted and (reversal := reversal_record(group, "expense_reversed", result)):
+        result["reversal"] = reversal
+    return result
 
 
 @transaction.atomic

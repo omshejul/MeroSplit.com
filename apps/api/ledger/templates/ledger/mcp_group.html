@@ -77,7 +77,7 @@
       }
       if (transaction.kind === 'bill' && transaction.bill) {
         const bill = transaction.bill;
-        return String(bill.description) + ' · ' + money(bill.total) + (bill.deleted ? ' · Deleted' : '');
+        return String(bill.description) + ' · ' + money(bill.total) + (bill.deleted ? ' · Reversed' : '');
       }
       return '';
     }

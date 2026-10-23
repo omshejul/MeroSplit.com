@@ -66,9 +66,9 @@ from .schemas import (
 from .services import (
     create_group,
     record_settlement,
+    reverse_expense,
     reverse_settlement,
     save_expense,
-    set_expense_deleted,
     snapshot,
     visible_group,
 )
@@ -218,14 +218,9 @@ def expense_update(request, group_id: UUID, expense_id: UUID, body: ExpenseIn):
     return save_expense(request.auth, group_id, body.model_dump(mode="json"), expense_id)
 
 
-@api.delete("/groups/{group_id}/expenses/{expense_id}", response=WriteResult)
-def expense_delete(request, group_id: UUID, expense_id: UUID, body: Revision):
-    return set_expense_deleted(request.auth, group_id, expense_id, body.model_dump(mode="json"), True)
-
-
-@api.post("/groups/{group_id}/expenses/{expense_id}/restore", response=WriteResult)
-def expense_restore(request, group_id: UUID, expense_id: UUID, body: Revision):
-    return set_expense_deleted(request.auth, group_id, expense_id, body.model_dump(mode="json"), False)
+@api.post("/groups/{group_id}/expenses/{expense_id}/reverse", response=WriteResult)
+def expense_reverse(request, group_id: UUID, expense_id: UUID, body: Revision):
+    return reverse_expense(request.auth, group_id, expense_id, body.model_dump(mode="json"))
 
 
 @api.post("/groups/{group_id}/settlements", response=WriteResult)

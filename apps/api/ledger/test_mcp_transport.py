@@ -92,7 +92,7 @@ def test_official_sdk_negotiation_tools_schema_resource_and_no_session_affinity(
                 assert all(tool.annotations.idempotent_hint for tool in tools)
                 assert by_name["get_group"].annotations.read_only_hint
                 assert not by_name["record_external_payment"].annotations.read_only_hint
-                assert by_name["set_expense_deleted"].annotations.destructive_hint
+                assert by_name["reverse_expense"].annotations.destructive_hint
                 assert by_name["reverse_external_payment"].annotations.destructive_hint
                 assert by_name["save_expense"].annotations.destructive_hint
                 assert [tool.name for tool in tools if tool.meta and "ui" in tool.meta] == ["render_group"]

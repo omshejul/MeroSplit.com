@@ -31,7 +31,7 @@ from .models import (
 )
 from .otp import _verified_user
 from .portability import delete_account
-from .services import save_expense, set_expense_deleted
+from .services import reverse_expense, save_expense
 from .test_api import expense, uid
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -145,14 +145,13 @@ def test_paid_or_share_involvement_includes_zero_net_and_excludes_unrelated_peop
     assert len(provider) == 1
 
 
-def test_same_command_replay_and_edits_restore_never_queue_another_new_bill(ledger, provider):
+def test_same_command_replay_edits_and_reversal_never_queue_another_new_bill(ledger, provider):
     body = add(ledger)
     save_expense(ledger[0], ledger[2].id, body)
     body.update(command_id=uid(), version=1, description="Changed private description")
     save_expense(ledger[0], ledger[2].id, body, body["id"])
     assert BillEmailNotice.objects.count() == 1
-    set_expense_deleted(ledger[0], ledger[2].id, body["id"], {"command_id": uid(), "version": 2}, True)
-    set_expense_deleted(ledger[0], ledger[2].id, body["id"], {"command_id": uid(), "version": 3}, False)
+    reverse_expense(ledger[0], ledger[2].id, body["id"], {"command_id": uid(), "version": 2})
     bill_email.send_pending_bill_emails()
     assert BillEmailNotice.objects.count() == 1 and not provider
 
@@ -225,7 +224,7 @@ def test_current_mutations_suppress_queued_delivery(ledger, provider, reason):
     if reason == "contact":
         update_contact(ledger[0], ledger[2].id, ledger[3][2].id, {"command_id": uid(), "email": "changed-synthetic@example.com"})
     elif reason == "deleted":
-        set_expense_deleted(ledger[0], ledger[2].id, body["id"], {"command_id": uid(), "version": 1}, True)
+        reverse_expense(ledger[0], ledger[2].id, body["id"], {"command_id": uid(), "version": 1})
     elif reason == "archived":
         archive_group(ledger[0], ledger[2].id, {"command_id": uid(), "archived": True})
     elif reason == "removed":
@@ -610,7 +609,7 @@ def test_deleted_prepared_batch_leader_keeps_valid_sibling_delivery_login_and_cl
             sibling = BillEmailNotice.objects.get(expense_id=second["id"])
             assert sibling.delivery_id == prepared.id and sibling.state == "batched"
             frozen.append((prepared.id, prepared.payload, prepared.grant_id, prepared.first_attempt_at))
-            set_expense_deleted(ledger[0], ledger[2].id, first["id"], {"command_id": uid(), "version": 1}, True)
+            reverse_expense(ledger[0], ledger[2].id, first["id"], {"command_id": uid(), "version": 1})
         return prepared
 
     monkeypatch.setattr(bill_email, "_prepare", delete_leader_after_prepare)

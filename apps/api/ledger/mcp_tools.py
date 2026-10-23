@@ -112,17 +112,17 @@ def list_transactions(actor, group_id, *, limit=50, cursor=None, version=None, q
 
 
 def get_bill(actor, group_id, bill_id, *, version=None):
-    """Read one current authorized bill, including its historical deleted flag."""
+    """Read a retained bill and its separate reversal record, when present."""
     _version(version)
     bill = expense_detail(actor, _uuid(group_id), _uuid(bill_id), version=version)
-    return {key: bill[key] for key in (*BILL_FIELDS, "split", "notes", "group_id", "group_version")} | {"currency": "INR"}
+    return {key: bill[key] for key in (*BILL_FIELDS, "split", "notes", "group_id", "group_version")} | {"currency": "INR"} | ({"reversal": bill["reversal"]} if "reversal" in bill else {})
 
 
 def get_payment(actor, group_id, payment_id, *, version=None):
     """Read an accounting record without historical UPI or authentication metadata."""
     _version(version)
     payment = settlement_detail(actor, _uuid(group_id), _uuid(payment_id), version=version)
-    return {key: payment[key] for key in (*PAYMENT_FIELDS, "group_id", "group_version")} | {"currency": "INR"}
+    return {key: payment[key] for key in (*PAYMENT_FIELDS, "group_id", "group_version")} | {"currency": "INR"} | ({"reversal": payment["reversal"]} if "reversal" in payment else {})
 
 
 def create_group(actor, payload):
@@ -145,12 +145,10 @@ def save_expense(actor, group_id, payload, *, expense_id=None):
     return services.save_expense(actor, _uuid(group_id), body.model_dump(mode="json"), expense_id)
 
 
-def set_expense_deleted(actor, group_id, bill_id, payload, *, deleted):
-    """Delete or restore an exact revision; a repeated command replays its result."""
-    if type(deleted) is not bool:
-        raise HttpError(422, "Choose explicitly whether to delete or restore the expense")
+def reverse_expense(actor, group_id, bill_id, payload):
+    """Append a linked reversal without erasing the exact saved bill revision."""
     body = Revision.model_validate(payload)
-    return services.set_expense_deleted(actor, _uuid(group_id), _uuid(bill_id), body.model_dump(mode="json"), deleted)
+    return services.reverse_expense(actor, _uuid(group_id), _uuid(bill_id), body.model_dump(mode="json"))
 
 
 def record_external_payment(actor, group_id, payload):

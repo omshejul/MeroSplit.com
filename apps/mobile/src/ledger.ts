@@ -43,8 +43,8 @@ export function previewPending(accepted: Group, commands: Command[]): Group {
       const vectors = validateExpense(input.total, input.paid, input.split, group.participants.map(p => p.id));
       group.balances = addExpense(group.balances, vectors.paid, vectors.shares);
       group.expenses = [...group.expenses.filter(expense => expense.id !== input.id), { ...input, ...vectors, deleted: false, version: before?.version ?? 0 }];
-    } else if (command.method === 'DELETE' && command.path.includes('/expenses/')) {
-      const id = command.path.split('/').at(-1);
+    } else if (command.method === 'POST' && command.path.endsWith('/reverse') && command.path.includes('/expenses/')) {
+      const id = command.path.split('/').at(-2);
       const before = group.expenses.find(expense => expense.id === id);
       if (group.read_mode === 'summary' && !before) throw new Error('Open this saved bill online to review its pending balance.');
       if (before && !before.deleted) group.balances = addExpense(group.balances, before.paid, before.shares, -1n);
@@ -54,13 +54,6 @@ export function previewPending(accepted: Group, commands: Command[]): Group {
       if (!group.settlements.some(settlement => settlement.id === id)) {
         group.balances = addSettlement(group.balances, sender, recipient, amount);
         group.settlements.push({ id, sender, recipient, amount, provenance: 'pending_manual' });
-      }
-    } else if (command.path.endsWith('/restore') && command.path.includes('/expenses/')) {
-      const id = command.path.split('/').at(-2), expense = group.expenses.find(value => value.id === id);
-      if (group.read_mode === 'summary' && !expense) throw new Error('Open this saved bill online to review its pending balance.');
-      if (expense?.deleted) {
-        group.balances = addExpense(group.balances, expense.paid, expense.shares);
-        group.expenses = group.expenses.map(value => value.id === id ? { ...value, deleted: false } : value);
       }
     } else if (command.path.endsWith('/reverse') && command.path.includes('/settlements/')) {
       const id = command.path.split('/').at(-2), settlement = group.settlements.find(value => value.id === id);

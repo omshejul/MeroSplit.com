@@ -21,7 +21,7 @@ Use the live tool input schema for field names and required values. Use the exac
 
 - `create_group`: create the named group and immediate participant placeholders with fresh UUIDs. Creating a participant does not send an invitation or link an account.
 - `save_expense`: keep the total, each payer contribution and intended split consistent. Use a fresh bill UUID for creation; for edits, fetch the actual bill and send its current expense `version`. Preserve fields the user did not ask to change.
-- `set_expense_deleted`: fetch the bill's current `version`, then delete or restore the requested bill. Report the resulting ledger change.
+- `reverse_expense`: fetch the bill's current `version`, then reverse that saved revision. The original stays in history and a separate linked reversal updates balances once. Report the ledger effect and retained original; saved financial records have no delete or restore operation.
 - `record_external_payment`: record only a payment the user says occurred outside MeroSplit. Fetch the current group to resolve exact sender/recipient IDs and the intended amount. Send an explicit date, or `null` for an unknown date. Omit both `expected_group_version` and `attempt_id` entirely, including null values: these belong to the prepared-UPI path, not an ordinary external-payment record. If an existing prepared/reported attempt blocks the manual record, stop and explain the conflict; never manufacture an attempt to bypass it. This tool records a payment; it does not move money, launch UPI, or verify a bank receipt.
 - `reverse_external_payment`: reverse the specified ledger record using its actual ID. Explain that the reversal changes the record and does not refund a bank transfer.
 

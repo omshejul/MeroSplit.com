@@ -12,8 +12,8 @@ const source = ts.createSourceFile('GroupScreen.tsx', readFileSync(new URL('../s
 function production(name: string) {
   const helpers = source.statements.filter(node => ts.isVariableStatement(node) && node.declarationList.declarations.some(d => ['billImpact', 'participantName', 'displayDate', 's'].includes(d.name.getText(source)))).map(node => node.getText(source)).join('\n');
   const node = source.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === name); assert.ok(node);
-  const code = ts.transpile(`${helpers}\n${node.getText(source).replace(/^export default /, '')}\nreturn ${name};`, { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React });
-  return new Function('env', `with(env) { ${code} }`)({ React, expenseBalanceChange, formatMoney, paymentPresentation, personalSettlements, personalTransfers, useState: (initial: unknown) => [initial, () => {}], Text: 'Text', View: 'View', Pressable: 'Pressable', Icon: 'Icon', TransactionRow: 'TransactionRow', VisibleExpense: 'VisibleExpense', HistoryPages: 'HistoryPages', BillSearch: 'BillSearch', PaymentRow: 'PaymentRow', BillTimelineRow: 'BillTimelineRow', Disclosure: 'Disclosure', StyleSheet: { create: (styles: unknown) => styles }, radii: { surface: 16 }, balanceColor: (amount: string) => BigInt(amount) < 0n ? 'negative' : 'positive', useUI: () => ({ ui: {}, palette: {} }) });
+  const code = ts.transpile(`${helpers}\n${node.getText(source).replace(/^export (?:default )?/, '')}\nreturn ${name};`, { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React });
+  return new Function('env', `with(env) { ${code} }`)({ React, expenseBalanceChange, formatMoney, paymentPresentation, personalSettlements, personalTransfers, useState: (initial: unknown) => [initial, () => {}], Text: 'Text', View: 'View', Pressable: 'Pressable', Icon: 'Icon', Button: 'Button', RecordSummary: 'RecordSummary', ParticipantAmountRow: 'ParticipantAmountRow', TransactionRow: 'TransactionRow', VisibleExpense: 'VisibleExpense', HistoryPages: 'HistoryPages', BillSearch: 'BillSearch', PaymentRow: 'PaymentRow', BillTimelineRow: 'BillTimelineRow', Disclosure: 'Disclosure', StyleSheet: { create: (styles: unknown) => styles }, radii: { surface: 16 }, balanceColor: (amount: string) => BigInt(amount) < 0n ? 'negative' : 'positive', useUI: () => ({ ui: {}, palette: {} }) });
 }
 function elements(tree: unknown): Element[] {
   if (Array.isArray(tree)) return tree.flatMap(elements);
@@ -120,4 +120,23 @@ test('timeline and fallback rows share contiguous list parents, preserve order a
   assert.equal(rowParent(empty), undefined);
   const olderPayments = elements(empty).find(node => node.type === 'Disclosure' && node.props.title === 'Payment records')!;
   assert.deepEqual(children(olderPayments).map(node => node.type), ['HistoryPages']);
+});
+
+test('saved bill details expose one guarded reversal action and retain reversed originals', () => {
+  const render = production('ExpenseDetail'), reversed: string[] = [];
+  const expense = { id: 'bill', version: 1, description: 'Lunch', total: '1001', paid: { self: '1001' }, shares: { self: '501', other: '500' }, split: { mode: 'equal', values: { self: '1', other: '1' } }, date: '2026-10-18', deleted: false };
+  const base = { expense, group: { ...group, expenses: [expense] }, selfId: 'self', busy: false, canEdit: true, onEdit() {}, onReverse: () => reversed.push(expense.id) };
+  const buttons = (tree: Element) => elements(tree).filter(node => node.type === 'Button');
+  const tree = render(base), actions = buttons(tree);
+  assert.deepEqual(actions.map(node => node.props.title), ['Edit bill', 'Reverse record']);
+  actions.find(node => node.props.title === 'Reverse record')!.props.onPress();
+  assert.deepEqual(reversed, ['bill']);
+  for (const guard of [{ busy: true }, { canEdit: false }]) {
+    assert.ok(buttons(render({ ...base, ...guard })).every(node => node.props.disabled));
+  }
+  const retained = render({ ...base, expense: { ...expense, deleted: true } });
+  assert.equal(buttons(retained).length, 0);
+  assert.ok(text(retained).includes('The original and its reversal are kept in history.'));
+  assert.equal(elements(retained).find(node => node.type === 'RecordSummary')!.props.amount, '1001');
+  assert.ok(elements(retained).some(node => node.type === 'ParticipantAmountRow' && node.props.amount === '1001'));
 });

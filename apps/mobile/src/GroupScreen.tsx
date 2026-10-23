@@ -44,7 +44,7 @@ function PendingChangeRow({ command, busy, onReview, onDiscard }: { command: Com
   return <View style={s.section}>
     <Text style={ui.rowTitle}>{String(command.body.description ?? 'Group change')}</Text>
     <Text style={[ui.caption, { color: colors.warning }]}>{command.state === 'pending' ? 'Waiting to sync' : command.error ?? 'Needs review'}</Text>
-    {command.state !== 'pending' && ['POST', 'PUT'].includes(command.method) && command.path.includes('/expenses') && <Button title="Review my saved change" disabled={busy} onPress={() => onReview(command)} />}
+    {command.state !== 'pending' && ['POST', 'PUT'].includes(command.method) && /\/expenses(?:\/[^/]+)?$/.test(command.path) && <Button title="Review my saved change" disabled={busy} onPress={() => onReview(command)} />}
     <Button kind="text" title={command.path === '/groups' ? 'Discard unsent group' : 'Discard this saved change'} disabled={busy} onPress={() => onDiscard(command)} />
   </View>;
 }
@@ -105,8 +105,8 @@ function BillTimelineRow({ expense, group, selfId, busy, onExpense, noticeVisibi
   const ownShare = formatMoney(expense.shares[selfId] ?? '0');
   const payers = Object.entries(expense.paid).filter(([, amount]) => BigInt(amount) > 0n).map(([id, amount]) => `${participantName(group.participants, selfId, id)} paid ${formatMoney(amount)}`).join(', ');
   return <VisibleExpense groupId={group.id} expense={expense} visibility={noticeVisibility}>
-    <TransactionRow icon="bill" title={`${expense.description}${expense.deleted ? ' · Deleted' : ''}`} amount={expense.total} busy={busy} onPress={() => onExpense(expense)}
-      label={`Bill, ${expense.description}, total ${formatMoney(expense.total)}, ${billImpact(change)}, ${payers}, Your share ${ownShare}, ${displayDate(expense.date)}${expense.deleted ? ', deleted' : ''}`}>
+    <TransactionRow icon="bill" title={`${expense.description}${expense.deleted ? ' · Reversed' : ''}`} amount={expense.total} busy={busy} onPress={() => onExpense(expense)}
+      label={`Bill, ${expense.description}, total ${formatMoney(expense.total)}, ${billImpact(change)}, ${payers}, Your share ${ownShare}, ${displayDate(expense.date)}${expense.deleted ? ', reversed' : ''}`}>
       <Text style={ui.rowSub}>Bill · {payers}</Text>
       <Text style={ui.rowSub}>Your share {ownShare} · {displayDate(expense.date)}</Text>
       <Text style={[ui.rowSub, { color: balanceColor(change, colors) }]}>{billImpact(change)}</Text>
@@ -195,7 +195,7 @@ export function PaymentDetail({ payment, group, selfId, busy, canReverse, onReve
   </View>;
 }
 
-export function ExpenseDetail({ noticeVisibility, expense, group, selfId, busy, canEdit, onEdit, onDelete, onRestore }: { noticeVisibility?: NoticeVisibility; expense: Expense; group: Group; selfId: string; busy: boolean; canEdit: boolean; onEdit: () => void; onDelete: () => void; onRestore: () => void }) {
+export function ExpenseDetail({ noticeVisibility, expense, group, selfId, busy, canEdit, onEdit, onReverse }: { noticeVisibility?: NoticeVisibility; expense: Expense; group: Group; selfId: string; busy: boolean; canEdit: boolean; onEdit: () => void; onReverse: () => void }) {
   const { palette: colors, ui } = useUI();
   const hasCategory = !!expense.category && !['general', 'other'].includes(expense.category);
   const change = expenseBalanceChange(expense, selfId);
@@ -204,10 +204,8 @@ export function ExpenseDetail({ noticeVisibility, expense, group, selfId, busy, 
       <Text style={[ui.body, { color: balanceColor(change, colors) }]}>{billImpact(change)}</Text>
       <Text style={ui.caption}>{group.name} · {displayDate(expense.date)}</Text>
     </RecordSummary></VisibleExpense>
-    {expense.deleted ? <>
-      <Text style={ui.notice}>Deleted bill</Text>
-      <Button title="Restore bill" icon="history" kind="primary" disabled={busy || !canEdit} onPress={onRestore} />
-    </> : <Button title="Edit bill" icon="bill" kind="primary" disabled={busy || !canEdit} onPress={onEdit} />}
+    {expense.deleted ? <Text style={ui.notice}>Bill record reversed. The original and its reversal are kept in history.</Text>
+      : <Button title="Edit bill" icon="bill" kind="primary" disabled={busy || !canEdit} onPress={onEdit} />}
     <View style={s.section}>
       <Text style={ui.section}>Who paid?</Text>
       {group.participants.filter(person => BigInt(expense.paid[person.id] ?? '0') > 0n).map(person => <ParticipantAmountRow key={person.id} name={person.name} amount={expense.paid[person.id] ?? '0'} />)}
@@ -222,7 +220,7 @@ export function ExpenseDetail({ noticeVisibility, expense, group, selfId, busy, 
       {hasCategory && <Text style={ui.caption}>Category: {expense.category}</Text>}
     </Disclosure>}
     {!expense.deleted && <Disclosure title="Bill options">
-      <Button title="Delete bill" kind="danger" disabled={busy || !canEdit} onPress={onDelete} />
+      <Button title="Reverse record" kind="danger" disabled={busy || !canEdit} onPress={onReverse} />
     </Disclosure>}
     {!canEdit && <Text style={ui.caption}>{group.archived ? 'Reopen this group in settings before changing a bill.' : 'Send or discard saved changes before changing this bill.'}</Text>}
   </View>;

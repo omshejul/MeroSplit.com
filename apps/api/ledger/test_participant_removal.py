@@ -115,7 +115,7 @@ def test_removed_history_allows_notes_but_cannot_reopen_debt(client, group):
     payment = settle(client, group_id, ids[1], ids[0], "10000")
     deleted_bill = expense(ids, payer=0, beneficiaries=[1], total="7000")
     assert send(client, "post", f"/groups/{group_id}/expenses", deleted_bill).status_code == 200
-    assert send(client, "delete", f"/groups/{group_id}/expenses/{deleted_bill['id']}", {
+    assert send(client, "post", f"/groups/{group_id}/expenses/{deleted_bill['id']}/reverse", {
         "command_id": uid(), "version": 1,
     }).status_code == 200
     assert remove(client, group_id, ids[1]).status_code == 200
@@ -124,12 +124,12 @@ def test_removed_history_allows_notes_but_cannot_reopen_debt(client, group):
     before = state(client, group_id)
     changed = {**edited, "command_id": uid(), "version": 2, "total": "20000", "paid": {ids[0]: "20000"}}
     assert send(client, "put", f"/groups/{group_id}/expenses/{bill['id']}", changed).status_code == 409
-    assert send(client, "delete", f"/groups/{group_id}/expenses/{bill['id']}", {
+    assert send(client, "post", f"/groups/{group_id}/expenses/{bill['id']}/reverse", {
         "command_id": uid(), "version": 2,
     }).status_code == 409
     assert send(client, "post", f"/groups/{group_id}/expenses/{deleted_bill['id']}/restore", {
         "command_id": uid(), "version": 2,
-    }).status_code == 409
+    }).status_code == 404
     assert send(client, "post", f"/groups/{group_id}/settlements/{payment['id']}/reverse", {
         "command_id": uid(),
     }).status_code == 409
@@ -168,7 +168,7 @@ def test_prepared_quotes_cancel_but_reported_payments_block_removal(client, grou
         assert send(client, "post", f"/groups/{group_id}/payment-attempts/{attempt['id']}/report", {
             "command_id": uid(),
         }).status_code == 200
-    assert send(client, "delete", f"/groups/{group_id}/expenses/{bill.id}", {
+    assert send(client, "post", f"/groups/{group_id}/expenses/{bill.id}/reverse", {
         "command_id": uid(), "version": 1,
     }).status_code == 200
     response = remove(client, group_id, ids[1])

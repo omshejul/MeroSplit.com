@@ -22,6 +22,7 @@ export function activityPresentation(item: ActivityItem) {
     case 'bill_edited': title = `${actor} edited ${item.bill?.description || 'a bill'}`; break;
     case 'bill_deleted': title = `${actor} deleted ${item.bill?.description || 'a bill'}`; break;
     case 'bill_restored': title = `${actor} restored ${item.bill?.description || 'a bill'}`; break;
+    case 'bill_reversed': title = `${actor} reversed ${item.bill?.description || 'a bill'}`; break;
     case 'payment_recorded': title = item.payment ? item.payment.sender.is_self ? `You paid ${item.payment.recipient.name}`
       : item.payment.recipient.is_self ? `${item.payment.sender.name} paid you`
         : `${item.payment.sender.name} paid ${item.payment.recipient.name}` : `${actor} recorded a payment`; break;

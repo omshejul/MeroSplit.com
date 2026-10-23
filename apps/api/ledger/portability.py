@@ -157,7 +157,7 @@ def _remove_authored_text(group, actor_id):
         original = change.data
         data = _remove_user_ids(original, actor_id)
         expense_id = original.get("id")
-        bill = change.kind in {"expense_saved", "expense_deleted", "expense_restored"}
+        bill = change.kind in {"expense_saved", "expense_deleted", "expense_restored", "expense_reversed"}
         if bill and expense_id:
             last, provenance = previous.setdefault(expense_id, {}), authors.setdefault(expense_id, {})
             for field, placeholder in placeholders.items():

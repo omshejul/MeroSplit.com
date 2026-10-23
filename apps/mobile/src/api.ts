@@ -124,7 +124,7 @@ export async function claimLegacyGroup(db: Database, session: Session, groupId: 
     append('POST', '/groups', { id: group.id, name: group.name, participants: group.participants.map(({ id, name }) => ({ id, name })), self_participant_id: selfId, is_direct: !!group.is_direct });
     for (const expense of group.expenses) {
       append('POST', `/groups/${groupId}/expenses`, expensePayload(expense));
-      if (expense.deleted) append('DELETE', `/groups/${groupId}/expenses/${expense.id}`, { version: 1 });
+      if (expense.deleted) append('POST', `/groups/${groupId}/expenses/${expense.id}/reverse`, { version: 1 });
     }
     for (const payment of group.settlements) {
       append('POST', `/groups/${groupId}/settlements`, { id: payment.id, sender: payment.sender, recipient: payment.recipient, amount: payment.amount, date: payment.date ?? null });

@@ -12,14 +12,21 @@ const command = (method: Command['method'], path: string, body: Command['body'] 
   command_id: path, group_id: 'g', method, path: `/groups/g${path}`, body, state: 'pending', error: null,
 });
 
-test('Pending delete and restore preserve accepted records and restore the exact balance', () => {
-  const deletion = command('DELETE', '/expenses/e'), restoration = command('POST', '/expenses/e/restore');
-  assert.deepEqual(previewPending(original, [deletion]).balances, { A: '0', B: '0' });
-  const preview = previewPending(original, [deletion, restoration, restoration]);
-  assert.deepEqual(preview.balances, original.balances);
-  assert.equal(preview.expenses[0].deleted, false);
+test('Pending bill reversal removes its balance once and retains the accepted original', () => {
+  const reversal = command('POST', '/expenses/e/reverse', { version: 1 });
+  const preview = previewPending(original, [reversal, reversal]);
+  assert.deepEqual(preview.balances, { A: '0', B: '0' });
+  assert.deepEqual(preview.expenses, [{ ...original.expenses[0], deleted: true }]);
   assert.equal(original.expenses[0].deleted, false);
   assert.deepEqual(original.balances, { A: '5000', B: '-5000' });
+});
+
+test('Old saved delete or restore commands cannot pretend to have accepted pending balances', () => {
+  for (const legacy of [command('DELETE', '/expenses/e'), command('POST', '/expenses/e/restore')]) {
+    assert.throws(() => previewPending(original, [legacy]), /until sync/);
+    assert.equal(original.expenses[0].deleted, false);
+    assert.deepEqual(original.balances, { A: '5000', B: '-5000' });
+  }
 });
 
 test('Pending payment reversal undoes the posting once without changing accepted records', () => {

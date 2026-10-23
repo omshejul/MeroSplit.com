@@ -469,7 +469,7 @@ There is no proprietary data moat today. A permissioned, tested migration-fixtur
 | Money | Zero-sum postings; exact totals; deterministic ties; no floats; boundary/overflow/input tests; same golden fixtures on mobile/server; max amount and large weight products |
 | Splitting | Selected beneficiaries, payer excluded, multiple payers, all split modes, one-paise totals, invalid percentage/exact totals |
 | Balances and Simplify debts | Expenses vs repayments vs imported nets; SD-01 through SD-08; recalculation after non-proposed and rerouted repayments; independent groups; no cross-currency netting |
-| Edits | Concurrent revision, edit after settlement, delete/restore/repeat restore, closed group and revoked writer |
+| Edits | Concurrent revision, edit after settlement, retained original plus linked reversal, repeated/concurrent reversal, closed group and revoked writer |
 | Sync | Offline create/relaunch, duplicate commands, timeout after server commit, cursor replay, out-of-order responses, local storage full |
 | UPI | Physical devices and actual supported apps; return/cancel/pending; forged callback; payee change; no duplicate prompt; manual confirmation |
 | Guest | Forwarded/expired/revoked invite, account mismatch, duplicate names, consented claim, access denied across groups |

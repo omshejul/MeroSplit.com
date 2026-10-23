@@ -151,7 +151,7 @@ def create_server():
 
     @server.tool(annotations=READ, structured_output=True)
     async def get_bill(group_id: UUID, bill_id: UUID, version: Annotated[StrictInt, Field(ge=0)] | None = None) -> dict[str, Any]:
-        """Read one authorized bill, its exact revision, split and notes, including its deletion flag."""
+        """Read one retained bill, its exact revision, split, notes and linked reversal when present."""
         return await call_tool(mcp_tools.get_bill, group_id, bill_id, version=version)
 
     @server.tool(annotations=READ, structured_output=True)
@@ -173,9 +173,9 @@ def create_server():
         return await call_tool(mcp_tools.save_expense, group_id, payload, expense_id=expense_id)
 
     @server.tool(annotations=DESTRUCTIVE, structured_output=True)
-    async def set_expense_deleted(group_id: UUID, bill_id: UUID, payload: Revision, deleted: StrictBool) -> dict[str, Any]:
-        """Delete or restore the exact bill revision. Confirm the intended change with the user first."""
-        return await call_tool(mcp_tools.set_expense_deleted, group_id, bill_id, payload, deleted=deleted)
+    async def reverse_expense(group_id: UUID, bill_id: UUID, payload: Revision) -> dict[str, Any]:
+        """Reverse an exact saved bill revision, retaining its original and appending a linked history record."""
+        return await call_tool(mcp_tools.reverse_expense, group_id, bill_id, payload)
 
     @server.tool(annotations=WRITE, structured_output=True)
     async def record_external_payment(group_id: UUID, id: UUID, command_id: UUID, sender: UUID, recipient: UUID,

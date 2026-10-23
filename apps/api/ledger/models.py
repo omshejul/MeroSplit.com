@@ -185,11 +185,11 @@ class Change(models.Model):
     class Meta:
         constraints = [models.UniqueConstraint(fields=["group", "sequence"], name="group_change_sequence")]
         indexes = [models.Index(fields=["-created_at", "-id"], name="human_activity_order", condition=Q(kind__in=[
-            "expense_saved", "expense_deleted", "expense_restored", "manual_settlement", "payment_confirm",
+            "expense_saved", "expense_deleted", "expense_restored", "expense_reversed", "manual_settlement", "payment_confirm",
             "settlement_reversed", "participant_added", "participant_claim_approved", "participant_removed",
             "group_created", "group_archived", "group_unarchived",
         ])), models.Index(models.F("group"), Coalesce(KeyTextTransform("settlement_id", "data"), KeyTextTransform("id", "data")), models.F("id"),
-            name="payment_activity_identity", condition=Q(kind__in=["manual_settlement", "payment_confirm"]))]
+            name="payment_activity_identity", condition=Q(kind__in=["manual_settlement", "payment_confirm", "expense_reversed", "settlement_reversed"]))]
 
 
 class CommandReceipt(models.Model):

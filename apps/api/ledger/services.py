@@ -335,10 +335,10 @@ def save_expense(actor, group_id, payload, expense_id=None):
 
 
 @transaction.atomic
-def set_expense_deleted(actor, group_id, expense_id, payload, deleted):
+def reverse_expense(actor, group_id, expense_id, payload):
     group = visible_group(actor, group_id, lock=True)
     previous, fingerprint = previous_result(
-        actor, payload["command_id"], f"expense_deleted:{group_id}:{expense_id}:{deleted}", payload
+        actor, payload["command_id"], f"expense_reverse:{group_id}:{expense_id}", payload
     )
     if previous:
         return previous
@@ -346,25 +346,25 @@ def set_expense_deleted(actor, group_id, expense_id, payload, deleted):
     expense = group.expenses.filter(id=expense_id).first()
     if not expense:
         raise HttpError(404, "Expense not found")
-    if expense.version != payload["version"] or expense.deleted == deleted:
-        raise HttpError(409, "Expense revision or deletion state changed")
-    expense.deleted = deleted
+    if expense.version != payload["version"] or expense.deleted:
+        raise HttpError(409, "Bill changed or was already reversed")
+    original = expense_dict(expense) | {"reversal_of": str(expense.id)}
+    expense.deleted = True  # Existing balance-exclusion projection; the record is retained.
     expense.version += 1
     expense.save(update_fields=["deleted", "version"])
-    if deleted:
-        from .bill_email import cancel_bill_emails
-        from .bill_email_models import BillEmailNotice
-        cancel_bill_emails(BillEmailNotice.objects.filter(expense=expense), "bill_deleted")
-        from .expense_notifications import cancel_notices
-        cancel_notices(ExpenseNotice.objects.filter(expense=expense), "bill_deleted")
+    from .bill_email import cancel_bill_emails
+    from .bill_email_models import BillEmailNotice
+    cancel_bill_emails(BillEmailNotice.objects.filter(expense=expense), "bill_reversed")
+    from .expense_notifications import cancel_notices
+    cancel_notices(ExpenseNotice.objects.filter(expense=expense), "bill_reversed")
     keep_removed_balances_zero(group)
     return record_change(
         group,
         actor,
         payload["command_id"],
         fingerprint,
-        "expense_deleted" if deleted else "expense_restored",
-        expense_dict(expense),
+        "expense_reversed",
+        original,
     )
 
 
@@ -483,5 +483,10 @@ def reverse_settlement(actor, group_id, settlement_id, payload):
     payment.save(update_fields=["reversed"])
     keep_removed_balances_zero(group)
     return record_change(
-        group, actor, payload["command_id"], fingerprint, "settlement_reversed", {"id": str(payment.id)}
+        group, actor, payload["command_id"], fingerprint, "settlement_reversed", {
+            "id": str(payment.id), "reversal_of": str(payment.id),
+            "sender": str(payment.sender_id), "recipient": str(payment.recipient_id),
+            "amount": str(payment.amount), "date": payment.date.isoformat() if payment.date else None,
+            "method": payment.method,
+        }
     )

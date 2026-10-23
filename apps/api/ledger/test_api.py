@@ -113,7 +113,7 @@ def test_chain_rounding_multiple_payers_and_payment(client, group):
     assert sum(map(int, state["balances"].values())) == 0
 
 
-def test_conflict_and_delete_restore(client, group):
+def test_conflict_and_bill_reversal(client, group):
     group_id, ids, _ = group
     data = expense(ids)
     assert send(client, "post", f"/groups/{group_id}/expenses", data).status_code == 200
@@ -125,21 +125,13 @@ def test_conflict_and_delete_restore(client, group):
     assert send(client, "put", f"/groups/{group_id}/expenses/{data['id']}", changed).status_code == 200
     changed["command_id"] = uid()
     assert send(client, "put", f"/groups/{group_id}/expenses/{data['id']}", changed).status_code == 409
-    assert (
-        send(
-            client, "delete", f"/groups/{group_id}/expenses/{data['id']}", {"command_id": uid(), "version": 2}
-        ).status_code
-        == 200
-    )
+    reverse = {"command_id": uid(), "version": 2}
+    assert send(client, "delete", f"/groups/{group_id}/expenses/{data['id']}", reverse).status_code == 405
+    for _ in range(2):
+        assert send(client, "post", f"/groups/{group_id}/expenses/{data['id']}/reverse", reverse).status_code == 200
     assert all(n == "0" for n in send(client, "get", f"/groups/{group_id}").json()["balances"].values())
-    restore = {"command_id": uid(), "version": 3}
-    assert (
-        send(client, "post", f"/groups/{group_id}/expenses/{data['id']}/restore", restore).status_code == 200
-    )
-    assert (
-        send(client, "post", f"/groups/{group_id}/expenses/{data['id']}/restore", restore).status_code == 200
-    )
-    assert Expense.objects.get().version == 4
+    assert send(client, "post", f"/groups/{group_id}/expenses/{data['id']}/restore", {"command_id": uid(), "version": 3}).status_code == 404
+    assert Expense.objects.get().version == 3
 
 
 def test_invalid_expense_rolls_back(client, group):
@@ -254,8 +246,8 @@ def test_wrong_group_objects_and_reused_command_target(client, group):
     assert (
         send(
             client,
-            "delete",
-            f"/groups/{second['id']}/expenses/{original['id']}",
+            "post",
+            f"/groups/{second['id']}/expenses/{original['id']}/reverse",
             {"command_id": uid(), "version": 1},
         ).status_code
         == 404

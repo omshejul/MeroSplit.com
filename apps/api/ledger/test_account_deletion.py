@@ -107,3 +107,58 @@ def test_imported_payment_text_and_source_hash_are_erased_on_deletion(client):
             assert change.data.get("description", "Deleted bill") == "Deleted bill"
             assert change.data.get("category", "other") == "other"
         assert not change.data.get("source_hash")
+
+
+def test_deletion_redacts_cross_author_bill_reversal_without_erasing_financial_history(client, group):
+    group_id, ids, _ = group
+    other = account()
+    link(client, other, group_id, ids[1])
+    body = expense(ids, total="12345")
+    body.update(description="Creator private reversal bill", notes="Creator private reversal notes",
+                category="Private reversal category", date="2026-10-16")
+    assert send(client, "post", f"/groups/{group_id}/expenses", body).status_code == 200
+    original = Change.objects.get(group_id=group_id, kind="expense_saved")
+    financial_fields = ("id", "total", "paid", "shares", "split", "date")
+    financial = {field: original.data[field] for field in financial_fields}
+    creator_id = client.actor.pk
+    assert original.actor_id == creator_id
+
+    reversal = {"command_id": uid(), "version": 1}
+    assert send(other, "post", f"/groups/{group_id}/expenses/{body['id']}/reverse", reversal).status_code == 200
+    reversed_change = Change.objects.get(group_id=group_id, kind="expense_reversed")
+    assert reversed_change.actor_id == other.actor.pk
+    assert reversed_change.data == original.data | {"reversal_of": body["id"]}
+    history = list(Change.objects.filter(group_id=group_id).order_by("sequence").values_list(
+        "pk", "kind", "sequence", "created_at"
+    ))
+    before = state(other, group_id)
+
+    assert send(client, "delete", "/account").status_code == 200
+    after = state(other, group_id)
+    assert after["balances"] == before["balances"]
+    assert after["totals"] == before["totals"]
+    assert list(Change.objects.filter(pk__in=[row[0] for row in history]).order_by("sequence").values_list(
+        "pk", "kind", "sequence", "created_at"
+    )) == history
+    original.refresh_from_db()
+    reversed_change.refresh_from_db()
+    assert original.actor_id is None
+    assert reversed_change.actor_id == other.actor.pk
+    for change in (original, reversed_change):
+        assert {field: change.data[field] for field in financial_fields} == financial
+        assert change.data["version"] == 1
+        assert change.data["deleted"] is False
+        assert change.data["description"] == "Deleted bill"
+        assert change.data["notes"] == ""
+        assert change.data["category"] == "other"
+    assert reversed_change.data["reversal_of"] == body["id"]
+    bill = next(row for row in after["expenses"] if row["id"] == body["id"])
+    assert {field: bill[field] for field in financial_fields} == financial
+    assert bill["deleted"] is True
+    assert bill["description"] == "Deleted bill"
+    assert bill["notes"] == ""
+    assert bill["category"] == "other"
+    assert Expense.objects.filter(pk=body["id"], deleted=True).exists()
+    retained = json.dumps(after) + json.dumps(list(Change.objects.filter(group_id=group_id).values("data")))
+    for private_text in (body["description"], body["notes"], body["category"]):
+        assert private_text not in retained

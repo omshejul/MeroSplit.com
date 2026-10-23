@@ -24,9 +24,9 @@ from .mcp_tools import (
     list_groups,
     list_transactions,
     record_external_payment,
+    reverse_expense,
     reverse_external_payment,
     save_expense,
-    set_expense_deleted,
 )
 from .models import (
     Change,
@@ -315,7 +315,7 @@ def test_write_payloads_reject_actor_and_unknown_fields(ledger):
     calls = [lambda: save_expense(actor, group.id, expense_payload(ledger, actor_id=actor.pk)),
              lambda: record_external_payment(actor, group.id, payment_payload(ledger, actor=actor.pk)),
              lambda: reverse_external_payment(actor, group.id, payment.id, {"command_id": str(uuid4()), "version": 7}),
-             lambda: set_expense_deleted(actor, group.id, bill.id, {"command_id": str(uuid4()), "version": 1, "user_id": actor.pk}, deleted=True)]
+             lambda: reverse_expense(actor, group.id, bill.id, {"command_id": str(uuid4()), "version": 1, "user_id": actor.pk})]
     for call in calls:
         with pytest.raises(ValidationError):
             call()
@@ -343,22 +343,23 @@ def test_expense_creation_queues_once_and_edit_uses_exact_revision(ledger):
 
 
 @pytest.mark.parametrize("deleted", [0, 1, "true", None])
-def test_deletion_requires_explicit_boolean(ledger, deleted):
+def test_reversal_rejects_legacy_deletion_toggle(ledger, deleted):
     actor, _, _, group, *_, bill, _ = ledger
-    fails(422, lambda: set_expense_deleted(actor, group.id, bill.id, {"command_id": str(uuid4()), "version": 1}, deleted=deleted))
+    with pytest.raises(ValidationError):
+        reverse_expense(actor, group.id, bill.id, {"command_id": str(uuid4()), "version": 1, "deleted": deleted})
 
 
-def test_delete_and_restore_exact_revision_and_replay(ledger):
+def test_bill_reversal_exact_revision_and_replay(ledger):
     actor, _, _, group, *_, bill, _ = ledger
     payload = {"command_id": str(uuid4()), "version": 1}
-    result = set_expense_deleted(actor, group.id, bill.id, payload, deleted=True)
-    assert set_expense_deleted(actor, group.id, bill.id, payload, deleted=True) == result
-    fails(409, lambda: set_expense_deleted(actor, group.id, bill.id, {**payload, "command_id": str(uuid4())}, deleted=False))
-    set_expense_deleted(actor, group.id, bill.id, {"command_id": str(uuid4()), "version": 2}, deleted=False)
+    result = reverse_expense(actor, group.id, bill.id, payload)
+    assert reverse_expense(actor, group.id, bill.id, payload) == result
+    fails(409, lambda: reverse_expense(actor, group.id, bill.id, {**payload, "command_id": str(uuid4())}))
+    fails(409, lambda: reverse_expense(actor, group.id, bill.id, {"command_id": str(uuid4()), "version": 2}))
     bill.refresh_from_db()
-    assert not bill.deleted and bill.version == 3
-    assert not ExpenseNotice.objects.exists()  # Restore does not backfill a creation notice.
-    assert Change.objects.filter(group=group).count() == 2
+    assert bill.deleted and bill.version == 2
+    assert not ExpenseNotice.objects.exists()
+    assert Change.objects.filter(group=group, kind="expense_reversed").count() == 1
 
 
 @pytest.mark.parametrize("field,value", [("attempt_id", None), ("attempt_id", str(identifier(900))),
@@ -424,7 +425,7 @@ def test_all_group_writes_reject_archived_outsider_and_removed_members(ledger):
     actor, _, outsider, group, me, _, _, bill, payment = ledger
     def calls(who):
         return [lambda: save_expense(who, group.id, expense_payload(ledger)),
-                lambda: set_expense_deleted(who, group.id, bill.id, {"command_id": str(uuid4()), "version": 1}, deleted=True),
+                lambda: reverse_expense(who, group.id, bill.id, {"command_id": str(uuid4()), "version": 1}),
                 lambda: record_external_payment(who, group.id, payment_payload(ledger)),
                 lambda: reverse_external_payment(who, group.id, payment.id, {"command_id": str(uuid4())})]
     for call in calls(outsider):
@@ -449,7 +450,7 @@ def test_failed_removed_balance_change_rolls_back_record_and_receipt(ledger):
     other.removed = True
     other.save(update_fields=["removed"])
     assert get_group(actor, group.id)["balances"][str(other.id)] == "0"
-    fails(409, lambda: set_expense_deleted(actor, group.id, bill.id, {"command_id": str(uuid4()), "version": 1}, deleted=True))
+    fails(409, lambda: reverse_expense(actor, group.id, bill.id, {"command_id": str(uuid4()), "version": 1}))
     bill.refresh_from_db()
     group.refresh_from_db()
     assert not bill.deleted and bill.version == 1 and group.version == 7

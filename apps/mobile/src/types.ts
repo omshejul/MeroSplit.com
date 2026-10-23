@@ -11,7 +11,7 @@ export type GroupTransaction = { kind: 'bill'; date: string | null; bill: BillRo
 export type ActivityTarget = { kind: 'bill'; groupId: string; expenseId: string } | { kind: 'payment'; groupId: string; settlementId: string } | { kind: 'group'; groupId: string };
 export type ActivityPerson = { id: string; name: string; is_self: boolean };
 export type ActivityItem = {
-  id: string; kind: 'bill_added' | 'bill_edited' | 'bill_deleted' | 'bill_restored' | 'payment_recorded' | 'payment_reversed' | 'member_added' | 'member_joined' | 'member_removed' | 'group_created' | 'group_archived' | 'group_unarchived';
+  id: string; kind: 'bill_added' | 'bill_edited' | 'bill_deleted' | 'bill_restored' | 'bill_reversed' | 'payment_recorded' | 'payment_reversed' | 'member_added' | 'member_joined' | 'member_removed' | 'group_created' | 'group_archived' | 'group_unarchived';
   created_at: string; group: { id: string; name: string }; actor: { name: string; is_self: boolean } | null;
   bill?: { id: string; description: string; deleted: boolean };
   payment?: { id: string; sender: ActivityPerson; recipient: ActivityPerson; amount: string; reversed: boolean };

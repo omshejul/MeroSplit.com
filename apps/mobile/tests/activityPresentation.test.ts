@@ -54,6 +54,15 @@ test('bill and member events use readable actions without fabricating money or c
   assert.equal(activityPresentation({ ...added, kind: 'member_joined', person: person('self', true) }).title, 'You joined the group');
 });
 
+test('A separate bill reversal event opens the retained original without fabricating a payment', () => {
+  const reversal: ActivityItem = { ...event('bill_reversed'), id: 'separate-reversal', payment: undefined,
+    bill: { id: 'original-bill', description: 'Lunch', deleted: true } };
+  const row = activityPresentation(reversal);
+  assert.equal(row.title, 'You reversed Lunch');
+  assert.equal(row.cashflow, '0'); assert.equal(row.amount, undefined);
+  assert.deepEqual(row.target, { kind: 'bill', groupId: 'group', expenseId: 'original-bill' });
+});
+
 test('date headings use local calendar days and keep malformed dates honest', () => {
   const now = new Date(2026, 9, 17, 10);
   assert.equal(activityDay(new Date(2026, 9, 17, 1).toISOString(), now), 'Today');

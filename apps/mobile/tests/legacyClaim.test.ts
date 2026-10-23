@@ -45,7 +45,7 @@ test('Claim keeps deleted bills, reversed payments, original activity and drafts
     await saveGroup(db, 'local', original, 'local'); await saveDraft(db, 'local', 'g', { description: 'Unfinished bill' });
     await claimLegacyGroup(db, session, 'g', 'A', ids(), missing);
     const commands = await pendingCommands(db, owner);
-    assert.deepEqual(commands.map(command => `${command.method} ${command.path}`), ['POST /groups', 'POST /groups/g/expenses', 'DELETE /groups/g/expenses/e', 'POST /groups/g/settlements', 'POST /groups/g/settlements/payment/reverse']);
+    assert.deepEqual(commands.map(command => `${command.method} ${command.path}`), ['POST /groups', 'POST /groups/g/expenses', 'POST /groups/g/expenses/e/reverse', 'POST /groups/g/settlements', 'POST /groups/g/settlements/payment/reverse']);
     assert.equal(commands[2].body.version, 1); assert.equal(commands[3].body.date, null); assert.equal(new Set(commands.map(command => command.command_id)).size, 5);
     const cached = (await readGroup(db, owner, 'g'))!.group;
     assert.equal(cached.version, 0); assert.deepEqual(previewPending(cached, commands).balances, original.balances);
