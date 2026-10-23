@@ -10,9 +10,17 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.omshejul.splitdumb",
-      "buildNumber": "6",
+      "buildNumber": "7",
       "infoPlist": {
-        "LSApplicationQueriesSchemes": ["upi", "gpay", "phonepe", "paytmmp", "credpay", "bhim", "amazonpay"],
+        "LSApplicationQueriesSchemes": [
+          "upi",
+          "gpay",
+          "phonepe",
+          "paytmmp",
+          "credpay",
+          "bhim",
+          "amazonpay"
+        ],
         "NSAppTransportSecurity": {
           "NSAllowsLocalNetworking": true
         }
@@ -20,7 +28,7 @@
     },
     "android": {
       "package": "com.omshejul.splitdumb",
-      "versionCode": 6,
+      "versionCode": 7,
       "adaptiveIcon": {
         "backgroundColor": "#FFFFFF",
         "foregroundImage": "./assets/android-icon-foreground.png"
