@@ -5,7 +5,9 @@ settings:
   excludeLinksFromLockfile: false
 
 patchedDependencies:
-  expo-sqlite@58.0.13: 785fcac9e318ea17a7e7200f2c413aea47ce8120a6502290ba85f857e2e55e0e
+  expo-sqlite@58.0.13:
+    hash: 785fcac9e318ea17a7e7200f2c413aea47ce8120a6502290ba85f857e2e55e0e
+    path: patches/expo-sqlite@58.0.13.patch
 
 importers:
 
