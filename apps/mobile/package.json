@@ -2,7 +2,7 @@
   "name": "splitdumb-mobile",
   "description": "MeroSplit shared expenses, with a Django API.",
   "license": "0BSD",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "main": "index.ts",
   "dependencies": {
     "@expo/vector-icons": "^15.1.1",

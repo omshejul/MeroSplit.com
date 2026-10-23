@@ -19,7 +19,7 @@ import ProfilePhoto from './src/ProfilePhoto';
 import BillAttachments from './src/BillAttachments';
 import { clearMediaPreviews } from './src/media';
 import type { CachedGroup, Command, Expense, Group, Session, Settlement } from './src/types';
-import { Avatar, Button, Disclosure, Icon, UIProvider, useUI, type Palette, type AppearancePreference } from './src/ui';
+import { Avatar, Button, Disclosure, Icon, UIProvider, radii, useUI, type Palette, type AppearancePreference } from './src/ui';
 import { SegmentedButtons, Switch, Text } from 'react-native-paper';
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL ?? (Platform.OS === 'android' ? 'http://10.0.2.2:8000' : 'http://localhost:8000');
@@ -241,7 +241,7 @@ function AppContent() {
           buttons={[{ value: 'system', label: 'System', disabled: busy }, { value: 'light', label: 'Light', disabled: busy }, { value: 'dark', label: 'Dark', disabled: busy }]} /></View>
         {session && (paused ? <Text style={ui.caption}>Turn on sync to manage your profile photo and import from Splitwise.</Text> : <ProfilePhoto key={accountOwner(session)} session={session} busy={busy} onBusyChange={value => { lock.current = value; setBusy(value); }} />)}
         <Button title="Import from Splitwise" icon="bill" disabled={busy || (!!session && paused)} onPress={() => { if (!session) { setSignup(false); navigate('login'); } else { if (local) changeScope(session, false); navigate('import'); } }} />
-        <Text style={ui.caption}>MeroSplit 0.3.1 · Indian rupees</Text>
+        <Text style={ui.caption}>MeroSplit 0.3.2 · Indian rupees</Text>
       </>}
       {screen === 'import' && session && <SplitwiseImportScreen key={accountOwner(session)} session={session} busy={busy}
         onBusyChange={value => { lock.current = value; setBusy(value); }} onCancel={back}
@@ -275,13 +275,13 @@ const makeStyles = (colors: Palette) => StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 56, paddingHorizontal: 16, paddingTop: 4, paddingBottom: 8 },
   title: { flex: 1, flexShrink: 1, fontSize: 24, lineHeight: 30, fontWeight: '600', color: colors.text },
   field: { gap: 6 }, row: { gap: 6, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
-  groupList: { backgroundColor: colors.surface, borderRadius: 8, paddingHorizontal: 12 },
+  groupList: { backgroundColor: colors.surface, borderRadius: radii.surface, paddingHorizontal: 12 },
   groupRow: { minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
-  groupMark: { width: 36, height: 36, borderRadius: 8, backgroundColor: colors.soft, alignItems: 'center', justifyContent: 'center' },
+  groupMark: { width: 36, height: 36, borderRadius: radii.control, backgroundColor: colors.soft, alignItems: 'center', justifyContent: 'center' },
   pending: { fontSize: 13, color: colors.accent },
-  empty: { paddingVertical: 16, gap: 10 }, emptyIcon: { width: 48, height: 48, borderRadius: 8, backgroundColor: colors.soft, alignItems: 'center', justifyContent: 'center', marginBottom: 6 },
+  empty: { paddingVertical: 16, gap: 10 }, emptyIcon: { width: 48, height: 48, borderRadius: radii.control, backgroundColor: colors.soft, alignItems: 'center', justifyContent: 'center', marginBottom: 6 },
   profile: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 8 },
-  tabs: { flexDirection: 'row', backgroundColor: colors.surface, marginHorizontal: 16, marginBottom: 8, borderRadius: 8, padding: 4, gap: 4 },
-  tab: { flex: 1, minHeight: 48, alignItems: 'center', justifyContent: 'center', gap: 4, borderRadius: 6, paddingVertical: 6 },
+  tabs: { flexDirection: 'row', backgroundColor: colors.surface, marginHorizontal: 16, marginBottom: 8, borderRadius: radii.navigation, padding: 4, gap: 4 },
+  tab: { flex: 1, minHeight: 48, alignItems: 'center', justifyContent: 'center', gap: 4, borderRadius: radii.surface, paddingVertical: 6 },
   tabText: { fontSize: 13, fontWeight: '500', color: colors.muted }, selectedTab: { backgroundColor: colors.soft },
 });

@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { formatMoney } from './accounting';
 import { Text } from 'react-native-paper';
 import type { Command, Expense, Group, Settlement } from './types';
-import { Avatar, Button, Disclosure, Icon, useUI } from './ui';
+import { Avatar, Button, Disclosure, Icon, radii, useUI } from './ui';
 import type { Palette } from './ui';
 
 type Transfer = { sender: string; recipient: string; amount: string };
@@ -174,13 +174,13 @@ const makeStyles = (colors: Palette) => StyleSheet.create({
   content: { gap: 12 },
   summary: { gap: 4, paddingVertical: 8 },
   section: { gap: 10, paddingVertical: 4 },
-  receipt: { gap: 12, padding: 12, borderRadius: 8, backgroundColor: colors.surface },
-  tabs: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, padding: 4, borderRadius: 8, backgroundColor: colors.surface },
-  tab: { flex: 1, flexBasis: 80, minHeight: 48, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 12, alignItems: 'center', justifyContent: 'center' },
+  receipt: { gap: 12, padding: 12, borderRadius: radii.surface, backgroundColor: colors.surface },
+  tabs: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, padding: 4, borderRadius: radii.surface, backgroundColor: colors.surface },
+  tab: { flex: 1, flexBasis: 80, minHeight: 48, borderRadius: radii.control, paddingHorizontal: 10, paddingVertical: 12, alignItems: 'center', justifyContent: 'center' },
   selectedTab: { backgroundColor: colors.soft },
   tabText: { color: colors.muted, fontSize: 15, lineHeight: 21, fontWeight: '500', textAlign: 'center' },
   selectedTabText: { color: colors.accent, fontWeight: '600' },
-  billMark: { width: 36, height: 36, borderRadius: 8, backgroundColor: colors.soft, alignItems: 'center', justifyContent: 'center' },
+  billMark: { width: 36, height: 36, borderRadius: radii.control, backgroundColor: colors.soft, alignItems: 'center', justifyContent: 'center' },
   trailing: { maxWidth: '42%', gap: 4, alignItems: 'flex-end' },
   amount: { color: colors.text, fontSize: 17, lineHeight: 24, fontWeight: '600', fontVariant: ['tabular-nums'], flexShrink: 1, textAlign: 'right' },
   payment: { gap: 6, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },

@@ -11,7 +11,7 @@ import { saveGroup } from './storage';
 import { readPendingSplitwiseImport, retrySplitwiseImport, startSplitwiseImport } from './splitwiseImport';
 import type { SplitwiseImportRequest, SplitwisePreview } from './splitwiseImport';
 import type { Group, Session } from './types';
-import { Button, useUI } from './ui';
+import { Button, radii, useUI } from './ui';
 
 export type SplitwiseImportScreenProps = {
   session: Session; busy: boolean; onBusyChange: (busy: boolean) => void;
@@ -126,5 +126,5 @@ export default function SplitwiseImportScreen({ session, busy, onBusyChange, onI
 }
 const styles = StyleSheet.create({
   form: { gap: 12 }, field: { gap: 7 }, person: { borderBottomWidth: StyleSheet.hairlineWidth, paddingBottom: 8 },
-  balance: { paddingHorizontal: 16 }, review: { gap: 10, borderWidth: 1, borderRadius: 8, padding: 12 },
+  balance: { paddingHorizontal: 16 }, review: { gap: 10, borderWidth: 1, borderRadius: radii.surface, padding: 12 },
 });

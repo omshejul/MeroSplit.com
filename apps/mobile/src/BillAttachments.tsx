@@ -7,7 +7,7 @@ import type { MediaList, MediaMetadata, PendingMediaUpload, PickedMedia } from '
 import { getDatabase } from './native';
 import PrivateMediaImage from './PrivateMediaImage';
 import type { Session } from './types';
-import { Button, Icon, useUI } from './ui';
+import { Button, Icon, radii, useUI } from './ui';
 
 export type BillAttachmentsProps = { session: Session | null; groupId: string; expenseId: string; revision?: number; readOnly?: boolean; busy: boolean; onBusyChange: (busy: boolean) => void; onChanged?: () => Promise<void> };
 export default function BillAttachments({ session, groupId, expenseId, revision, readOnly = false, busy, onBusyChange, onChanged }: BillAttachmentsProps) {
@@ -94,7 +94,7 @@ export default function BillAttachments({ session, groupId, expenseId, revision,
       {working && <Text accessibilityLiveRegion="polite" style={ui.caption}>Processing file…</Text>}
       {items.map(item => <View key={item.id} style={{ borderBottomWidth: 0.5, borderBottomColor: palette.line, paddingBottom: 8, gap: 4 }}>
         <Pressable accessibilityRole="button" accessibilityLabel={`Open ${item.name}`} disabled={disabled} onPress={() => void run(() => openPrivateMedia(session, item))} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 56 }}>
-          {item.content_type.startsWith('image/') ? <PrivateMediaImage session={session} media={item} /> : <View style={{ width: 56, height: 56, borderRadius: 8, backgroundColor: palette.soft, alignItems: 'center', justifyContent: 'center' }}><Icon name="bill" /></View>}
+          {item.content_type.startsWith('image/') ? <PrivateMediaImage session={session} media={item} /> : <View style={{ width: 56, height: 56, borderRadius: radii.control, backgroundColor: palette.soft, alignItems: 'center', justifyContent: 'center' }}><Icon name="bill" /></View>}
           <View style={{ flex: 1, gap: 2 }}><Text style={ui.body}>{item.name}</Text><Text style={ui.caption}>{item.content_type === 'application/pdf' ? 'PDF' : 'Image'} · {mediaSize(item.size)}</Text></View><Icon name="next" size={18} />
         </Pressable>
         {editable && <Button title="Remove" accessibilityLabel={`Remove ${item.name}`} kind="text" disabled={disabled || !!pending} onPress={() => remove(item)} />}

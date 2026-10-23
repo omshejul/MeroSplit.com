@@ -22,6 +22,7 @@ import Wallet01Icon from '@hugeicons/core-free-icons/Wallet01Icon';
 import Calendar03Icon from '@hugeicons/core-free-icons/Calendar03Icon';
 
 export type Palette = { background: string; surface: string; text: string; muted: string; accent: string; soft: string; line: string; outline: string; error: string };
+export const radii = { control: 12, surface: 16, navigation: 20 } as const;
 const colors: Palette = { background: '#F7F7F7', surface: '#FFFFFF', text: '#161616', muted: '#626262', accent: '#161616', soft: '#ECECEC', line: '#D4D4D4', outline: '#8A8A8A', error: '#333333' };
 const darkColors: Palette = { background: '#111111', surface: '#1C1C1C', text: '#F5F5F5', muted: '#B5B5B5', accent: '#F5F5F5', soft: '#2D2D2D', line: '#444444', outline: '#808080', error: '#E0E0E0' };
 const makeInputColors = (palette: Palette) => ({ selectionColor: Platform.OS === 'ios' ? palette.accent : palette.line, cursorColor: palette.accent, selectionHandleColor: palette.accent });
@@ -34,7 +35,7 @@ export function Icon({ name, size = 22, color }: { name: IconName; size?: number
 }
 function makeTheme(palette: Palette, dark: boolean): MD3Theme {
   const colors = palette, onAccent = dark ? '#161616' : '#FFFFFF';
-  return { ...(dark ? MD3DarkTheme : MD3LightTheme), roundness: 2, colors: {
+  return { ...(dark ? MD3DarkTheme : MD3LightTheme), roundness: 3, colors: {
     primary: colors.accent, onPrimary: onAccent, primaryContainer: colors.soft, onPrimaryContainer: colors.text,
     secondary: colors.accent, onSecondary: onAccent, secondaryContainer: colors.soft, onSecondaryContainer: colors.text,
     tertiary: colors.accent, onTertiary: onAccent, tertiaryContainer: colors.soft, onTertiaryContainer: colors.text,
@@ -93,7 +94,7 @@ export function Button({ title, onPress, disabled = false, kind = 'secondary', i
   const { palette: colors } = useUI();
   return <PaperButton accessibilityLabel={accessibilityLabel ?? title} mode={kind === 'text' ? 'text' : kind === 'secondary' ? 'contained-tonal' : 'contained'} onPress={onPress} disabled={disabled}
     icon={icon ? ({ size, color }) => <Icon name={icon} size={size} color={color} /> : undefined}
-    buttonColor={kind === 'danger' ? colors.error : undefined} style={{ borderRadius: 8 }} contentStyle={{ minHeight: Platform.OS === 'ios' ? 44 : 48 }} labelStyle={{ fontSize: 16, fontWeight: '600' }}>{title}</PaperButton>;
+    buttonColor={kind === 'danger' ? colors.error : undefined} style={{ borderRadius: radii.control }} contentStyle={{ minHeight: Platform.OS === 'ios' ? 44 : 48 }} labelStyle={{ fontSize: 16, fontWeight: '600' }}>{title}</PaperButton>;
 }
 const dateText = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 export function DateField({ label, value, onChange, disabled = false }: { label: string; value: string; onChange: (value: string) => void; disabled?: boolean }) {
@@ -101,7 +102,7 @@ export function DateField({ label, value, onChange, disabled = false }: { label:
   const [open, setOpen] = useState(false);
   const parsed = new Date(`${value}T12:00:00`), valid = !Number.isNaN(parsed.getTime()) && dateText(parsed) === value;
   return <View style={{ gap: 8 }}><Text style={ui.label}>{label}</Text>
-    <PaperButton mode="outlined" accessibilityLabel={`${label}: ${value || 'Choose date'}`} disabled={disabled} onPress={() => setOpen(true)} icon={({ color, size }) => <HugeiconsIcon icon={Calendar03Icon} color={color} size={size} />} contentStyle={{ minHeight: Platform.OS === 'ios' ? 44 : 48 }} style={{ borderRadius: 8 }}>
+    <PaperButton mode="outlined" accessibilityLabel={`${label}: ${value || 'Choose date'}`} disabled={disabled} onPress={() => setOpen(true)} icon={({ color, size }) => <HugeiconsIcon icon={Calendar03Icon} color={color} size={size} />} contentStyle={{ minHeight: Platform.OS === 'ios' ? 44 : 48 }} style={{ borderRadius: radii.control }}>
       {valid ? parsed.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Choose date'}
     </PaperButton>
     {open && !disabled && <><DateTimePicker disabled={disabled} value={valid ? parsed : new Date()} mode="date" accentColor={colors.accent} themeVariant={dark ? 'dark' : 'light'} display={Platform.OS === 'ios' ? 'inline' : 'default'} onChange={(event, date) => { if (disabled) return; if (Platform.OS !== 'ios') setOpen(false); if (event.type === 'set' && date) onChange(dateText(date)); }} />
@@ -128,14 +129,14 @@ const makeUI = (colors: Palette) => StyleSheet.create({
   caption: { fontSize: 14, lineHeight: 20, color: colors.muted },
   label: { fontSize: 14, lineHeight: 20, fontWeight: '500', color: colors.muted },
   numeric: { fontSize: 32, lineHeight: 40, fontWeight: '600', color: colors.text, fontVariant: ['tabular-nums'] },
-  input: { minHeight: 48, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 8, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.outline, color: colors.text, fontSize: 17 },
+  input: { minHeight: 48, paddingHorizontal: 12, paddingVertical: 10, borderRadius: radii.control, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.outline, color: colors.text, fontSize: 17 },
   row: { minHeight: 56, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', gap: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
   rowBody: { flex: 1, gap: 3 },
   rowTitle: { fontSize: 17, lineHeight: 23, fontWeight: '500', color: colors.text },
   rowSub: { fontSize: 14, lineHeight: 20, color: colors.muted },
-  avatar: { width: 36, height: 36, borderRadius: 8, backgroundColor: colors.soft, alignItems: 'center', justifyContent: 'center' },
+  avatar: { width: 36, height: 36, borderRadius: radii.control, backgroundColor: colors.soft, alignItems: 'center', justifyContent: 'center' },
   initials: { fontSize: 17, fontWeight: '600', color: colors.accent },
-  notice: { backgroundColor: colors.surface, borderLeftWidth: 3, borderLeftColor: colors.accent, borderRadius: 8, padding: 12, color: colors.text, fontSize: 14, lineHeight: 21 },
+  notice: { backgroundColor: colors.surface, borderLeftWidth: 3, borderLeftColor: colors.accent, borderRadius: radii.surface, padding: 12, color: colors.text, fontSize: 14, lineHeight: 21 },
   error: { color: colors.error, fontSize: 15, lineHeight: 22 },
   disclosure: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
   disclosureHeading: { minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
