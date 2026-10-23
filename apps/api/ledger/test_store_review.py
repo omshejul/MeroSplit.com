@@ -109,6 +109,44 @@ def test_fresh_challenge_reuses_only_its_own_store_credential(reviewers, mailbox
     assert mailbox == []
 
 
+def test_blank_credential_keeps_confirmed_session_authenticated_and_isolated(reviewers, settings, mailbox):
+    users, pins = reviewers
+    _, demo_id, _ = group_for(users[0])
+    real_user = get_user_model().objects.create_user(username=uid(), email="session-boundary@example.invalid")
+    real, real_id, ids = group_for(real_user)
+    bill = expense(ids, beneficiaries=[0, 1])
+    assert send(real, "post", f"/groups/{real_id}/expenses", bill).status_code == 200
+    Participant.objects.filter(id=ids[1]).update(user=users[0])
+
+    native = Client()
+    identifier = challenge(users[0].email)
+    confirmed = post(native, "confirm", {"challenge_id": identifier, "code": pins[0]})
+    assert confirmed.status_code == 200
+    native.defaults["HTTP_X_SESSION_TOKEN"] = confirmed.json()["meta"]["session_token"]
+    native.cookies.clear()
+    assert send(native, "get", "/me").json()["id"] == users[0].pk
+
+    reservation = dict(settings.STORE_REVIEW_AUTH[0])
+    settings.STORE_REVIEW_AUTH[0]["pin_hash"] = ""
+    assert settings.STORE_REVIEW_AUTH[0] == {**reservation, "pin_hash": ""}
+    assert send(native, "get", "/me").status_code == 200
+    assert send(native, "get", f"/groups/{demo_id}").status_code == 200
+    assert [str(row["id"]) for row in send(native, "get", "/groups").json()["groups"]] == [demo_id]
+    assert [row["group"]["id"] for row in send(native, "get", "/account/export").json()["groups"]] == [demo_id]
+    for path in [f"/groups/{real_id}", f"/groups/{real_id}/summary", f"/groups/{real_id}/history/bills", f"/groups/{real_id}/export"]:
+        assert send(native, "get", path).status_code == 404
+    assert send(native, "post", f"/groups/{real_id}/expenses", expense(ids, beneficiaries=[0, 1])).status_code == 404
+
+    EmailCodeChallenge.objects.update(requested_at=timezone.now() - timedelta(seconds=61))
+    fresh = challenge(users[0].email)
+    assert fresh != identifier
+    assert post(Client(), "confirm", {"challenge_id": fresh, "code": pins[0]}).status_code == 400
+    assert not EmailCodeChallenge.objects.get().delivered
+    assert send(native, "get", "/me").status_code == 200
+    assert send(native, "get", f"/groups/{real_id}").status_code == 404
+    assert not EmailAddress.objects.filter(user=users[0], verified=True).exists() and mailbox == []
+
+
 @pytest.mark.parametrize("change", ["wrong_id", "wrong_email", "inactive", "staff", "superuser", "blank_hash", "rotated_hash", "duplicate_user", "duplicate_address"])
 def test_wrong_identity_or_disabled_rotated_credential_fails_closed(reviewers, settings, change, mailbox):
     users, pins = reviewers
