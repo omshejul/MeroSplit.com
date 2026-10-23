@@ -3,6 +3,7 @@ import { Linking, Platform, Pressable, ScrollView, StyleSheet, TextInput, View }
 import { Dialog, Portal, RadioButton, Text } from 'react-native-paper';
 import QRCode from 'react-native-qrcode-svg';
 import { Alert } from './alerts';
+import { isPersonalPayment } from './personalBalances';
 import { addSettlement, formatMoney, integer, rupeesToPaise } from './accounting';
 import type { Group } from './types';
 import { Button, Disclosure, Icon, useUI } from './ui';
@@ -18,18 +19,18 @@ const rupees = (value: string) => { const amount = integer(value); return `${amo
 export default function SettleForm({ group, initial, busy, selfId, onSave, onReviewAttempt, onPrepareUPI, onCancelUPI }: Props) {
   const { palette: colors, ui, inputColors } = useUI();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const proposal = initial;
-  const [sender, setSender] = useState(proposal?.sender ?? '');
+  const proposal = initial && isPersonalPayment(group, selfId, initial.sender, initial.recipient) ? initial : undefined;
+  const [sender, setSender] = useState(proposal?.sender ?? selfId);
   const [recipient, setRecipient] = useState(proposal?.recipient ?? '');
   const [amount, setAmount] = useState(proposal ? rupees(proposal.amount) : ''), [error, setError] = useState(''), [saving, setSaving] = useState(false);
-  const [peopleOpen, setPeopleOpen] = useState(!initial);
+  const [peopleOpen, setPeopleOpen] = useState(!proposal);
   const [notice, setNotice] = useState(''), [reviewing, setReviewing] = useState(false);
   const [chooser, setChooser] = useState<{ payment: Payment; target: { vpa: string; name: string }; apps: UPIApp[] } | null>(null);
   const [webQuote, setWebQuote] = useState<{ quote: UPILaunchQuote; url: string; target: { vpa: string; name: string } } | null>(null);
   const lock = useRef(false), mounted = useRef(true), disabled = busy || saving || reviewing || !!chooser;
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   useEffect(() => {
-    if (!sender || !recipient) return;
+    if (!isPersonalPayment(group, selfId, sender, recipient)) return;
     let current = true; setReviewing(true);
     void onReviewAttempt(sender, recipient).catch(cause => { if (current) setError(cause instanceof Error ? cause.message : 'Could not review this payment.'); }).finally(() => { if (current) setReviewing(false); });
     return () => { current = false; };
@@ -50,7 +51,10 @@ export default function SettleForm({ group, initial, busy, selfId, onSave, onRev
   async function save(payment: Payment) {
     if (lock.current || busy) return;
     lock.current = true; setSaving(true);
-    try { await onSave(payment); }
+    try {
+      if (!isPersonalPayment(group, selfId, payment.sender, payment.recipient)) throw new Error('Choose a payment to or from you.');
+      await onSave(payment);
+    }
     catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not record the payment. Try again.'); }
     finally { lock.current = false; setSaving(false); }
   }
@@ -92,7 +96,7 @@ export default function SettleForm({ group, initial, busy, selfId, onSave, onRev
   function confirm() {
     if (disabled || group.archived) return;
     try {
-      if (![sender, recipient].every(id => group.participants.some(person => person.id === id && !person.removed))) throw new Error('Choose active people for this payment.');
+      if (!isPersonalPayment(group, selfId, sender, recipient)) throw new Error('Choose a payment to or from you.');
       const payment = { sender, recipient, amount: rupeesToPaise(amount) };
       addSettlement(group.balances, sender, recipient, payment.amount);
       setError('');
@@ -122,9 +126,9 @@ export default function SettleForm({ group, initial, busy, selfId, onSave, onRev
         <Text style={ui.label}>From</Text>
         {group.participants.filter(person => !person.removed).map(person => <RadioButton.Item key={`from-${person.id}`} value={person.id} label={label(person.id)} accessibilityLabel={`From ${label(person.id)}`}
           status={sender === person.id ? 'checked' : 'unchecked'} disabled={disabled} labelStyle={ui.body} mode="android"
-          onPress={() => { setSender(person.id); if (recipient === person.id) setRecipient(group.participants.find(value => value.id !== person.id && !value.removed)?.id ?? ''); setError(''); setWebQuote(null); }} />)}
+          onPress={() => { setSender(person.id); if (person.id !== selfId) setRecipient(selfId); else if (recipient === selfId) setRecipient(''); setError(''); setWebQuote(null); }} />)}
         <Text style={ui.label}>To</Text>
-        {group.participants.filter(person => person.id !== sender && !person.removed).map(person => <RadioButton.Item key={`to-${person.id}`} value={person.id} label={label(person.id)} accessibilityLabel={`To ${label(person.id)}`}
+        {group.participants.filter(person => person.id !== sender && !person.removed && (sender === selfId || person.id === selfId)).map(person => <RadioButton.Item key={`to-${person.id}`} value={person.id} label={label(person.id)} accessibilityLabel={`To ${label(person.id)}`}
           status={recipient === person.id ? 'checked' : 'unchecked'} disabled={disabled} labelStyle={ui.body} mode="android"
           onPress={() => { setRecipient(person.id); setError(''); setWebQuote(null); }} />)}
         <Button title="Done" onPress={() => setPeopleOpen(false)} disabled={disabled} kind="text" icon="check" />
@@ -147,7 +151,7 @@ export default function SettleForm({ group, initial, busy, selfId, onSave, onRev
     {activeAttempt?.state === 'prepared' && sender === selfId && <Button title="Cancel unpaid attempt" kind="text" disabled={disabled} onPress={() => Alert.alert('Cancel unpaid attempt?', 'Cancel only if you have not paid. This cannot reverse money already sent.', [{ text: 'Keep', style: 'cancel' }, { text: 'Cancel attempt', onPress: () => void cancelAttempt(activeAttempt.id) }])} />}
     {!!notice && <Text accessibilityLiveRegion="polite" style={ui.caption}>{notice}</Text>}
     {!!error && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={ui.error}>{error}</Text>}
-    <Button title={amountLabel ? `Record ${amountLabel} already paid` : 'Record a payment already made'} accessibilityLabel={amountLabel ? `Record ${amountLabel} to ${label(recipient)}` : 'Record payment'} onPress={confirm} disabled={disabled || group.archived} kind={canPay ? 'secondary' : 'primary'} icon="check" />
+    <Button title={amountLabel ? `Record ${amountLabel} already paid` : 'Record a payment already made'} accessibilityLabel={amountLabel ? `Record ${amountLabel} to ${label(recipient)}` : 'Record payment'} onPress={confirm} disabled={disabled || group.archived || !isPersonalPayment(group, selfId, sender, recipient)} kind={canPay ? 'secondary' : 'primary'} icon="check" />
     <Portal><Dialog visible={!!chooser} onDismiss={() => { if (!busy && !saving) setChooser(null); }}><Dialog.Title>Pay with UPI</Dialog.Title><Dialog.Content><Text style={ui.body}>Check the recipient and amount before paying.</Text></Dialog.Content><Dialog.ScrollArea style={{ maxHeight: 360 }}><ScrollView contentContainerStyle={{ paddingVertical: 8, gap: 8 }}>{chooser?.apps.map(app => <Button key={app.id} title={app.name} disabled={busy || saving} onPress={() => void pay(app)} />)}</ScrollView></Dialog.ScrollArea><Dialog.Actions><Button title="Cancel" kind="text" disabled={busy || saving} onPress={() => setChooser(null)} /></Dialog.Actions></Dialog></Portal>
   </View>;
 }
