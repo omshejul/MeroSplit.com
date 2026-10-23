@@ -1,0 +1,47 @@
+{
+  "apps/mobile/assets/icon.png": {
+    "sha256": "80547c4d384faf6d1896fa7f5344c33cb759b71bf1c8632071a6f75c6f5f85bc",
+    "bytes": 340458
+  },
+  "apps/mobile/assets/android-icon-foreground.png": {
+    "sha256": "b6df4c961a7c518b5f6199370ad3f5722862e7027f12863c6907519034e708bd",
+    "bytes": 229298
+  },
+  "apps/mobile/assets/splash-icon.png": {
+    "sha256": "32c472a407fd10d2098f30054762667cecba19faccb11768eae7ccb6590ec76c",
+    "bytes": 400001
+  },
+  "store-assets/app-store/icon-1024.png": {
+    "sha256": "80547c4d384faf6d1896fa7f5344c33cb759b71bf1c8632071a6f75c6f5f85bc",
+    "bytes": 340458
+  },
+  "store-assets/google-play/icon-512.png": {
+    "sha256": "a0e1d42afa0b7111af7912b4b5ba77683ae2a14f2531deecd1668d457c65eceb",
+    "bytes": 79119
+  },
+  "store-assets/google-play/feature-graphic-1024x500.png": {
+    "sha256": "07adc31fe810e80b4ded5d19eaca90dac029b11a41be29fc74369b857a5999db",
+    "bytes": 58861
+  },
+  "store-assets/google-play/screenshots/04-38-canonical-draft-restored.png": {
+    "sha256": "54e5a3edd133efb93e94608f60c5e662db8d42b696f7478b47fdf665cbc81278",
+    "bytes": 82863
+  },
+  "store-assets/google-play/screenshots/03-32-canonical-totals-disclosure.png": {
+    "sha256": "83401ffd144841098aabf34a65e8005e2fea1cf3adcb6e1f3a06e1b98b69b15a",
+    "bytes": 129769
+  },
+  "store-assets/google-play/screenshots/01-45-final-5040-groups-preserved.png": {
+    "sha256": "6d338abb773832904f5a01f3e759e86fc275306e5e0503eead4d8318163c2581",
+    "bytes": 80795
+  },
+  "store-assets/google-play/screenshots/02-31-canonical-joined-group.png": {
+    "sha256": "2b8192f9f2cfd6323bb2c161fa3d583169e04da9135d06364c5f05bac569ffcf",
+    "bytes": 104462
+  },
+  "approved_master": {
+    "path": "apps/mobile/assets/brand/03-linked-friends.png",
+    "sha256": "f6611e332da8a5e673fecc95c2a66db712818c6bda2bdd8c18da80e7f4311f59",
+    "same_as_selected_original": true
+  }
+}

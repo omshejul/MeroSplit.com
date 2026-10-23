@@ -5,7 +5,7 @@
     "scheme": "splitdumb",
     "version": "0.3.3",
     "orientation": "portrait",
-    "icon": "./assets/android-icon-monochrome.png",
+    "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": false,
@@ -22,14 +22,13 @@
       "versionCode": 6,
       "adaptiveIcon": {
         "backgroundColor": "#FFFFFF",
-        "foregroundImage": "./assets/android-icon-monochrome.png",
-        "monochromeImage": "./assets/android-icon-monochrome.png"
+        "foregroundImage": "./assets/android-icon-foreground.png"
       },
       "predictiveBackGestureEnabled": false,
       "googleServicesFile": "./google-services.json"
     },
     "web": {
-      "favicon": "./assets/android-icon-monochrome.png"
+      "favicon": "./assets/favicon.png"
     },
     "plugins": [
       "expo-sqlite",
@@ -53,7 +52,15 @@
           "microphonePermission": false
         }
       ],
-      "./plugins/with-monochrome.cjs"
+      "./plugins/with-monochrome.cjs",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#FFFFFF",
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 160
+        }
+      ]
     ],
     "primaryColor": "#161616",
     "extra": {
