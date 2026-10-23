@@ -112,7 +112,7 @@ async function memberActions() {
   const opening=group.opening_balance;
   if(opening){
     const list=document.createElement('ul');for(const person of group.participants){const row=document.createElement('li');row.textContent=position(person.name,opening.balances[person.id]||'0');list.appendChild(row);}document.getElementById('opening-people')?.appendChild(list);
-    if(own&&!opening.accepted&&!Object.hasOwn(opening.acknowledgments,data.participant.id)&&Number(opening.balances[data.participant.id]||'0')!==0)button('Agree to opening balance',async()=>{if(!confirm(`Agree that ${position('you',opening.balances[data.participant.id])} from ${opening.source}, as of ${opening.cutoff}? This changes balances once everyone required agrees.`))return false;await call('/api/v1/groups/'+group.id+'/opening-balances/'+opening.id+'/acknowledge','POST',command());});
+    if(own&&!opening.accepted&&!Object.hasOwn(opening.acknowledgments,data.participant.id)&&Number(opening.balances[data.participant.id]||'0')!==0)button('Agree to opening balance',async()=>{if(!confirm(`Agree that ${position(member.name,opening.balances[data.participant.id])} from ${opening.source}, as of ${opening.cutoff}? This changes balances once everyone required agrees.`))return false;await call('/api/v1/groups/'+group.id+'/opening-balances/'+opening.id+'/acknowledge','POST',command());});
   }
   for(const attempt of group.payment_attempts||[]){
     const reversed=group.settlements.find(payment=>payment.id===attempt.settlement_id)?.reversed;
