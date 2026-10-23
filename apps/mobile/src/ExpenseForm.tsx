@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useState } from 'react';
-import { Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { Checkbox, RadioButton, Text } from 'react-native-paper';
 import * as Crypto from 'expo-crypto';
 import { formatMoney, integer, rupeesToPaise, validateExpense } from './accounting';
@@ -7,6 +7,7 @@ import type { Amounts, Split } from './accounting';
 import type { Expense, Group } from './types';
 import { Button, DateField, Icon, useUI } from './ui';
 import type { Palette } from './ui';
+import { AmountField, TextField } from './FormFields';
 
 export type ExpenseFormDraft = {
   schemaVersion: 1; groupId: string; expenseId: string | null; id: string; expenseVersion: number;
@@ -65,15 +66,6 @@ function startingDraft(group: Group, expense: Expense | undefined, selfId: strin
   }
 }
 
-function Field({ label, value, onChange, decimal = false, multiline = false, maxLength, disabled = false, large = false, placeholder }: {
-  label: string; value: string; onChange: (value: string) => void; decimal?: boolean; multiline?: boolean; maxLength?: number; disabled?: boolean; large?: boolean; placeholder?: string;
-}) {
-  const { palette: colors, ui, inputColors } = useUI();
-  const styles = useMemo(() => makeStyles(colors), [colors]);
-  return <View style={styles.field}><Text style={ui.label}>{label}</Text><TextInput {...inputColors} accessibilityLabel={label} value={value} onChangeText={onChange}
-    keyboardType={decimal ? 'decimal-pad' : 'default'} autoCorrect={false} multiline={multiline} maxLength={maxLength} editable={!disabled}
-    placeholder={placeholder} placeholderTextColor={colors.muted} style={[ui.input, large && styles.amount, multiline && styles.notes]} /></View>;
-}
 function Choice({ title, selected, disabled, onPress, role = 'checkbox' }: { title: string; selected: boolean; disabled: boolean; onPress: () => void; role?: 'checkbox' | 'radio' }) {
   const { ui } = useUI();
   return role === 'radio'
@@ -88,6 +80,44 @@ function Summary({ title, value, open, disabled, onPress }: { title: string; val
     <View style={ui.rowBody}><Text style={ui.label}>{title}</Text><Text style={ui.rowTitle}>{value}</Text></View>
     <View style={{ transform: [{ rotate: open ? '180deg' : '0deg' }] }}><Icon name="down" size={20} /></View>
   </Pressable>;
+}
+
+type ExpenseSelectionProps = {
+  participants: Group['participants']; draft: ExpenseFormDraft; disabled: boolean; preserveRemoved: boolean;
+  label: (id: string) => string; onChange: (patch: Partial<ExpenseFormDraft>) => void; status: string;
+};
+const splitModes = { equal: 'Equally', exact: 'Exact amounts', percent: 'Percentages', shares: 'Shares' } as const;
+
+function PayerFields({ participants, draft, disabled, preserveRemoved, label, onChange, status, onToggle }: ExpenseSelectionProps & { onToggle: (id: string) => void }) {
+  const { palette, ui } = useUI();
+  const styles = useMemo(() => makeStyles(palette), [palette]);
+  return <View style={styles.reveal}>
+    {participants.filter(person => !person.removed || draft.payerIds.includes(person.id)).map(person => <View key={`payer-${person.id}`} style={styles.field}>
+      <Choice title={label(person.id)} selected={draft.payerIds.includes(person.id)} disabled={disabled || (preserveRemoved && !!person.removed)} onPress={() => onToggle(person.id)} />
+      {draft.payerIds.length > 1 && draft.payerIds.includes(person.id) && <TextField autoCorrect={false} label={`Paid by ${label(person.id)} (₹)`} value={draft.payerAmounts[person.id] ?? ''}
+        onChangeText={value => onChange({ payerAmounts: { ...draft.payerAmounts, [person.id]: value } })} keyboardType="decimal-pad" editable={!disabled && !person.removed} />}
+    </View>)}
+    {!!status && <Text accessibilityLiveRegion="polite" style={ui.caption}>{status}</Text>}
+  </View>;
+}
+
+function SplitFields({ participants, draft, disabled, preserveRemoved, label, onChange, status }: ExpenseSelectionProps) {
+  const { palette, ui } = useUI();
+  const styles = useMemo(() => makeStyles(palette), [palette]);
+  return <View style={styles.reveal}>
+    {participants.filter(person => !person.removed || draft.participantIds.includes(person.id)).map(person => <Choice key={`share-${person.id}`} title={label(person.id)} selected={draft.participantIds.includes(person.id)} disabled={disabled || (preserveRemoved && !!person.removed)}
+      onPress={() => onChange({ participantIds: draft.participantIds.includes(person.id) ? draft.participantIds.filter(id => id !== person.id) : [...draft.participantIds, person.id] })} />)}
+    <Text style={ui.label}>Split method</Text>
+    {Object.entries(splitModes).map(([mode, title]) => <Choice key={mode} title={title} role="radio" selected={draft.mode === mode} disabled={disabled} onPress={() => {
+      if (draft.mode !== mode) onChange({ mode: mode as Split['mode'], splitValues: Object.fromEntries(draft.participantIds.map(id => [id, mode === 'shares' ? '1' : ''])) });
+    }} />)}
+    {draft.mode !== 'equal' && <>
+      {participants.filter(person => draft.participantIds.includes(person.id)).map(person => <TextField autoCorrect={false} key={`value-${person.id}`}
+        label={`${label(person.id)} ${draft.mode === 'exact' ? '(₹)' : draft.mode === 'percent' ? '(%)' : '(shares)'}`} value={draft.splitValues[person.id] ?? ''}
+        onChangeText={value => onChange({ splitValues: { ...draft.splitValues, [person.id]: value } })} keyboardType="decimal-pad" editable={!disabled && !person.removed} />)}
+      {!!status && <Text accessibilityLiveRegion="polite" style={ui.caption}>{status}</Text>}
+    </>}
+  </View>;
 }
 
 export default function ExpenseForm({ group, expense, selfId, busy, onSave, initialDraft, onDraftChange }: Props) {
@@ -150,9 +180,8 @@ export default function ExpenseForm({ group, expense, selfId, busy, onSave, init
     }
     finally { lock.current = false; setSaving(false); }
   }
-  const modes = { equal: 'Equally', exact: 'Exact amounts', percent: 'Percentages', shares: 'Shares' } as const;
   const people = draft.participantIds.map(label);
-  const between = people.length ? `${people.length === group.participants.filter(person => !person.removed).length && !draft.participantIds.some(id => group.participants.find(person => person.id === id)?.removed) ? 'Everyone' : people.join(', ')} · ${modes[draft.mode].toLowerCase()}` : 'Choose people';
+  const between = people.length ? `${people.length === group.participants.filter(person => !person.removed).length && !draft.participantIds.some(id => group.participants.find(person => person.id === id)?.removed) ? 'Everyone' : people.join(', ')} · ${splitModes[draft.mode].toLowerCase()}` : 'Choose people';
   let splitStatus = '', payerStatus = '';
   try {
     if (draft.mode === 'exact' || draft.mode === 'percent') {
@@ -172,41 +201,23 @@ export default function ExpenseForm({ group, expense, selfId, busy, onSave, init
     <Text style={ui.caption}>{group.name}</Text>
     {group.archived && <Text style={ui.notice}>Reopen this group in settings before saving a bill.</Text>}
     {expense && expense.version !== draft.expenseVersion && <Text style={ui.notice}>A newer edit exists. Review it before saving this older draft.</Text>}
-    <Field label="Amount (₹)" value={draft.amount} onChange={amount => change({ amount })} decimal large placeholder="0" disabled={disabled} />
-    <Field label="Description" value={draft.description} onChange={description => change({ description })} placeholder="What was it for?" maxLength={200} disabled={disabled} />
+    <AmountField autoCorrect={false} label="Amount (₹)" value={draft.amount} onChangeText={amount => change({ amount })} placeholder="0" editable={!disabled} />
+    <TextField autoCorrect={false} label="Description" value={draft.description} onChangeText={description => change({ description })} placeholder="What was it for?" maxLength={200} editable={!disabled} />
     <View style={styles.section}>
       <Summary title="Who paid?" value={draft.payerIds.map(label).join(', ') || 'Choose who paid'} open={payersOpen} disabled={disabled} onPress={() => setPayersOpen(value => !value)} />
-      {payersOpen && <View style={styles.reveal}>
-        {group.participants.filter(person => !person.removed || draft.payerIds.includes(person.id)).map(person => <View key={`payer-${person.id}`} style={styles.field}>
-          <Choice title={label(person.id)} selected={draft.payerIds.includes(person.id)} disabled={disabled || (!!acceptedExpense && !!person.removed)} onPress={() => togglePayer(person.id)} />
-          {draft.payerIds.length > 1 && draft.payerIds.includes(person.id) && <Field label={`Paid by ${label(person.id)} (₹)`} value={draft.payerAmounts[person.id] ?? ''}
-            onChange={value => change({ payerAmounts: { ...draft.payerAmounts, [person.id]: value } })} decimal disabled={disabled || !!person.removed} />}
-        </View>)}
-        {!!payerStatus && <Text accessibilityLiveRegion="polite" style={ui.caption}>{payerStatus}</Text>}
-      </View>}
+      {payersOpen && <PayerFields participants={group.participants} draft={draft} disabled={disabled} preserveRemoved={!!acceptedExpense}
+        label={label} onChange={change} status={payerStatus} onToggle={togglePayer} />}
     </View>
     <View style={styles.section}>
       <Summary title="Split between" value={between} open={splitOpen} disabled={disabled} onPress={() => setSplitOpen(value => !value)} />
-      {splitOpen && <View style={styles.reveal}>
-        {group.participants.filter(person => !person.removed || draft.participantIds.includes(person.id)).map(person => <Choice key={`share-${person.id}`} title={label(person.id)} selected={draft.participantIds.includes(person.id)} disabled={disabled || (!!acceptedExpense && !!person.removed)}
-          onPress={() => change({ participantIds: draft.participantIds.includes(person.id) ? draft.participantIds.filter(id => id !== person.id) : [...draft.participantIds, person.id] })} />)}
-        <Text style={ui.label}>Split method</Text>
-        {Object.entries(modes).map(([mode, title]) => <Choice key={mode} title={title} role="radio" selected={draft.mode === mode} disabled={disabled} onPress={() => {
-          if (draft.mode !== mode) change({ mode: mode as Split['mode'], splitValues: Object.fromEntries(draft.participantIds.map(id => [id, mode === 'shares' ? '1' : ''])) });
-        }} />)}
-        {draft.mode !== 'equal' && <>
-          {group.participants.filter(person => draft.participantIds.includes(person.id)).map(person => <Field key={`value-${person.id}`}
-            label={`${label(person.id)} ${draft.mode === 'exact' ? '(₹)' : draft.mode === 'percent' ? '(%)' : '(shares)'}`} value={draft.splitValues[person.id] ?? ''}
-            onChange={value => change({ splitValues: { ...draft.splitValues, [person.id]: value } })} decimal disabled={disabled || !!person.removed} />)}
-          {!!splitStatus && <Text accessibilityLiveRegion="polite" style={ui.caption}>{splitStatus}</Text>}
-        </>}
-      </View>}
+      {splitOpen && <SplitFields participants={group.participants} draft={draft} disabled={disabled} preserveRemoved={!!acceptedExpense}
+        label={label} onChange={change} status={splitStatus} />}
     </View>
     <DateField label="Date" value={draft.date} onChange={date => change({ date })} disabled={disabled} />
     <View style={styles.section}>
       <Summary title="Notes" value={draft.notes ? 'Note added' : 'Add a note'} open={detailsOpen} disabled={disabled} onPress={() => setDetailsOpen(value => !value)} />
       {detailsOpen && <View style={styles.reveal}>
-        <Field label="Notes (optional)" value={draft.notes} onChange={notes => change({ notes })} multiline maxLength={2000} disabled={disabled} />
+        <TextField autoCorrect={false} label="Notes (optional)" value={draft.notes} onChangeText={notes => change({ notes })} multiline style={styles.notes} maxLength={2000} editable={!disabled} />
       </View>}
     </View>
     {!!error && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={ui.error}>{error}</Text>}
@@ -215,7 +226,7 @@ export default function ExpenseForm({ group, expense, selfId, busy, onSave, init
 }
 
 const makeStyles = (colors: Palette) => StyleSheet.create({
-  form: { gap: 12 }, field: { gap: 7 }, amount: { fontSize: 32, fontWeight: '600', minHeight: 64, fontVariant: ['tabular-nums'] },
+  form: { gap: 12 }, field: { gap: 7 },
   notes: { minHeight: 100, textAlignVertical: 'top' }, section: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
   summary: { minHeight: 56, paddingVertical: 8, flexDirection: 'row', alignItems: 'center', gap: 12 }, reveal: { gap: 12, paddingBottom: 12 },
 });

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { expenseBalanceChange, formatMoney } from './accounting';
 import { Text } from 'react-native-paper';
@@ -6,11 +6,11 @@ import { personalSettlements, personalTransfers } from './personalBalances';
 import { paymentPresentation } from './activityPresentation';
 import { VisibleExpense } from './useExpenseNotices';
 import type { NoticeVisibility } from './useExpenseNotices';
-import type { BillRow, Command, Expense, Group, GroupTransaction, Settlement, HistoryResource } from './types';
-import { Avatar, balanceColor, Button, Disclosure, Icon, radii, useUI } from './ui';
-import type { Palette } from './ui';
+import type { BillRow, Command, Expense, Group, GroupTransaction, Participant, Settlement, HistoryResource, HistoryWindow } from './types';
+import { AmountText, Avatar, balanceColor, Button, Disclosure, Icon, IconBadge, radii, useUI } from './ui';
 
 type Transfer = { sender: string; recipient: string; amount: string };
+type ReceiptAttempt = NonNullable<Group['payment_attempts']>[number];
 type Props = {
   noticeVisibility?: NoticeVisibility;
   group: Group; accepted: Group; durable?: boolean; pending: Command[]; busy: boolean; selfId: string;
@@ -19,7 +19,7 @@ type Props = {
   onReverse: (settlement: Settlement) => void;
   onSync: () => void; onDiscard: (command: Command) => void;
   onReview: (command: Command) => void;
-  onConfirmReceipt: (attempt: NonNullable<Group['payment_attempts']>[number]) => void;
+  onConfirmReceipt: (attempt: ReceiptAttempt) => void;
 };
 export const position = (name: string, value: string) => BigInt(value) > 0n ? `${name} ${name === 'You' ? 'are' : 'is'} owed ${formatMoney(value)}` : BigInt(value) < 0n ? `${name} ${name === 'You' ? 'owe' : 'owes'} ${formatMoney((-BigInt(value)).toString())}` : `${name} ${name === 'You' ? 'are' : 'is'} settled up`;
 const displayDate = (value?: string | null) => {
@@ -28,14 +28,118 @@ const displayDate = (value?: string | null) => {
   return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 };
 const billImpact = (value: string) => BigInt(value) === 0n ? 'No balance impact' : `Balance ${BigInt(value) > 0n ? '+' : '−'}${formatMoney((BigInt(value) < 0n ? -BigInt(value) : BigInt(value)).toString())}`;
+const participantName = (participants: Participant[], selfId: string, id: string) => id === selfId ? 'You' : participants.find(person => person.id === id)?.name ?? 'Former member';
+const pageNames = { bills: 'bills', transactions: 'bills & payments', activity: 'changes', settlements: 'payments', attempts: 'receipt requests' };
+
+function HistoryPages({ history, resource, busy, onPage }: { history?: HistoryWindow; resource: HistoryResource; busy: boolean; onPage: Props['onHistoryPage'] }) {
+  if (!history) return null;
+  return <View style={historyPageStyle}>
+    {!!history.previous?.length && <Button title={`Newer ${pageNames[resource]}`} icon="back" disabled={busy} onPress={() => onPage?.(resource, 'previous')} />}
+    {!!history.next_cursor && <Button title={`Older ${pageNames[resource]}`} icon="next" disabled={busy} onPress={() => onPage?.(resource, 'next')} />}
+  </View>;
+}
+
+function PendingChangeRow({ command, busy, onReview, onDiscard }: { command: Command; busy: boolean; onReview: Props['onReview']; onDiscard: Props['onDiscard'] }) {
+  const { palette: colors, ui } = useUI();
+  return <View style={s.section}>
+    <Text style={ui.rowTitle}>{String(command.body.description ?? 'Group change')}</Text>
+    <Text style={[ui.caption, { color: colors.warning }]}>{command.state === 'pending' ? 'Waiting to sync' : command.error ?? 'Needs review'}</Text>
+    {command.state !== 'pending' && ['POST', 'PUT'].includes(command.method) && command.path.includes('/expenses') && <Button title="Review my saved change" disabled={busy} onPress={() => onReview(command)} />}
+    <Button kind="text" title={command.path === '/groups' ? 'Discard unsent group' : 'Discard this saved change'} disabled={busy} onPress={() => onDiscard(command)} />
+  </View>;
+}
+
+function ReceiptRequest({ attempt, groupName, senderName, disabled, onConfirm }: { attempt: ReceiptAttempt; groupName: string; senderName: string; disabled: boolean; onConfirm: Props['onConfirmReceipt'] }) {
+  const { palette: colors, ui } = useUI();
+  return <View style={[s.receipt, { backgroundColor: colors.surface }]}>
+    <Text style={ui.section}>Did you get {formatMoney(attempt.recorded_amount ?? attempt.amount)} from {senderName}?</Text>
+    <Text style={[ui.caption, { color: colors.warning }]}>{groupName}. {attempt.state === 'cancelled' ? 'The earlier report was cancelled. ' : ''}Check your bank or UPI app before confirming.</Text>
+    <Button title={`Yes, I got ${formatMoney(attempt.recorded_amount ?? attempt.amount)}`} icon="check" disabled={disabled} onPress={() => onConfirm(attempt)} />
+  </View>;
+}
+
+function PersonalTransferRow({ transfer, group, selfId, disabled, onSettle }: { transfer: Transfer; group: Group; selfId: string; disabled: boolean; onSettle: Props['onSettle'] }) {
+  const { palette: colors, ui } = useUI();
+  const outgoing = transfer.sender === selfId, counterpart = outgoing ? transfer.recipient : transfer.sender;
+  const person = group.participants.find(person => person.id === counterpart), removed = person?.removed;
+  const name = participantName(group.participants, selfId, counterpart);
+  const action = outgoing && person?.user_id != null && !!person.payment_profile?.vpa ? 'Pay' : 'Record';
+  return <View style={ui.row}>
+    <Avatar name={name} />
+    <View style={ui.rowBody}><Text numberOfLines={1} ellipsizeMode="tail" style={ui.rowTitle}>{name}</Text><Text style={ui.rowSub}>{outgoing ? 'You owe' : 'Owes you'}{removed ? ' · Removed' : ''}</Text></View>
+    <AmountText amount={transfer.amount} style={{ color: outgoing ? colors.negative : colors.positive }} />
+    <Button title={action} kind="text" accessibilityLabel={`${action} payment ${outgoing ? 'to' : 'from'} ${name}, ${formatMoney(transfer.amount)}`} disabled={disabled || !!removed} onPress={() => onSettle(transfer)} />
+  </View>;
+}
+
+function TransactionRow({ icon, title, amount, cashflow, label, busy, onPress, children }: {
+  icon: 'bill' | 'pay'; title: string; amount: string; cashflow?: string; label: string; busy: boolean; onPress: () => void; children: React.ReactNode;
+}) {
+  const { palette: colors, ui } = useUI();
+  return <Pressable accessibilityRole="button" accessibilityLabel={label} disabled={busy} style={({ pressed }) => [ui.row, pressed && s.pressed]} onPress={onPress}>
+    <IconBadge name={icon} />
+    <View style={ui.rowBody}>
+      <Text numberOfLines={1} ellipsizeMode="tail" style={ui.rowTitle}>{title}</Text>
+      {children}
+    </View>
+    <View style={s.trailing}><AmountText amount={amount} style={{ color: cashflow === undefined || cashflow === '0' ? colors.text : balanceColor(cashflow, colors) }} /><Icon name="next" size={18} color={colors.muted} /></View>
+  </Pressable>;
+}
+
+function PaymentRow({ payment, accepted, group, selfId, busy, onPayment }: Pick<Props, 'accepted' | 'group' | 'selfId' | 'busy' | 'onPayment'> & { payment: Settlement }) {
+  const { ui } = useUI();
+  const isAccepted = accepted.settlements.some(record => record.id === payment.id) || accepted.transactions?.some(record => record.kind === 'payment' && record.payment.id === payment.id);
+  if (!isAccepted) return null;
+  const presentation = paymentPresentation(payment, selfId, id => participantName(group.participants, selfId, id));
+  return <TransactionRow icon="pay" title={presentation.title} amount={payment.amount} cashflow={presentation.cashflow} busy={busy} onPress={() => onPayment(payment)}
+    label={`${presentation.title}, ${formatMoney(payment.amount)}, ${presentation.status}, ${displayDate(payment.date)}`}>
+    <Text style={ui.rowSub}>{payment.reversed ? 'Record reversed · No bank refund' : presentation.status}</Text>
+    <Text style={ui.rowSub}>{displayDate(payment.date)}</Text>
+  </TransactionRow>;
+}
+
+function BillTimelineRow({ expense, group, selfId, busy, onExpense, noticeVisibility }: Pick<Props, 'group' | 'selfId' | 'busy' | 'onExpense' | 'noticeVisibility'> & { expense: BillRow }) {
+  const { palette: colors, ui } = useUI();
+  const change = expenseBalanceChange(expense, selfId);
+  const payers = Object.entries(expense.paid).filter(([, amount]) => BigInt(amount) > 0n).map(([id, amount]) => `${participantName(group.participants, selfId, id)} paid ${formatMoney(amount)}`).join(', ');
+  return <VisibleExpense groupId={group.id} expense={expense} visibility={noticeVisibility}>
+    <TransactionRow icon="bill" title={`${expense.description}${expense.deleted ? ' · Deleted' : ''}`} amount={expense.total} busy={busy} onPress={() => onExpense(expense)}
+      label={`${expense.description}, total ${formatMoney(expense.total)}, ${billImpact(change)}, ${payers}, ${displayDate(expense.date)}${expense.deleted ? ', deleted' : ''}`}>
+      <Text style={[ui.rowSub, { color: balanceColor(change, colors) }]}>{billImpact(change)}</Text>
+      <Text style={ui.rowSub}>{displayDate(expense.date)}</Text>
+    </TransactionRow>
+  </VisibleExpense>;
+}
+
+function RecordSummary({ title, amount, amountColor, children }: { title: string; amount: string; amountColor?: string; children: React.ReactNode }) {
+  const { ui } = useUI();
+  return <View style={s.summary}>
+    <Text style={ui.section}>{title}</Text>
+    <Text style={[ui.numeric, amountColor && { color: amountColor }]}>{formatMoney(amount)}</Text>
+    {children}
+  </View>;
+}
+
+function ParticipantAmountRow({ name, amount }: { name: string; amount: string }) {
+  const { ui } = useUI();
+  return <View style={ui.row}>
+    <Avatar name={name} /><Text numberOfLines={1} ellipsizeMode="tail" accessibilityLabel={name} style={[ui.rowTitle, s.flex]}>{name}</Text><AmountText amount={amount} />
+  </View>;
+}
+
+function BillSearch({ value, onChange, onSearch, showSubmit, busy }: { value: string; onChange: (value: string) => void; onSearch: () => void; showSubmit: boolean; busy: boolean }) {
+  const { palette: colors, ui, inputColors } = useUI();
+  return <View style={s.search}>
+    <TextInput {...inputColors} accessibilityLabel="Search bills" placeholder="Find a bill by name or note" placeholderTextColor={colors.muted} value={value} onChangeText={onChange} onSubmitEditing={onSearch} returnKeyType="search" style={[ui.input, s.flex]} />
+    {showSubmit && <Button title="Search" disabled={busy} onPress={onSearch} />}
+  </View>;
+}
 
 export default function GroupScreen({ noticeVisibility, group, accepted, pending, durable = true, busy, selfId, onHistoryPage, onExpense, onPayment, onSettle, onSync, onDiscard, onReview, onConfirmReceipt }: Props) {
-  const { palette: colors, ui, inputColors } = useUI();
-  const s = useMemo(() => makeStyles(colors), [colors]);
+  const { ui } = useUI();
   const historyResource = group.transactions ? 'transactions' : 'bills';
   const [search, setSearch] = useState(group.history?.[historyResource]?.query ?? '');
   const expenses = group.read_mode === 'summary' ? group.expenses : group.expenses.filter(expense => group.expenses.length < 5 || `${expense.description} ${expense.notes}`.toLowerCase().includes(search.trim().toLowerCase()));
-  const name = (id: string) => id === selfId ? 'You' : group.participants.find(person => person.id === id)?.name ?? 'Former member';
   const needsAttention = pending.some(command => command.state !== 'pending' || !!command.error);
   const receipts = (group.payment_attempts ?? []).filter(attempt =>
     attempt.recipient === selfId && ['reported', 'recorded', 'cancelled'].includes(attempt.state)
@@ -43,98 +147,45 @@ export default function GroupScreen({ noticeVisibility, group, accepted, pending
     && !group.settlements.some(settlement => settlement.reversed && (settlement.id === attempt.settlement_id || settlement.attempt_id === attempt.id)));
   const transfers = personalTransfers(group, selfId);
   const rows: GroupTransaction[] = group.transactions ?? (group.read_mode === 'summary' ? expenses : [...expenses].reverse()).map(bill => ({ kind: 'bill', date: bill.date, bill }));
-  const pageNames = { bills: 'bills', transactions: 'bills & payments', activity: 'changes', settlements: 'payments', attempts: 'receipt requests' };
-  const pages = (resource: HistoryResource) => group.history?.[resource] && <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>{!!group.history[resource]?.previous?.length && <Button title={`Newer ${pageNames[resource]}`} icon="back" disabled={busy} onPress={() => onHistoryPage?.(resource, 'previous')} />}{!!group.history[resource]?.next_cursor && <Button title={`Older ${pageNames[resource]}`} icon="next" disabled={busy} onPress={() => onHistoryPage?.(resource, 'next')} />}</View>;
-  const searchField = <TextInput {...inputColors} accessibilityLabel="Search bills" placeholder="Find a bill by name or note" placeholderTextColor={colors.muted} value={search} onChangeText={setSearch} onSubmitEditing={() => onHistoryPage?.(historyResource, 'search', search.trim())} returnKeyType="search" style={[ui.input, { flex: 1, minWidth: 0 }]} />;
-  const paymentRow = (payment: Settlement) => {
-    const isAccepted = accepted.settlements.some(record => record.id === payment.id) || accepted.transactions?.some(record => record.kind === 'payment' && record.payment.id === payment.id);
-    if (!isAccepted) return null;
-    const presentation = paymentPresentation(payment, selfId, name);
-    return <Pressable key={`payment:${payment.id}`} accessibilityRole="button" accessibilityLabel={`${presentation.title}, ${formatMoney(payment.amount)}, ${presentation.status}, ${displayDate(payment.date)}`} disabled={busy} style={({ pressed }) => [ui.row, pressed && s.pressed]} onPress={() => onPayment(payment)}>
-      <View style={s.billMark}><Icon name="pay" /></View>
-      <View style={ui.rowBody}>
-        <Text numberOfLines={1} ellipsizeMode="tail" style={ui.rowTitle}>{presentation.title}</Text>
-        <Text style={ui.rowSub}>{payment.reversed ? 'Record reversed · No bank refund' : presentation.status}</Text>
-        <Text style={ui.rowSub}>{displayDate(payment.date)}</Text>
-      </View>
-      <View style={s.trailing}><Text style={[s.amount, { color: presentation.cashflow === '0' ? colors.text : balanceColor(presentation.cashflow, colors) }]}>{formatMoney(payment.amount)}</Text><Icon name="next" size={18} color={colors.muted} /></View>
-    </Pressable>;
-  };
   return <View style={s.content}>
     {group.archived && <Text style={ui.notice}>Archived. Reopen in settings to make changes.{receipts.length > 0 ? ' You can still confirm money received.' : ''}</Text>}
     {pending.length > 0 && <View style={s.section}>
       <Text style={[ui.notice, ui.warning]}>{needsAttention ? 'Some changes need your attention.' : durable ? 'Waiting to sync.' : 'Not confirmed. Keep this tab open and reconnect.'}</Text>
       <Disclosure title={`${pending.length} ${durable ? 'saved' : 'temporary'} ${pending.length === 1 ? 'change' : 'changes'}`} initialOpen={needsAttention}>
         <Button title="Retry sync" disabled={busy} onPress={onSync} />
-        {pending.map(command => <View key={command.command_id} style={s.section}>
-          <Text style={ui.rowTitle}>{String(command.body.description ?? 'Group change')}</Text>
-          <Text style={[ui.caption, { color: colors.warning }]}>{command.state === 'pending' ? 'Waiting to sync' : command.error ?? 'Needs review'}</Text>
-          {command.state !== 'pending' && ['POST', 'PUT'].includes(command.method) && command.path.includes('/expenses') && <Button title="Review my saved change" disabled={busy} onPress={() => onReview(command)} />}
-          <Button kind="text" title={command.path === '/groups' ? 'Discard unsent group' : 'Discard this saved change'} disabled={busy} onPress={() => onDiscard(command)} />
-        </View>)}
+        {pending.map(command => <PendingChangeRow key={command.command_id} command={command} busy={busy} onReview={onReview} onDiscard={onDiscard} />)}
       </Disclosure>
     </View>}
-    {receipts.map(attempt => <View key={attempt.id} style={s.receipt}>
-      <Text style={ui.section}>Did you get {formatMoney(attempt.recorded_amount ?? attempt.amount)} from {name(attempt.sender)}?</Text>
-      <Text style={[ui.caption, { color: colors.warning }]}>{group.name}. {attempt.state === 'cancelled' ? 'The earlier report was cancelled. ' : ''}Check your bank or UPI app before confirming.</Text>
-      <Button title={`Yes, I got ${formatMoney(attempt.recorded_amount ?? attempt.amount)}`} icon="check" disabled={busy || pending.length > 0} onPress={() => onConfirmReceipt(attempt)} />
-    </View>)}
-    {group.history?.attempts && <>{pages('attempts')}</>}
+    {receipts.map(attempt => <ReceiptRequest key={attempt.id} attempt={attempt} groupName={group.name} senderName={participantName(group.participants, selfId, attempt.sender)} disabled={busy || pending.length > 0} onConfirm={onConfirmReceipt} />)}
+    <HistoryPages history={group.history?.attempts} resource="attempts" busy={busy} onPage={onHistoryPage} />
     {!transfers.length && <Text style={ui.caption}>All settled</Text>}
-    {transfers.map(transfer => {
-      const outgoing = transfer.sender === selfId, counterpart = outgoing ? transfer.recipient : transfer.sender;
-      const person = group.participants.find(person => person.id === counterpart), removed = person?.removed;
-      const action = outgoing && person?.user_id != null && !!person.payment_profile?.vpa ? 'Pay' : 'Record';
-      return <View key={`${transfer.sender}:${transfer.recipient}`} style={ui.row}>
-        <Avatar name={name(counterpart)} />
-        <View style={ui.rowBody}><Text numberOfLines={1} ellipsizeMode="tail" style={ui.rowTitle}>{name(counterpart)}</Text><Text style={ui.rowSub}>{outgoing ? 'You owe' : 'Owes you'}{removed ? ' · Removed' : ''}</Text></View>
-        <Text style={[s.amount, { color: outgoing ? colors.negative : colors.positive }]}>{formatMoney(transfer.amount)}</Text>
-        <Button title={action} kind="text" accessibilityLabel={`${action} payment ${outgoing ? 'to' : 'from'} ${name(counterpart)}, ${formatMoney(transfer.amount)}`} disabled={busy || group.archived || pending.length > 0 || !!removed} onPress={() => onSettle(transfer)} />
-      </View>;
-    })}
+    {transfers.map(transfer => <PersonalTransferRow key={`${transfer.sender}:${transfer.recipient}`} transfer={transfer} group={group} selfId={selfId} disabled={busy || !!group.archived || pending.length > 0} onSettle={onSettle} />)}
     <Text style={ui.caption}>Bills and payments</Text>
-      {(rows.length >= 5 || !!(group.history?.[historyResource]?.next_cursor || group.history?.[historyResource]?.previous?.length || group.history?.[historyResource]?.query)) && <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>{searchField}{group.read_mode === 'summary' && <Button title="Search" disabled={busy} onPress={() => onHistoryPage?.(historyResource, 'search', search.trim())} />}</View>}
+      {(rows.length >= 5 || !!(group.history?.[historyResource]?.next_cursor || group.history?.[historyResource]?.previous?.length || group.history?.[historyResource]?.query)) && <BillSearch value={search} onChange={setSearch} onSearch={() => onHistoryPage?.(historyResource, 'search', search.trim())} showSubmit={group.read_mode === 'summary'} busy={busy} />}
       {!rows.length && <View style={s.empty}>
         <Icon name="bill" size={32} />
         <Text style={ui.section}>{group.history?.[historyResource]?.query || (group.read_mode !== 'summary' && search.trim()) ? 'No matching bills' : 'No bills or payments yet'}</Text>
       </View>}
-      {rows.map(row => {
-        if (row.kind === 'payment') {
-          return paymentRow(row.payment);
-        }
-        const expense = row.bill;
-        const change = expenseBalanceChange(expense, selfId);
-        const payers = Object.entries(expense.paid).filter(([, amount]) => BigInt(amount) > 0n).map(([id, amount]) => `${name(id)} paid ${formatMoney(amount)}`).join(', ');
-        return <VisibleExpense key={`bill:${expense.id}`} groupId={group.id} expense={expense} visibility={group === accepted ? noticeVisibility : undefined}><Pressable accessibilityRole="button" accessibilityLabel={`${expense.description}, total ${formatMoney(expense.total)}, ${billImpact(change)}, ${payers}, ${displayDate(expense.date)}${expense.deleted ? ', deleted' : ''}`} disabled={busy} style={({ pressed }) => [ui.row, pressed && s.pressed]} onPress={() => onExpense(expense)}>
-        <View style={s.billMark}><Icon name="bill" /></View>
-        <View style={[ui.rowBody, s.flex]}>
-          <Text numberOfLines={1} ellipsizeMode="tail" style={ui.rowTitle}>{expense.description}{expense.deleted ? ' · Deleted' : ''}</Text>
-          <Text style={[ui.rowSub, { color: balanceColor(change, colors) }]}>{billImpact(change)}</Text>
-          <Text style={ui.rowSub}>{displayDate(expense.date)}</Text>
-        </View>
-        <View style={s.trailing}><Text style={s.amount}>{formatMoney(expense.total)}</Text><Icon name="next" size={18} color={colors.muted} /></View>
-      </Pressable></VisibleExpense>;
-      })}
+      {rows.map(row => row.kind === 'payment'
+        ? <PaymentRow key={`payment:${row.payment.id}`} payment={row.payment} accepted={accepted} group={group} selfId={selfId} busy={busy} onPayment={onPayment} />
+        : <BillTimelineRow key={`bill:${row.bill.id}`} expense={row.bill} group={group} selfId={selfId} busy={busy} onExpense={onExpense} noticeVisibility={group === accepted ? noticeVisibility : undefined} />)}
       {group.transactions === undefined && (!!personalSettlements(group, selfId).length || !!group.history?.settlements?.next_cursor || !!group.history?.settlements?.previous?.length) && <Disclosure title="Payment records">
-        {personalSettlements(group, selfId).map(paymentRow)}
-        {pages('settlements')}
+        {personalSettlements(group, selfId).map(payment => <PaymentRow key={`payment:${payment.id}`} payment={payment} accepted={accepted} group={group} selfId={selfId} busy={busy} onPayment={onPayment} />)}
+        <HistoryPages history={group.history?.settlements} resource="settlements" busy={busy} onPage={onHistoryPage} />
       </Disclosure>}
-      {pages(historyResource)}
+      <HistoryPages history={group.history?.[historyResource]} resource={historyResource} busy={busy} onPage={onHistoryPage} />
   </View>;
 }
 
 export function PaymentDetail({ payment, group, selfId, busy, canReverse, onReverse }: { payment: Settlement; group: Group; selfId: string; busy: boolean; canReverse: boolean; onReverse: () => void }) {
   const { palette: colors, ui } = useUI();
-  const s = useMemo(() => makeStyles(colors), [colors]);
-  const name = (id: string) => id === selfId ? 'You' : group.participants.find(person => person.id === id)?.name ?? 'Former member';
+  const name = (id: string) => participantName(group.participants, selfId, id);
   const row = paymentPresentation(payment, selfId, name);
   const involved = payment.sender === selfId || payment.recipient === selfId;
   return <View style={s.content}>
-    <View style={s.summary}>
-      <Text style={ui.section}>{row.title}</Text>
-      <Text style={[ui.numeric, { color: row.cashflow === '0' ? colors.text : balanceColor(row.cashflow, colors) }]}>{formatMoney(payment.amount)}</Text>
+    <RecordSummary title={row.title} amount={payment.amount} amountColor={row.cashflow === '0' ? colors.text : balanceColor(row.cashflow, colors)}>
       <Text style={ui.caption}>{group.name} · {displayDate(payment.date)} · {row.status}</Text>
-    </View>
+    </RecordSummary>
     {payment.reversed ? <Text style={ui.notice}>This payment record was reversed. No bank transfer was reversed.</Text>
       : <>{involved && <Disclosure title="Payment options"><Button title="Reverse record" kind="danger" disabled={busy || !canReverse || group.archived || [payment.sender, payment.recipient].some(id => group.participants.find(person => person.id === id)?.removed)} onPress={onReverse} /><Text style={ui.caption}>Reverses this record, not a bank transfer.</Text></Disclosure>}</>}
   </View>;
@@ -142,32 +193,25 @@ export function PaymentDetail({ payment, group, selfId, busy, canReverse, onReve
 
 export function ExpenseDetail({ noticeVisibility, expense, group, selfId, busy, canEdit, onEdit, onDelete, onRestore }: { noticeVisibility?: NoticeVisibility; expense: Expense; group: Group; selfId: string; busy: boolean; canEdit: boolean; onEdit: () => void; onDelete: () => void; onRestore: () => void }) {
   const { palette: colors, ui } = useUI();
-  const s = useMemo(() => makeStyles(colors), [colors]);
   const hasCategory = !!expense.category && !['general', 'other'].includes(expense.category);
   const change = expenseBalanceChange(expense, selfId);
   return <View style={s.content}>
-    <VisibleExpense groupId={group.id} expense={expense} visibility={(group.expenses.find(value => value.id === expense.id) ?? group.focused_expense) === expense ? noticeVisibility : undefined}><View style={s.summary}>
-      <Text style={ui.section}>{expense.description}</Text>
-      <Text style={ui.numeric}>{formatMoney(expense.total)}</Text>
+    <VisibleExpense groupId={group.id} expense={expense} visibility={(group.expenses.find(value => value.id === expense.id) ?? group.focused_expense) === expense ? noticeVisibility : undefined}><RecordSummary title={expense.description} amount={expense.total}>
       <Text style={[ui.body, { color: balanceColor(change, colors) }]}>{billImpact(change)}</Text>
       <Text style={ui.caption}>{group.name} · {displayDate(expense.date)}</Text>
-    </View></VisibleExpense>
+    </RecordSummary></VisibleExpense>
     {expense.deleted ? <>
       <Text style={ui.notice}>Deleted bill</Text>
       <Button title="Restore bill" icon="history" kind="primary" disabled={busy || !canEdit} onPress={onRestore} />
     </> : <Button title="Edit bill" icon="bill" kind="primary" disabled={busy || !canEdit} onPress={onEdit} />}
     <View style={s.section}>
       <Text style={ui.section}>Who paid?</Text>
-      {group.participants.filter(person => BigInt(expense.paid[person.id] ?? '0') > 0n).map(person => <View key={person.id} style={ui.row}>
-        <Avatar name={person.name} /><Text numberOfLines={1} ellipsizeMode="tail" accessibilityLabel={person.name} style={[ui.rowTitle, s.flex]}>{person.name}</Text><Text style={s.amount}>{formatMoney(expense.paid[person.id] ?? '0')}</Text>
-      </View>)}
+      {group.participants.filter(person => BigInt(expense.paid[person.id] ?? '0') > 0n).map(person => <ParticipantAmountRow key={person.id} name={person.name} amount={expense.paid[person.id] ?? '0'} />)}
     </View>
     <View style={s.section}>
       <Text style={ui.section}>Split between</Text>
       <Text style={ui.caption}>{expense.split.mode === 'equal' ? 'Shared equally' : expense.split.mode === 'exact' ? 'Exact amounts' : expense.split.mode === 'percent' ? 'By percentage' : 'By shares'}</Text>
-      {group.participants.filter(person => Object.hasOwn(expense.split.values, person.id)).map(person => <View key={person.id} style={ui.row}>
-        <Avatar name={person.name} /><Text numberOfLines={1} ellipsizeMode="tail" accessibilityLabel={person.name} style={[ui.rowTitle, s.flex]}>{person.name}</Text><Text style={s.amount}>{formatMoney(expense.shares[person.id] ?? '0')}</Text>
-      </View>)}
+      {group.participants.filter(person => Object.hasOwn(expense.split.values, person.id)).map(person => <ParticipantAmountRow key={person.id} name={person.name} amount={expense.shares[person.id] ?? '0'} />)}
     </View>
     {(!!expense.notes || hasCategory) && <Disclosure title="Notes and details">
       {!!expense.notes && <Text style={ui.body}>{expense.notes}</Text>}
@@ -179,15 +223,15 @@ export function ExpenseDetail({ noticeVisibility, expense, group, selfId, busy, 
     {!canEdit && <Text style={ui.caption}>{group.archived ? 'Reopen this group in settings before changing a bill.' : 'Send or discard saved changes before changing this bill.'}</Text>}
   </View>;
 }
-const makeStyles = (colors: Palette) => StyleSheet.create({
+const historyPageStyle = { flexDirection: 'row', flexWrap: 'wrap', gap: 8 } as const;
+const s = StyleSheet.create({
   content: { gap: 10 },
   summary: { gap: 4, paddingVertical: 8 },
   section: { gap: 10, paddingVertical: 4 },
-  receipt: { gap: 12, padding: 12, borderRadius: radii.surface, backgroundColor: colors.surface },
-  billMark: { width: 36, height: 36, borderRadius: radii.control, backgroundColor: colors.soft, alignItems: 'center', justifyContent: 'center' },
+  receipt: { gap: 12, padding: 12, borderRadius: radii.surface },
   trailing: { flexShrink: 0, gap: 4, alignItems: 'flex-end' },
-  amount: { color: colors.text, fontSize: 17, lineHeight: 24, fontWeight: '600', fontVariant: ['tabular-nums'], flexShrink: 0, textAlign: 'right' },
   empty: { gap: 10, alignItems: 'center', paddingVertical: 20 },
   pressed: { opacity: 0.65 },
+  search: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   flex: { flex: 1, minWidth: 0 },
 });

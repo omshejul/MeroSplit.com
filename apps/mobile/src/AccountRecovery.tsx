@@ -1,0 +1,66 @@
+import React from 'react';
+import { StyleSheet, View } from 'react-native';
+import { RadioButton, Text } from 'react-native-paper';
+import type { CachedGroup, Command, Group } from './types';
+import { Button, Disclosure, useUI } from './ui';
+
+export type SavedChangesProps = {
+  commands: Command[]; groups: CachedGroup[]; busy: boolean; expired: boolean;
+  onOpen: (group: CachedGroup) => void; onDiscard: (command: Command) => void; onRetry: () => void;
+};
+
+export function SavedCommandRow({ command, group, busy, onOpen, onDiscard }: {
+  command: Command; group?: CachedGroup; busy: boolean;
+  onOpen: (group: CachedGroup) => void; onDiscard: (command: Command) => void;
+}) {
+  const { ui, palette } = useUI();
+  return <View style={[styles.row, { borderBottomColor: palette.line }]}>
+    <Text style={ui.rowTitle}>{String(command.body.description ?? group?.group.name ?? 'Saved change')}</Text>
+    <Text style={ui.caption}>{command.error ?? (command.state === 'pending' ? 'Pending sync' : 'Needs review')}</Text>
+    {group ? <Button title="Open" kind="text" onPress={() => onOpen(group)} />
+      : <Button title="Discard saved change" kind="text" disabled={busy} onPress={() => onDiscard(command)} />}
+  </View>;
+}
+
+export function SavedChanges({ commands, groups, busy, expired, onOpen, onDiscard, onRetry }: SavedChangesProps) {
+  const needsReview = commands.some(command => command.state !== 'pending');
+  if (!commands.length) return null;
+  return <Disclosure title={needsReview ? 'Needs review' : 'Pending sync'} initialOpen={needsReview}>
+    {commands.map(command => <SavedCommandRow key={command.command_id} command={command}
+      group={groups.find(group => group.group.id === command.group_id)} busy={busy} onOpen={onOpen} onDiscard={onDiscard} />)}
+    {!expired && <Button title="Retry" disabled={busy} onPress={onRetry} />}
+  </Disclosure>;
+}
+
+export type LegacyRecoveryProps = {
+  groups: Group[]; email: string; selected: Record<string, string>; busy: boolean;
+  onSelect: (groupId: string, personId: string) => void; onRecover: (group: Group) => void; onExport: (group: Group) => void;
+};
+
+export function LegacyGroupRecovery({ group, selected, busy, onSelect, onRecover, onExport }: {
+  group: Group; selected?: string; busy: boolean;
+  onSelect: (personId: string) => void; onRecover: () => void; onExport: () => void;
+}) {
+  const { ui } = useUI();
+  return <Disclosure title={group.name}>
+    <Text style={ui.caption}>{group.expenses.length} bills · Who are you?</Text>
+    {group.participants.map(person => <RadioButton.Item key={person.id} value={person.id} label={person.name}
+      labelStyle={ui.body} mode="android" status={selected === person.id ? 'checked' : 'unchecked'} onPress={() => onSelect(person.id)} />)}
+    <Button title="Recover these records" disabled={busy || !selected} onPress={onRecover} />
+    <Button title="Export original records" kind="text" disabled={busy} onPress={onExport} />
+  </Disclosure>;
+}
+
+export function LegacyRecovery({ groups, email, selected, busy, onSelect, onRecover, onExport }: LegacyRecoveryProps) {
+  const { ui } = useUI();
+  if (!groups.length) return null;
+  return <Disclosure title="Earlier phone records">
+    <Text style={ui.caption}>Choose only records that belong to you. Recovery links them to {email}. No invitations are sent.</Text>
+    {groups.map(group => <LegacyGroupRecovery key={group.id} group={group} selected={selected[group.id]} busy={busy}
+      onSelect={personId => onSelect(group.id, personId)} onRecover={() => onRecover(group)} onExport={() => onExport(group)} />)}
+  </Disclosure>;
+}
+
+const styles = StyleSheet.create({
+  row: { gap: 6, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth },
+});

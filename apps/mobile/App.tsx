@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, AppState, BackHandler, KeyboardAvoidingView, Linking, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { ActivityIndicator, AppState, BackHandler, KeyboardAvoidingView, Linking, Platform, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import type { AlertButton } from 'react-native';
 import { Alert } from './src/alerts';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
@@ -13,7 +13,7 @@ import { formatMoney } from './src/accounting';
 import { emptyGroup, previewPending } from './src/ledger';
 import { getDatabase, savedSession, saveSession, retireSyncPause, shareJson, shareText, storageIsDurable, isOnline } from './src/native';
 import { discardCommand, discardUnsentGroup, enqueue, listGroups, pendingCommands, createPendingGroup, listLegacyGroups, listLegacyRecoveries, listUnavailableGroups, readDraft, replaceCommand, saveDraft, saveGroup, readVisibleGroup, wipeAccount } from './src/storage';
-import GroupScreen, { ExpenseDetail, PaymentDetail, position } from './src/GroupScreen';
+import GroupScreen, { ExpenseDetail, PaymentDetail } from './src/GroupScreen';
 import ExpenseForm from './src/ExpenseForm';
 import type { ExpenseFormDraft } from './src/ExpenseForm';
 import SettleForm from './src/SettleForm';
@@ -24,7 +24,13 @@ import { listPaymentReturns, savePaymentReturn, clearPaymentReturn, resolvePayme
 import MembersScreen from './src/MembersScreen';
 import SavedChangeScreen from './src/SavedChangeScreen';
 import SplitwiseImportScreen from './src/SplitwiseImportScreen';
-import ProfilePhoto from './src/ProfilePhoto';
+import AccountHeader from './src/AccountHeader';
+import GroupList from './src/GroupList';
+import { ScreenHeader, AppTabs } from './src/AppNavigation';
+import { EmailSignIn, CodeSignIn } from './src/SignInForms';
+import CreateGroupForm from './src/CreateGroupForm';
+import type { NewGroupValues } from './src/CreateGroupForm';
+import { SavedChanges, LegacyRecovery as LegacyRecords } from './src/AccountRecovery';
 import ProfileSettings from './src/ProfileSettings';
 import { usePushNotifications } from './src/PushSettings';
 import AccountNotifications from './src/AccountNotifications';
@@ -32,21 +38,16 @@ import type { PushTarget } from './src/notifications';
 import BillAttachments from './src/BillAttachments';
 import { clearAccountMediaUploads, clearMediaPreviews } from './src/media';
 import type { CachedGroup, Command, Expense, Group, LegacyRecovery, Session, Settlement, HistoryResource, ActivityPage, ActivityTarget, BillRow } from './src/types';
-import { Avatar, balanceColor, Button, Disclosure, Icon, IconAction, SettingsRow, UIProvider, radii, useUI, type Palette } from './src/ui';
-import { selfParticipant, visiblePeopleSummary } from './src/personalBalances';
+import { Button, Disclosure, IconAction, SettingsRow, UIProvider, useUI, type Palette } from './src/ui';
+import { visiblePeopleSummary } from './src/personalBalances';
 import { useExpenseNotices } from './src/useExpenseNotices';
 import type { WindowFrame } from './src/expenseNotices';
-import { RadioButton, Text } from 'react-native-paper';
+import { Text } from 'react-native-paper';
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL ?? (Platform.OS === 'web' ? window.location.origin : Platform.OS === 'android' ? 'http://10.0.2.2:8000' : 'http://localhost:8000');
 const uuid = () => Crypto.randomUUID();
 type Screen = 'home' | 'create' | 'group' | 'expense' | 'expenseDetail' | 'settle' | 'members' | 'login' | 'review' | 'paymentDetail' | 'import';
 type Transfer = { sender: string; recipient: string; amount: string };
-function Input({ label, value, onChange, code = false }: { label: string; value: string; onChange: (value: string) => void; code?: boolean }) {
-  const { ui, inputColors } = useUI();
-  const emailField = label.toLowerCase().includes('email');
-  return <View style={{ gap: 6 }}><Text style={ui.label}>{label}</Text><TextInput {...inputColors} accessibilityLabel={label} style={ui.input} value={value} onChangeText={value => onChange(code ? value.replace(/\D/g, '').slice(0, 4) : value)} maxLength={code ? 4 : undefined} autoCorrect={false} autoCapitalize={code || emailField ? 'none' : 'words'} autoComplete={code ? 'one-time-code' : emailField ? 'email' : 'off'} keyboardType={code ? 'number-pad' : emailField ? 'email-address' : 'default'} /></View>;
-}
 function AppContent() {
   const { palette: colors, ui, dark, changeAppearance } = useUI();
   const s = makeStyles(colors);
@@ -61,8 +62,7 @@ function AppContent() {
   const setNotice = (text: string, tone: typeof feedback.tone = 'info') => setFeedback({ text, tone });
   const [email, setEmail] = useState(''), [code, setCode] = useState(''), [challenge, setChallenge] = useState<EmailCodeChallenge | null>(null), [retryAt, setRetryAt] = useState(0), [clock, setClock] = useState(Date.now());
   const [appLink, setAppLink] = useState<AppLink | null>(readAppLink);
-  const [groupName, setGroupName] = useState(''), [myName, setMyName] = useState('You'), [people, setPeople] = useState(['', '']);
-  const [personEmail, setPersonEmail] = useState('');
+  const [myName, setMyName] = useState('You');
   const [addPersonRequest, setAddPersonRequest] = useState(0);
   const [foreground, setForeground] = useState(AppState.currentState === 'active' && (Platform.OS !== 'web' || document.visibilityState === 'visible'));
   const scroll = useRef<React.ComponentRef<typeof ScrollView>>(null), suppressPush = useRef<(data: unknown) => boolean>(() => false);
@@ -532,11 +532,22 @@ function AppContent() {
       return request<UPILaunchQuote>(session, `/groups/${groupId}/payment-attempts/${attempt.id}/launch`);
     });
   }
-  async function createGroup() {
+  async function sendSignInCode() {
+    const value = await requestEmailCode(API_URL, email);
+    setChallenge(value); setRetryAt(Date.now() + value.retryAfter * 1000); setCode(''); setClock(Date.now());
+  }
+  async function finishSignIn() {
+    if (!challenge) return;
+    await draftWrites.current;
+    const value = await confirmEmailCode(API_URL, challenge.challengeId, code);
+    if (session && session.token !== value.token) { if (Platform.OS !== 'web') await endPushSession(session); else await push.clear(); await clearMediaPreviews(); }
+    await saveSession(value); changeScope(value); setChallenge(null); setCode(''); await syncAccount(value);
+  }
+  async function createGroup(values: NewGroupValues) {
     if (!session) throw new Error('Sign in first.');
     requireConnectionForTemporaryStorage();
-    const participants = [myName, ...people].map((name, index) => ({ id: uuid(), name: name.trim(), user_id: index === 0 ? Number(session.userId) : null, ...(direct && index === 1 && personEmail.trim() ? { email: personEmail.trim() } : {}) }));
-    const group = { ...emptyGroup(uuid(), direct ? people[0].trim() : groupName, participants), owner_id: Number(session.userId), is_direct: direct };
+    const participants = [myName, ...values.people].map((name, index) => ({ id: uuid(), name: name.trim(), user_id: index === 0 ? Number(session.userId) : null, ...(direct && index === 1 && values.email.trim() ? { email: values.email.trim() } : {}) }));
+    const group = { ...emptyGroup(uuid(), direct ? values.people[0].trim() : values.name, participants), owner_id: Number(session.userId), is_direct: direct };
     const id = uuid(), create: Command = { command_id: id, group_id: group.id, base_version: 0, method: 'POST', path: '/groups', body: { command_id: id, id: group.id, name: group.name, participants: participants.map(({ id, name, email }) => ({ id, name, ...(email ? { email } : {}) })), self_participant_id: participants[0].id, is_direct: direct }, state: 'pending', error: null };
     await createPendingGroup(await getDatabase(), owner, group, [create]);
     try { await syncOutbox(await getDatabase(), session, 'summary'); }
@@ -561,31 +572,23 @@ function AppContent() {
   if (!ready) return <SafeAreaView style={[s.screen, s.loading]}><ActivityIndicator color={colors.accent} /><Text style={ui.caption}>Opening your groups…</Text></SafeAreaView>;
   if (storageError) return <SafeAreaView style={[s.screen, s.content]}><Text style={ui.section}>Could not open saved records</Text><Text accessibilityRole="alert" style={ui.error}>{storageError}</Text><Button title="Retry" disabled={busy} onPress={() => launch(restore)} /></SafeAreaView>;
   return <SafeAreaView style={s.screen} edges={['top', 'bottom']} onTouchStart={notices.engage}><StatusBar style={dark ? 'light' : 'dark'} /><KeyboardAvoidingView style={s.screen} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-    <View style={s.header}>{screen !== 'home' && (session || screen !== 'login') && <IconAction name="back" label="Back" disabled={busy} onPress={back} />}<Text style={s.title} accessibilityRole="header" numberOfLines={1} ellipsizeMode="tail" accessibilityLabel={title}>{title}</Text>{Platform.OS === 'web' && session && (screen === 'home' && tab !== 'Account' || screen === 'group') && <IconAction name="refresh" label="Refresh" disabled={busy} onPress={() => { if (screen === 'home' && tab === 'Activity') void refreshActivity().catch(() => {}); else launch(sync); }} />}{screen === 'group' && selected && <IconAction name="add" label="Add bill" disabled={busy || !!selected.group.archived} onPress={() => launch(() => openExpense())} />}{screen === 'group' && selected && <Pressable accessibilityRole="button" accessibilityLabel="Group settings" disabled={busy} style={{ minWidth: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' }} onPress={() => navigate('members')}><Icon name="settings" /></Pressable>}{screen === 'members' && selected && !selected.group.is_direct && !selected.group.archived && selected.group.participants.some(person => person.id === selfId && !person.removed && person.user_id === selected.group.owner_id) && <IconAction name="personAdd" label="Add person" disabled={busy} onPress={() => setAddPersonRequest(value => value + 1)} />}{busy && <ActivityIndicator accessibilityLabel="Working" color={colors.accent} />}</View>
+    <ScreenHeader title={title} busy={busy} onBack={screen !== 'home' && (session || screen !== 'login') ? back : undefined}>
+      {Platform.OS === 'web' && session && (screen === 'home' && tab !== 'Account' || screen === 'group') && <IconAction name="refresh" label="Refresh" disabled={busy} onPress={() => { if (screen === 'home' && tab === 'Activity') void refreshActivity().catch(() => {}); else launch(sync); }} />}
+      {screen === 'group' && selected && <IconAction name="add" label="Add bill" disabled={busy || !!selected.group.archived} onPress={() => launch(() => openExpense())} />}
+      {screen === 'group' && selected && <IconAction name="settings" label="Group settings" disabled={busy} onPress={() => navigate('members')} />}
+      {screen === 'members' && selected && !selected.group.is_direct && !selected.group.archived && selected.group.participants.some(person => person.id === selfId && !person.removed && person.user_id === selected.group.owner_id) && <IconAction name="personAdd" label="Add person" disabled={busy} onPress={() => setAddPersonRequest(value => value + 1)} />}
+    </ScreenHeader>
     <ScrollView ref={scroll} onLayout={measureViewport} onScroll={() => setScrollEpoch(value => value + 1)} scrollEventThrottle={100} key={`${owner}|${screen}|${groupId ?? ''}`} contentContainerStyle={s.content} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag"
       refreshControl={session && !expired && (screen === 'home' || screen === 'group') ? <RefreshControl refreshing={busy} tintColor={colors.accent} colors={[colors.accent]} onRefresh={() => { if (screen === 'home' && tab === 'Activity') void refreshActivity().catch(() => {}); else launch(() => sync()); }} /> : undefined}>
       {!!notice && <Text accessibilityLiveRegion="polite" accessibilityRole={feedback.tone === 'error' ? 'alert' : undefined} style={[ui.notice, feedback.tone === 'success' ? ui.success : feedback.tone === 'warning' ? ui.warning : feedback.tone === 'error' ? ui.error : undefined]}>{notice}</Text>}
       {expired && screen !== 'login' && <Button title="Sign in again" kind="primary" onPress={() => { setChallenge(null); setCode(''); navigate('login'); }} />}
       {screen === 'home' && (tab === 'Groups' || tab === 'Friends') && <>
-        {!visibleGroups.length && <Text style={ui.caption}>{direct ? 'No people yet' : 'No groups yet'}</Text>}
-        {!!visibleGroups.length && <View style={s.groupList}>{visibleGroups.map(row => {
-          const me = session ? selfParticipant(row.group, session.userId) : undefined;
-          const waiting = commands.filter(value => value.group_id === row.group.id), attention = waiting.some(value => value.state !== 'pending');
-          return <Pressable key={row.group.id} accessibilityRole="button" disabled={busy} style={s.groupRow} onPress={() => launch(() => openGroup(row))}><View style={s.groupMark}>{direct ? <Avatar name={row.group.name} /> : <Icon name="groups" size={24} />}</View><View style={ui.rowBody}><Text numberOfLines={1} ellipsizeMode="tail" accessibilityLabel={row.group.name} style={ui.rowTitle}>{row.group.name}{row.group.archived ? ' · Archived' : ''}</Text><Text style={[ui.rowSub, me && { color: balanceColor(row.group.balances[me.id] ?? '0', colors) }]}>{me ? position('You', row.group.balances[me.id] ?? '0') : 'Pending sync'}</Text>{waiting.length > 0 && <Text style={s.pending}>{attention ? 'Needs review' : 'Pending sync'}</Text>}</View><Icon name="next" size={18} color={colors.muted} /></Pressable>;
-        })}</View>}
-        <Button title={direct ? 'Add person' : 'New group'} icon="add" kind={!visibleGroups.length ? 'primary' : 'secondary'} disabled={busy} onPress={() => { setGroupName(''); setPeople(['']); setPersonEmail(''); navigate('create'); }} />
+        <GroupList groups={visibleGroups} commands={commands} userId={session?.userId} busy={busy} direct={direct} onOpen={row => launch(() => openGroup(row))} />
+        <Button title={direct ? 'Add person' : 'New group'} icon="add" kind={!visibleGroups.length ? 'primary' : 'secondary'} disabled={busy} onPress={() => navigate('create')} />
         {!!(legacy.length || unavailable.length) && <Button title="Review saved work" kind="text" onPress={openMe} />}
       </>}
       {screen === 'home' && session && returns.filter(value => value.launch === 'opened' || value.decision !== null || value.launch === 'opening').slice(0, 1).map(value => <Button key={value.attemptId} title="Review payment" disabled={busy} onPress={() => launch(async () => { const group = await fetchGroup(session, value.groupId); await saveGroup(await getDatabase(), owner, group, 'shared'); setGroupId(group.id); setReturnAttemptId(value.attemptId); setTransfer({ sender: value.sender, recipient: value.recipient, amount: value.amount }); navigate('settle'); })} />)}
-      {screen === 'create' && session && <>
-        {!direct && <Input label="Group name" value={groupName} onChange={setGroupName} />}
-        {people.map((name, index) => <View key={index} style={s.field}><Input label={direct ? 'Their name' : `Person ${index + 1}`} value={name} onChange={value => setPeople(rows => rows.map((row, at) => at === index ? value : row))} />{!direct && people.length > 1 && <Button title={`Remove person ${index + 1}`} kind="text" disabled={busy} onPress={() => setPeople(rows => rows.filter((_, at) => at !== index))} />}</View>)}
-        {!direct && <Button title="Add person" kind="text" icon="add" disabled={busy} onPress={() => setPeople(rows => [...rows, ''])} />}
-        {direct && <Input label="Email (optional)" value={personEmail} onChange={setPersonEmail} />}
-        <Button title={direct ? 'Add person' : 'Create group'} kind="primary" disabled={busy || people.some(name => !name.trim()) || !direct && !groupName.trim() || direct && !!personEmail.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(personEmail.trim())} onPress={() => launch(() => createGroup())} />
-
-
-      </>}
+      {screen === 'create' && session && <CreateGroupForm direct={direct} busy={busy} onCreate={values => launch(() => createGroup(values))} />}
       {screen === 'group' && selected && preview && <>{!!previewError && <Text>{previewError}</Text>}<GroupScreen noticeVisibility={noticeVisibility} key={`${owner}|${groupId}`} group={preview} accepted={selected.group} pending={pending} durable={storageIsDurable()} busy={busy} selfId={selfId} onHistoryPage={(resource, direction, query) => { void historyPage(resource, direction, query).catch(() => {}); }} onConfirmReceipt={attempt => showAlert('Confirm receipt?', `Check your bank app for ${formatMoney(attempt.recorded_amount ?? attempt.amount)}. This acknowledges a record; it does not verify the bank transfer.`, [{ text: 'Cancel', style: 'cancel' }, { text: 'Received', onPress: () => { void groupAction(`/payment-attempts/${attempt.id}/confirm`, {}).catch(() => {}); } }])} onExpense={value => { void openBill(value).catch(() => {}); }} onPayment={value => { void openPayment(value.id).catch(() => {}); }} onSettle={value => { setReturnAttemptId(null); setTransfer(value); navigate('settle'); }} onReverse={value => confirm('Reverse payment record?', 'Balances will change. No bank transfer is reversed.', () => reversePayment(value))} onSync={() => launch(() => sync())} onReview={value => launch(() => reviewChange(value))} onDiscard={value => value.path === '/groups' ? confirm('Discard unsent group?', 'This removes unsent bills and drafts for this group. Already accepted records will return when connected.', async () => { await discardUnsentGroup(await getDatabase(), owner, value.group_id); setGroupId(null); navigate('home'); }) : confirm('Discard unsent change?', 'This removes your saved change. If it already reached the server, accepted records will remain.', async () => { await discardCommand(await getDatabase(), owner, value.command_id); })} /></>}
       {screen === 'expenseDetail' && selected && expense && <><ExpenseDetail noticeVisibility={noticeVisibility} selfId={selfId} expense={expense} group={selected.group} busy={busy} canEdit={!pending.length && !selected.group.archived} onEdit={() => launch(() => openExpense(expense))} onDelete={() => confirm('Delete expense?', 'Balances will update. You can restore this expense later.', () => changeExpense(expense))} onRestore={() => confirm('Restore expense?', 'Its original split will be added to balances once.', () => changeExpense(expense, true))} />
         {!expense.deleted && (!(selected.group.expenses.some(value => value.id === expense.id) || selected.group.focused_expense?.id === expense.id) ? <Text style={ui.caption}>Pending sync</Text> : <BillAttachments key={`${owner}|${groupId}|${expense.id}`} session={session} groupId={selected.group.id} expenseId={expense.id} revision={selected.group.version} readOnly={selected.group.archived || !!pending.length} busy={busy}
@@ -598,56 +601,30 @@ function AppContent() {
       {screen === 'members' && selected && <MembersScreen key={`${owner}|${groupId}`} group={selected.group} selfId={selfId} busy={busy} onAction={groupAction} onExport={exportGroup} addPersonRequest={addPersonRequest} />}
       {screen === 'home' && tab === 'Activity' && session && <ActivityScreen items={activity?.items ?? []} busy={busy} error={activityError} hasMore={!!activity?.next_cursor} onRefresh={() => { void refreshActivity().catch(() => {}); }} onLoadMore={() => { void refreshActivity(true).catch(() => {}); }} onOpen={target => { void openActivityTarget(target).catch(() => {}); }} />}
       {screen === 'login' && <>
-        {!challenge ? <>
-          <Text style={ui.caption}>New accounts get daily unread email reminders. Turn them off in Me → Notifications.</Text>
-          <Input label="Email" value={email} onChange={setEmail} />
-          <Button title="Send sign-in code" kind="primary" disabled={busy || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())} onPress={() => launch(async () => { const value = await requestEmailCode(API_URL, email); setChallenge(value); setRetryAt(Date.now() + value.retryAfter * 1000); setCode(''); setClock(Date.now()); })} />
-        </> : <>
-          <Text style={ui.body}>Enter your four-digit sign-in code for {email.trim()}.</Text>
-          <Input label="4-digit code" value={code} onChange={setCode} code />
-          <Button title="Continue" kind="primary" disabled={busy || !/^[0-9]{4}$/.test(code)} onPress={() => launch(async () => {
-            await draftWrites.current;
-            const value = await confirmEmailCode(API_URL, challenge.challengeId, code);
-            if (session && session.token !== value.token) { if (Platform.OS !== 'web') await endPushSession(session); else await push.clear(); await clearMediaPreviews(); }
-            await saveSession(value); changeScope(value); setChallenge(null); setCode(''); await syncAccount(value);
-          })} />
-          <Button title={clock < retryAt ? `Resend in ${Math.ceil((retryAt - clock) / 1000)}s` : 'Resend code'} kind="text" disabled={busy || clock < retryAt} onPress={() => launch(async () => { const value = await requestEmailCode(API_URL, email); setChallenge(value); setRetryAt(Date.now() + value.retryAfter * 1000); setCode(''); setClock(Date.now()); })} />
-          <Button title="Use another email" kind="text" disabled={busy} onPress={() => { setChallenge(null); setCode(''); }} />
-        </>}
+        {!challenge ? <EmailSignIn email={email} busy={busy} onEmail={setEmail} onSend={() => launch(sendSignInCode)} />
+          : <CodeSignIn email={email} code={code} busy={busy} resendSeconds={Math.max(0, Math.ceil((retryAt - clock) / 1000))} onCode={setCode} onConfirm={() => launch(finishSignIn)} onResend={() => launch(sendSignInCode)} onChangeEmail={() => { setChallenge(null); setCode(''); }} />}
         <Button title="Help" kind="text" onPress={() => launch(() => Linking.openURL(`${API_URL}/support`))} />
       </>}
       {screen === 'import' && session && <SplitwiseImportScreen key={owner} session={session} busy={busy}
         onBusyChange={value => { lock.current = value; setBusy(value); }} onCancel={back}
         onImported={(group, alreadyImported) => { if (ownerRef.current !== accountOwner(session)) return; setGroups(rows => [...rows.filter(row => row.group.id !== group.id), { kind: 'shared', group }]); setGroupId(group.id); setExpenseId(null); setTab('Groups'); setScreen('group'); setNotice(alreadyImported ? 'Already imported.' : 'Imported.', 'success'); }} />}
       {screen === 'home' && tab === 'Account' && session && <>
-        <View style={s.profile}><View style={{ width: 112 }}><ProfilePhoto compact key={owner} session={session} busy={busy} onBusyChange={value => { lock.current = value; setBusy(value); }} /></View><View style={{ flex: 1, minWidth: 0 }}><Text style={ui.section} numberOfLines={2}>{myName}</Text><Text style={ui.caption} numberOfLines={2}>{session.email}</Text></View></View>
+        <AccountHeader key={owner} session={session} name={myName} busy={busy} onBusyChange={value => { lock.current = value; setBusy(value); }} />
         <View><ProfileSettings key={owner} name={myName} vpa={vpa} busy={busy} onSaveName={saveName} onSaveUPI={value => perform(async () => { const result = await request<{ vpa: string }>(session, '/me/payment-profile', 'PUT', { vpa: value }); setVpa(result.vpa); }, false)} onAppearance={value => perform(() => changeAppearance(value), false)} />
           <AccountNotifications key={owner} session={session} push={push} busy={busy} onBusyChange={value => { lock.current = value; setBusy(value); }} /></View>
         <View><SettingsRow label="Import from Splitwise" icon="import" disabled={busy} onPress={() => navigate('import')} />
           <SettingsRow label="Export account" icon="export" disabled={busy} onPress={() => launch(async () => { await shareJson('merosplit-account', await request(session, '/account/export')); })} /></View>
         <Disclosure title="Saved changes and recovery"><Button title="Export saved changes and recovery records" disabled={busy} onPress={() => launch(exportSaved)} /></Disclosure>
         {!!unavailable.length && <Text style={[ui.notice, ui.warning]}>Access to {unavailable.length === 1 ? 'a group has' : 'some groups have'} ended. Saved work is kept for export.</Text>}
-        {!!commands.length && <Disclosure title={commands.some(value => value.state !== 'pending') ? 'Needs review' : 'Pending sync'} initialOpen={commands.some(value => value.state !== 'pending')}>
-          {commands.map(value => <View key={value.command_id} style={s.row}><Text style={ui.rowTitle}>{String(value.body.description ?? groups.find(row => row.group.id === value.group_id)?.group.name ?? 'Saved change')}</Text><Text style={ui.caption}>{value.error ?? (value.state === 'pending' ? 'Pending sync' : 'Needs review')}</Text>
-            {!groups.some(row => row.group.id === value.group_id) && <Button title="Discard saved change" kind="text" disabled={busy} onPress={() => confirm('Discard saved change?', 'Export first if needed. This removes only your unsent change. A request already accepted by the server is kept there.', async () => { await discardCommand(await getDatabase(), owner, value.command_id); })} />}
-            {groups.some(row => row.group.id === value.group_id) && <Button title="Open" kind="text" onPress={() => launch(() => openGroup(groups.find(row => row.group.id === value.group_id)!))} />}
-          </View>)}
-          {!expired && <Button title="Retry" disabled={busy} onPress={() => launch(sync)} />}
-        </Disclosure>}
-        {!!legacy.length && <Disclosure title="Earlier phone records">
-          <Text style={ui.caption}>Choose only records that belong to you. Recovery links them to {session.email}. No invitations are sent.</Text>
-          {legacy.map(group => <Disclosure title={group.name} key={group.id}>
-            <Text style={ui.caption}>{group.expenses.length} bills · Who are you?</Text>
-            {group.participants.map(person => <RadioButton.Item key={person.id} value={person.id} label={person.name} labelStyle={ui.body} mode="android" status={legacySelf[group.id] === person.id ? 'checked' : 'unchecked'} onPress={() => setLegacySelf(value => ({ ...value, [group.id]: person.id }))} />)}
-            <Button title="Recover these records" disabled={busy || !legacySelf[group.id]} onPress={() => confirm('Recover to this account?', `${group.name} will be linked to ${session.email}. Original history is kept in recovery records.`, async () => {
-              const result = await claimLegacyGroup(await getDatabase(), session, group.id, legacySelf[group.id], uuid);
-              await load();
-              if (result.status === 'conflict') { setNotice('These records need review. Their original copy is saved for export; server balances were not changed.', 'warning'); return; }
-              await syncAccount(session); setGroupId(group.id); setScreen('group'); setNotice('Records recovered.', 'success');
-            })} />
-            <Button title="Export original records" kind="text" disabled={busy} onPress={() => launch(async () => { const db = await getDatabase(); await shareJson('merosplit-earlier-records', { group, draft: await readDraft(db, 'local', group.id), pending_commands: (await pendingCommands(db, 'local')).filter(value => value.group_id === group.id) }); })} />
-          </Disclosure>)}
-        </Disclosure>}
+        <SavedChanges commands={commands} groups={groups} busy={busy} expired={expired} onOpen={row => launch(() => openGroup(row))} onDiscard={value => confirm('Discard saved change?', 'Export first if needed. This removes only your unsent change. A request already accepted by the server is kept there.', async () => { await discardCommand(await getDatabase(), owner, value.command_id); })} onRetry={() => launch(sync)} />
+        <LegacyRecords groups={legacy} email={session.email} selected={legacySelf} busy={busy} onSelect={(id, person) => setLegacySelf(value => ({ ...value, [id]: person }))}
+          onRecover={group => confirm('Recover to this account?', `${group.name} will be linked to ${session.email}. Original history is kept in recovery records.`, async () => {
+            const result = await claimLegacyGroup(await getDatabase(), session, group.id, legacySelf[group.id], uuid);
+            await load();
+            if (result.status === 'conflict') { setNotice('These records need review. Their original copy is saved for export; server balances were not changed.', 'warning'); return; }
+            await syncAccount(session); setGroupId(group.id); setScreen('group'); setNotice('Records recovered.', 'success');
+          })}
+          onExport={group => launch(async () => { const db = await getDatabase(); await shareJson('merosplit-earlier-records', { group, draft: await readDraft(db, 'local', group.id), pending_commands: (await pendingCommands(db, 'local')).filter(value => value.group_id === group.id) }); })} />
         {recoveries.some(value => value.status === 'conflict') && <Text style={[ui.notice, ui.warning]}>Some earlier records could not be safely combined. Export recovery records to review them.</Text>}
         <View><SettingsRow label="Privacy" icon="privacy" disabled={busy} onPress={() => launch(() => Linking.openURL(`${API_URL}/privacy`))} /><SettingsRow label="Help and support" icon="help" disabled={busy} onPress={() => launch(() => Linking.openURL(`${API_URL}/support`))} /></View>
         <View>
@@ -657,22 +634,11 @@ function AppContent() {
         </View>
       </>}
     </ScrollView>
-    {screen === 'home' && session && <View style={s.tabs} accessibilityRole="tablist">{([{ value: 'Groups', label: 'Groups', icon: 'groups' }, { value: 'Friends', label: 'People', icon: 'people' }, { value: 'Activity', label: 'Activity', icon: 'history' }, { value: 'Account', label: 'Me', icon: 'me' }] as const).map(item => <Pressable accessibilityRole="tab" accessibilityState={{ selected: tab === item.value, disabled: busy }} disabled={busy} key={item.value} style={[s.tab, tab === item.value && s.selectedTab]} onPress={() => { if (item.value === 'Activity') { activityOwner.current = ''; setActivityError(''); } setTab(item.value); setNotice(''); }}><Icon name={item.icon} color={tab === item.value ? colors.accent : colors.muted} /><Text style={[s.tabText, tab === item.value && { color: colors.accent }]}>{item.label}</Text></Pressable>)}</View>}
+    {screen === 'home' && session && <AppTabs selected={tab} busy={busy} onSelect={value => { if (value === 'Activity') { activityOwner.current = ''; setActivityError(''); } setTab(value); setNotice(''); }} />}
   </KeyboardAvoidingView></SafeAreaView>;
 }
 export default function App() { return <SafeAreaProvider><UIProvider><AppContent /></UIProvider></SafeAreaProvider>; }
 const makeStyles = (colors: Palette) => StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background }, loading: { alignItems: 'center', justifyContent: 'center', gap: 14 },
   content: { padding: 16, gap: 12, paddingBottom: 24, ...(Platform.OS === 'web' ? { width: '100%', maxWidth: 760, alignSelf: 'center' as const } : {}) },
-  header: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 56, paddingHorizontal: 16, paddingTop: 4, paddingBottom: 8 },
-  title: { flex: 1, flexShrink: 1, minWidth: 0, fontSize: 24, lineHeight: 30, fontWeight: '600', color: colors.text },
-  field: { gap: 6 }, row: { gap: 6, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
-  groupList: { backgroundColor: colors.surface, borderRadius: radii.surface, paddingHorizontal: 12 },
-  groupRow: { minHeight: 56, flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 6, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
-  groupMark: { width: 36, height: 36, borderRadius: radii.control, backgroundColor: colors.soft, alignItems: 'center', justifyContent: 'center' },
-  pending: { fontSize: 13, color: colors.warning },
-  profile: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 8 },
-  tabs: { flexDirection: 'row', backgroundColor: colors.surface, marginHorizontal: 16, marginBottom: 8, borderRadius: radii.navigation, padding: 4, gap: 4 },
-  tab: { flex: 1, minHeight: 48, alignItems: 'center', justifyContent: 'center', gap: 4, borderRadius: radii.surface, paddingVertical: 6 },
-  tabText: { fontSize: 13, fontWeight: '500', color: colors.muted }, selectedTab: { backgroundColor: colors.soft },
 });

@@ -12,6 +12,28 @@ type Props = {
   onDiscard: () => void; onEditSaved: (expense: Expense) => void;
 };
 
+function PersonAmount({ name, amount }: { name: string; amount: string }) {
+  const { palette } = useUI();
+  const s = useMemo(() => makeStyles(palette), [palette]);
+  return <View style={s.person}><Text style={s.name}>{name}</Text><Text style={s.amount}>{formatMoney(amount)}</Text></View>;
+}
+
+function SavedBillSummary({ expense, participants }: { expense: Expense; participants: Group['participants'] }) {
+  const { palette, ui } = useUI();
+  const s = useMemo(() => makeStyles(palette), [palette]);
+  return <View style={s.bill}>
+    <Text style={ui.rowTitle}>{expense.description}</Text>
+    <Text style={ui.numeric}>{formatMoney(expense.total)}</Text>
+    <Text style={ui.caption}>{new Date(`${expense.date}T12:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</Text>
+    {expense.deleted && <Text style={[ui.notice, ui.warning]}>Deleted. This bill is not included in balances.</Text>}
+    <Text style={ui.label}>Who paid?</Text>
+    {participants.filter(person => (expense.paid[person.id] ?? '0') !== '0').map(person => <PersonAmount key={person.id} name={person.name} amount={expense.paid[person.id]} />)}
+    <Text style={ui.label}>Split between</Text>
+    {participants.filter(person => Object.hasOwn(expense.split.values, person.id)).map(person => <PersonAmount key={person.id} name={person.name} amount={expense.shares[person.id] ?? '0'} />)}
+    {!!expense.notes && <Text style={ui.caption}>{expense.notes}</Text>}
+  </View>;
+}
+
 export default function SavedChangeScreen({ command, group, busy, onDiscard, onEditSaved }: Props) {
   const { palette: colors, ui } = useUI();
   const s = useMemo(() => makeStyles(colors), [colors]);
@@ -44,24 +66,6 @@ export default function SavedChangeScreen({ command, group, busy, onDiscard, onE
   }
   const canEdit = !!saved && (creating ? !current : updating && !!current && !current.deleted);
 
-  function summary(expense: Expense) {
-    return <View style={s.bill}>
-      <Text style={ui.rowTitle}>{expense.description}</Text>
-      <Text style={ui.numeric}>{formatMoney(expense.total)}</Text>
-      <Text style={ui.caption}>{new Date(`${expense.date}T12:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</Text>
-      {expense.deleted && <Text style={[ui.notice, ui.warning]}>Deleted. This bill is not included in balances.</Text>}
-      <Text style={ui.label}>Who paid?</Text>
-      {group.participants.filter(person => (expense.paid[person.id] ?? '0') !== '0').map(person => <View key={person.id} style={s.person}>
-        <Text style={s.name}>{person.name}</Text><Text style={s.amount}>{formatMoney(expense.paid[person.id])}</Text>
-      </View>)}
-      <Text style={ui.label}>Split between</Text>
-      {group.participants.filter(person => Object.hasOwn(expense.split.values, person.id)).map(person => <View key={person.id} style={s.person}>
-        <Text style={s.name}>{person.name}</Text><Text style={s.amount}>{formatMoney(expense.shares[person.id] ?? '0')}</Text>
-      </View>)}
-      {!!expense.notes && <Text style={ui.caption}>{expense.notes}</Text>}
-    </View>;
-  }
-
   function editSaved() {
     if (busy || !canEdit || !saved) return;
     onEditSaved(saved);
@@ -72,12 +76,12 @@ export default function SavedChangeScreen({ command, group, busy, onDiscard, onE
     {!expenseCommand && <Text style={[ui.notice, ui.warning]}>This change has not synced.</Text>}
     <View style={s.section}>
       <Text accessibilityRole="header" style={ui.section}>Your change</Text>
-      {saved ? summary(saved) : <Text accessibilityRole="alert" style={ui.body}>{issue}</Text>}
+      {saved ? <SavedBillSummary expense={saved} participants={group.participants} /> : <Text accessibilityRole="alert" style={ui.body}>{issue}</Text>}
     </View>
     {expenseCommand && <>
       <View style={s.section}>
         <Text accessibilityRole="header" style={ui.section}>Latest</Text>
-        {current ? summary(current) : <Text style={ui.body}>This bill is not in the group's latest records.</Text>}
+        {current ? <SavedBillSummary expense={current} participants={group.participants} /> : <Text style={ui.body}>This bill is not in the group's latest records.</Text>}
       </View>
       {creating && current && <Text style={[ui.notice, ui.warning]}>This bill already exists. Your saved change will not overwrite it.</Text>}
       {updating && current?.deleted && <Text style={[ui.notice, ui.warning]}>Restore the latest bill before editing it.</Text>}

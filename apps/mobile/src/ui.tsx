@@ -30,6 +30,7 @@ import Shield01Icon from '@hugeicons/core-free-icons/Shield01Icon';
 import HelpCircleIcon from '@hugeicons/core-free-icons/HelpCircleIcon';
 import Sun03Icon from '@hugeicons/core-free-icons/Sun03Icon';
 import Notification01Icon from '@hugeicons/core-free-icons/Notification01Icon';
+import { formatMoney } from './accounting';
 
 export type Palette = { background: string; surface: string; text: string; muted: string; accent: string; soft: string; line: string; outline: string; error: string; positive: string; negative: string; info: string; warning: string };
 export const radii = { control: 12, surface: 16, navigation: 20 } as const;
@@ -43,6 +44,14 @@ export type IconName = keyof typeof icons;
 export function Icon({ name, size = 22, color }: { name: IconName; size?: number; color?: string }) {
   const { palette } = useUI();
   return <HugeiconsIcon icon={icons[name]} size={size} color={color ?? palette.text} strokeWidth={1.7} />;
+}
+export function IconBadge({ name, size = 22 }: { name: IconName; size?: number }) {
+  const { ui } = useUI();
+  return <View style={ui.avatar}><Icon name={name} size={size} /></View>;
+}
+export function AmountText({ amount, style, ...props }: Omit<React.ComponentProps<typeof Text>, 'children'> & { amount: string }) {
+  const { ui } = useUI();
+  return <Text {...props} style={[ui.amount, style]}>{formatMoney(amount)}</Text>;
 }
 function makeTheme(palette: Palette, dark: boolean): MD3Theme {
   const colors = palette, onAccent = dark ? '#161616' : '#FFFFFF';
@@ -151,6 +160,7 @@ const makeUI = (colors: Palette) => StyleSheet.create({
   caption: { fontSize: 14, lineHeight: 20, color: colors.muted },
   label: { fontSize: 14, lineHeight: 20, fontWeight: '500', color: colors.muted },
   numeric: { fontSize: 32, lineHeight: 40, fontWeight: '600', color: colors.text, fontVariant: ['tabular-nums'] },
+  amount: { fontSize: 17, lineHeight: 24, fontWeight: '600', color: colors.text, fontVariant: ['tabular-nums'], flexShrink: 0, textAlign: 'right' },
   input: { minHeight: 48, paddingHorizontal: 12, paddingVertical: 10, borderRadius: radii.control, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.outline, color: colors.text, fontSize: 17 },
   row: { minHeight: 52, paddingVertical: 6, flexDirection: 'row', alignItems: 'center', gap: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
   rowBody: { flex: 1, minWidth: 0, gap: 2 },

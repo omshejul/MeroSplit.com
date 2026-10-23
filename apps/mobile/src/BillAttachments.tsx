@@ -14,8 +14,21 @@ import type { Session } from './types';
 import { Button, Icon, radii, useUI } from './ui';
 
 export type BillAttachmentsProps = { session: Session | null; groupId: string; expenseId: string; revision?: number; readOnly?: boolean; busy: boolean; onBusyChange: (busy: boolean) => void; onChanged?: () => Promise<void> };
+function AttachmentRow({ session, item, disabled, onOpen, options }: {
+  session: Session; item: MediaMetadata; disabled: boolean; onOpen: () => void; options: React.ReactNode;
+}) {
+  const { ui, palette } = useUI();
+  return <View style={{ flexDirection: 'row', alignItems: 'center', borderBottomWidth: 0.5, borderBottomColor: palette.line, paddingBottom: 8, gap: 4 }}>
+    <Pressable accessibilityRole="button" accessibilityLabel={`Open ${item.name}`} disabled={disabled} onPress={onOpen} style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 56 }}>
+      {item.content_type.startsWith('image/') ? <PrivateMediaImage session={session} media={item} /> : <View style={{ width: 56, height: 56, borderRadius: radii.control, backgroundColor: palette.soft, alignItems: 'center', justifyContent: 'center' }}><Icon name="bill" /></View>}
+      <View style={{ flex: 1, minWidth: 0, gap: 2 }}><Text numberOfLines={1} ellipsizeMode="tail" style={ui.body}>{item.name}</Text><Text style={ui.caption}>{item.content_type === 'application/pdf' ? 'PDF' : 'Image'} · {mediaSize(item.size)}</Text></View><Icon name="next" size={18} />
+    </Pressable>
+    {options}
+  </View>;
+}
+
 export default function BillAttachments({ session, groupId, expenseId, revision, readOnly = false, busy, onBusyChange, onChanged }: BillAttachmentsProps) {
-  const { ui, palette } = useUI(), [items, setItems] = useState<MediaMetadata[]>([]), [canModify, setCanModify] = useState(false), [loading, setLoading] = useState(true), [working, setWorking] = useState(false), [error, setError] = useState('');
+  const { ui } = useUI(), [items, setItems] = useState<MediaMetadata[]>([]), [canModify, setCanModify] = useState(false), [loading, setLoading] = useState(true), [working, setWorking] = useState(false), [error, setError] = useState('');
   const [optionsId, setOptionsId] = useState<string | null>(null);
   const [pending, setPending] = useState<PendingMediaUpload | null>(null);
   const path = `/groups/${encodeURIComponent(groupId)}/expenses/${encodeURIComponent(expenseId)}/attachments`;
@@ -97,15 +110,10 @@ export default function BillAttachments({ session, groupId, expenseId, revision,
     {!session ? <Text style={ui.caption}>Sign in to view attachments.</Text> : <>
       {loading && <Text style={ui.caption}>Loading attachments…</Text>}
       {working && <Text accessibilityLiveRegion="polite" style={ui.caption}>Processing file…</Text>}
-      {items.map(item => <View key={item.id} style={{ flexDirection: 'row', alignItems: 'center', borderBottomWidth: 0.5, borderBottomColor: palette.line, paddingBottom: 8, gap: 4 }}>
-        <Pressable accessibilityRole="button" accessibilityLabel={`Open ${item.name}`} disabled={disabled} onPress={() => void run(() => openPrivateMedia(session, item))} style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 56 }}>
-          {item.content_type.startsWith('image/') ? <PrivateMediaImage session={session} media={item} /> : <View style={{ width: 56, height: 56, borderRadius: radii.control, backgroundColor: palette.soft, alignItems: 'center', justifyContent: 'center' }}><Icon name="bill" /></View>}
-          <View style={{ flex: 1, minWidth: 0, gap: 2 }}><Text numberOfLines={1} ellipsizeMode="tail" style={ui.body}>{item.name}</Text><Text style={ui.caption}>{item.content_type === 'application/pdf' ? 'PDF' : 'Image'} · {mediaSize(item.size)}</Text></View><Icon name="next" size={18} />
-        </Pressable>
-        {editable && <Menu visible={optionsId === item.id} onDismiss={() => setOptionsId(null)} anchor={<IconButton accessibilityLabel={`Options for ${item.name}`} disabled={disabled || !!pending} style={{ width: 48, height: 48, margin: 0 }} icon={({ color, size }) => <HugeiconsIcon icon={MoreVerticalIcon} color={color} size={size} />} onPress={() => setOptionsId(item.id)} />}>
+      {items.map(item => <AttachmentRow key={item.id} session={session} item={item} disabled={disabled}
+        onOpen={() => void run(() => openPrivateMedia(session, item))} options={editable && <Menu visible={optionsId === item.id} onDismiss={() => setOptionsId(null)} anchor={<IconButton accessibilityLabel={`Options for ${item.name}`} disabled={disabled || !!pending} style={{ width: 48, height: 48, margin: 0 }} icon={({ color, size }) => <HugeiconsIcon icon={MoreVerticalIcon} color={color} size={size} />} onPress={() => setOptionsId(item.id)} />}>
           <Menu.Item title="Remove attachment" disabled={disabled || !!pending} onPress={() => { setOptionsId(null); remove(item); }} />
-        </Menu>}
-      </View>)}
+        </Menu>} />)}
       {pending && <><Text style={[ui.notice, ui.warning]}>Upload not confirmed: {pending.file.name}.</Text><Button title="Retry upload" disabled={disabled || readOnly} onPress={() => void run(finishUpload)} /></>}
       {editable && !pending && items.length < 10 && <Button title="Add attachment" icon="add" disabled={disabled} onPress={() => Platform.OS === 'web' ? void run(() => add(false)) : Alert.alert('Add attachment', undefined, [
         { text: 'Cancel', style: 'cancel' }, { text: 'Photo', onPress: () => void run(() => add(true)) }, { text: 'Files', onPress: () => void run(() => add(false)) },

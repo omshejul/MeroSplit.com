@@ -7,8 +7,15 @@ import type { Session } from './types';
 import { Button, SettingsRow, useUI } from './ui';
 
 type Preferences = { expense_updates: boolean; email_reminders: boolean };
-export default function AccountNotifications({ session, push, busy, onBusyChange }: { session: Session; push: PushControls; busy: boolean; onBusyChange: (value: boolean) => void }) {
+function NotificationSwitch({ label, checked, disabled, onChange }: { label: string; checked: boolean; disabled: boolean; onChange: (value: boolean) => void }) {
   const { ui, palette } = useUI();
+  return <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: 48, gap: 12 }}>
+    <Text style={[ui.body, { flex: 1 }]}>{label}</Text>
+    <Switch accessibilityLabel={label} value={checked} disabled={disabled} trackColor={{ false: palette.outline, true: disabled ? palette.outline : '#007AFF' }} thumbColor="#FFFFFF" ios_backgroundColor={palette.outline} onValueChange={onChange} />
+  </View>;
+}
+export default function AccountNotifications({ session, push, busy, onBusyChange }: { session: Session; push: PushControls; busy: boolean; onBusyChange: (value: boolean) => void }) {
+  const { ui } = useUI();
   const [open, setOpen] = useState(false), [preferences, setPreferences] = useState<Preferences | null>(null), [error, setError] = useState(''), [working, setWorking] = useState(false);
   const row = useRef<React.ComponentRef<typeof View>>(null), mounted = useRef(true), inFlight = useRef(false), revision = useRef(0);
   async function load() {
@@ -40,12 +47,11 @@ export default function AccountNotifications({ session, push, busy, onBusyChange
     document.addEventListener('keydown', escape, true);
     return () => document.removeEventListener('keydown', escape, true);
   }, [open, busy, working]);
-  const toggle = (label: string, checked: boolean, locked: boolean, onChange: (value: boolean) => void) => <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: 48, gap: 12 }}><Text style={[ui.body, { flex: 1 }]}>{label}</Text><Switch accessibilityLabel={label} value={checked} disabled={locked} trackColor={{ false: palette.outline, true: locked ? palette.outline : '#007AFF' }} thumbColor="#FFFFFF" ios_backgroundColor={palette.outline} onValueChange={onChange} /></View>;
   return <><SettingsRow rowRef={row} icon="notifications" label="Notifications" value={value} disabled={busy} onPress={() => { setOpen(true); void load(); }} />
     <Portal><Dialog visible={open} dismissable={!busy && !working} onDismiss={() => { if (!busy && !working) close(); }}><Dialog.Title>Notifications</Dialog.Title>
       <Dialog.ScrollArea style={{ maxHeight: 440 }}><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingVertical: 12, gap: 12 }}>
-        {preferences && <>{toggle('Expense updates', preferences.expense_updates, !!disabled, expense_updates => void update({ ...preferences, expense_updates }))}
-          {toggle('Daily unread email reminders', preferences.email_reminders, !!disabled || !preferences.expense_updates, email_reminders => void update({ ...preferences, email_reminders }))}
+        {preferences && <><NotificationSwitch label="Expense updates" checked={preferences.expense_updates} disabled={!!disabled} onChange={expense_updates => void update({ ...preferences, expense_updates })} />
+          <NotificationSwitch label="Daily unread email reminders" checked={preferences.email_reminders} disabled={!!disabled || !preferences.expense_updates} onChange={email_reminders => void update({ ...preferences, email_reminders })} />
           <Text style={ui.caption}>Email reminders arrive after a day away. Expense updates off stops push and email.</Text></>}
         <PushSettings push={push} busy={busy} onBusyChange={onBusyChange} />
         {!!error && <><Text accessibilityRole="alert" style={ui.error}>{error}</Text>{!preferences && <Button title="Retry" disabled={busy || working} onPress={() => void load()} />}</>}
