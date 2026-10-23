@@ -4,7 +4,7 @@ import { Dialog, Portal, Switch, Text } from 'react-native-paper';
 import { request } from './api';
 import PushSettings, { type PushControls } from './PushSettings';
 import type { Session } from './types';
-import { Button, SettingsRow, useUI } from './ui';
+import { Button, ErrorText, SettingsRow, useUI } from './ui';
 
 type Preferences = { expense_updates: boolean; email_reminders: boolean };
 function NotificationSwitch({ label, checked, disabled, onChange }: { label: string; checked: boolean; disabled: boolean; onChange: (value: boolean) => void }) {
@@ -54,7 +54,7 @@ export default function AccountNotifications({ session, push, busy, onBusyChange
           <NotificationSwitch label="Daily unread email reminders" checked={preferences.email_reminders} disabled={!!disabled || !preferences.expense_updates} onChange={email_reminders => void update({ ...preferences, email_reminders })} />
           <Text style={ui.caption}>Email reminders arrive after a day away. Expense updates off stops push and email.</Text></>}
         <PushSettings push={push} busy={busy} onBusyChange={onBusyChange} />
-        {!!error && <><Text accessibilityRole="alert" style={ui.error}>{error}</Text>{!preferences && <Button title="Retry" disabled={busy || working} onPress={() => void load()} />}</>}
+        {!!error && <><ErrorText>{error}</ErrorText>{!preferences && <Button title="Retry" disabled={busy || working} onPress={() => void load()} />}</>}
       </ScrollView></Dialog.ScrollArea><Dialog.Actions><Button title="Done" kind="text" disabled={busy || working} onPress={close} /></Dialog.Actions></Dialog></Portal>
   </>;
 }

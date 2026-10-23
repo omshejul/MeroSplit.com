@@ -2,13 +2,11 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { Alert } from './alerts';
 import * as Crypto from 'expo-crypto';
-import { IconButton, Menu } from 'react-native-paper';
-import { HugeiconsIcon } from '@hugeicons/react-native';
-import MoreVerticalIcon from '@hugeicons/core-free-icons/MoreVerticalIcon';
 import { accountOwner, request } from './api';
 import { clearPickedMedia, pickMedia, uploadMedia } from './media';
 import type { AvatarResult, MediaMetadata } from './media';
 import PrivateMediaImage from './PrivateMediaImage';
+import RemoveMediaMenu from './RemoveMediaMenu';
 import type { Session } from './types';
 import { Button, Icon, useUI } from './ui';
 
@@ -67,9 +65,8 @@ export default function ProfilePhoto({ session, busy, onBusyChange, compact = fa
           {avatar ? <PrivateMediaImage session={session} media={avatar} size={64} profile /> : <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: palette.soft, alignItems: 'center', justifyContent: 'center' }}><Icon name="me" size={30} /></View>}
           {compact ? <View style={{ position: 'absolute', right: 0, bottom: 0, backgroundColor: palette.background, borderRadius: 12, padding: 3 }}><Icon name="edit" size={16} /></View> : <Text style={[ui.body, { flex: 1 }]}>{loading ? 'Loading photo…' : working ? 'Updating photo…' : avatar ? 'Change photo' : 'Choose photo'}</Text>}
         </Pressable>
-        {avatar && <Menu visible={optionsOpen} onDismiss={() => setOptionsOpen(false)} anchor={<IconButton accessibilityLabel="Photo options" disabled={disabled} style={{ width: 48, height: 48, margin: 0 }} icon={({ color, size }) => <HugeiconsIcon icon={MoreVerticalIcon} color={color} size={size} />} onPress={() => setOptionsOpen(true)} />}>
-          <Menu.Item title="Remove photo" disabled={disabled} onPress={() => { setOptionsOpen(false); remove(); }} />
-        </Menu>}
+        {avatar && <RemoveMediaMenu open={optionsOpen} disabled={disabled} label="Photo options" removeLabel="Remove photo"
+          onOpen={() => setOptionsOpen(true)} onClose={() => setOptionsOpen(false)} onRemove={remove} />}
       </View>
       {!!error && <><Text accessibilityRole="alert" style={ui.error}>{error}</Text><Button title="Refresh" accessibilityLabel="Refresh photo" kind="text" disabled={busy || working} onPress={() => void run(async () => { await load(); })} /></>}
     </>}

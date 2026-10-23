@@ -1,6 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { RadioButton } from 'react-native-paper';
 import * as Crypto from 'expo-crypto';
 import { pickSplitwiseCsv } from './csvFile';
 import { accountOwner, request } from './api';
@@ -11,7 +10,7 @@ import { readPendingSplitwiseImport, retrySplitwiseImport, startSplitwiseImport 
 import type { SplitwiseImportRequest, SplitwisePreview } from './splitwiseImport';
 import type { Group, Session } from './types';
 import { Button, radii, useUI } from './ui';
-import { TextField } from './FormFields';
+import { RadioChoice, TextField } from './FormFields';
 
 export type SplitwiseImportScreenProps = {
   session: Session; busy: boolean; onBusyChange: (busy: boolean) => void;
@@ -23,9 +22,8 @@ const balanceText = (value: string) => integer(value, true) > 0n ? `Is owed ${fo
 function ImportChoice({ member, index, selected, disabled, label, onSelect }: {
   member: string; index: number; selected: boolean; disabled: boolean; label: string; onSelect: (index: number) => void;
 }) {
-  const { ui } = useUI();
-  return <RadioButton.Item label={member} value={String(index)} status={selected ? 'checked' : 'unchecked'}
-    onPress={() => onSelect(index)} disabled={disabled} mode="android" labelStyle={ui.body} accessibilityLabel={label} />;
+  return <RadioChoice label={member} value={String(index)} selected={selected}
+    onPress={() => onSelect(index)} disabled={disabled} accessibilityLabel={label} />;
 }
 
 function ImportIdentity({ members, balances, selected, disabled, onSelect }: {

@@ -5,7 +5,7 @@ import { ActivityIndicator, Text } from 'react-native-paper';
 import { formatMoney } from './accounting';
 import { activityDay, activityPresentation, activityTime } from './activityPresentation';
 import type { ActivityItem, ActivityTarget } from './types';
-import { AmountText, balanceColor, Button, Icon, IconBadge, useUI } from './ui';
+import { AmountText, balanceColor, Button, ErrorText, Icon, IconBadge, useUI } from './ui';
 
 type Props = {
   items: ActivityItem[]; busy: boolean; emptyVerified?: boolean; error?: string | null; hasMore?: boolean;
@@ -16,7 +16,7 @@ type Props = {
 export default function ActivityScreen({ items, busy, error, hasMore, emptyVerified = false, onRefresh, onLoadMore, onOpen }: Props) {
   const { ui } = useUI();
   return <View style={s.content}>
-    {!!error && <View style={s.message}><Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={ui.error}>{error}</Text><Button title="Try again" disabled={busy} onPress={onRefresh} /></View>}
+    {!!error && <View style={s.message}><ErrorText live>{error}</ErrorText><Button title="Try again" disabled={busy} onPress={onRefresh} /></View>}
     {!items.length && !hasMore && !error && <View style={s.empty}>
       {emptyVerified && !busy && <Mascot size="empty" />}
       {busy && <ActivityIndicator accessibilityLabel="Loading activity" />}

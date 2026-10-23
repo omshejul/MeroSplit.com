@@ -54,6 +54,10 @@ export function AmountText({ amount, style, ...props }: Omit<React.ComponentProp
   const { ui } = useUI();
   return <Text {...props} style={[ui.amount, style]}>{formatMoney(amount)}</Text>;
 }
+export function ErrorText({ children, live = false }: { children: string; live?: boolean }) {
+  const { ui } = useUI();
+  return <Text accessibilityRole="alert" accessibilityLiveRegion={live ? 'polite' : undefined} style={ui.error}>{children}</Text>;
+}
 function makeTheme(palette: Palette, dark: boolean): MD3Theme {
   const colors = palette, onAccent = dark ? '#161616' : '#FFFFFF';
   return { ...(dark ? MD3DarkTheme : MD3LightTheme), roundness: 3, colors: {

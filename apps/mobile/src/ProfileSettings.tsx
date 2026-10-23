@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Keyboard, Platform, TextInput, View } from 'react-native';
-import { Dialog, Portal, RadioButton, Text } from 'react-native-paper';
-import { Button, SettingsRow, useUI, type AppearancePreference } from './ui';
+import { Dialog, Portal, Text } from 'react-native-paper';
+import { RadioChoice } from './FormFields';
+import { Button, ErrorText, SettingsRow, useUI, type AppearancePreference } from './ui';
 
 export default function ProfileSettings({ name, vpa, busy, onSaveName, onSaveUPI, onAppearance }: {
   name: string; vpa: string; busy: boolean; onSaveName: (name: string) => Promise<void>; onSaveUPI: (vpa: string) => Promise<void>; onAppearance: (value: AppearancePreference) => Promise<void>;
@@ -34,11 +35,11 @@ export default function ProfileSettings({ name, vpa, busy, onSaveName, onSaveUPI
     <Portal><Dialog visible={!!editing} onDismiss={() => { if (!disabled) close(); }} dismissable={!disabled}>
       <Dialog.Title>{isAppearance ? 'Appearance' : isName ? 'Name' : 'UPI ID'}</Dialog.Title>
       <Dialog.Content>
-        {isAppearance ? (['system', 'light', 'dark'] as const).map(value => <RadioButton.Item key={value} value={value} label={value[0].toUpperCase() + value.slice(1)} mode="android" labelStyle={ui.body} status={appearance === value ? 'checked' : 'unchecked'} disabled={disabled} onPress={() => void save(value)} />)
+        {isAppearance ? (['system', 'light', 'dark'] as const).map(value => <RadioChoice key={value} value={value} label={value[0].toUpperCase() + value.slice(1)} selected={appearance === value} disabled={disabled} onPress={() => void save(value)} />)
           : <View style={{ gap: 8 }}><TextInput ref={input} {...inputColors} autoFocus accessibilityLabel={isName ? 'Name' : 'UPI ID'} value={draft} maxLength={isName ? 120 : 254} autoCorrect={false} autoCapitalize={isName ? 'words' : 'none'} autoComplete={isName ? 'name' : 'off'} keyboardType={isName ? 'default' : 'email-address'} returnKeyType="done" editable={!disabled} style={ui.input}
             onChangeText={text => { setDraft(text); setError(''); }} onSubmitEditing={() => void save()} onKeyPress={event => { if (event.nativeEvent.key === 'Escape' && !disabled) close(); }} />
             {!isName && <Text style={ui.caption}>Check this address. It is not bank verified.</Text>}</View>}
-        {!!error && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={ui.error}>{error}</Text>}
+        {!!error && <ErrorText live>{error}</ErrorText>}
       </Dialog.Content>
       <Dialog.Actions><Button title="Cancel" kind="text" disabled={disabled} onPress={close} />{!isAppearance && <Button title={saving ? 'Saving…' : 'Save'} disabled={disabled || !valid || draft.trim() === (isName ? name : vpa)} onPress={() => void save()} />}</Dialog.Actions>
     </Dialog></Portal>

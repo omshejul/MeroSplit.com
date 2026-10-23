@@ -2,14 +2,12 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Platform, Pressable, Text, View } from 'react-native';
 import { Alert } from './alerts';
 import * as Crypto from 'expo-crypto';
-import { IconButton, Menu } from 'react-native-paper';
-import { HugeiconsIcon } from '@hugeicons/react-native';
-import MoreVerticalIcon from '@hugeicons/core-free-icons/MoreVerticalIcon';
 import { accountOwner, request } from './api';
 import { clearMediaPreview, clearPickedMedia, clearStagedMedia, mediaSize, openPrivateMedia, pendingMediaUpload, pickMedia, retryMediaUpload, saveMediaUpload, stageMediaUpload } from './media';
 import type { MediaList, MediaMetadata, PendingMediaUpload, PickedMedia } from './media';
 import { getDatabase } from './native';
 import PrivateMediaImage from './PrivateMediaImage';
+import RemoveMediaMenu from './RemoveMediaMenu';
 import type { Session } from './types';
 import { Button, Icon, radii, useUI } from './ui';
 
@@ -111,9 +109,8 @@ export default function BillAttachments({ session, groupId, expenseId, revision,
       {loading && <Text style={ui.caption}>Loading attachments…</Text>}
       {working && <Text accessibilityLiveRegion="polite" style={ui.caption}>Processing file…</Text>}
       {items.map(item => <AttachmentRow key={item.id} session={session} item={item} disabled={disabled}
-        onOpen={() => void run(() => openPrivateMedia(session, item))} options={editable && <Menu visible={optionsId === item.id} onDismiss={() => setOptionsId(null)} anchor={<IconButton accessibilityLabel={`Options for ${item.name}`} disabled={disabled || !!pending} style={{ width: 48, height: 48, margin: 0 }} icon={({ color, size }) => <HugeiconsIcon icon={MoreVerticalIcon} color={color} size={size} />} onPress={() => setOptionsId(item.id)} />}>
-          <Menu.Item title="Remove attachment" disabled={disabled || !!pending} onPress={() => { setOptionsId(null); remove(item); }} />
-        </Menu>} />)}
+        onOpen={() => void run(() => openPrivateMedia(session, item))} options={editable && <RemoveMediaMenu open={optionsId === item.id} disabled={disabled || !!pending} label={`Options for ${item.name}`} removeLabel="Remove attachment"
+          onOpen={() => setOptionsId(item.id)} onClose={() => setOptionsId(null)} onRemove={() => remove(item)} />} />)}
       {pending && <><Text style={[ui.notice, ui.warning]}>Upload not confirmed: {pending.file.name}.</Text><Button title="Retry upload" disabled={disabled || readOnly} onPress={() => void run(finishUpload)} /></>}
       {editable && !pending && items.length < 10 && <Button title="Add attachment" icon="add" disabled={disabled} onPress={() => Platform.OS === 'web' ? void run(() => add(false)) : Alert.alert('Add attachment', undefined, [
         { text: 'Cancel', style: 'cancel' }, { text: 'Photo', onPress: () => void run(() => add(true)) }, { text: 'Files', onPress: () => void run(() => add(false)) },

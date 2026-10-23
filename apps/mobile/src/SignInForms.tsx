@@ -1,13 +1,13 @@
 import React from 'react';
 import { Text } from 'react-native-paper';
-import { TextField } from './FormFields';
+import { EmailField, TextField } from './FormFields';
 import { Button, useUI } from './ui';
 
 export function EmailSignIn({ email, busy, onEmail, onSend, sendLabel = 'Send sign-in code', children }: { email: string; busy: boolean; onEmail: (value: string) => void; onSend: () => void; sendLabel?: string; children?: React.ReactNode }) {
   const { ui } = useUI();
   return <>
     <Text style={ui.caption}>New accounts get daily unread email reminders. Turn them off in Me → Notifications.</Text>
-    <TextField label="Email" value={email} onChangeText={onEmail} autoCorrect={false} autoCapitalize="none" autoComplete="email" keyboardType="email-address" />
+    <EmailField label="Email" value={email} onChangeText={onEmail} />
     <Button title={sendLabel} kind="primary" disabled={busy || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())} onPress={onSend} />
     {children}
   </>;

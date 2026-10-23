@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { ActivityIndicator, ScrollView, View } from 'react-native';
 import { Text } from 'react-native-paper';
 import { TextField } from './FormFields';
-import { Button, useUI } from './ui';
+import { Button, ErrorText, useUI } from './ui';
 import { AppFrame, pageContentStyle, ScreenHeader } from './AppNavigation';
 
 export function EmailLinkScreen({ title, busy, children }: { title: string; busy: boolean; children: React.ReactNode }) {
@@ -32,12 +32,11 @@ export function EmailLinkSent({ busy, resendSeconds, onResend, onCode, onChangeE
   </View>;
 }
 export function NameOnlyForm({ busy, onSave }: { busy: boolean; onSave: (name: string) => Promise<void> }) {
-  const { ui } = useUI();
   const [name, setName] = useState(''), [error, setError] = useState('');
   async function save() { setError(''); try { await onSave(name.trim()); } catch { setError('Could not save your name. Try again.'); } }
   return <View style={{ gap: 12 }}>
     <TextField label="Name" autoFocus value={name} maxLength={120} autoCapitalize="words" autoComplete="name" autoCorrect={false} editable={!busy} onChangeText={setName} returnKeyType="done" onSubmitEditing={() => { if (!busy && name.trim()) void save(); }} />
-    {!!error && <Text accessibilityRole="alert" style={ui.error}>{error}</Text>}
+    {!!error && <ErrorText>{error}</ErrorText>}
     <Button title="Continue" kind="primary" disabled={busy || !name.trim()} onPress={() => void save()} />
   </View>;
 }

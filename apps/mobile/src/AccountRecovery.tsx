@@ -1,6 +1,7 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
-import { RadioButton, Text } from 'react-native-paper';
+import { Text } from 'react-native-paper';
+import { RadioChoice } from './FormFields';
 import type { CachedGroup, Command, Group } from './types';
 import { Button, Disclosure, useUI } from './ui';
 
@@ -44,8 +45,8 @@ export function LegacyGroupRecovery({ group, selected, busy, onSelect, onRecover
   const { ui } = useUI();
   return <Disclosure title={group.name}>
     <Text style={ui.caption}>{group.expenses.length} bills · Who are you?</Text>
-    {group.participants.map(person => <RadioButton.Item key={person.id} value={person.id} label={person.name}
-      labelStyle={ui.body} mode="android" status={selected === person.id ? 'checked' : 'unchecked'} onPress={() => onSelect(person.id)} />)}
+    {group.participants.map(person => <RadioChoice key={person.id} value={person.id} label={person.name}
+      selected={selected === person.id} onPress={() => onSelect(person.id)} />)}
     <Button title="Recover these records" disabled={busy || !selected} onPress={onRecover} />
     <Button title="Export original records" kind="text" disabled={busy} onPress={onExport} />
   </Disclosure>;

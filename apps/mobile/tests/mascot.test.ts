@@ -22,7 +22,7 @@ function elements(tree: unknown): Element[] {
   if (!tree || typeof tree !== 'object' || !('children' in tree)) return [];
   const element = tree as Element; return [element, ...element.children.flatMap(elements)];
 }
-const uiEnv = { Mascot, Text: 'Text', View: 'View', ActivityIndicator: 'Spinner', Button: 'Button', GroupListRow: 'GroupListRow', ActivityRow: 'ActivityRow', styles: {}, s: {}, useUI: () => ({ ui: {}, palette: {} }) };
+const uiEnv = { Mascot, Text: 'Text', ErrorText: 'ErrorText', View: 'View', ActivityIndicator: 'Spinner', Button: 'Button', GroupListRow: 'GroupListRow', ActivityRow: 'ActivityRow', styles: {}, s: {}, useUI: () => ({ ui: {}, palette: {} }) };
 
 test('Groups and Activity decorate only verified true empty states while retaining their existing copy', () => {
   const groups = productionFunction('src/GroupList.tsx', 'GroupList', uiEnv);

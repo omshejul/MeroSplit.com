@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { View } from 'react-native';
-import { TextField } from './FormFields';
+import { EmailField, TextField } from './FormFields';
 import { Button } from './ui';
 
 export type NewGroupValues = { name: string; people: string[]; email: string };
@@ -14,7 +14,7 @@ export default function CreateGroupForm({ direct, busy, onCreate }: { direct: bo
       {!direct && people.length > 1 && <Button title={`Remove person ${index + 1}`} kind="text" disabled={busy} onPress={() => setPeople(rows => rows.filter((_, at) => at !== index))} />}
     </View>)}
     {!direct && <Button title="Add person" kind="text" icon="add" disabled={busy} onPress={() => setPeople(rows => [...rows, ''])} />}
-    {direct && <TextField label="Email (optional)" value={email} onChangeText={setEmail} autoCorrect={false} autoCapitalize="none" autoComplete="email" keyboardType="email-address" />}
+    {direct && <EmailField label="Email (optional)" value={email} onChangeText={setEmail} />}
     <Button title={direct ? 'Add person' : 'Create group'} kind="primary" disabled={busy || !valid} onPress={() => onCreate({ name, people, email })} />
   </>;
 }

@@ -1,13 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { AppState, Linking, Platform, Pressable, StyleSheet, View } from 'react-native';
-import { RadioButton, Text } from 'react-native-paper';
+import { Text } from 'react-native-paper';
 import { Alert } from './alerts';
 import { isPersonalPayment } from './personalBalances';
 import { addSettlement, formatMoney, integer, rupeesToPaise } from './accounting';
 import type { Group } from './types';
-import { Button, Disclosure, Icon, useUI } from './ui';
+import { Button, Disclosure, ErrorText, Icon, useUI } from './ui';
 import type { Palette } from './ui';
-import { AmountField } from './FormFields';
+import { AmountField, RadioChoice } from './FormFields';
 import { UPIAppChooser, WebPaymentQuote } from './PaymentPanels';
 import { availableUPIApps, buildUPIUrl, openUPIPayment, validateUPIPayment } from './upi';
 import type { UPIApp, UPILaunchQuote } from './upi';
@@ -29,8 +29,8 @@ function PaymentPersonChoices({ people, selected, label, direction, disabled, on
   const { ui } = useUI();
   return <>
     <Text style={ui.label}>{direction}</Text>
-    {people.map(person => <RadioButton.Item key={person.id} value={person.id} label={label(person.id)} accessibilityLabel={`${direction} ${label(person.id)}`}
-      status={selected === person.id ? 'checked' : 'unchecked'} disabled={disabled} labelStyle={ui.body} mode="android" onPress={() => onSelect(person.id)} />)}
+    {people.map(person => <RadioChoice key={person.id} value={person.id} label={label(person.id)} accessibilityLabel={`${direction} ${label(person.id)}`}
+      selected={selected === person.id} disabled={disabled} onPress={() => onSelect(person.id)} />)}
   </>;
 }
 
@@ -229,7 +229,7 @@ export default function SettleForm({ group, initial, busy, selfId, onSave, onRev
       <Text style={ui.caption}>{group.name}</Text>
       <Text style={[ui.section, styles.returnTitle]}>{needsAnswer ? `Did you pay ${pendingReturn.payeeName} ${formatMoney(pendingReturn.amount)}?` : `${formatMoney(pendingReturn.amount)} to ${pendingReturn.payeeName}`}</Text>
       <Text style={ui.body}>Check your UPI app before answering.</Text>
-      {!!returnError && <Text accessibilityRole="alert" style={ui.error}>{returnError}</Text>}
+      {!!returnError && <ErrorText>{returnError}</ErrorText>}
       {returnReview ? <Button title="Review balance" kind="primary" onPress={onCancel} disabled={disabled} /> : pendingReturn.decision !== null ?
         <Button title={saving ? 'Confirming update…' : 'Try again'} kind="primary" onPress={() => void resolveReturn(pendingReturn.decision === 'paid')} disabled={disabled} /> : needsAnswer ? <>
           <Button title={saving ? 'Recording payment…' : 'Yes, I paid'} kind="primary" onPress={() => void resolveReturn(true)} disabled={disabled} />
@@ -264,7 +264,7 @@ export default function SettleForm({ group, initial, busy, selfId, onSave, onRev
     {activeAttempt?.state === 'reported' && sender === selfId && <Text style={ui.caption}>This payment is already reported. Check it before paying again.</Text>}
     {activeAttempt?.state === 'prepared' && sender === selfId && <Button title="Cancel unpaid attempt" kind="text" disabled={disabled} onPress={() => Alert.alert('Cancel unpaid attempt?', 'Cancel only if you have not paid. This cannot reverse money already sent.', [{ text: 'Keep', style: 'cancel' }, { text: 'Cancel attempt', onPress: () => void cancelAttempt(activeAttempt.id) }])} />}
     {!!notice && <Text accessibilityLiveRegion="polite" style={ui.caption}>{notice}</Text>}
-    {!!error && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={ui.error}>{error}</Text>}
+    {!!error && <ErrorText live>{error}</ErrorText>}
     {!webQuote && <Button title={amountLabel ? `Record ${amountLabel} already paid` : 'Record a payment already made'} accessibilityLabel={amountLabel ? `Record ${amountLabel} to ${label(recipient)}` : 'Record payment'} onPress={confirm} disabled={disabled || group.archived || !isPersonalPayment(group, selfId, sender, recipient)} kind={canPay ? 'secondary' : 'primary'} icon="check" />}
     <UPIAppChooser apps={chooser?.apps ?? null} disabled={busy || saving} onChoose={app => void pay(app)} onDismiss={() => { if (!busy && !saving) setChooser(null); }} />
   </View>;

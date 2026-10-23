@@ -1,13 +1,13 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
-import { Checkbox, RadioButton, Text } from 'react-native-paper';
+import { Checkbox, Text } from 'react-native-paper';
 import * as Crypto from 'expo-crypto';
 import { formatMoney, integer, rupeesToPaise, validateExpense } from './accounting';
 import type { Amounts, Split } from './accounting';
 import type { Expense, Group } from './types';
-import { Button, DateField, Icon, useUI } from './ui';
+import { Button, DateField, ErrorText, Icon, useUI } from './ui';
 import type { Palette } from './ui';
-import { AmountField, TextField } from './FormFields';
+import { AmountField, RadioChoice, TextField } from './FormFields';
 
 export type ExpenseFormDraft = {
   schemaVersion: 1; groupId: string; expenseId: string | null; id: string; expenseVersion: number;
@@ -69,7 +69,7 @@ function startingDraft(group: Group, expense: Expense | undefined, selfId: strin
 function Choice({ title, selected, disabled, onPress, role = 'checkbox' }: { title: string; selected: boolean; disabled: boolean; onPress: () => void; role?: 'checkbox' | 'radio' }) {
   const { ui } = useUI();
   return role === 'radio'
-    ? <RadioButton.Item label={title} value={title} status={selected ? 'checked' : 'unchecked'} disabled={disabled} onPress={onPress} accessibilityLabel={title} labelStyle={ui.body} mode="android" />
+    ? <RadioChoice label={title} value={title} selected={selected} disabled={disabled} onPress={onPress} />
     : <Checkbox.Item label={title} status={selected ? 'checked' : 'unchecked'} disabled={disabled} onPress={onPress} accessibilityLabel={title} labelStyle={ui.body} mode="android" />;
 }
 function Summary({ title, value, open, disabled, onPress }: { title: string; value: string; open: boolean; disabled: boolean; onPress: () => void }) {
@@ -220,7 +220,7 @@ export default function ExpenseForm({ group, expense, selfId, busy, onSave, init
         <TextField autoCorrect={false} label="Notes (optional)" value={draft.notes} onChangeText={notes => change({ notes })} multiline style={styles.notes} maxLength={2000} editable={!disabled} />
       </View>}
     </View>
-    {!!error && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={ui.error}>{error}</Text>}
+    {!!error && <ErrorText live>{error}</ErrorText>}
     <Button title={saving ? 'Saving…' : 'Save bill'} onPress={() => void save()} disabled={disabled || group.archived} kind="primary" icon="check" />
   </View>;
 }
