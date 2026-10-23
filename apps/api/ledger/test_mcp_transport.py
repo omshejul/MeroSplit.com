@@ -20,6 +20,7 @@ from django.test import Client as DjangoClient
 from django.utils import timezone
 from mcp import Client
 from mcp.client.streamable_http import streamable_http_client
+from mcp.shared.exceptions import MCPError
 
 from .mcp_models import McpOAuthClient, McpOAuthGrant
 from .mcp_oauth import MCP_SCOPE, OAuthError
@@ -238,6 +239,68 @@ def test_separate_worker_instances_reconnect_permissions_revocation_and_command_
     assert CommandReceipt.objects.count() == Change.objects.count() == 2
     assert Expense.objects.count() == 2 and ExpenseNotice.objects.count() == 1
 
+
+
+def test_one_initialized_sdk_client_alternates_instances_without_reinitializing(ledger, bearer, record_property):
+    # Independent app lifespans in ONE process, not an OS-worker/load-balancer test.
+    class AlternatingTransport(httpx2.AsyncBaseTransport):
+        def __init__(self, first, second):
+            self.transports = [httpx2.ASGITransport(first), httpx2.ASGITransport(second)]
+            self.next_instance, self.trace = 1, []
+
+        async def handle_async_request(self, request):
+            message = json.loads(await request.aread())
+            method = message['method']
+            if method in {'initialize', 'notifications/initialized'}:
+                assert not any(row['method'] == 'tools/call' for row in self.trace)
+                instance = 0
+            else:
+                instance, self.next_instance = self.next_instance, 1 - self.next_instance
+            assert 'mcp-session-id' not in request.headers
+            response = await self.transports[instance].handle_async_request(request)
+            assert 'mcp-session-id' not in response.headers
+            self.trace.append({'instance': 'AB'[instance], 'method': method, 'status': response.status_code})
+            return response
+
+        async def aclose(self):
+            for transport in self.transports:
+                await transport.aclose()
+
+    async def check():
+        first, second = MeroSplitApplication(), MeroSplitApplication()
+        async with running_app(first), running_app(second):
+            transport = AlternatingTransport(first, second)
+            async with httpx2.AsyncClient(transport=transport, base_url=ORIGIN,
+                    headers={'Authorization': f'Bearer {bearer[0]}'}) as http:
+                async with sdk(http, mode='legacy') as client:  # ONE client; cache=None in sdk().
+                    await client.list_tools()  # B has never received initialize.
+                    group = await client.call_tool('get_group', {'group_id': str(ledger[3].id)})
+                    assert not group.is_error and group.structured_content['id'] == str(ledger[3].id)
+                    args = {'group_id': str(ledger[3].id), 'payload': {
+                        'id': str(uuid4()), 'command_id': str(uuid4()), 'description': 'Alternating synthetic bill',
+                        'total': '101', 'paid': {str(ledger[4].id): '101'},
+                        'split': {'mode': 'equal', 'values': {str(ledger[4].id): '1', str(ledger[5].id): '1'}},
+                        'date': '2026-10-18'}}
+                    written = await client.call_tool('save_expense', args)
+                    replayed = await client.call_tool('save_expense', args)
+                    assert not written.is_error and not replayed.is_error
+                    assert written.structured_content == replayed.structured_content
+                    assert written.structured_content['version'] == 8
+                    await sync_to_async(database_call, thread_sensitive=False)(
+                        lambda: McpOAuthGrant.objects.filter(pk=bearer[1].pk).update(revoked_at=timezone.now()))
+                    for _ in range(2):
+                        with pytest.raises(MCPError):
+                            await client.call_tool('get_account_context', {})
+                        assert transport.trace[-1]['status'] == 401
+            assert [row['instance'] for row in transport.trace if row['method'] == 'initialize'] == ['A']
+            requests = [row for row in transport.trace if row['method'] not in {'initialize', 'notifications/initialized'}]
+            assert [row['instance'] for row in requests] == ['BA'[i % 2] for i in range(len(requests))]
+            assert [row['status'] for row in requests[-2:]] == [401, 401]
+            record_property('same_client_non_affinity', json.dumps({'processes': 1, 'instances': 2,
+                'sdk_clients': 1, 'cache': None, 'trace': transport.trace}))
+    asyncio.run(check())
+    assert CommandReceipt.objects.count() == Change.objects.count() == 1
+    assert Expense.objects.count() == 2 and ExpenseNotice.objects.count() == 1
 
 def test_sdk_reads_do_not_ack_or_mutate_preference_and_malformed_tools_cannot_change_actor(ledger, bearer):
     actor, _, _, group, _, _, _, bill, _ = ledger
