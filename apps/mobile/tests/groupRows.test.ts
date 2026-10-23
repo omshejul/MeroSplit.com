@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import ts from 'typescript';
 import { expenseBalanceChange, formatMoney } from '../src/accounting.ts';
 import { paymentPresentation } from '../src/activityPresentation.ts';
+import { personalSettlements, personalTransfers } from '../src/personalBalances.ts';
 
 type Element = { type: unknown; props: Record<string, any>; children: unknown[] };
 const React = { createElement: (type: unknown, props: Record<string, any> | null, ...children: unknown[]): Element => ({ type, props: props ?? {}, children }) };
@@ -11,8 +12,8 @@ const source = ts.createSourceFile('GroupScreen.tsx', readFileSync(new URL('../s
 function production(name: string) {
   const helpers = source.statements.filter(node => ts.isVariableStatement(node) && node.declarationList.declarations.some(d => ['billImpact', 'participantName', 'displayDate', 's'].includes(d.name.getText(source)))).map(node => node.getText(source)).join('\n');
   const node = source.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === name); assert.ok(node);
-  const code = ts.transpile(`${helpers}\n${node.getText(source)}\nreturn ${name};`, { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React });
-  return new Function('env', `with(env) { ${code} }`)({ React, expenseBalanceChange, formatMoney, paymentPresentation, Text: 'Text', Pressable: 'Pressable', Icon: 'Icon', TransactionRow: 'TransactionRow', VisibleExpense: 'VisibleExpense', StyleSheet: { create: (styles: unknown) => styles }, radii: { surface: 16 }, balanceColor: (amount: string) => BigInt(amount) < 0n ? 'negative' : 'positive', useUI: () => ({ ui: {}, palette: {} }) });
+  const code = ts.transpile(`${helpers}\n${node.getText(source).replace(/^export default /, '')}\nreturn ${name};`, { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React });
+  return new Function('env', `with(env) { ${code} }`)({ React, expenseBalanceChange, formatMoney, paymentPresentation, personalSettlements, personalTransfers, useState: (initial: unknown) => [initial, () => {}], Text: 'Text', View: 'View', Pressable: 'Pressable', Icon: 'Icon', TransactionRow: 'TransactionRow', VisibleExpense: 'VisibleExpense', HistoryPages: 'HistoryPages', BillSearch: 'BillSearch', PaymentRow: 'PaymentRow', BillTimelineRow: 'BillTimelineRow', Disclosure: 'Disclosure', StyleSheet: { create: (styles: unknown) => styles }, radii: { surface: 16 }, balanceColor: (amount: string) => BigInt(amount) < 0n ? 'negative' : 'positive', useUI: () => ({ ui: {}, palette: {} }) });
 }
 function elements(tree: unknown): Element[] {
   if (Array.isArray(tree)) return tree.flatMap(elements);
@@ -91,4 +92,32 @@ test('long names and exact large payment amounts remain in the same unconstraine
   const styles = Object.assign({}, ...sentence.props.style.filter(Boolean));
   assert.equal(styles.flex, 1); assert.equal(styles.minWidth, 0); assert.equal(styles.fontWeight, '400');
   assert.equal(sentence.props.allowFontScaling, undefined);
+});
+
+test('timeline and fallback rows share contiguous list parents, preserve order and leave pagination outside', () => {
+  const render = production('GroupScreen');
+  const bill = { id: 'bill', description: 'Lunch', date: '2026-10-18' };
+  const first = { id: 'first', sender: 'self', recipient: 'other', amount: '334' };
+  const second = { ...first, id: 'second', reversed: true };
+  const value = { ...group, expenses: [bill], settlements: [first, second], transfers: [], transactions: [{ kind: 'bill', bill }, { kind: 'payment', payment: first }, { kind: 'payment', payment: second }] };
+  const props = { group: value, accepted: value, selfId: 'self', pending: [], busy: true, onPayment() {}, onExpense() {} };
+  const children = (node: Element) => node.children.flat(Infinity).filter((child): child is Element => !!child && typeof child === 'object' && 'type' in child);
+  const rowParent = (tree: Element) => elements(tree).find(node => node.type === 'View' && children(node).some(child => ['PaymentRow', 'BillTimelineRow'].includes(String(child.type))));
+  const tree = render(props), list = rowParent(tree)!;
+  assert.ok(list); assert.equal(list.props.style, undefined);
+  assert.deepEqual(children(list).map(node => node.props.expense?.id ?? node.props.payment.id), ['bill', 'first', 'second']);
+  assert.ok(children(list).every(node => node.props.busy === true));
+  assert.ok(children(list).filter(node => node.type === 'PaymentRow').every(node => node.props.accepted === value && node.props.onPayment === props.onPayment));
+  assert.ok(!elements(list).some(node => node.type === 'HistoryPages'));
+  const fallback = { ...value, transactions: undefined };
+  const history = render({ ...props, group: fallback, accepted: fallback });
+  const disclosure = elements(history).find(node => node.type === 'Disclosure' && node.props.title === 'Payment records')!;
+  const payments = rowParent(disclosure)!;
+  assert.deepEqual(children(payments).map(node => node.props.payment.id), ['first', 'second']);
+  assert.equal(payments.props.style, undefined);
+  assert.ok(children(disclosure).some(node => node.type === 'HistoryPages'));
+  const empty = render({ ...props, group: { ...fallback, expenses: [], settlements: [], history: { settlements: { next_cursor: 'older' } } } });
+  assert.equal(rowParent(empty), undefined);
+  const olderPayments = elements(empty).find(node => node.type === 'Disclosure' && node.props.title === 'Payment records')!;
+  assert.deepEqual(children(olderPayments).map(node => node.type), ['HistoryPages']);
 });

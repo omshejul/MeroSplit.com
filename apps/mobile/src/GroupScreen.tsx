@@ -150,6 +150,7 @@ export default function GroupScreen({ noticeVisibility, group, accepted, pending
     && !group.settlements.some(settlement => settlement.reversed && (settlement.id === attempt.settlement_id || settlement.attempt_id === attempt.id)));
   const transfers = personalTransfers(group, selfId);
   const rows: GroupTransaction[] = group.transactions ?? (group.read_mode === 'summary' ? expenses : [...expenses].reverse()).map(bill => ({ kind: 'bill', date: bill.date, bill }));
+  const payments = personalSettlements(group, selfId);
   return <View style={s.content}>
     {group.archived && <Text style={ui.notice}>Archived. Reopen in settings to make changes.{receipts.length > 0 ? ' You can still confirm money received.' : ''}</Text>}
     {pending.length > 0 && <View style={s.section}>
@@ -169,11 +170,11 @@ export default function GroupScreen({ noticeVisibility, group, accepted, pending
         <Icon name="bill" size={32} />
         <Text style={ui.section}>{group.history?.[historyResource]?.query || (group.read_mode !== 'summary' && search.trim()) ? 'No matching bills' : 'No bills or payments yet'}</Text>
       </View>}
-      {rows.map(row => row.kind === 'payment'
+      {rows.length > 0 && <View>{rows.map(row => row.kind === 'payment'
         ? <PaymentRow key={`payment:${row.payment.id}`} payment={row.payment} accepted={accepted} group={group} selfId={selfId} busy={busy} onPayment={onPayment} />
-        : <BillTimelineRow key={`bill:${row.bill.id}`} expense={row.bill} group={group} selfId={selfId} busy={busy} onExpense={onExpense} noticeVisibility={group === accepted ? noticeVisibility : undefined} />)}
-      {group.transactions === undefined && (!!personalSettlements(group, selfId).length || !!group.history?.settlements?.next_cursor || !!group.history?.settlements?.previous?.length) && <Disclosure title="Payment records">
-        {personalSettlements(group, selfId).map(payment => <PaymentRow key={`payment:${payment.id}`} payment={payment} accepted={accepted} group={group} selfId={selfId} busy={busy} onPayment={onPayment} />)}
+        : <BillTimelineRow key={`bill:${row.bill.id}`} expense={row.bill} group={group} selfId={selfId} busy={busy} onExpense={onExpense} noticeVisibility={group === accepted ? noticeVisibility : undefined} />)}</View>}
+      {group.transactions === undefined && (!!payments.length || !!group.history?.settlements?.next_cursor || !!group.history?.settlements?.previous?.length) && <Disclosure title="Payment records">
+        {payments.length > 0 && <View>{payments.map(payment => <PaymentRow key={`payment:${payment.id}`} payment={payment} accepted={accepted} group={group} selfId={selfId} busy={busy} onPayment={onPayment} />)}</View>}
         <HistoryPages history={group.history?.settlements} resource="settlements" busy={busy} onPage={onHistoryPage} />
       </Disclosure>}
       <HistoryPages history={group.history?.[historyResource]} resource={historyResource} busy={busy} onPage={onHistoryPage} />
@@ -233,7 +234,7 @@ const s = StyleSheet.create({
   section: { gap: 10, paddingVertical: 4 },
   receipt: { gap: 12, padding: 12, borderRadius: radii.surface },
   trailing: { flexShrink: 0, gap: 4, alignItems: 'flex-end' },
-  paymentRow: { minHeight: 44, paddingVertical: 8, alignItems: 'flex-start' },
+  paymentRow: { minHeight: 44, paddingVertical: 8 },
   paymentSentence: { flex: 1, minWidth: 0, fontWeight: '400' },
   empty: { gap: 10, alignItems: 'center', paddingVertical: 20 },
   pressed: { opacity: 0.65 },
