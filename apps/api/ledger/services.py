@@ -381,6 +381,11 @@ def record_settlement(actor, group_id, payload):
     if previous:
         return previous
     writable(group)
+    guarded = "expected_group_version" in payload
+    if guarded and (payload["expected_group_version"] is None or group.version != payload["expected_group_version"]):
+        raise HttpError(409, "This balance changed; review it before recording payment")
+    if guarded and not payload.get("attempt_id"):
+        raise AccountingError("Choose the exact prepared payment attempt")
     members = people(group)
     if (
         payload["sender"] not in members
@@ -400,6 +405,11 @@ def record_settlement(actor, group_id, payload):
             raise AccountingError("Payment attempt does not match this actual transfer")
         if hasattr(attempt, "settlement"):
             raise HttpError(409, "This payment already has a bookkeeping entry")
+        if guarded:
+            profile = PaymentProfile.objects.filter(user_id=attempt.recipient.user_id).first()
+            if (attempt.state != "prepared" or amount != attempt.amount or attempt.sender.user_id != actor.pk
+                or not profile or profile.version != attempt.payee_version or profile.vpa != attempt.payee):
+                raise HttpError(409, "Payment details changed; review them before recording payment")
         attempt.state = "recorded"
         attempt.save(update_fields=["state"])
     elif group.attempts.filter(

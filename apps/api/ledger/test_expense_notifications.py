@@ -557,8 +557,12 @@ def test_seeded_due_queue_feed_and_claim_use_bounded_indexed_queries(client, gro
     bills = [Expense(id=uid(), group_id=group[0], description="Synthetic queue fixture", total=100,
         paid={group[1][0]: "100"}, shares={group[1][1]: "100"}, split={"mode": "exact", "values": {group[1][1]: "100"}}, date="2026-01-01") for _ in range(2000)]
     Expense.objects.bulk_create(bills)
+    # Unread push-only notices coexist with prospective email opt-in. If every
+    # row is eligible, the unread index is equally selective for this query.
     ExpenseNotice.objects.bulk_create([ExpenseNotice(expense=bill, recipient=recipient.actor, expense_version=1, created_at=clock[0],
-        push_due_at=clock[0] + timedelta(seconds=30), email_eligible=True) for bill in bills])
+        push_due_at=clock[0] + timedelta(seconds=30), email_eligible=i % 10 == 0) for i, bill in enumerate(bills)])
+    assert ExpenseNotice.objects.filter(email_eligible=True).count() == 201
+    assert ExpenseNotice.objects.filter(email_eligible=False).count() == 1800
     clock[0] += timedelta(hours=24)
     with connection.cursor() as cursor:
         cursor.execute("ANALYZE ledger_expensenotice, ledger_notificationpreference, ledger_expensedigest")

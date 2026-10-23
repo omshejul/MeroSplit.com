@@ -58,6 +58,7 @@ class SettlementIn(Command):
     amount: StrictStr
     date: Date | None = None
     attempt_id: UUID | None = None
+    expected_group_version: Annotated[StrictInt, Field(ge=1)] | None = None
 
 
 class OpeningIn(Command):

@@ -26,7 +26,14 @@ from .collaboration import (
 )
 from .email_invites import send_person_invite, update_contact
 from .expense_notifications import foreground, mark_seen, notice_feed, preferences, update_preferences
-from .history_reads import expense_detail, group_summary, history_page
+from .history_reads import (
+    account_activity,
+    expense_detail,
+    group_summary,
+    history_page,
+    payment_attempt_detail,
+    settlement_detail,
+)
 from .media import avatar_for, download_url, list_attachments, remove_attachment, remove_avatar, upload_file
 from .models import Group
 from .otp import client_network
@@ -161,6 +168,11 @@ def splitwise_import(request, body: SplitwiseImportIn):
     return import_splitwise(request.auth, body.model_dump(mode="json"))
 
 
+@api.get("/activity")
+def activity_get(request, limit: int = 50, cursor: str | None = None):
+    return account_activity(request.auth, limit=limit, cursor=cursor)
+
+
 @api.get("/groups/{group_id}")
 def group_get(request, group_id: UUID):
     with transaction.atomic():
@@ -217,6 +229,11 @@ def expense_restore(request, group_id: UUID, expense_id: UUID, body: Revision):
 @api.post("/groups/{group_id}/settlements", response=WriteResult)
 def settlement_create(request, group_id: UUID, body: SettlementIn):
     return record_settlement(request.auth, group_id, body.model_dump(mode="json", exclude_unset=True))
+
+
+@api.get("/groups/{group_id}/settlements/{settlement_id}")
+def settlement_get(request, group_id: UUID, settlement_id: UUID, version: int | None = None):
+    return settlement_detail(request.auth, group_id, settlement_id, version=version)
 
 
 @api.post("/groups/{group_id}/settlements/{settlement_id}/reverse", response=WriteResult)
@@ -341,6 +358,11 @@ def opening_acknowledge(request, group_id: UUID, opening_id: UUID, body: Command
 @api.post("/groups/{group_id}/payment-attempts", response=WriteResult)
 def payment_prepare(request, group_id: UUID, body: AttemptIn):
     return prepare_payment(request.auth, group_id, body.model_dump(mode="json"))
+
+
+@api.get("/groups/{group_id}/payment-attempts/{attempt_id}")
+def payment_attempt_get(request, group_id: UUID, attempt_id: UUID, version: int | None = None):
+    return payment_attempt_detail(request.auth, group_id, attempt_id, version=version)
 
 
 @api.get("/groups/{group_id}/payment-attempts/{attempt_id}/launch")

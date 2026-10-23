@@ -3,6 +3,8 @@ import uuid
 from django.conf import settings
 from django.db import models
 from django.db.models import Q
+from django.db.models.fields.json import KeyTextTransform
+from django.db.models.functions import Coalesce
 
 
 class Group(models.Model):
@@ -107,7 +109,9 @@ class Settlement(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        indexes = [models.Index(fields=["group", "created_at", "id"], name="payment_history_keyset")]
+        indexes = [models.Index(fields=["group", "created_at", "id"], name="payment_history_keyset"),
+                   models.Index(fields=["group", "date", "id"], name="payment_transaction_date", condition=Q(date__isnull=False)),
+                   models.Index(fields=["group", "id"], name="payment_unknown_date", condition=Q(date__isnull=True))]
         constraints = [
             models.CheckConstraint(
                 condition=Q(amount__gt=0, amount__lte=1_000_000_000), name="settlement_amount_bound"
@@ -179,6 +183,12 @@ class Change(models.Model):
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=["group", "sequence"], name="group_change_sequence")]
+        indexes = [models.Index(fields=["-created_at", "-id"], name="human_activity_order", condition=Q(kind__in=[
+            "expense_saved", "expense_deleted", "expense_restored", "manual_settlement", "payment_confirm",
+            "settlement_reversed", "participant_added", "participant_claim_approved", "participant_removed",
+            "group_created", "group_archived", "group_unarchived",
+        ])), models.Index(models.F("group"), Coalesce(KeyTextTransform("settlement_id", "data"), KeyTextTransform("id", "data")), models.F("id"),
+            name="payment_activity_identity", condition=Q(kind__in=["manual_settlement", "payment_confirm"]))]
 
 
 class CommandReceipt(models.Model):

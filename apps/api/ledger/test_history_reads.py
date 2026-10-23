@@ -16,7 +16,7 @@ from django.utils import timezone
 from ninja.errors import HttpError
 
 from .collaboration import remove_participant
-from .history_reads import CURSOR_SALT, group_summary, history_page
+from .history_reads import CURSOR_SALT, account_activity, group_summary, history_page
 from .models import (
     Change,
     Expense,
@@ -82,7 +82,8 @@ def test_summary_finance_is_complete_while_history_and_actionable_state_are_boun
         assert summary[key] == complete[key]
     for key in ("expenses", "settlements", "activity", "payment_attempts"):
         assert len(summary[key]) == 50
-    assert set(summary["history"]) == {"bills", "activity", "settlements", "attempts"}
+    assert set(summary["history"]) == {"bills", "activity", "settlements", "attempts", "transactions"}
+    assert len(summary["transactions"]) == 50
     assert all(value["next_cursor"] for value in summary["history"].values())
     assert len(summary["invites"]) == 1
     assert summary["invites"][0]["id"] == str(Invite.objects.order_by("-expires_at").first().id)
@@ -246,8 +247,48 @@ def test_ten_thousand_record_summary_has_bounded_bytes_queries_and_indexed_pages
         return plan.get("Rows Removed by Filter", 0) + sum(discarded(child) for child in plan.get("Plans", []))
 
     assert discarded(late_plan) <= 100, late_plan
+    # The mixed timeline bounds each canonical branch before globally ordering
+    # candidates. Deep dated and unknown-date pages both reach their own index.
+    transaction_plans = {}
+    transaction_cursor = signing.loads(summary["history"]["transactions"]["next_cursor"], salt=CURSOR_SALT)
+    for name, query, index, position in [
+        ("dated", current.settlements.filter(date__isnull=False).order_by("-date", "-id"), "payment_transaction_date", 6500),
+        ("unknown", current.settlements.filter(date__isnull=True).order_by("-id"), "payment_unknown_date", 3200),
+    ]:
+        payment = query[position]
+        transaction_cursor["after"] = [int(payment.date is not None), payment.date.isoformat() if payment.date else None, 1, str(payment.id)]
+        with CaptureQueriesContext(connection) as transaction_queries:
+            result = history_page(client.actor, group_id, "transactions", cursor=signing.dumps(transaction_cursor, salt=CURSOR_SALT))
+        assert len(result["items"]) == 50 and len(json.dumps(result).encode()) < 40_000
+        assert len(transaction_queries) <= 9
+        if name == "unknown":
+            assert all(item["kind"] == "payment" and item["date"] is None for item in result["items"])
+        sql = next(item["sql"] for item in transaction_queries if '"ledger_settlement"' in item["sql"] and "LIMIT 51" in item["sql"])
+        with connection.cursor() as cursor:
+            cursor.execute("EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) " + sql)
+            plan = cursor.fetchone()[0][0]
+        assert index in json.dumps(plan), plan
+        assert discarded(plan["Plan"]) <= 100, plan
+        transaction_plans[name] = plan["Execution Time"]
+    with CaptureQueriesContext(connection) as activity_queries:
+        activity = account_activity(client.actor)
+    assert len(activity["items"]) == 50 and len(json.dumps(activity).encode()) < 25_000
+    assert len(activity_queries) <= 9
+    activity_position = current.changes.order_by("-created_at", "-id")[9900]
+    activity_cursor = signing.loads(activity["next_cursor"], salt=CURSOR_SALT)
+    activity_cursor["after"] = [activity_position.created_at.isoformat(), activity_position.id]
+    with CaptureQueriesContext(connection) as activity_queries:
+        late_activity = account_activity(client.actor, cursor=signing.dumps(activity_cursor, salt=CURSOR_SALT))
+    assert len(late_activity["items"]) == 50
+    sql = next(item["sql"] for item in activity_queries if '"ledger_change"' in item["sql"] and "LIMIT 51" in item["sql"])
+    with connection.cursor() as cursor:
+        cursor.execute("EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) " + sql)
+        activity_plan = cursor.fetchone()[0][0]
+    assert "human_activity_order" in json.dumps(activity_plan), activity_plan
+    assert discarded(activity_plan["Plan"]) <= 100, activity_plan
     with capsys.disabled():
         print(f"history benchmark: summary_bytes={len(encoded)} full_bytes={complete_bytes} queries={len(queries)} seconds={duration:.3f} page_explain_ms={plans} late_page_discarded={discarded(late_plan)}")
+        print(f"transaction/activity benchmark: transaction_ms={transaction_plans} activity_bytes={len(json.dumps(activity).encode())} activity_queries={len(activity_queries)} deep_activity_ms={activity_plan['Execution Time']} discarded={discarded(activity_plan['Plan'])}")
 
 
 @pytest.mark.django_db(transaction=True)
