@@ -33,7 +33,7 @@ test('production UPI callbacks preserve the installed React Native Linking recei
   assert.equal(calls.query, 0, 'detached methods fail before querying the OS');
   const quote = { id: 'b7cc727a-992b-4d75-9f7b-a5accdb6c6ae', vpa: 'synthetic@invalid', amount: '334', currency: 'INR', recipient: 'Synthetic payee', note: 'Test only', bank_verified: false as const, direct_launch_supported: true, expires_at: '2099-01-01T00:00:00Z', group_version: 1 };
   for (const value of callbacks) {
-    const callback = Function('Linking', `return (${value.code});`)(Linking);
+    const callback = Function('Linking', 'Platform', 'openAndroidUPIChooser', `return (${value.code});`)(Linking, { OS: 'ios' }, () => assert.fail('iOS uses bound Linking'));
     if (value.name === 'availableUPIApps') assert.ok((await availableUPIApps('ios', callback)).some(app => app.id === 'google-pay'));
     else await openUPIPayment(quote, 'google-pay', { amount: quote.amount, vpa: quote.vpa, name: quote.recipient }, callback);
   }

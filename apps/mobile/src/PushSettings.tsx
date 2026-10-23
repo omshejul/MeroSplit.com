@@ -6,20 +6,22 @@ import * as SecureStore from 'expo-secure-store';
 import Constants from 'expo-constants';
 import * as Notifications from 'expo-notifications';
 import { accountOwner } from './api';
-import { consentToPush, emptyPushPreferences, notificationForAccount, notificationTarget, pushPermission, refreshPushDevice, unregisterPushDevice } from './notifications';
+import { consentToPush, dismissReadPushes, emptyPushPreferences, notificationForAccount, notificationTarget, pushPermission, refreshPushDevice, unregisterPushDevice } from './notifications';
 import type { PushPermission, PushPreferences, PushTarget } from './notifications';
 import type { Session } from './types';
 import { Button, useUI } from './ui';
 
 const CHOICE_KEY = 'splitdumb.push', INSTALL_KEY = 'splitdumb.push.installation';
-type Callbacks = { onOpen: (target: PushTarget | null) => Promise<void>; onForeground: () => Promise<void> };
-Notifications.setNotificationHandler({ handleNotification: async () => ({ shouldShowBanner: false, shouldShowList: false, shouldPlaySound: false, shouldSetBadge: false }) });
+type Callbacks = { onOpen: (target: PushTarget | null) => Promise<void>; onForeground: () => Promise<void>; shouldSuppress?: (data: unknown) => boolean };
+let suppressForeground = (_data: unknown) => true;
+Notifications.setNotificationHandler({ handleNotification: async notification => { const show = !suppressForeground(notification.request.content.data); return { shouldShowBanner: show, shouldShowList: show, shouldPlaySound: show, shouldSetBadge: false }; } });
 
 export function usePushNotifications(session: Session | null, callbacks: Callbacks) {
   const [preferences, setPreferences] = useState<PushPreferences | null>(null), [permission, setPermission] = useState<PushPermission>('ask');
   const [working, setWorking] = useState(false), [verified, setVerified] = useState(false), [error, setError] = useState('');
   const saved = useRef<PushPreferences | null>(null), activeSession = useRef(session), handlers = useRef(callbacks), mounted = useRef(true);
   activeSession.current = session; handlers.current = callbacks;
+  suppressForeground = data => !notificationForAccount(activeSession.current, data) || !!handlers.current.shouldSuppress?.(data);
   const serial = useRef<Promise<unknown>>(Promise.resolve()), running = useRef(false), seen = useRef(new Set<string>()), previousOwner = useRef<string | null>(null);
   const owner = session ? accountOwner(session) : null;
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
@@ -70,6 +72,15 @@ export function usePushNotifications(session: Session | null, callbacks: Callbac
     if (mounted.current && activeSession.current?.token === current.token && accountOwner(activeSession.current) === accountOwner(current)) setVerified(true);
   }
   const refresh = () => run(() => refreshNow());
+  async function clearReadPrompts() {
+    const current = activeSession.current;
+    if (!current || AppState.currentState !== 'active') return;
+    const shown = await Notifications.getPresentedNotificationsAsync();
+    if (activeSession.current?.token !== current.token || AppState.currentState !== 'active') return;
+    await dismissReadPushes(current, shown.map(value => ({ identifier: value.request.identifier, data: value.request.content.data })), async id => {
+      if (activeSession.current?.token === current.token && AppState.currentState === 'active') await Notifications.dismissNotificationAsync(id);
+    });
+  }
   const enable = () => { const current = activeSession.current; return run(async () => {
     if (!current || !activeSession.current || accountOwner(activeSession.current) !== accountOwner(current)) throw new Error('Sign in to enable notifications.');
     await consentToPush(current, await state(), save); await channel();
@@ -104,10 +115,11 @@ export function usePushNotifications(session: Session | null, callbacks: Callbac
     const changed = previousOwner.current !== null && previousOwner.current !== owner; previousOwner.current = owner;
     if (changed) { seen.current.clear(); Notifications.clearLastNotificationResponse(); void Notifications.dismissAllNotificationsAsync().catch(() => {}); }
     void refresh().catch(() => {});
+    void clearReadPrompts().catch(() => {});
     if (session) void open(Notifications.getLastNotificationResponse()).catch(() => {});
   }, [owner, session?.token]);
   useEffect(() => {
-    const foreground = AppState.addEventListener('change', value => { if (value === 'active' && !running.current) void refresh().catch(() => {}); });
+    const foreground = AppState.addEventListener('change', value => { if (value === 'active') { if (!running.current) void refresh().catch(() => {}); void clearReadPrompts().catch(() => {}); } });
     const rotated = Notifications.addPushTokenListener(token => { if (!running.current) void run(() => refreshNow(token)).catch(() => {}); });
     const received = Notifications.addNotificationReceivedListener(notification => { if (notificationForAccount(activeSession.current, notification.request.content.data)) void handlers.current.onForeground().catch(() => {}); });
     const tapped = Notifications.addNotificationResponseReceivedListener(response => { void open(response).catch(() => {}); });
@@ -122,7 +134,7 @@ export default function PushSettings({ push, busy, onBusyChange }: { push: PushC
   const disabled = busy || state.working || !state.ready || state.permission === 'denied';
   async function act(action: () => Promise<void>) { if (busy || state.working) return; onBusyChange(true); try { await action(); } catch { /* The hook keeps the actionable error visible. */ } finally { onBusyChange(false); } }
   return <View style={{ gap: 8 }}>
-    <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: 48, gap: 12 }}><Text style={[ui.body, { flex: 1 }]}>Notifications for new bills</Text><Switch accessibilityLabel="Notifications for new bills" value={state.enabled} disabled={disabled} trackColor={{ false: palette.outline, true: disabled ? palette.outline : '#007AFF' }} thumbColor="#FFFFFF" ios_backgroundColor={palette.outline} onValueChange={value => void act(value ? push.enable : push.disable)} /></View>
+    <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: 48, gap: 12 }}><Text style={[ui.body, { flex: 1 }]}>Push on this device</Text><Switch accessibilityLabel="Push on this device" value={state.enabled} disabled={disabled} trackColor={{ false: palette.outline, true: disabled ? palette.outline : '#007AFF' }} thumbColor="#FFFFFF" ios_backgroundColor={palette.outline} onValueChange={value => void act(value ? push.enable : push.disable)} /></View>
     {(state.working || state.permission === 'denied' || state.pendingOff) && <Text style={ui.caption}>{state.working ? 'Updating…' : state.permission === 'denied' ? 'Blocked in phone settings.' : 'Waiting to turn off. Retry when connected.'}</Text>}
     {state.permission === 'denied' && <Button title="Open phone settings" kind="text" disabled={busy || state.working} onPress={() => void Linking.openSettings().catch(() => {})} />}
     {!!state.error && <><Text accessibilityRole="alert" style={ui.error}>{state.error}</Text><Button title="Retry notifications" disabled={busy || state.working} onPress={() => void act(push.refresh)} /></>}

@@ -58,7 +58,7 @@ test('Native auth uses allauth response and an account/backend ownership key', a
       return Response.json({ meta: { session_token: 'pre-auth' }, data: { challenge_id: 'synthetic-challenge', expires_in: 180, retry_after: 60 } });
     }
     assert.equal(String(url), 'https://example.invalid/_allauth/app/v1/auth/code/confirm');
-    assert.deepEqual(JSON.parse(String(options?.body)), { challenge_id: 'synthetic-challenge', code: '0123' });
+    assert.deepEqual(JSON.parse(String(options?.body)), { challenge_id: 'synthetic-challenge', code: '0123', email_reminders_disclosed: true });
     assert.equal((options?.headers as Record<string, string>)['X-Session-Token'], 'pre-auth');
     return Response.json({ meta: { session_token: 'test-session', is_authenticated: true }, data: { user: { id: 17, email: 'person@example.invalid' } } });
   };

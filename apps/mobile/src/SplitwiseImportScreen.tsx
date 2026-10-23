@@ -75,14 +75,13 @@ export default function SplitwiseImportScreen({ session, busy, onBusyChange, onI
   return <View style={styles.form}>
     {checking ? <Text style={ui.caption}>Checking for a saved import…</Text> : pending ? <>
       <Text style={ui.section}>{pending.name}</Text>
-      <Text style={[ui.notice, ui.warning]}>Import not confirmed. Retry safely with the same file and choices.</Text>
+      <Text style={[ui.notice, ui.warning]}>Import not confirmed. Your file and choices are saved.</Text>
       <Button title={working ? 'Finishing import…' : 'Retry saved import'} kind="primary" disabled={disabled} onPress={() => void run(finishImport)} />
       <Button title="Close for now" kind="text" disabled={disabled} onPress={onCancel} />
     </> : <>
-      <Button title={preview ? 'Choose another CSV' : 'Choose CSV file'} disabled={disabled} onPress={() => void run(pickFile)} />
+      {!preview && <Button title="Choose CSV file" kind="primary" disabled={disabled} onPress={() => void run(pickFile)} />}
       {preview && <>
-        <Text style={ui.section}>{preview.expense_count} bills · {preview.payment_count} payments</Text>
-        <Text style={ui.caption}>{preview.members.length} people · {preview.currency}</Text>
+        <Text style={ui.caption}>{preview.expense_count} bills · {preview.payment_count} payments · {preview.members.length} people · {preview.currency}</Text>
         {preview.duplicate_group ? <>
           <Text style={ui.notice}>This file was already imported as {preview.duplicate_group.name}.</Text>
           <Button title="Open existing group" kind="primary" disabled={disabled} onPress={() => void run(openExisting)} />
@@ -100,10 +99,10 @@ export default function SplitwiseImportScreen({ session, busy, onBusyChange, onI
             {preview.members.map((member, index) => <RadioButton.Item key={index} label={member} value={String(index)} status={payers[String(row.row)] === index ? 'checked' : 'unchecked'}
               onPress={() => setPayers(values => ({ ...values, [String(row.row)]: index }))} disabled={disabled} mode="android" labelStyle={ui.body} accessibilityLabel={`${member} paid CSV row ${row.row}`} />)}
           </View>)}
-          <Text style={ui.caption}>Check the balances. Original payer and split details may be incomplete; no money is sent.</Text>
           {preview.warnings.map((warning, index) => <Text key={index} style={[ui.notice, ui.warning]}>{warning}</Text>)}
           <Button title={working ? 'Importing…' : 'Import'} kind="primary" disabled={disabled || !name.trim() || selfIndex === null || preview.unresolved.some(row => payers[String(row.row)] === undefined)} onPress={() => void run(finishImport)} />
         </>}
+        <Button title="Choose another CSV" kind="text" disabled={disabled} onPress={() => void run(pickFile)} />
       </>}
     </>}
     {!!error && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={ui.error}>{error}</Text>}

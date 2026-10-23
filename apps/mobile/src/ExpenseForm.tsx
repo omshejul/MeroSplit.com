@@ -5,7 +5,7 @@ import * as Crypto from 'expo-crypto';
 import { formatMoney, integer, rupeesToPaise, validateExpense } from './accounting';
 import type { Amounts, Split } from './accounting';
 import type { Expense, Group } from './types';
-import { Button, DateField, Disclosure, Icon, useUI } from './ui';
+import { Button, DateField, Icon, useUI } from './ui';
 import type { Palette } from './ui';
 
 export type ExpenseFormDraft = {
@@ -183,7 +183,6 @@ export default function ExpenseForm({ group, expense, selfId, busy, onSave, init
             onChange={value => change({ payerAmounts: { ...draft.payerAmounts, [person.id]: value } })} decimal disabled={disabled || !!person.removed} />}
         </View>)}
         {!!payerStatus && <Text accessibilityLiveRegion="polite" style={ui.caption}>{payerStatus}</Text>}
-        <Button title="Done" onPress={() => setPayersOpen(false)} disabled={disabled} kind="text" icon="check" />
       </View>}
     </View>
     <View style={styles.section}>
@@ -191,7 +190,7 @@ export default function ExpenseForm({ group, expense, selfId, busy, onSave, init
       {splitOpen && <View style={styles.reveal}>
         {group.participants.filter(person => !person.removed || draft.participantIds.includes(person.id)).map(person => <Choice key={`share-${person.id}`} title={label(person.id)} selected={draft.participantIds.includes(person.id)} disabled={disabled || (!!acceptedExpense && !!person.removed)}
           onPress={() => change({ participantIds: draft.participantIds.includes(person.id) ? draft.participantIds.filter(id => id !== person.id) : [...draft.participantIds, person.id] })} />)}
-<Disclosure title="Split method" initialOpen={draft.mode !== 'equal'}>
+        <Text style={ui.label}>Split method</Text>
         {Object.entries(modes).map(([mode, title]) => <Choice key={mode} title={title} role="radio" selected={draft.mode === mode} disabled={disabled} onPress={() => {
           if (draft.mode !== mode) change({ mode: mode as Split['mode'], splitValues: Object.fromEntries(draft.participantIds.map(id => [id, mode === 'shares' ? '1' : ''])) });
         }} />)}
@@ -201,8 +200,6 @@ export default function ExpenseForm({ group, expense, selfId, busy, onSave, init
             onChange={value => change({ splitValues: { ...draft.splitValues, [person.id]: value } })} decimal disabled={disabled || !!person.removed} />)}
           {!!splitStatus && <Text accessibilityLiveRegion="polite" style={ui.caption}>{splitStatus}</Text>}
         </>}
-        </Disclosure>
-        <Button title="Done" onPress={() => setSplitOpen(false)} disabled={disabled} kind="text" icon="check" />
       </View>}
     </View>
     <DateField label="Date" value={draft.date} onChange={date => change({ date })} disabled={disabled} />

@@ -69,6 +69,19 @@ test('Same-UUID published shadows reuse server records and never enqueue a dupli
   } finally { raw.close(); }
 });
 
+test('An account display-name change reuses the matching historical ledger and preserves recovery without duplicate bills', async () => {
+  const raw = new DatabaseSync(':memory:'), db = sqliteAdapter(raw);
+  try {
+    await migrate(db); await saveGroup(db, 'local', legacy, 'local');
+    const renamed = { ...canonical, participants: canonical.participants.map(person => ({ ...person, recorded_name: person.name, name: person.user_id === 1 ? 'Updated profile name' : person.name })) };
+    const result = await claimLegacyGroup(db, session, 'g', 'A', () => { throw new Error('No duplicate commands'); }, server(renamed));
+    assert.equal(result.status, 'existing');
+    assert.deepEqual((await readGroup(db, owner, 'g'))?.group, renamed);
+    assert.deepEqual(await pendingCommands(db, owner), []);
+    assert.deepEqual((await listLegacyRecoveries(db, owner))[0].group, legacy);
+  } finally { raw.close(); }
+});
+
 test('Copied migration drafts rebase only their revision while retaining the proposal and original source', async () => {
   for (const accepted of [null, canonical]) {
     const raw = new DatabaseSync(':memory:'), db = sqliteAdapter(raw);

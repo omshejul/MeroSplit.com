@@ -79,3 +79,10 @@ test('One unavailable or rejected iOS probe does not hide other detected apps or
   assert.deepEqual(apps.map(app => app.name), ['PhonePe', 'CRED']);
   assert.deepEqual(await availableUPIApps('ios', async url => url === 'upi://pay'), [{ id: 'upi', name: 'Other UPI app' }]);
 });
+
+
+test('Android selection cancellation survives the UPI helper without becoming a payment result', async () => {
+  const expected = { amount: quote.amount, vpa: quote.vpa, name: quote.recipient };
+  assert.equal(await openUPIPayment(quote, 'upi', expected, async () => false), false);
+  assert.equal(await openUPIPayment(quote, 'upi', expected, async () => true), true);
+});

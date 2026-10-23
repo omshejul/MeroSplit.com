@@ -1,7 +1,7 @@
-import type { AlertButton } from 'react-native';
+import type { AlertButton, AlertOptions } from 'react-native';
 
 export const Alert = {
-  alert(title: string, message = '', buttons: AlertButton[] = [{ text: 'OK' }]): void {
+  alert(title: string, message = '', buttons: AlertButton[] = [{ text: 'OK' }], _options?: AlertOptions): void {
     const choices = buttons.filter(button => button.style !== 'cancel');
     if (choices.length > 1) throw new Error('This choice needs an explicit on-screen action.');
     const text = [title, message].filter(Boolean).join('\n\n');

@@ -1,11 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Share, StyleSheet, TextInput, View } from 'react-native';
+import { Keyboard, KeyboardAvoidingView, Platform, ScrollView, Share, StyleSheet, TextInput, View } from 'react-native';
 import type { TextInputProps } from 'react-native';
-import { SegmentedButtons, Text } from 'react-native-paper';
+import { Dialog, Portal, SegmentedButtons, Text } from 'react-native-paper';
 import * as Crypto from 'expo-crypto';
 import { Alert } from './alerts';
 import { formatMoney, integer } from './accounting';
-import type { Group } from './types';
+import type { Group, Participant } from './types';
+import { addPerson, currentEmailInvite, emailInvitationRequest, personRequest, sendInvitation } from './members';
+import type { AddPersonRequest, EmailInviteRequest } from './members';
 import { Avatar, Button, DateField, Disclosure, IconAction, useUI } from './ui';
 import type { Palette } from './ui';
 
@@ -13,17 +15,18 @@ type Props = {
   group: Group;
   selfId: string;
   busy: boolean;
+  addPersonRequest?: number;
   onAction: (suffix: string, body: Record<string, unknown>) => Promise<Record<string, unknown>>;
   onExport: (format: 'json' | 'csv') => Promise<void>;
 };
 
-function Field({ label, value, onChange, disabled, maxLength = 120, keyboardType = 'default', placeholder }: {
-  label: string; value: string; onChange: (value: string) => void; disabled: boolean; maxLength?: number; keyboardType?: TextInputProps['keyboardType']; placeholder?: string;
+function Field({ label, value, onChange, disabled, maxLength = 120, keyboardType = 'default', placeholder, autoFocus = false, autoCapitalize = 'none' }: {
+  label: string; value: string; onChange: (value: string) => void; disabled: boolean; maxLength?: number; keyboardType?: TextInputProps['keyboardType']; placeholder?: string; autoFocus?: boolean; autoCapitalize?: TextInputProps['autoCapitalize'];
 }) {
   const { palette: colors, ui, inputColors } = useUI();
   const s = useMemo(() => makeStyles(colors), [colors]);
   return <View style={s.field}><Text style={ui.label}>{label}</Text><TextInput {...inputColors} accessibilityLabel={label} value={value} onChangeText={onChange}
-    editable={!disabled} accessibilityState={{ disabled }} keyboardType={keyboardType} autoCapitalize="none" autoCorrect={false} maxLength={maxLength} placeholder={placeholder} placeholderTextColor={colors.muted} style={ui.input} /></View>;
+    autoFocus={autoFocus} editable={!disabled} accessibilityState={{ disabled }} keyboardType={keyboardType} autoCapitalize={autoCapitalize} autoCorrect={false} maxLength={maxLength} placeholder={placeholder} placeholderTextColor={colors.muted} style={ui.input} /></View>;
 }
 
 function balanceDescription(amount: string) {
@@ -31,9 +34,9 @@ function balanceDescription(amount: string) {
   return value === 0n ? 'Settled' : `${value < 0n ? 'Owes' : 'Is owed'} ${formatMoney((value < 0n ? -value : value).toString())}`;
 }
 
-const emailStatus = (state: string | undefined, email: string) => state === 'sent' ? `Invitation sent to ${email}.`
-  : state === 'failed' ? 'The invitation email could not be sent.'
-    : state === 'sending' ? 'Sending status pending. Retry after a minute if it does not change.' : 'Invitation not sent.';
+const emailStatus = (state: string | undefined, email: string) => state === 'sent' ? `Sent to ${email}`
+  : state === 'failed' ? 'Invitation failed. Try again.'
+    : state === 'sending' ? 'Sending status pending' : 'Invitation not sent';
 
 function signedPaise(input: string): string {
   const text = input.trim();
@@ -51,10 +54,13 @@ export default function MembersScreen(props: Props) {
   return <MemberSettings key={`${props.group.id}|${props.selfId}`} {...props} />;
 }
 
-function MemberSettings({ group, selfId, busy, onAction, onExport }: Props) {
+function MemberSettings({ group, selfId, busy, addPersonRequest = 0, onAction, onExport }: Props) {
   const { palette: colors, ui } = useUI();
   const s = useMemo(() => makeStyles(colors), [colors]);
-  const [newName, setNewName] = useState('');
+  const [newName, setNewName] = useState(''), [newEmail, setNewEmail] = useState(''), [addingPerson, setAddingPerson] = useState(false);
+  const pendingPerson = useRef<AddPersonRequest | null>(null), lastAddRequest = useRef(addPersonRequest);
+  const addTrigger = useRef<HTMLElement | null>(null);
+  function closeAddPerson() { Keyboard.dismiss(); setAddingPerson(false); requestAnimationFrame(() => addTrigger.current?.focus()); }
   const [inviteLink, setInviteLink] = useState<{ participantId: string; name: string; url: string } | null>(null);
   const [showOpening, setShowOpening] = useState(false);
   const [previous, setPrevious] = useState<Record<string, string>>({});
@@ -66,8 +72,8 @@ function MemberSettings({ group, selfId, busy, onAction, onExport }: Props) {
   const [working, setWorking] = useState(false);
   const [feedback, setFeedback] = useState<{ section: string; text: string; error: boolean } | null>(null);
   const [contactEmail, setContactEmail] = useState<string | null>(null);
-  const [emailRequest, setEmailRequest] = useState<{ personId: string; email: string; id: string } | null>(null);
-  const [inviteCooldown, setInviteCooldown] = useState(0);
+  const [emailRequests, setEmailRequests] = useState<Record<string, EmailInviteRequest>>({});
+  const [inviteCooldowns, setInviteCooldowns] = useState<Record<string, number>>({});
   const inFlight = useRef(false);
   const self = group.participants.find(person => person.id === selfId);
   const organizer = !self?.removed && self?.user_id != null && self.user_id === group.owner_id;
@@ -75,21 +81,34 @@ function MemberSettings({ group, selfId, busy, onAction, onExport }: Props) {
     ? group.participants.find(person => person.id !== selfId && !person.removed && person.user_id == null) : undefined;
   const savedEmail = directPerson?.email ?? '', email = contactEmail ?? savedEmail;
   const emailChanged = email.trim().toLowerCase() !== savedEmail.trim().toLowerCase();
-  const emailInvite = directPerson && group.invites?.find(invite => invite.participant_id === directPerson.id && !invite.revoked
-    && invite.intended_email === savedEmail && (!invite.expires_at || Date.parse(invite.expires_at) > Date.now()));
-  const retryInvite = emailInvite && ['failed', 'sending'].includes(emailInvite.send_state ?? '');
   const disabled = busy || working;
   useEffect(() => {
-    if (inviteCooldown <= 0) return;
-    const timer = setTimeout(() => setInviteCooldown(value => Math.max(0, value - 1)), 1000);
+    if (lastAddRequest.current === addPersonRequest) return;
+    lastAddRequest.current = addPersonRequest;
+    if (organizer && !group.is_direct && !group.archived && !disabled) {
+      if (Platform.OS === 'web') addTrigger.current = document.querySelector<HTMLElement>('[aria-label="Add person"]') ?? document.activeElement as HTMLElement | null;
+      setAddingPerson(true); setFeedback(null);
+    }
+  }, [addPersonRequest, organizer, group.is_direct, group.archived, disabled]);
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !addingPerson) return;
+    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape' && !disabled && !inFlight.current) { event.preventDefault(); closeAddPerson(); } };
+    document.addEventListener('keydown', escape, true);
+    return () => document.removeEventListener('keydown', escape, true);
+  }, [addingPerson, disabled]);
+  useEffect(() => {
+    if (!Object.values(inviteCooldowns).some(value => value > 0)) return;
+    const timer = setTimeout(() => setInviteCooldowns(current => Object.fromEntries(Object.entries(current).map(([id, value]) => [id, Math.max(0, value - 1)]))), 1000);
     return () => clearTimeout(timer);
-  }, [inviteCooldown]);
+  }, [inviteCooldowns]);
   const opening = group.opening_balance;
   const needsOpeningAgreement = !!opening && !opening.accepted && self?.user_id != null
     && (opening.balances[selfId] ?? '0') !== '0' && !Object.hasOwn(opening.acknowledgments, selfId);
   const name = (id: string) => group.participants.find(person => person.id === id)?.name ?? 'Former member';
+  const hasInvites = !!inviteLink || group.participants.some(person => !person.removed && person.user_id == null && !person.email)
+    || (group.invites ?? []).some(invite => !invite.revoked);
   const note = (section: string) => feedback?.section === section
-    ? <Text style={feedback.error ? ui.error : [ui.notice, ui.success]} accessibilityLiveRegion="polite" accessibilityRole={feedback.error ? 'alert' : undefined}>{feedback.text}</Text>
+    ? <Text style={feedback.error ? ui.error : ui.caption} accessibilityLiveRegion="polite" accessibilityRole={feedback.error ? 'alert' : undefined}>{feedback.text}</Text>
     : null;
 
   async function perform(section: string, work: () => Promise<void>, success?: string) {
@@ -112,19 +131,32 @@ function MemberSettings({ group, selfId, busy, onAction, onExport }: Props) {
     Alert.alert(title, detail, [{ text: 'Cancel', style: 'cancel' }, { text: label, onPress: action }]);
   }
 
-  function sendEmailInvite() {
-    if (!directPerson || !savedEmail || emailChanged || inviteCooldown || group.archived) return;
-    void perform('email-invite', async () => {
-      const id = emailRequest?.personId === directPerson.id && emailRequest.email === savedEmail ? emailRequest.id : retryInvite ? emailInvite!.id : Crypto.randomUUID();
-      setEmailRequest({ personId: directPerson.id, email: savedEmail, id });
-      setInviteCooldown(60);
-      setFeedback({ section: 'email-invite', text: 'Sending invitation…', error: false });
-      const result = await onAction(`/participants/${directPerson.id}/email-invite`, { command_id: id });
-      const status = result.invite as { id?: string; state?: string; retry_after?: number } | undefined;
-      if (!status || status.id !== id || !['sent', 'failed', 'sending'].includes(status.state ?? '')) throw new Error('Sync and check this invitation before trying again.');
-      if (Number.isFinite(status.retry_after)) setInviteCooldown(Math.max(0, Math.min(60, Math.ceil(status.retry_after!))));
-      if (status.state === 'sent') setEmailRequest(null);
-      setFeedback({ section: 'email-invite', text: status.state === 'sent' ? `Invitation sent to ${savedEmail}.` : status.state === 'failed' ? 'The invitation email could not be sent. You can retry.' : 'The invitation is still being sent. Check its status before retrying.', error: status.state === 'failed' });
+  function sendEmailInvite(person: Participant) {
+    const saved = person.email ?? '';
+    if (!organizer || person.removed || person.user_id != null || !saved || inviteCooldowns[person.id] || group.archived
+      || (person.id === directPerson?.id && emailChanged)) return;
+    const section = `email-invite:${person.id}`;
+    void perform(section, async () => {
+      const request = emailInvitationRequest(person.id, saved, emailRequests[person.id], currentEmailInvite(group, person.id, saved), Crypto.randomUUID);
+      setEmailRequests(current => ({ ...current, [person.id]: request }));
+      setInviteCooldowns(current => ({ ...current, [person.id]: 60 }));
+      setFeedback({ section, text: 'Sending invitation…', error: false });
+      const status = await sendInvitation(group.id, request, onAction);
+      setInviteCooldowns(current => ({ ...current, [person.id]: status.retryAfter }));
+      if (status.state === 'sent') setEmailRequests(current => { const next = { ...current }; delete next[person.id]; return next; });
+      setFeedback({ section, text: status.state === 'sent' ? `Invitation sent to ${saved}.` : status.state === 'failed' ? 'The invitation email could not be sent. You can retry.' : 'The invitation is still being sent. Check its status before retrying.', error: status.state === 'failed' });
+    });
+  }
+
+  function savePerson() {
+    if (!organizer || group.is_direct || group.archived) return;
+    void perform('add-person', async () => {
+      const request = personRequest(newName, newEmail, pendingPerson.current, Crypto.randomUUID);
+      pendingPerson.current = request;
+      await addPerson(group.id, request, onAction);
+      pendingPerson.current = null;
+      setNewName(''); setNewEmail(''); closeAddPerson();
+      setFeedback({ section: 'members', text: 'Person added. No invitation was sent.', error: false });
     });
   }
 
@@ -155,19 +187,29 @@ function MemberSettings({ group, selfId, busy, onAction, onExport }: Props) {
 
   return <View style={s.content}>
     <View>
-      <Text accessibilityRole="header" style={ui.section}>People</Text>
       {group.participants.map(person => {
         const removable = organizer && !person.removed && person.id !== selfId && person.user_id !== group.owner_id;
         const balance = BigInt(group.balances[person.id] ?? '0');
         const blocked = removable && balance !== 0n;
-        const status = person.removed ? 'Removed' : person.user_id != null ? person.user_id === group.owner_id ? 'Organizer' : 'Joined' : '';
+        const invitation = currentEmailInvite(group, person.id, person.email ?? '');
+        const pendingEmail = emailRequests[person.id], cooldown = inviteCooldowns[person.id] ?? 0;
+        const inviteSection = `email-invite:${person.id}`;
+        const canInvite = organizer && !person.removed && person.user_id == null && !!person.email;
+        const status = person.removed ? 'Removed' : person.user_id != null ? person.user_id === group.owner_id ? 'Organizer' : 'Joined' : invitation?.send_state === 'sent' ? 'Invited' : '';
         const reason = blocked ? `Settle ${formatMoney((balance < 0n ? -balance : balance).toString())} first` : '';
         const displayName = `${person.name}${person.id === selfId && person.name.toLowerCase() !== 'you' ? ' (you)' : ''}`;
         return <View key={person.id} style={ui.row}>
           <Avatar name={person.name} />
           <View style={[ui.rowBody, s.memberBody]}>
             <Text numberOfLines={1} ellipsizeMode="tail" accessibilityLabel={displayName} style={ui.rowTitle}>{displayName}</Text>
-            {!!(reason || status) && <Text style={ui.rowSub} accessibilityLabel={[status, reason].filter(Boolean).join('. ')}>{reason || status}</Text>}
+            {!!(reason || status) && <Text style={ui.rowSub} accessibilityLabel={[status, reason].filter(Boolean).join('. ')}>{[status, reason].filter(Boolean).join(' · ')}</Text>}
+            {canInvite && <>
+              <Text numberOfLines={1} accessibilityLabel={person.email} style={ui.rowSub}>{person.email}</Text>
+              <Button title={working && feedback?.section === inviteSection ? 'Sending…' : cooldown > 0 ? `Retry in ${cooldown}s` : pendingEmail || ['failed', 'sending'].includes(invitation?.send_state ?? '') ? 'Retry invitation' : invitation?.send_state === 'sent' ? 'Resend invitation' : 'Send invitation'} accessibilityLabel={`Send invitation to ${person.name} at ${person.email}`} kind="text"
+                disabled={disabled || !!group.archived || cooldown > 0 || (person.id === directPerson?.id && emailChanged)} onPress={() => sendEmailInvite(person)} />
+              {invitation && ['failed', 'sending'].includes(invitation.send_state ?? '') && feedback?.section !== inviteSection && <Text style={invitation.send_state === 'failed' ? ui.error : ui.caption}>{emailStatus(invitation.send_state, person.email!)}</Text>}
+              {note(inviteSection)}
+            </>}
           </View>
           {removable && <IconAction name="remove" label={`Remove ${person.name}`} hint={reason || undefined} disabled={disabled || blocked || !!group.archived} onPress={() => confirm(
             `Remove ${person.name}?`, `${person.user_id != null ? 'They will lose access to this group. ' : ''}Existing bills and payment history remain.`,
@@ -175,35 +217,32 @@ function MemberSettings({ group, selfId, busy, onAction, onExport }: Props) {
         </View>;
       })}
     </View>
-    {directPerson && <View style={s.section}>
-      <Field label={`${directPerson.name}'s email (optional)`} value={email} onChange={value => { setContactEmail(value); setFeedback(null); }} disabled={disabled || !!group.archived} keyboardType="email-address" maxLength={254} />
+    {directPerson && <Disclosure title="Contact email">
+      <Field label="Email (optional)" value={email} onChange={value => { setContactEmail(value); setFeedback(null); }} disabled={disabled || !!group.archived} keyboardType="email-address" maxLength={254} />
       {emailChanged && <Button title="Save contact" disabled={disabled || !!group.archived} onPress={() => void perform('contact', async () => {
         await onAction(`/participants/${directPerson.id}/contact`, { email: email.trim() });
-        setContactEmail(null); setEmailRequest(null); setInviteCooldown(0);
+        setContactEmail(null);
+        setEmailRequests(current => { const next = { ...current }; delete next[directPerson.id]; return next; });
+        setInviteCooldowns(current => ({ ...current, [directPerson.id]: 0 }));
       }, 'Contact saved. No invitation was sent.')} />}
       {note('contact')}
-      {emailInvite && feedback?.section !== 'email-invite' && <Text style={emailInvite.send_state === 'failed' ? ui.error : ui.caption} accessibilityLiveRegion="polite">{emailStatus(emailInvite.send_state, savedEmail)}</Text>}
-      <Text style={ui.caption}>{emailChanged ? 'Save the email before sending an invitation.' : savedEmail ? 'They must sign in with this email to join. Saving an email never sends an invitation.' : 'Add an email if you want to invite this person later.'}</Text>
-      {!!savedEmail && <Button title={retryInvite || emailRequest ? 'Retry invitation' : emailInvite?.send_state === 'sent' ? 'Send invitation again' : 'Send invitation'} disabled={disabled || !!group.archived || emailChanged || inviteCooldown > 0} onPress={sendEmailInvite} />}
-      {inviteCooldown > 0 && <Text style={ui.caption}>You can retry in {inviteCooldown}s.</Text>}
+      <Text style={ui.caption}>{emailChanged ? 'Save before sending an invitation.' : savedEmail ? 'Only this email can accept the invitation.' : 'Add an email to invite them later.'}</Text>
       {!!group.archived && <Text style={ui.caption}>Reopen this group to change the email or send an invitation.</Text>}
-      {note('email-invite')}
-    </View>}
-    {!group.is_direct && organizer && <View style={s.section}>
-      <View style={s.addRow}>
-        <View style={s.memberBody}><Field label="New person's name" value={newName} onChange={setNewName} disabled={disabled || !!group.archived} /></View>
-        <IconAction name="add" label="Add person" disabled={disabled || !!group.archived} onPress={() => void perform('members', async () => {
-          if (!newName.trim()) throw new Error('Enter a member name.');
-          await onAction('/participants', { id: Crypto.randomUUID(), name: newName.trim() });
-          setNewName('');
-        }, 'Member added.')} />
-      </View>
-      {!!group.archived && <Text style={ui.caption}>Reopen the group to add someone.</Text>}
-    </View>}
+    </Disclosure>}
+    <Portal>{addingPerson && <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' ? 'height' : undefined} style={StyleSheet.absoluteFill} pointerEvents="box-none"><Dialog visible onDismiss={() => { if (!disabled) closeAddPerson(); }}>
+      <Dialog.Title>Add person</Dialog.Title>
+      <Dialog.ScrollArea style={{ maxHeight: 280 }}><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={[s.field, { paddingVertical: 12 }]}>
+        <Field label="Name" value={newName} onChange={setNewName} disabled={disabled} autoFocus autoCapitalize="words" />
+        <Field label="Email (optional)" value={newEmail} onChange={setNewEmail} disabled={disabled} keyboardType="email-address" maxLength={254} />
+        {note('add-person')}
+      </ScrollView></Dialog.ScrollArea>
+      <Dialog.Actions><Button title="Cancel" kind="text" disabled={disabled} onPress={closeAddPerson} />
+        <Button title={working ? 'Adding…' : 'Add person'} kind="primary" disabled={disabled || !newName.trim() || !!group.archived} onPress={savePerson} /></Dialog.Actions>
+    </Dialog></KeyboardAvoidingView>}</Portal>
     {note('members')}
 
-    {organizer && <Disclosure title="Invites">
-      {group.participants.filter(person => !person.removed && person.user_id == null).map(person => <View key={person.id} style={s.section}>
+    {organizer && hasInvites && <Disclosure title="Invites">
+      {group.participants.filter(person => !person.removed && person.user_id == null && !person.email).map(person => <View key={person.id} style={s.section}>
         <Text style={ui.rowTitle}>{person.name}</Text>
         <Button title="Invite" accessibilityLabel={`Invite ${person.name}`} disabled={disabled || !!group.archived} onPress={() => void perform('invites', async () => {
           const result = await onAction('/invites', { participant_id: person.id });
@@ -237,7 +276,7 @@ function MemberSettings({ group, selfId, busy, onAction, onExport }: Props) {
       {note('invites')}
     </Disclosure>}
 
-    <Disclosure title="Previous balances" initialOpen={needsOpeningAgreement}>
+    {(opening || organizer) && <Disclosure title="Previous balances" initialOpen={needsOpeningAgreement}>
       {opening ? <>
         <Text style={[ui.notice, opening.accepted ? ui.success : ui.warning]}>{opening.accepted ? 'Agreed and included in balances.' : 'Waiting for agreement. Not included in balances yet.'}</Text>
         <Text style={ui.body}>From {opening.source}</Text><Text style={ui.caption}>As of {opening.cutoff}</Text>
@@ -272,7 +311,7 @@ function MemberSettings({ group, selfId, busy, onAction, onExport }: Props) {
         </View>}
       </>}
       {note('opening')}
-    </Disclosure>
+    </Disclosure>}
 
     <Disclosure title={organizer ? 'Export and archive' : 'Export'}>
       <Button title="Export spreadsheet" disabled={disabled} onPress={() => void perform('export', () => onExport('csv'))} />
@@ -289,11 +328,10 @@ function MemberSettings({ group, selfId, busy, onAction, onExport }: Props) {
 }
 
 const makeStyles = (colors: Palette) => StyleSheet.create({
-  content: { gap: 14 },
-  section: { gap: 10, paddingVertical: 6 },
-  row: { gap: 8, paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
+  content: { gap: 10 },
+  section: { gap: 8, paddingVertical: 4 },
+  row: { gap: 8, paddingVertical: 8, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
   field: { gap: 8 },
   memberBody: { flex: 1, minWidth: 0 },
-  addRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8 },
   amount: { color: colors.text, fontSize: 17, fontWeight: '600', flexShrink: 1, textAlign: 'right', fontVariant: ['tabular-nums'] },
 });

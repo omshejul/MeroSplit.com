@@ -40,9 +40,9 @@ export async function savedSession(): Promise<Session | null> {
   try {
     const response = await fetch('/api/v1/me', { credentials: 'same-origin', signal: AbortSignal.timeout(5000) });
     if (!response.ok) return null;
-    const user = await response.json() as { id?: string | number; email?: string };
+    const user = await response.json() as { id?: string | number; email?: string; display_name?: string };
     if (!user.id || !user.email) return null;
-    const session = { baseUrl: window.location.origin, userId: String(user.id), email: user.email, token: `browser-session:${user.id}` };
+    const session = { baseUrl: window.location.origin, userId: String(user.id), email: user.email, displayName: user.display_name ?? '', token: `browser-session:${user.id}` };
     await saveSession(session); return session;
   } catch { return null; }
 }

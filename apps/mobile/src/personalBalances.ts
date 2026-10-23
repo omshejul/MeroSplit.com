@@ -27,8 +27,8 @@ export function visiblePeopleSummary(group: Group, userId: string, hasPending = 
   if (group.archived || !group.participants.some(person => person.id !== self.id && !person.removed)) return false;
   return !group.expenses.length && !group.settlements.length && !group.opening_balance
     && BigInt(group.totals?.spending ?? '0') === 0n
-    && !group.history?.bills.next_cursor && !group.history?.bills.previous?.length
-    && !group.history?.settlements.next_cursor && !group.history?.settlements.previous?.length;
+    && !group.history?.bills?.next_cursor && !group.history?.bills?.previous?.length
+    && !group.history?.settlements?.next_cursor && !group.history?.settlements?.previous?.length;
 }
 
 /** Personal payment entry must include the signed-in active participant in either direction. */

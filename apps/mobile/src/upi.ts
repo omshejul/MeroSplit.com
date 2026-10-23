@@ -52,10 +52,11 @@ export async function availableUPIApps(platform: string, canOpenURL: (url: strin
   return found.filter((app): app is UPIApp => app !== null);
 }
 
-export async function openUPIPayment(quote: UPILaunchQuote, app: UPIApp['id'], expected: { amount: string; vpa: string; name: string }, openURL: (url: string) => Promise<unknown>): Promise<void> {
+export async function openUPIPayment(quote: UPILaunchQuote, app: UPIApp['id'], expected: { amount: string; vpa: string; name: string }, openURL: (url: string) => Promise<unknown>): Promise<unknown> {
   if (quote.amount !== expected.amount || quote.vpa !== expected.vpa || quote.recipient !== expected.name) throw new Error('The amount or recipient changed. Review the payment again.');
   const url = buildUPIUrl(quote, app);
-  try { await openURL(url); }
+  // Preserve the Android chooser's selection/cancellation signal. It still says
+  // nothing about whether the user paid in the selected app.
+  try { return await openURL(url); }
   catch { throw new Error('No UPI app opened. Use the payment address in your UPI app, or try another app.'); }
-  // Opening, cancellation and return are never evidence that money was paid.
 }

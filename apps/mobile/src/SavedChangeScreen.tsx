@@ -46,7 +46,7 @@ export default function SavedChangeScreen({ command, group, busy, onDiscard, onE
 
   function summary(expense: Expense) {
     return <View style={s.bill}>
-      <Text style={ui.section}>{expense.description}</Text>
+      <Text style={ui.rowTitle}>{expense.description}</Text>
       <Text style={ui.numeric}>{formatMoney(expense.total)}</Text>
       <Text style={ui.caption}>{new Date(`${expense.date}T12:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</Text>
       {expense.deleted && <Text style={[ui.notice, ui.warning]}>Deleted. This bill is not included in balances.</Text>}
@@ -69,7 +69,7 @@ export default function SavedChangeScreen({ command, group, busy, onDiscard, onE
 
   return <View style={s.content}>
     <Text style={ui.caption}>{group.name}</Text>
-    <Text style={[ui.notice, ui.warning]}>{expenseCommand ? 'Review your change against the latest bill.' : 'This change has not synced.'}</Text>
+    {!expenseCommand && <Text style={[ui.notice, ui.warning]}>This change has not synced.</Text>}
     <View style={s.section}>
       <Text accessibilityRole="header" style={ui.section}>Your change</Text>
       {saved ? summary(saved) : <Text accessibilityRole="alert" style={ui.body}>{issue}</Text>}
@@ -95,6 +95,6 @@ const makeStyles = (colors: Palette) => StyleSheet.create({
   section: { gap: 12 },
   bill: { backgroundColor: colors.surface, borderRadius: radii.surface, padding: 12, gap: 10 },
   person: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
-  name: { fontSize: 16, lineHeight: 23, color: colors.text, flex: 1 },
-  amount: { fontSize: 16, lineHeight: 23, color: colors.text, fontWeight: '500', textAlign: 'right', flexShrink: 1, fontVariant: ['tabular-nums'] },
+  name: { fontSize: 16, lineHeight: 23, color: colors.text, flex: 1, minWidth: 0 },
+  amount: { fontSize: 16, lineHeight: 23, color: colors.text, fontWeight: '500', textAlign: 'right', flexShrink: 0, fontVariant: ['tabular-nums'] },
 });

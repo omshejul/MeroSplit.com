@@ -97,3 +97,24 @@ test('personal payment guard permits either own direction, but rejects third-par
   ledger.participants[0].removed = true;
   assert.equal(isPersonalPayment(ledger, 'self', 'third', 'self'), false);
 });
+
+test('net-zero self retains both canonical directions before any summary filtering', () => {
+  const ledger = group({ self: '0', creditor: '500', debtor: '-500' });
+  ledger.transfers = [
+    { sender: 'debtor', recipient: 'self', amount: '500' },
+    { sender: 'self', recipient: 'creditor', amount: '500' },
+  ];
+  const original = structuredClone(ledger);
+  assert.deepEqual(personalTransfers(ledger, 'self'), ledger.transfers);
+  assert.deepEqual(ledger, original);
+});
+
+test('an unlinked or deleted-account active counterpart remains eligible for personal records', async () => {
+  const { isPersonalPayment } = await import('../src/personalBalances.ts');
+  const ledger = group({ self: '-500', other: '500' });
+  ledger.participants[1] = { id: 'other', name: 'Deleted user', user_id: null, removed: false };
+  assert.equal(isPersonalPayment(ledger, 'self', 'self', 'other'), true);
+  assert.equal(isPersonalPayment(ledger, 'self', 'other', 'self'), true);
+  ledger.participants[1].removed = true;
+  assert.equal(isPersonalPayment(ledger, 'self', 'self', 'other'), false);
+});

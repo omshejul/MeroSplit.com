@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Appearance, Platform, Pressable, StyleSheet, useColorScheme, View } from 'react-native';
-import { Button as PaperButton, IconButton as PaperIconButton, Tooltip, MD3DarkTheme, MD3LightTheme, PaperProvider, Text, useTheme } from 'react-native-paper';
+import { Button as PaperButton, IconButton as PaperIconButton, List, Tooltip, MD3DarkTheme, MD3LightTheme, PaperProvider, Text, useTheme } from 'react-native-paper';
 import type { MD3Theme } from 'react-native-paper';
 import { savedAppearance, saveAppearance } from './native';
 import type { AppearancePreference } from './native';
@@ -24,6 +24,12 @@ import Refresh01Icon from '@hugeicons/core-free-icons/Refresh01Icon';
 import Delete02Icon from '@hugeicons/core-free-icons/Delete02Icon';
 import Download01Icon from '@hugeicons/core-free-icons/Download01Icon';
 import Upload01Icon from '@hugeicons/core-free-icons/Upload01Icon';
+import PencilEdit02Icon from '@hugeicons/core-free-icons/PencilEdit02Icon';
+import UserAdd01Icon from '@hugeicons/core-free-icons/UserAdd01Icon';
+import Shield01Icon from '@hugeicons/core-free-icons/Shield01Icon';
+import HelpCircleIcon from '@hugeicons/core-free-icons/HelpCircleIcon';
+import Sun03Icon from '@hugeicons/core-free-icons/Sun03Icon';
+import Notification01Icon from '@hugeicons/core-free-icons/Notification01Icon';
 
 export type Palette = { background: string; surface: string; text: string; muted: string; accent: string; soft: string; line: string; outline: string; error: string; positive: string; negative: string; info: string; warning: string };
 export const radii = { control: 12, surface: 16, navigation: 20 } as const;
@@ -32,7 +38,7 @@ const darkColors: Palette = { background: '#111111', surface: '#1C1C1C', text: '
 export const balanceColor = (value: string | bigint, palette: Palette) => BigInt(value) > 0n ? palette.positive : BigInt(value) < 0n ? palette.negative : palette.muted;
 const makeInputColors = (palette: Palette) => ({ selectionColor: Platform.OS === 'ios' ? palette.accent : palette.line, cursorColor: palette.accent, selectionHandleColor: palette.accent });
 const inputColors = makeInputColors(colors);
-const icons = { add: Add01Icon, down: ArrowDown01Icon, back: ArrowLeft01Icon, next: ArrowRight01Icon, check: CheckmarkCircle01Icon, history: Clock01Icon, bill: Invoice01Icon, settings: Settings01Icon, me: UserCircleIcon, groups: UserGroupIcon, people: UserMultipleIcon, pay: Wallet01Icon, remove: Delete02Icon, refresh: Refresh01Icon, export: Download01Icon, import: Upload01Icon };
+const icons = { add: Add01Icon, down: ArrowDown01Icon, back: ArrowLeft01Icon, next: ArrowRight01Icon, check: CheckmarkCircle01Icon, history: Clock01Icon, bill: Invoice01Icon, settings: Settings01Icon, me: UserCircleIcon, groups: UserGroupIcon, people: UserMultipleIcon, pay: Wallet01Icon, remove: Delete02Icon, refresh: Refresh01Icon, export: Download01Icon, import: Upload01Icon, edit: PencilEdit02Icon, personAdd: UserAdd01Icon, privacy: Shield01Icon, help: HelpCircleIcon, appearance: Sun03Icon, notifications: Notification01Icon };
 export type IconName = keyof typeof icons;
 export function Icon({ name, size = 22, color }: { name: IconName; size?: number; color?: string }) {
   const { palette } = useUI();
@@ -76,7 +82,7 @@ export function UIProvider({ children }: { children: React.ReactNode }) {
     void savedAppearance().then(value => {
       if (!mounted || revision.current !== initialRevision) return;
       setAppearance(value);
-      Appearance.setColorScheme(value === 'system' ? 'auto' : value);
+      if (Platform.OS !== 'web') Appearance.setColorScheme(value === 'system' ? 'auto' : value);
     }).catch(() => {});
     return () => { mounted = false; };
   }, []);
@@ -87,7 +93,7 @@ export function UIProvider({ children }: { children: React.ReactNode }) {
     await write;
     if (revision.current !== currentRevision) return;
     setAppearance(value);
-    Appearance.setColorScheme(value === 'system' ? 'auto' : value);
+    if (Platform.OS !== 'web') Appearance.setColorScheme(value === 'system' ? 'auto' : value);
   }, []);
   const dark = appearance === 'system' ? system === 'dark' : appearance === 'dark';
   const value = useMemo<UITheme>(() => ({ ...(dark ? darkTheme : theme), palette: dark ? darkColors : colors,
@@ -103,6 +109,13 @@ export function Button({ title, onPress, disabled = false, kind = 'secondary', i
 }
 export function IconAction({ name, label, onPress, disabled = false, hint }: { name: IconName; label: string; onPress: () => void; disabled?: boolean; hint?: string }) {
   return <Tooltip title={hint ?? label}><PaperIconButton accessibilityLabel={label} accessibilityHint={hint} disabled={disabled} onPress={onPress} hitSlop={4} size={22} style={{ width: 44, height: 44, margin: 0 }} icon={({ size, color }) => <Icon name={name} size={size} color={color} />} /></Tooltip>;
+}
+export function SettingsRow({ icon, label, value, disabled = false, onPress, rowRef, danger = false, chevron = true }: { icon: IconName; label: string; value?: string; disabled?: boolean; onPress: () => void; rowRef?: React.Ref<React.ComponentRef<typeof View>>; danger?: boolean; chevron?: boolean }) {
+  const { ui, palette } = useUI();
+  return <List.Item ref={rowRef as React.ComponentProps<typeof List.Item>['ref']} title={label} titleStyle={[ui.body, danger && { color: palette.error }]} titleNumberOfLines={2} accessibilityRole="button" accessibilityLabel={value ? `${label}, ${value}` : label} accessibilityState={{ disabled }} disabled={disabled} onPress={onPress}
+    style={{ minHeight: 52, paddingVertical: 2, paddingHorizontal: 0, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: palette.line }}
+    left={props => <List.Icon {...props} icon={() => <Icon name={icon} size={22} color={danger ? palette.error : palette.text} />} />}
+    right={() => <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, maxWidth: '48%' }}>{value !== undefined && <Text numberOfLines={1} ellipsizeMode="tail" style={[ui.caption, { flexShrink: 1 }]}>{value}</Text>}{chevron && <Icon name="next" size={18} color={palette.muted} />}</View>} />;
 }
 const dateText = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 export function DateField({ label, value, onChange, disabled = false }: { label: string; value: string; onChange: (value: string) => void; disabled?: boolean }) {

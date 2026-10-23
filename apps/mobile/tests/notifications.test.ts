@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { accountOwner, ApiError, request } from '../src/api.ts';
-import { consentToPush, emptyPushPreferences, notificationForAccount, notificationTarget, pushPermission, refreshPushDevice, unregisterPushDevice } from '../src/notifications.ts';
+import { consentToPush, dismissReadPushes, emptyPushPreferences, notificationForAccount, notificationTarget, pushPermission, refreshPushDevice, unregisterPushDevice } from '../src/notifications.ts';
 import type { PushDevice, PushPreferences } from '../src/notifications.ts';
 import type { Group, Session } from '../src/types.ts';
 
@@ -126,4 +126,40 @@ test('A push for an older bill loads one pinned detail without downloading all h
   assert.equal(target?.expenseId, expenseId);
   assert.equal(target?.group.focused_expense?.id, expenseId);
   assert.deepEqual(paths, [`/groups/${groupId}/summary`, `/groups/${groupId}/expenses/${expenseId}?version=7`]);
+});
+
+
+test('Displayed push reconciliation dismisses only current-account read prompts and never acknowledges a bill', async () => {
+  const seenId = '11111111-1111-4111-8111-111111111111', unreadId = '22222222-2222-4222-8222-222222222222';
+  const shown = [
+    { identifier: 'read', data: { ...data, event_id: seenId } },
+    { identifier: 'unread', data: { ...data, event_id: unreadId } },
+    { identifier: 'other-account', data: { ...data, event_id: seenId, recipient_user_id: '2' } },
+    { identifier: 'invalid', data },
+  ];
+  const dismissed: string[] = [];
+  const send: typeof request = async <T>(_active: Session, path: string, method = 'GET'): Promise<T> => {
+    assert.equal(method, 'GET'); assert.equal(path, `/me/notifications?limit=100&expense_ids=${expenseId}`);
+    return { has_more: false, notices: [{ id: unreadId }] } as T;
+  };
+  await dismissReadPushes(session, shown, async id => { dismissed.push(id); }, send);
+  assert.deepEqual(dismissed, ['read']);
+});
+
+test('Displayed prompt reconciliation fails closed on incomplete or malformed feed and query errors', async () => {
+  const shown = [{ identifier: 'keep', data: { ...data, event_id: installation } }];
+  for (const response of [{ has_more: true, notices: [] }, { notices: [] }, { has_more: false }, { has_more: false, notices: [{ id: 'bad' }] }, { has_more: false, notices: [null] }]) {
+    await dismissReadPushes(session, shown, async () => assert.fail('Must preserve uncertain prompts'), async <T>() => response as T);
+  }
+  await assert.rejects(dismissReadPushes(session, shown, async () => assert.fail('Must preserve prompts on network error'), async () => { throw Error('offline'); }), /offline/);
+});
+
+test('Displayed prompt reconciliation never dismisses an expense outside its bounded query', async () => {
+  const shown = Array.from({ length: 60 }, (_, n) => ({ identifier: String(n), data: { ...data, event_id: installation, expense_id: `00000000-0000-4000-8000-${String(n).padStart(12, '0')}` } }));
+  const dismissed: string[] = [];
+  await dismissReadPushes(session, shown, async id => { dismissed.push(id); }, async <T>(_active: Session, path: string, method = 'GET'): Promise<T> => {
+    assert.equal(method, 'GET'); assert.equal(new URL(`https://example.test${path}`).searchParams.get('expense_ids')?.split(',').length, 50);
+    return { has_more: false, notices: [] } as T;
+  });
+  assert.equal(dismissed.length, 50); assert.equal(dismissed.at(-1), '49');
 });

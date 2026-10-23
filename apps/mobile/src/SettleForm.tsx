@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Linking, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { AppState, Linking, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { Dialog, Portal, RadioButton, Text } from 'react-native-paper';
 import QRCode from 'react-native-qrcode-svg';
 import { Alert } from './alerts';
@@ -10,13 +10,18 @@ import { Button, Disclosure, Icon, useUI } from './ui';
 import type { Palette } from './ui';
 import { availableUPIApps, buildUPIUrl, openUPIPayment, validateUPIPayment } from './upi';
 import type { UPIApp, UPILaunchQuote } from './upi';
+import { openAndroidUPIChooser } from './upiHandoff';
+import { launchPaymentReturn, paymentReturnEvent, paymentReturnNeedsConfirmation, PaymentReturnReviewError } from './paymentReturn';
+import type { PaymentReturn, PaymentReturnEvent } from './paymentReturn';
 
 type Payment = { sender: string; recipient: string; amount: string };
 type Props = { group: Group; initial?: Payment; busy: boolean; onSave: (payment: Payment) => Promise<void>; onCancel: () => void;
-  selfId: string; onReviewAttempt: (sender: string, recipient: string) => Promise<void>; onPrepareUPI: (payment: Payment) => Promise<UPILaunchQuote>; onCancelUPI: (attemptId: string) => Promise<void> };
+  selfId: string; onReviewAttempt: (sender: string, recipient: string) => Promise<void>; onPrepareUPI: (payment: Payment) => Promise<UPILaunchQuote>; onCancelUPI: (attemptId: string) => Promise<void>;
+  returnPayment: PaymentReturn | null; onArmReturn: (payment: Payment, quote: UPILaunchQuote) => Promise<PaymentReturn>;
+  onReturnPaymentChange: (next: PaymentReturn | null) => Promise<void>; onResolveReturn: (record: PaymentReturn, paid: boolean) => Promise<void> };
 const rupees = (value: string) => { const amount = integer(value); return `${amount / 100n}.${(amount % 100n).toString().padStart(2, '0')}`; };
 
-export default function SettleForm({ group, initial, busy, selfId, onSave, onReviewAttempt, onPrepareUPI, onCancelUPI }: Props) {
+export default function SettleForm({ group, initial, busy, selfId, onSave, onReviewAttempt, onPrepareUPI, onCancelUPI, onCancel, returnPayment, onArmReturn, onReturnPaymentChange, onResolveReturn }: Props) {
   const { palette: colors, ui, inputColors } = useUI();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const proposal = initial && isPersonalPayment(group, selfId, initial.sender, initial.recipient) ? initial : undefined;
@@ -27,8 +32,73 @@ export default function SettleForm({ group, initial, busy, selfId, onSave, onRev
   const [notice, setNotice] = useState(''), [reviewing, setReviewing] = useState(false);
   const [chooser, setChooser] = useState<{ payment: Payment; target: { vpa: string; name: string }; apps: UPIApp[] } | null>(null);
   const [webQuote, setWebQuote] = useState<{ quote: UPILaunchQuote; url: string; target: { vpa: string; name: string } } | null>(null);
+  const [returnRecord, setReturnRecord] = useState(returnPayment), [returnError, setReturnError] = useState(''), [returnReview, setReturnReview] = useState(false);
+  const returnRef = useRef(returnPayment), returnWrites = useRef(Promise.resolve());
+  const armedHere = useRef<string | null>(null);
+  const returnChange = useRef(onReturnPaymentChange); returnChange.current = onReturnPaymentChange;
   const lock = useRef(false), mounted = useRef(true), disabled = busy || saving || reviewing || !!chooser;
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  useEffect(() => {
+    if (!returnPayment || returnPayment.attemptId !== returnRef.current?.attemptId) {
+      returnRef.current = returnPayment; setReturnRecord(returnPayment); setReturnError(''); setReturnReview(false);
+    }
+  }, [returnPayment]);
+  function persistReturn(next: PaymentReturn) {
+    returnRef.current = next;
+    if (mounted.current) setReturnRecord(next);
+    const write = returnWrites.current.catch(() => {}).then(() => returnChange.current(next));
+    returnWrites.current = write;
+    return write;
+  }
+  function transitionReturn(event: PaymentReturnEvent): Promise<void> {
+    const current = returnRef.current;
+    if (!current) return Promise.resolve();
+    const next = paymentReturnEvent(current, event);
+    return next === current ? Promise.resolve() : persistReturn(next);
+  }
+  useEffect(() => {
+    const changed = (state: string) => {
+      if (state !== 'active' && state !== 'background') return;
+      void transitionReturn({ type: state }).catch(() => {
+        if (mounted.current) setReturnError('Could not save this payment reminder. Try again.');
+      });
+    };
+    // Restore an observed departure after process death; an unrelated launch has no leftApp flag.
+    if (Platform.OS !== 'web' && returnRef.current?.launch === 'opening' && armedHere.current !== returnRef.current.attemptId) {
+      void transitionReturn({ type: 'failed' }).catch(() => {});
+    } else if (AppState.currentState === 'active') changed('active');
+    const subscription = AppState.addEventListener('change', changed);
+    if (Platform.OS === 'web' && typeof document !== 'undefined') {
+      const visibility = () => changed(document.visibilityState === 'hidden' ? 'background' : 'active');
+      document.addEventListener('visibilitychange', visibility);
+      return () => { subscription.remove(); document.removeEventListener('visibilitychange', visibility); };
+    }
+    return () => subscription.remove();
+  }, [returnPayment?.attemptId]);
+  async function armReturn(payment: Payment, quote: UPILaunchQuote) {
+    const record = await onArmReturn(payment, quote);
+    if (!mounted.current) throw new Error('Open this payment again before continuing.');
+    if (record.groupId !== group.id || record.groupVersion !== quote.group_version || record.attemptId !== quote.id || record.sender !== payment.sender || record.recipient !== payment.recipient || record.amount !== payment.amount || record.payeeName !== quote.recipient || record.vpa !== quote.vpa) throw new Error('Payment details changed. Review them again.');
+    if (record.decision !== null) throw new Error('Confirm the saved update before opening UPI again.');
+    armedHere.current = record.attemptId;
+    returnRef.current = record; setReturnRecord(record); setReturnError(''); setReturnReview(false);
+  }
+  async function resolveReturn(paid: boolean) {
+    if (lock.current || busy || !returnRef.current || !paymentReturnNeedsConfirmation(returnRef.current)) return;
+    lock.current = true; setSaving(true); setReturnError('');
+    try {
+      await transitionReturn({ type: 'decision', paid });
+      const frozen = returnRef.current!;
+      await returnWrites.current;
+      await onResolveReturn(frozen, frozen.decision === 'paid');
+    } catch (cause) {
+      if (mounted.current) {
+        setReturnReview(cause instanceof PaymentReturnReviewError);
+        setReturnError(cause instanceof PaymentReturnReviewError ? cause.message : 'Could not confirm the update. Try again.');
+      }
+    } finally { lock.current = false; if (mounted.current) setSaving(false); }
+  }
+
   useEffect(() => {
     if (!isPersonalPayment(group, selfId, sender, recipient)) return;
     let current = true; setReviewing(true);
@@ -63,9 +133,37 @@ export default function SettleForm({ group, initial, busy, selfId, onSave, onRev
     if (!mounted.current) return;
     if (quote.amount !== payment.amount || quote.vpa !== target.vpa || quote.recipient !== target.name) throw new Error('The amount or recipient changed. Review the payment again.');
     const url = buildUPIUrl(quote);
-    if (Platform.OS === 'web') { setWebQuote({ quote, url, target }); return; }
-    await openUPIPayment(quote, app!.id, { amount: payment.amount, ...target }, url => Linking.openURL(url));
-    if (mounted.current) setNotice('Check your UPI app. Record only the money you actually paid.');
+    if (Platform.OS === 'web') {
+      setPeopleOpen(false);
+      await armReturn(payment, quote); await transitionReturn({ type: 'opening' });
+      if (mounted.current) setWebQuote({ quote, url, target });
+      return;
+    }
+    await launchPaymentReturn(() => armReturn(payment, quote), transitionReturn,
+      () => { if (!mounted.current) throw new Error('Open this payment again before continuing.'); return openUPIPayment(quote, app!.id, { amount: payment.amount, ...target }, url => Platform.OS === 'android' ? openAndroidUPIChooser(url) : Linking.openURL(url)); },
+      Platform.OS === 'android' || Platform.OS === 'ios' && app!.id !== 'upi');
+  }
+  function openWebPayment() {
+    if (!webQuote || lock.current || busy) return;
+    const selected = webQuote, frozen = returnRef.current;
+    if (!frozen || frozen.attemptId !== selected.quote.id || frozen.amount !== selected.quote.amount || frozen.vpa !== selected.quote.vpa || frozen.payeeName !== selected.quote.recipient || frozen.launch !== 'opening' || frozen.decision !== null) {
+      setError('Review the payment again before opening UPI.'); return;
+    }
+    lock.current = true; setSaving(true); setError('');
+    // armReturn/opening were persisted before rendering this button. The opener
+    // runs synchronously in this click, before any IndexedDB/promise continuation.
+    const opened = openUPIPayment(selected.quote, 'upi', { amount: frozen.amount, name: frozen.payeeName, vpa: frozen.vpa }, url => Linking.openURL(url));
+    void opened.then(() => transitionReturn({ type: 'opened', handoffConfirmed: false })).catch(async cause => {
+      await transitionReturn({ type: 'failed' }).catch(() => {});
+      if (mounted.current) { setWebQuote(null); setError(cause instanceof Error ? cause.message : 'Could not open UPI.'); }
+    }).finally(() => { lock.current = false; if (mounted.current) setSaving(false); });
+  }
+  async function reviewWebPayment() {
+    if (!webQuote || lock.current || busy) return;
+    lock.current = true; setSaving(true); setError('');
+    try { await transitionReturn({ type: 'review' }); }
+    catch { if (mounted.current) setError('Could not save this payment reminder. Try again.'); }
+    finally { lock.current = false; if (mounted.current) setSaving(false); }
   }
   async function pay(app?: UPIApp) {
     if (lock.current || busy || group.archived) return;
@@ -111,15 +209,30 @@ export default function SettleForm({ group, initial, busy, selfId, onSave, onRev
   const canPay = sender === selfId && !!debt && !!profile && !group.archived && activeAttempt?.state !== 'reported';
   let amountLabel = '';
   try { amountLabel = formatMoney(rupeesToPaise(amount)); } catch { /* Validate on confirmation, without interrupting typing. */ }
+  const pendingReturn = returnRecord && returnRecord.groupId === group.id && returnRecord.sender === selfId && (returnRecord.launch === 'opened' || returnRecord.launch === 'opening' && (Platform.OS !== 'web' || !webQuote && !saving) || paymentReturnNeedsConfirmation(returnRecord)) ? returnRecord : null;
+  if (pendingReturn) {
+    const needsAnswer = paymentReturnNeedsConfirmation(pendingReturn);
+    return <View style={styles.form}>
+      <Text style={ui.caption}>{group.name}</Text>
+      <Text style={[ui.section, styles.returnTitle]}>{needsAnswer ? `Did you pay ${pendingReturn.payeeName} ${formatMoney(pendingReturn.amount)}?` : `${formatMoney(pendingReturn.amount)} to ${pendingReturn.payeeName}`}</Text>
+      <Text style={ui.body}>Check your UPI app before answering.</Text>
+      {!!returnError && <Text accessibilityRole="alert" style={ui.error}>{returnError}</Text>}
+      {returnReview ? <Button title="Review balance" kind="primary" onPress={onCancel} disabled={disabled} /> : pendingReturn.decision !== null ?
+        <Button title={saving ? 'Confirming update…' : 'Try again'} kind="primary" onPress={() => void resolveReturn(pendingReturn.decision === 'paid')} disabled={disabled} /> : needsAnswer ? <>
+          <Button title={saving ? 'Recording payment…' : 'Yes, I paid'} kind="primary" onPress={() => void resolveReturn(true)} disabled={disabled} />
+          <Button title="No" kind="secondary" onPress={() => void resolveReturn(false)} disabled={disabled} />
+        </> : <Button title="Review payment" kind="primary" disabled={disabled || pendingReturn.launch === 'opening' && Platform.OS !== 'web'} onPress={() => void transitionReturn({ type: 'review' }).catch(() => setReturnError('Could not save this payment reminder. Try again.'))} />}
+    </View>;
+  }
   return <View style={styles.form}>
     <Text style={ui.caption}>{group.name}</Text>
-    <View style={styles.field}><Text style={ui.rowTitle}>From {label(sender)}</Text><Text style={ui.rowTitle}>To {label(recipient)}</Text></View>
+    {!webQuote && <View style={styles.field}><Text style={ui.rowTitle}>From {label(sender)}</Text><Text style={ui.rowTitle}>To {label(recipient)}</Text></View>}
     {group.archived && <Text style={ui.notice}>Reopen this group in settings before recording a payment.</Text>}
-    <View style={styles.field}><Text style={ui.label}>Amount (₹)</Text><TextInput {...inputColors} accessibilityLabel="Amount (₹)" keyboardType="decimal-pad" value={amount}
-      onChangeText={value => { setAmount(value); setError(''); setWebQuote(null); }} editable={!disabled} placeholder="0" placeholderTextColor={colors.muted} style={[ui.input, styles.amount]} />
+    {!webQuote && <><View style={styles.field}><Text style={ui.label}>Amount (₹)</Text><TextInput {...inputColors} accessibilityLabel="Amount (₹)" keyboardType="decimal-pad" value={amount}
+      onChangeText={value => { setAmount(value); setError(''); setWebQuote(null); }} editable={!disabled && !webQuote} placeholder="0" placeholderTextColor={colors.muted} style={[ui.input, styles.amount]} />
     </View>
     <View style={styles.people}>
-      <Pressable accessibilityRole="button" accessibilityState={{ expanded: peopleOpen, disabled }} disabled={disabled} onPress={() => setPeopleOpen(value => !value)} style={styles.summary}>
+      <Pressable accessibilityRole="button" accessibilityState={{ expanded: peopleOpen, disabled: disabled || !!webQuote }} disabled={disabled || !!webQuote} onPress={() => setPeopleOpen(value => !value)} style={styles.summary}>
         <Text style={ui.rowTitle}>Change people</Text><View style={{ transform: [{ rotate: peopleOpen ? '180deg' : '0deg' }] }}><Icon name="down" size={20} /></View>
       </Pressable>
       {peopleOpen && <View style={styles.reveal}>
@@ -131,32 +244,33 @@ export default function SettleForm({ group, initial, busy, selfId, onSave, onRev
         {group.participants.filter(person => person.id !== sender && !person.removed && (sender === selfId || person.id === selfId)).map(person => <RadioButton.Item key={`to-${person.id}`} value={person.id} label={label(person.id)} accessibilityLabel={`To ${label(person.id)}`}
           status={recipient === person.id ? 'checked' : 'unchecked'} disabled={disabled} labelStyle={ui.body} mode="android"
           onPress={() => { setRecipient(person.id); setError(''); setWebQuote(null); }} />)}
-        <Button title="Done" onPress={() => setPeopleOpen(false)} disabled={disabled} kind="text" icon="check" />
       </View>}
     </View>
-    {profile && <Disclosure title="Payment address"><Text selectable style={ui.body}>{label(recipient)}'s UPI ID: {profile.vpa}</Text>
+    </>}
+    {profile && !webQuote && <Disclosure title="Payment address"><Text selectable style={ui.body}>{label(recipient)}'s UPI ID: {profile.vpa}</Text>
       <Text style={ui.caption}>Entered by this person. Not bank verified.</Text></Disclosure>}
     {sender === selfId && debt && !profile && <Text style={ui.caption}>Ask {label(recipient)} to {group.participants.find(person => person.id === recipient)?.user_id != null ? 'add a UPI address' : 'join and add a UPI address'}. You can still record a payment made outside MeroSplit.</Text>}
-    {canPay && <><Text style={ui.caption}>Pay up to {formatMoney(debt!.amount)}. Check the recipient in your UPI app.</Text><Button title={saving ? 'Preparing…' : amountLabel ? `Pay ${amountLabel} with UPI` : 'Pay with UPI'} kind="primary" icon="pay" disabled={disabled || !amountLabel} onPress={() => void pay()} /></>}
+    {canPay && !webQuote && <><Text style={ui.caption}>Pay up to {formatMoney(debt!.amount)}. Check the recipient in your UPI app.</Text><Button title={saving ? 'Preparing…' : amountLabel ? `Pay ${amountLabel} with UPI` : 'Pay with UPI'} kind="primary" icon="pay" disabled={disabled || !amountLabel} onPress={() => void pay()} /></>}
     {webQuote && <View style={styles.field}>
       <Text style={ui.rowTitle}>{webQuote.quote.recipient} · {formatMoney(webQuote.quote.amount)}</Text>
       <View accessibilityRole="image" accessibilityLabel="Scan this UPI payment QR with your payment app" style={{ alignSelf: 'center', padding: 12, backgroundColor: '#FFFFFF' }}><QRCode value={webQuote.url} size={200} quietZone={12} /></View>
       <Text selectable style={ui.body}>{webQuote.quote.vpa}</Text>
       <Button title="Copy UPI address" kind="text" disabled={disabled} onPress={() => void copy(webQuote.quote.vpa)} />
       <Button title="Copy payment link" kind="text" disabled={disabled} onPress={() => void copy(webQuote.url)} />
-      <Button title="Open UPI app on this device" disabled={disabled} onPress={() => void openUPIPayment(webQuote.quote, 'upi', { amount: webQuote.quote.amount, ...webQuote.target }, url => Linking.openURL(url)).catch(cause => setError(cause.message))} />
-      <Text style={ui.caption}>Scan with your phone. Record only after you have paid.</Text>
+      <Button title="Open UPI app on this device" disabled={disabled} onPress={() => void openWebPayment()} />
+      <Button title="Review payment" kind="primary" disabled={disabled} onPress={() => void reviewWebPayment()} />
     </View>}
     {activeAttempt?.state === 'reported' && sender === selfId && <Text style={ui.caption}>This payment is already reported. Check it before paying again.</Text>}
     {activeAttempt?.state === 'prepared' && sender === selfId && <Button title="Cancel unpaid attempt" kind="text" disabled={disabled} onPress={() => Alert.alert('Cancel unpaid attempt?', 'Cancel only if you have not paid. This cannot reverse money already sent.', [{ text: 'Keep', style: 'cancel' }, { text: 'Cancel attempt', onPress: () => void cancelAttempt(activeAttempt.id) }])} />}
     {!!notice && <Text accessibilityLiveRegion="polite" style={ui.caption}>{notice}</Text>}
     {!!error && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={ui.error}>{error}</Text>}
-    <Button title={amountLabel ? `Record ${amountLabel} already paid` : 'Record a payment already made'} accessibilityLabel={amountLabel ? `Record ${amountLabel} to ${label(recipient)}` : 'Record payment'} onPress={confirm} disabled={disabled || group.archived || !isPersonalPayment(group, selfId, sender, recipient)} kind={canPay ? 'secondary' : 'primary'} icon="check" />
+    {!webQuote && <Button title={amountLabel ? `Record ${amountLabel} already paid` : 'Record a payment already made'} accessibilityLabel={amountLabel ? `Record ${amountLabel} to ${label(recipient)}` : 'Record payment'} onPress={confirm} disabled={disabled || group.archived || !isPersonalPayment(group, selfId, sender, recipient)} kind={canPay ? 'secondary' : 'primary'} icon="check" />}
     <Portal><Dialog visible={!!chooser} onDismiss={() => { if (!busy && !saving) setChooser(null); }}><Dialog.Title>Pay with UPI</Dialog.Title><Dialog.Content><Text style={ui.body}>Check the recipient and amount before paying.</Text></Dialog.Content><Dialog.ScrollArea style={{ maxHeight: 360 }}><ScrollView contentContainerStyle={{ paddingVertical: 8, gap: 8 }}>{chooser?.apps.map(app => <Button key={app.id} title={app.name} disabled={busy || saving} onPress={() => void pay(app)} />)}</ScrollView></Dialog.ScrollArea><Dialog.Actions><Button title="Cancel" kind="text" disabled={busy || saving} onPress={() => setChooser(null)} /></Dialog.Actions></Dialog></Portal>
   </View>;
 }
 
 const makeStyles = (colors: Palette) => StyleSheet.create({
+  returnTitle: { fontSize: 24, lineHeight: 31 },
   form: { gap: 12 }, field: { gap: 7 },
   amount: { fontSize: 32, minHeight: 64, fontWeight: '600', fontVariant: ['tabular-nums'] }, people: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
   summary: { minHeight: 52, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 }, reveal: { gap: 12, paddingBottom: 12 },

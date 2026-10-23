@@ -9,7 +9,7 @@ import type { Group, Expense, Session, Command } from '../src/types.ts';
 const session: Session = { baseUrl: 'https://browsing.test', userId: 'one', email: 'one@example.test', token: 'synthetic' }, owner = accountOwner(session);
 const bill: Expense = { id: 'bill', version: 1, description: 'Tea', total: '900', paid: { a: '900', b: '0' }, shares: { a: '300', b: '600' }, split: { mode: 'exact', values: { a: '300', b: '600' } }, date: '2026-10-17', category: 'other', notes: '', deleted: false };
 const full: Group = { id: 'g', name: 'Trip', version: 1, participants: [{ id: 'a', name: 'A' }, { id: 'b', name: 'B' }], expenses: [bill], settlements: [], activity: [], balances: { a: '600', b: '-600' }, transfers: [{ sender: 'b', recipient: 'a', amount: '600' }] };
-const summary = (version = 1): Group => ({ ...full, version, read_mode: 'summary', expenses: [], totals: { spending: '900', paid: { a: '900', b: '0' }, shares: { a: '300', b: '600' } }, history: { bills: { next_cursor: 'signed' }, activity: { next_cursor: null }, settlements: { next_cursor: null }, attempts: { next_cursor: null } } });
+const summary = (version = 1): Group => ({ ...full, version, participants: full.participants.map(person => ({ ...person, recorded_name: person.name })), read_mode: 'summary', expenses: [], transactions: [], totals: { spending: '900', paid: { a: '900', b: '0' }, shares: { a: '300', b: '600' } }, history: { transactions: { next_cursor: null }, bills: { next_cursor: 'signed' }, activity: { next_cursor: null }, settlements: { next_cursor: null }, attempts: { next_cursor: null } } });
 
 test('Browsing pages live separately from complete snapshots and a newer version invalidates old text', async () => {
   const raw = new DatabaseSync(':memory:'), db = sqliteAdapter(raw);
@@ -36,6 +36,34 @@ test('Cold bounded refresh fetches summary only and unchanged refresh reuses its
     await refreshGroups(db, session, 'summary');
     assert.deepEqual(calls, ['https://browsing.test/api/v1/groups']);
     assert.equal(raw.prepare('SELECT total_changes() n').get()!.n, before);
+  } finally { globalThis.fetch = original; raw.close(); }
+});
+
+test('A same-version summary from before canonical profile names refreshes once, then reuses the upgraded cache', async () => {
+  const raw = new DatabaseSync(':memory:'), db = sqliteAdapter(raw), original = globalThis.fetch, calls: string[] = [];
+  try {
+    await migrate(db); await saveGroup(db, owner, { ...summary(), participants: full.participants }, 'shared');
+    const canonical = { ...summary(), participants: summary().participants.map(person => ({ ...person, name: person.id === 'a' ? 'New canonical name' : person.name })) };
+    globalThis.fetch = async url => { calls.push(String(url)); return Response.json(String(url).endsWith('/groups') ? { groups: [{ id: 'g', version: 1 }] } : canonical); };
+    await refreshGroups(db, session, 'summary');
+    assert.equal(calls.length, 2);
+    assert.equal((await readVisibleGroup(db, owner, 'g'))?.group.participants[0].name, 'New canonical name');
+    assert.deepEqual((await readVisibleGroup(db, owner, 'g'))?.group.balances, full.balances);
+    calls.length = 0;
+    await refreshGroups(db, session, 'summary');
+    assert.equal(calls.length, 1, 'normal equal-version refresh remains bounded after the one-time upgrade');
+  } finally { globalThis.fetch = original; raw.close(); }
+});
+
+test('Equal-version summaries from before the mixed timeline refresh once without changing finances', async () => {
+  const raw = new DatabaseSync(':memory:'), db = sqliteAdapter(raw), original = globalThis.fetch, calls: string[] = [];
+  try {
+    await migrate(db); const old = summary(); delete old.transactions; delete old.history!.transactions;
+    await saveGroup(db, owner, old, 'shared');
+    globalThis.fetch = async url => { calls.push(String(url)); return Response.json(String(url).endsWith('/groups') ? { groups: [{ id: 'g', version: 1 }] } : summary()); };
+    await refreshGroups(db, session, 'summary'); assert.equal(calls.length, 2);
+    assert.deepEqual((await readVisibleGroup(db, owner, 'g'))?.group.balances, full.balances);
+    calls.length = 0; await refreshGroups(db, session, 'summary'); assert.equal(calls.length, 1);
   } finally { globalThis.fetch = original; raw.close(); }
 });
 

@@ -72,7 +72,7 @@ export async function refreshGroups(db: Database, session: Session, mode: 'full'
   const complete = (group: Group | undefined): group is Group => !!group && Array.isArray(group.participants) && Array.isArray(group.expenses) && Array.isArray(group.settlements) && Array.isArray(group.transfers) && Array.isArray(group.activity) && !!group.balances;
   for (const row of index.groups) {
     const cached = await (mode === 'summary' ? readVisibleGroup : readGroup)(db, owner, row.id);
-    if (cached?.kind === 'shared' && complete(cached.group) && cached.group.id === row.id && cached.group.version === row.version && (mode === 'summary' ? cached.group.read_mode === 'summary' : !cached.group.read_mode)) snapshots.push(cached.group);
+    if (cached?.kind === 'shared' && complete(cached.group) && cached.group.id === row.id && cached.group.version === row.version && (mode === 'summary' ? cached.group.read_mode === 'summary' && Array.isArray(cached.group.transactions) && !!cached.group.history?.transactions && cached.group.participants.every(person => typeof person.recorded_name === 'string') : !cached.group.read_mode)) snapshots.push(cached.group);
     else {
       const group = await fetchGroup(session, row.id, mode);
       if (!complete(group) || group.id !== row.id || group.version < row.version) throw new Error('The group refresh was incomplete. Try again.');

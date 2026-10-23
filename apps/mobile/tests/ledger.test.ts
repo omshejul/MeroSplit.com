@@ -64,3 +64,10 @@ test('Deleted bills, reversed payments and a recorded payment date cannot be dis
   assert.equal(legacyMatchesServer(legacy, { ...legacy, settlements: legacy.settlements.map(row => ({ ...row, date: '2026-10-17' })) }), true);
   assert.equal(legacyMatchesServer({ ...legacy, settlements: legacy.settlements.map(row => ({ ...row, date: '2026-10-16' })) }, { ...legacy, settlements: legacy.settlements.map(row => ({ ...row, date: '2026-10-17' })) }), false);
 });
+
+test('Canonical profile renames preserve matching recorded names without accepting a real ledger-person edit', () => {
+  const canonical = { ...original, participants: original.participants.map(person => ({ ...person, recorded_name: person.name, name: person.id === 'A' ? 'New account display name' : person.name })) };
+  assert.equal(legacyMatchesServer(original, canonical), true);
+  assert.equal(legacyMatchesServer(original, { ...canonical, participants: canonical.participants.map(person => ({ ...person, recorded_name: `${person.recorded_name} changed` })) }), false);
+  assert.equal(original.participants[0].name, 'A');
+});

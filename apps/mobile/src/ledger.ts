@@ -14,7 +14,7 @@ export function legacyMatchesServer(legacy: Group, canonical: Group): boolean {
   const amounts = (values: Record<string, string>) => Object.entries(values).filter(([, value]) => value !== '0').sort(([a], [b]) => a.localeCompare(b));
   const content = (group: Group) => ({
     id: group.id, name: group.name, is_direct: !!group.is_direct, archived: !!group.archived,
-    participants: sort(group.participants).map(({ id, name, removed }) => ({ id, name, removed: !!removed })),
+    participants: sort(group.participants).map(({ id, name, recorded_name, removed }) => ({ id, name: recorded_name ?? name, removed: !!removed })),
     expenses: sort(group.expenses).map(({ id, description, total, paid, shares, split, date, category, notes, deleted }) => ({
       id, description, total, paid: amounts(paid), shares: amounts(shares), split: { mode: split.mode, values: amounts(split.values) }, date, category, notes, deleted,
     })),

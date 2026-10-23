@@ -39,6 +39,19 @@ export async function refreshPushDevice(session: Session, state: PushPreferences
 }
 
 const uuid = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
+/** Reconcile displayed prompts only; this never acknowledges a bill as seen. */
+export async function dismissReadPushes(session: Session, shown: { identifier: string; data: unknown }[], dismiss: (id: string) => Promise<void>, send: typeof request = request): Promise<void> {
+  const owned = shown.filter(value => notificationForAccount(session, value.data) && uuid.test(String(value.data.event_id)) && uuid.test(String(value.data.expense_id))).slice(0, 100);
+  const ids = [...new Set(owned.map(value => String((value.data as Record<string, unknown>).expense_id)))].slice(0, 50);
+  if (!ids.length) return;
+  const unread = await send<{ notices: { id: string }[]; has_more: boolean }>(session, `/me/notifications?limit=100&expense_ids=${encodeURIComponent(ids.join(','))}`);
+  if (unread.has_more !== false || !Array.isArray(unread.notices) || unread.notices.some(value => !value || typeof value.id !== 'string' || !uuid.test(value.id))) return;
+  const remaining = new Set(unread.notices.map(value => value.id));
+  for (const value of owned) {
+    const data = value.data as Record<string, unknown>;
+    if (ids.includes(String(data.expense_id)) && !remaining.has(String(data.event_id))) await dismiss(value.identifier);
+  }
+}
 export function notificationForAccount(session: Session | null, data: unknown): data is Record<string, string> {
   return !!session && !!data && typeof data === 'object' && !Array.isArray(data)
     && (data as Record<string, unknown>).type === 'new_bill' && (data as Record<string, unknown>).recipient_user_id === session.userId;

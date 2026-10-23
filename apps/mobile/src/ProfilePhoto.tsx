@@ -12,8 +12,8 @@ import PrivateMediaImage from './PrivateMediaImage';
 import type { Session } from './types';
 import { Button, Icon, useUI } from './ui';
 
-export type ProfilePhotoProps = { session: Session | null; busy: boolean; onBusyChange: (busy: boolean) => void };
-export default function ProfilePhoto({ session, busy, onBusyChange }: ProfilePhotoProps) {
+export type ProfilePhotoProps = { session: Session | null; busy: boolean; onBusyChange: (busy: boolean) => void; compact?: boolean };
+export default function ProfilePhoto({ session, busy, onBusyChange, compact = false }: ProfilePhotoProps) {
   const { ui, palette } = useUI(), [avatar, setAvatar] = useState<MediaMetadata | null>(null), [loading, setLoading] = useState(true), [working, setWorking] = useState(false), [error, setError] = useState('');
   const [optionsOpen, setOptionsOpen] = useState(false);
   const lock = useRef(false), mounted = useRef(true), owner = session ? accountOwner(session) : '';
@@ -63,9 +63,9 @@ export default function ProfilePhoto({ session, busy, onBusyChange }: ProfilePho
   return <View style={{ gap: 10 }}>
     {!session ? <Text style={ui.caption}>Sign in to add your profile photo.</Text> : <>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-        <Pressable accessibilityRole="button" accessibilityLabel={avatar ? 'Change profile photo' : 'Choose profile photo'} accessibilityState={{ disabled }} disabled={disabled} onPress={() => void run(choose)} style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 64 }}>
+        <Pressable accessibilityRole="button" accessibilityLabel={avatar ? 'Change profile photo' : 'Choose profile photo'} accessibilityState={{ disabled }} disabled={disabled} onPress={() => void run(choose)} style={{ flex: compact ? undefined : 1, flexShrink: compact ? 0 : undefined, width: compact ? 64 : undefined, flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 64 }}>
           {avatar ? <PrivateMediaImage session={session} media={avatar} size={64} profile /> : <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: palette.soft, alignItems: 'center', justifyContent: 'center' }}><Icon name="me" size={30} /></View>}
-          <Text style={[ui.body, { flex: 1 }]}>{loading ? 'Loading photo…' : working ? 'Updating photo…' : avatar ? 'Change photo' : 'Choose photo'}</Text>
+          {compact ? <View style={{ position: 'absolute', right: 0, bottom: 0, backgroundColor: palette.background, borderRadius: 12, padding: 3 }}><Icon name="edit" size={16} /></View> : <Text style={[ui.body, { flex: 1 }]}>{loading ? 'Loading photo…' : working ? 'Updating photo…' : avatar ? 'Change photo' : 'Choose photo'}</Text>}
         </Pressable>
         {avatar && <Menu visible={optionsOpen} onDismiss={() => setOptionsOpen(false)} anchor={<IconButton accessibilityLabel="Photo options" disabled={disabled} style={{ width: 48, height: 48, margin: 0 }} icon={({ color, size }) => <HugeiconsIcon icon={MoreVerticalIcon} color={color} size={size} />} onPress={() => setOptionsOpen(true)} />}>
           <Menu.Item title="Remove photo" disabled={disabled} onPress={() => { setOptionsOpen(false); remove(); }} />
