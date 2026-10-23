@@ -19,6 +19,7 @@ from .models import (
     PaymentProfile,
     Settlement,
 )
+from .store_review import require_group_scope
 
 
 def visible_group(actor, group_id, *, lock=False):
@@ -30,6 +31,7 @@ def visible_group(actor, group_id, *, lock=False):
     # Recheck membership after acquiring it so a waiting write cannot outlive removal.
     if not group or (lock and not group.participants.filter(user=actor, removed=False).exists()):
         raise HttpError(404, "Group not found")
+    require_group_scope(actor, group)
     return group
 
 
@@ -97,26 +99,46 @@ def expense_dict(expense):
     }
 
 
+def finance_state(participant_ids, expense_rows, settlement_rows, opening_balances=None):
+    """Exact totals from monetary tuples; history text is not needed for balances."""
+    balances = {str(person): 0 for person in participant_ids}
+    paid_totals, share_totals = dict(balances), dict(balances)
+    spending = 0
+    for total, paid, shares in expense_rows:
+        spending += total
+        for person in balances:
+            paid_totals[person] += int(paid.get(person, "0"))
+            share_totals[person] += int(shares.get(person, "0"))
+    balances = {person: paid_totals[person] - share_totals[person] for person in balances}
+    for sender, recipient, amount in settlement_rows:
+        balances[str(sender)] += amount
+        balances[str(recipient)] -= amount
+    if opening_balances:
+        for person, amount in opening_balances.items():
+            balances[person] += int(amount)
+    values = {person: str(amount) for person, amount in balances.items()}
+    return {
+        "balances": values,
+        "transfers": propose_transfers(values),
+        "totals": {
+            "spending": str(spending),
+            "paid": {person: str(amount) for person, amount in paid_totals.items()},
+            "shares": {person: str(amount) for person, amount in share_totals.items()},
+        },
+    }
+
+
 def snapshot(group):
     participants = list(group.participants.order_by("id"))
-    balances = {str(p.id): 0 for p in participants}
-    paid_totals, share_totals = dict(balances), dict(balances)
     expenses = list(group.expenses.order_by("date", "id"))
     settlements = list(group.settlements.order_by("created_at", "id"))
     opening = OpeningBalance.objects.filter(group=group).first()
-    for expense in expenses:
-        if not expense.deleted:
-            for person in balances:
-                paid_totals[person] += int(expense.paid.get(person, "0"))
-                share_totals[person] += int(expense.shares.get(person, "0"))
-                balances[person] = paid_totals[person] - share_totals[person]
-    for payment in settlements:
-        if not payment.reversed:
-            balances[str(payment.sender_id)] += payment.amount
-            balances[str(payment.recipient_id)] -= payment.amount
-    if opening and opening.accepted:
-        for person, amount in opening.balances.items():
-            balances[person] += int(amount)
+    finance = finance_state(
+        [p.id for p in participants],
+        ((e.total, e.paid, e.shares) for e in expenses if not e.deleted),
+        ((p.sender_id, p.recipient_id, p.amount) for p in settlements if not p.reversed),
+        opening.balances if opening and opening.accepted else None,
+    )
     result = {
         "id": str(group.id),
         "name": group.name,
@@ -143,7 +165,7 @@ def snapshot(group):
             }
             for p in settlements
         ],
-        "balances": {p: str(amount) for p, amount in balances.items()},
+        **finance,
         "activity": list(
             group.changes.order_by("sequence").values("sequence", "actor_id", "kind", "data", "created_at")
         ),
@@ -181,15 +203,12 @@ def snapshot(group):
             "approved": i.approved,
             "revoked": i.revoked,
             "expires_at": i.expires_at.isoformat(),
+            "intended_email": i.intended_email,
+            "send_state": i.send_state,
+            "sent_at": i.sent_at.isoformat() if i.sent_at else None,
         }
         for i in Invite.objects.filter(participant__group=group).select_related("claimant").order_by("id")
     ]
-    result["totals"] = {
-        "spending": str(sum(e.total for e in expenses if not e.deleted)),
-        "paid": {p: str(amount) for p, amount in paid_totals.items()},
-        "shares": {p: str(amount) for p, amount in share_totals.items()},
-    }
-    result["transfers"] = propose_transfers(result["balances"])
     result["opening_balance"] = (
         None
         if not opening
@@ -211,6 +230,10 @@ def create_group(actor, payload):
     # Keep pre-flag creation receipts replayable after the schema adds its default.
     if not payload.get("is_direct", False):
         payload = {key: value for key, value in payload.items() if key != "is_direct"}
+    payload = {**payload, "participants": [
+        {key: value for key, value in person.items() if key != "email" or value}
+        for person in payload["participants"]
+    ]}
     previous, fingerprint = previous_result(actor, payload["command_id"], "create_group", payload)
     if previous:
         visible_group(actor, previous["id"])
@@ -232,6 +255,7 @@ def create_group(actor, payload):
                 name=p["name"],
                 group=group,
                 user=actor if p["id"] == payload["self_participant_id"] else None,
+                contact_email=clean_contact_email(p.get("email", "")),
             )
             for p in payload["participants"]
         ]
@@ -239,6 +263,17 @@ def create_group(actor, payload):
     return record_change(
         group, actor, payload["command_id"], fingerprint, "group_created", {"name": group.name}
     )
+
+
+def clean_contact_email(value):
+    from django.core.exceptions import ValidationError
+
+    from .otp import normalized_email
+
+    try:
+        return normalized_email(value) if value else ""
+    except ValidationError as exc:
+        raise AccountingError("Enter a valid contact email, or leave it empty") from exc
 
 
 @transaction.atomic

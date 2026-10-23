@@ -10,6 +10,7 @@ from ninja.errors import HttpError
 from .accounting import AccountingError, propose_transfers
 from .models import ExpensePushDelivery, Invite, OpeningBalance, Participant
 from .services import (
+    clean_contact_email,
     keep_removed_balances_zero,
     people,
     previous_result,
@@ -18,6 +19,7 @@ from .services import (
     visible_group,
     writable,
 )
+from .store_review import require_group_scope
 
 
 def invite_token(invite_id):
@@ -69,6 +71,8 @@ def create_invite(actor, group_id, payload):
 
 def guest_view(token):
     invite = valid_invite(token)
+    if invite.intended_email:
+        return {"requires_email_verification": True, "group_id": str(invite.participant.group_id)}
     with transaction.atomic():
         # Sharing exposes one person's involvement, not all unrelated bills.
         group = invite.participant.group
@@ -126,6 +130,10 @@ def claim_invite(actor, token, payload):
     # Lock group before invite, consistently with organizer approval.
     group = type(group).objects.select_for_update().get(id=group.id)
     invite = valid_invite(token, lock=True)
+    require_group_scope(actor, group)
+    if invite.intended_email:
+        from .email_invites import claim_email_invite
+        return claim_email_invite(actor, invite, payload)
     previous, fingerprint = previous_result(actor, payload["command_id"], f"claim:{invite.id}", payload)
     if previous:
         return previous
@@ -174,6 +182,7 @@ def review_invite(actor, group_id, invite_id, payload, approve):
             raise HttpError(409, "This invitation has no valid pending claim")
         if Participant.objects.filter(group=group, user_id=invite.claimant_id).exists():
             raise HttpError(409, "Account already has a participant in this group")
+        require_group_scope(invite.claimant, group)
         invite.participant.user_id = invite.claimant_id
         invite.participant.save(update_fields=["user"])
         invite.approved = True
@@ -288,6 +297,8 @@ def add_participant(actor, group_id, payload):
     group = visible_group(actor, group_id, lock=True)
     if group.owner_id != actor.pk:
         raise HttpError(403, "Only the organizer can add participants")
+    if not payload.get("email"):
+        payload = {key: value for key, value in payload.items() if key != "email"}
     previous, fingerprint = previous_result(
         actor, payload["command_id"], f"add_participant:{group_id}", payload
     )
@@ -302,7 +313,10 @@ def add_participant(actor, group_id, payload):
         raise HttpError(409, "Participant ID is already in use")
     if not payload["name"].strip():
         raise AccountingError("Enter a participant name")
-    person = Participant.objects.create(id=payload["id"], group=group, name=payload["name"].strip())
+    person = Participant.objects.create(
+        id=payload["id"], group=group, name=payload["name"].strip(),
+        contact_email=clean_contact_email(payload.get("email", "")),
+    )
     return record_change(
         group,
         actor,

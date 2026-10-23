@@ -10,8 +10,8 @@ from django.test import Client
 from django.utils import timezone
 
 from .models import Group, PaymentAttempt
+from .test_api import authenticated_client, expense, send, uid
 from .test_api import client as client
-from .test_api import expense, send, uid
 from .test_api import group as group
 
 pytestmark = pytest.mark.django_db
@@ -19,18 +19,8 @@ pytestmark = pytest.mark.django_db
 
 def account():
     email = f"{uuid4().hex}@splitdumb.invalid"
-    password = "Functional-tests-only-Password2026!"
-    user = get_user_model().objects.create_user(username=email, email=email, password=password)
-    result = Client()
-    response = result.post(
-        "/_allauth/app/v1/auth/login",
-        data=json.dumps({"email": email, "password": password}),
-        content_type="application/json",
-    )
-    assert response.status_code == 200, response.content
-    result.defaults["HTTP_X_SESSION_TOKEN"] = response.json()["meta"]["session_token"]
-    result.actor = user
-    return result
+    user = get_user_model().objects.create_user(username=email, email=email)
+    return authenticated_client(user)
 
 
 def state(client, group_id):
@@ -202,11 +192,11 @@ def test_guest_can_reconcile_own_opening_without_other_people_balances(client, g
     assert pending["participants"] == [{"id": ids[1], "name": "B"}]
     assert ids[2] not in json.dumps(pending)
     page = guest.get(f"/invite/{token}")
-    assert page.status_code == 200
-    assert page.context["viewer_id"] is None
-    assert b"\\u003Csource\\u003E" in page.content
+    assert page.status_code == 302
+    assert page["Location"].startswith("/app/invite/")
+    assert body["source"].encode() not in page.content
     guest.force_login(borrower.actor)
-    assert guest.get(f"/invite/{token}").context["viewer_id"] == borrower.actor.pk
+    assert guest.get(f"/invite/{token}").status_code == 302
     endpoint = f"/groups/{group_id}/opening-balances/{body['id']}/acknowledge"
     for member in [borrower, creditor]:
         assert send(member, "post", endpoint, {"command_id": uid()}).status_code == 200
@@ -243,7 +233,9 @@ def test_stale_quote_report_and_recipient_confirmation_post_once(client, group):
     launch = send(client, "get", f"{path}/launch")
     assert launch.status_code == 200, launch.content
     assert launch.json()["bank_verified"] is False
-    assert launch.json()["direct_launch_supported"] is False
+    assert launch.json()["direct_launch_supported"] is True
+    assert launch.json()["group_version"] == state(client, group_id)["version"]
+    assert launch.json()["expires_at"]
     assert send(recipient, "get", f"{path}/launch").status_code == 403
     assert send(client, "post", f"{path}/confirm", {"command_id": uid()}).status_code == 403
     assert send(recipient, "post", f"{path}/confirm", {"command_id": uid()}).status_code == 409
@@ -444,14 +436,8 @@ def test_browser_session_claim_requires_csrf_while_native_token_does_not(client,
     _, token = invite(client, group_id, ids[1])
     member = account()
     browser = Client(enforce_csrf_checks=True)
-    assert browser.get(f"/invite/{token}").status_code == 200
-    login = browser.post(
-        "/_allauth/browser/v1/auth/login",
-        data=json.dumps({"email": member.actor.email, "password": "Functional-tests-only-Password2026!"}),
-        content_type="application/json",
-        HTTP_X_CSRFTOKEN=browser.cookies["csrftoken"].value,
-    )
-    assert login.status_code == 200, login.content
+    assert browser.get("/_allauth/browser/v1/config").status_code == 200
+    browser.force_login(member.actor, backend="allauth.account.auth_backends.AuthenticationBackend")
     assert send(browser, "get", "/me").status_code == 200
     claim = {"command_id": uid()}
     assert send(browser, "post", f"/invites/{token}/claim", claim).status_code == 403

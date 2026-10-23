@@ -19,6 +19,7 @@ class Command(Input):
 class Person(Input):
     id: UUID
     name: Annotated[str, Field(min_length=1, max_length=120, pattern=r"\S")]
+    email: Annotated[str, Field(max_length=254)] = ""
 
 
 class GroupIn(Command):
@@ -95,6 +96,11 @@ class WriteResult(Schema):
 class ParticipantIn(Command):
     id: UUID
     name: Annotated[str, Field(min_length=1, max_length=120, pattern=r"\S")]
+    email: Annotated[str, Field(max_length=254)] = ""
+
+
+class ContactIn(Command):
+    email: Annotated[str, Field(max_length=254)] = ""
 
 
 class SplitwisePreviewIn(Input):

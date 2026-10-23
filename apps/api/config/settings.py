@@ -1,3 +1,4 @@
+import json
 import os
 from pathlib import Path
 
@@ -32,11 +33,13 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     "config.middleware.health_probe_only",
     "django.middleware.security.SecurityMiddleware",
+    "config.middleware.email_code_only",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "config.middleware.browser_account_scope",
     "allauth.account.middleware.AccountMiddleware",
 ]
 ROOT_URLCONF = "config.urls"
@@ -57,12 +60,49 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 SITE_ID = 1
 ACCOUNT_LOGIN_METHODS = {"email"}
-ACCOUNT_SIGNUP_FIELDS = ["email*", "password1*", "password2*"]
-ACCOUNT_EMAIL_VERIFICATION = "none"
+ACCOUNT_ADAPTER = "ledger.auth_adapter.EmailCodeAccountAdapter"
+ACCOUNT_SIGNUP_FIELDS = ["email*"]
+ACCOUNT_EMAIL_VERIFICATION = "mandatory"
+ACCOUNT_LOGIN_BY_CODE_ENABLED = True
+ACCOUNT_LOGIN_BY_CODE_REQUIRED = False
+ACCOUNT_LOGIN_BY_CODE_FORMAT = {"length": 4, "numeric": True, "dashed": False}
 ACCOUNT_UNIQUE_EMAIL = True
 HEADLESS_ONLY = True
 HEADLESS_CLIENTS = ("app", "browser")
 EMAIL_BACKEND = "django.core.mail.backends.dummy.EmailBackend"
+RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
+DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "MeroSplit <mail@merosplit.com>")
+EMAIL_REPLY_TO = os.environ.get("EMAIL_REPLY_TO", "mail@merosplit.com")
+PUBLIC_WEB_URL = os.environ.get("PUBLIC_WEB_URL", "https://api-production-fb6ac.up.railway.app")
+EMAIL_CLIENT_IP_SOURCE = os.environ.get("EMAIL_CLIENT_IP_SOURCE", "remote_addr")
+EMAIL_RAILWAY_PUBLIC_HOSTS = {
+    host.strip().lower().rstrip(".") for host in os.environ.get("EMAIL_RAILWAY_PUBLIC_HOSTS", "").split(",") if host.strip()
+}
+if EMAIL_CLIENT_IP_SOURCE not in {"remote_addr", "railway_public"}:
+    raise RuntimeError("EMAIL_CLIENT_IP_SOURCE must be remote_addr or railway_public")
+if EMAIL_CLIENT_IP_SOURCE == "railway_public" and not EMAIL_RAILWAY_PUBLIC_HOSTS:
+    raise RuntimeError("Railway email rate limits require explicit EMAIL_RAILWAY_PUBLIC_HOSTS")
+try:
+    STORE_REVIEW_AUTH = json.loads(os.environ.get("STORE_REVIEW_AUTH_JSON", "[]"))
+    if not isinstance(STORE_REVIEW_AUTH, list) or len(STORE_REVIEW_AUTH) > 2:
+        raise ValueError()
+    for entry in STORE_REVIEW_AUTH:
+        if (
+            not isinstance(entry, dict) or set(entry) != {"store", "user_id", "email", "pin_hash"}
+            or entry["store"] not in {"apple", "google"} or type(entry["user_id"]) is not int or entry["user_id"] <= 0
+            or not isinstance(entry["email"], str) or "@" not in entry["email"]
+            or entry["email"] != entry["email"].strip().lower() or len(entry["email"]) > 254
+            or not isinstance(entry["pin_hash"], str)
+        ):
+            raise ValueError()
+        if entry["pin_hash"]:
+            algorithm, iterations, salt, digest = entry["pin_hash"].split("$")
+            if algorithm != "pbkdf2_sha256" or not 1_000_000 <= int(iterations) <= 4_000_000 or len(salt) < 12 or len(digest) != 44:
+                raise ValueError()
+    if any(len({entry[key] for entry in STORE_REVIEW_AUTH}) != len(STORE_REVIEW_AUTH) for key in ("store", "user_id", "email")):
+        raise ValueError()
+except (TypeError, ValueError, KeyError):
+    raise RuntimeError("STORE_REVIEW_AUTH_JSON must contain unique exact synthetic identities and encoded credential hashes") from None
 SESSION_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SECURE = not DEBUG
 SESSION_COOKIE_HTTPONLY = True

@@ -20,6 +20,7 @@ from .models import (
     UploadedFile,
 )
 from .services import snapshot, visible_group
+from .store_review import groups_for_actor, require_group_scope
 
 
 def accepted_export(actor, group_id):
@@ -122,7 +123,7 @@ def csv_export(export):
 
 @transaction.atomic
 def account_export(actor):
-    groups = Group.objects.filter(participants__user=actor, participants__removed=False).order_by("id")
+    groups = groups_for_actor(Group.objects.filter(participants__user=actor, participants__removed=False), actor).order_by("id")
     return {
         "schema_version": 1,
         "account": {"id": actor.pk, "email": actor.email, "avatar": avatar_for(actor)},
@@ -219,6 +220,8 @@ def delete_account(actor):
             | Q(expenses__attachments__uploaded_by=actor)
         ).values("id")).order_by("id").select_for_update(of=("self",))
     )
+    for group in groups:
+        require_group_scope(actor, group)
     session_ids = [row.session_key for row in Session.objects.all()
                    if str(row.get_decoded().get(SESSION_KEY)) == str(actor_id)]
     list(Session.objects.select_for_update().filter(session_key__in=session_ids).order_by("session_key"))

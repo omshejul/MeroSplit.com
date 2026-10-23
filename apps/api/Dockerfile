@@ -4,6 +4,8 @@ WORKDIR /app
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev
 COPY . .
+# export:web places the same Expo app in web-dist before this API-only context is built.
+RUN test -s web-dist/index.html
 RUN useradd --create-home app
 USER app
 ENV PATH="/app/.venv/bin:$PATH" PYTHONUNBUFFERED=1

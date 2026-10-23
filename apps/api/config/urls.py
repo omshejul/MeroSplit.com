@@ -1,13 +1,23 @@
-from django.urls import include, path
-from django.views.generic import TemplateView
+from allauth.headless.constants import Client
+from django.urls import include, path, re_path
+from django.views.generic import RedirectView, TemplateView
 from ledger.api import api
-from ledger.views import invite_page
+from ledger.auth_views import ConfirmEmailCodeView, RequestEmailCodeView
+
+from config.web import invite_app, web_app, web_media
 
 urlpatterns = [
+    path("", RedirectView.as_view(url="/app/", permanent=False)),
+    path("app/media/<uuid:file_id>", web_media),
+    re_path(r"^app(?:/(?P<path>.*))?$", web_app),
+    path("_allauth/app/v1/auth/code/request", RequestEmailCodeView.as_api_view(client=Client.APP)),
+    path("_allauth/app/v1/auth/code/confirm", ConfirmEmailCodeView.as_api_view(client=Client.APP)),
+    path("_allauth/browser/v1/auth/code/request", RequestEmailCodeView.as_api_view(client=Client.BROWSER)),
+    path("_allauth/browser/v1/auth/code/confirm", ConfirmEmailCodeView.as_api_view(client=Client.BROWSER)),
     path("privacy", TemplateView.as_view(template_name="ledger/public.html", extra_context={"page": "privacy"})),
     path("support", TemplateView.as_view(template_name="ledger/public.html", extra_context={"page": "support"})),
     path("delete-account", TemplateView.as_view(template_name="ledger/public.html", extra_context={"page": "delete"})),
-    path("invite/<str:token>", invite_page),
+    path("invite/<str:token>", invite_app),
     path("api/v1/", api.urls),
     path("_allauth/", include("allauth.headless.urls")),
 ]

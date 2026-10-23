@@ -1,7 +1,9 @@
 from urllib.parse import quote
 from uuid import UUID
 
+from allauth.account.models import EmailAddress
 from allauth.headless.contrib.ninja.security import x_session_token_auth
+from django.conf import settings
 from django.db import DatabaseError, IntegrityError, connection, transaction
 from django.http import HttpResponse, JsonResponse
 from ninja import File, Form, NinjaAPI
@@ -22,14 +24,18 @@ from .collaboration import (
     remove_participant,
     review_invite,
 )
+from .email_invites import send_person_invite, update_contact
+from .history_reads import expense_detail, group_summary, history_page
 from .media import avatar_for, download_url, list_attachments, remove_attachment, remove_avatar, upload_file
 from .models import Group
+from .otp import client_network
 from .payments import change_payment, launch_details, prepare_payment, profile_for, update_profile
 from .portability import accepted_export, account_export, csv_export, delete_account
 from .schemas import (
     ArchiveIn,
     AttemptIn,
     Command,
+    ContactIn,
     ExpenseIn,
     GroupIn,
     InviteIn,
@@ -54,6 +60,7 @@ from .services import (
     visible_group,
 )
 from .splitwise_import import import_splitwise, preview_splitwise
+from .store_review import groups_for_actor
 
 api = NinjaAPI(title="MeroSplit", version="1.0", auth=[x_session_token_auth, django_auth])
 
@@ -127,7 +134,7 @@ def duplicate_error(request, exc):
 def groups(request):
     return {
         "groups": list(
-            Group.objects.filter(participants__user=request.auth, participants__removed=False).values(
+            groups_for_actor(Group.objects.filter(participants__user=request.auth, participants__removed=False), request.auth).values(
                 "id", "name", "version", "archived", "is_direct"
             )
         )
@@ -154,6 +161,10 @@ def group_get(request, group_id: UUID):
     with transaction.atomic():
         group = visible_group(request.auth, group_id, lock=True)
         state = snapshot(group)
+        if group.owner_id == request.auth.pk:
+            emails = dict(group.participants.values_list("id", "contact_email"))
+            for person in state["participants"]:
+                person["email"] = emails[UUID(person["id"])]
         if group.owner_id != request.auth.pk:
             state["invites"] = []
         return state
@@ -162,6 +173,25 @@ def group_get(request, group_id: UUID):
 @api.post("/groups/{group_id}/expenses", response=WriteResult)
 def expense_create(request, group_id: UUID, body: ExpenseIn):
     return save_expense(request.auth, group_id, body.model_dump(mode="json"))
+
+
+@api.get("/groups/{group_id}/summary")
+def group_summary_get(request, group_id: UUID, limit: int = 50):
+    return group_summary(request.auth, group_id, limit=limit)
+
+
+@api.get("/groups/{group_id}/history/{resource}")
+def group_history_get(request, group_id: UUID, resource: str, limit: int = 50, cursor: str | None = None,
+                      version: int | None = None, deleted: str = "all", q: str = "", reversed: str = "all",
+                      kind: str = "", sender: UUID | None = None, recipient: UUID | None = None, state: str = "all"):
+    return history_page(request.auth, group_id, resource, limit=limit, cursor=cursor, version=version,
+                        filters={"deleted": deleted, "q": q, "reversed": reversed, "kind": kind,
+                                 "sender": sender, "recipient": recipient, "state": state})
+
+
+@api.get("/groups/{group_id}/expenses/{expense_id}")
+def expense_get(request, group_id: UUID, expense_id: UUID, version: int | None = None):
+    return expense_detail(request.auth, group_id, expense_id, version=version)
 
 
 @api.put("/groups/{group_id}/expenses/{expense_id}", response=WriteResult)
@@ -194,7 +224,7 @@ def me(request):
     return {
         "id": request.auth.pk,
         "email": request.auth.email,
-        "email_verified": False,
+        "email_verified": EmailAddress.objects.filter(user=request.auth, email__iexact=request.auth.email, verified=True).exists(),
         "payment_profile": profile_for(request.auth),
         "avatar": avatar_for(request.auth),
     }
@@ -328,6 +358,19 @@ def account_delete(request):
 @api.post("/groups/{group_id}/participants", response=WriteResult)
 def participant_add(request, group_id: UUID, body: ParticipantIn):
     return add_participant(request.auth, group_id, body.model_dump(mode="json"))
+
+
+@api.post("/groups/{group_id}/participants/{participant_id}/contact", response=WriteResult)
+def participant_contact(request, group_id: UUID, participant_id: UUID, body: ContactIn):
+    return update_contact(request.auth, group_id, participant_id, body.model_dump(mode="json"))
+
+
+@api.post("/groups/{group_id}/participants/{participant_id}/email-invite")
+def participant_email_invite(request, group_id: UUID, participant_id: UUID, body: Command):
+    return send_person_invite(
+        request.auth, group_id, participant_id, body.model_dump(mode="json"),
+        settings.PUBLIC_WEB_URL.rstrip("/"), client_network(request),
+    )
 
 
 @api.post("/groups/{group_id}/participants/{participant_id}/remove", response=WriteResult)

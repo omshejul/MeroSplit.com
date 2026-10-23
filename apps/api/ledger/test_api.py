@@ -27,18 +27,18 @@ def send(client, method, path, data=None):
 @pytest.fixture
 def client():
     email = f"{uuid4().hex}@splitdumb.invalid"
-    password = "Functional-tests-only-Password2026!"
-    user = get_user_model().objects.create_user(username=email, email=email, password=password)
-    client = Client()
-    response = client.post(
-        "/_allauth/app/v1/auth/login",
-        data=json.dumps({"email": email, "password": password}),
-        content_type="application/json",
-    )
-    assert response.status_code == 200, response.content
-    client.defaults["HTTP_X_SESSION_TOKEN"] = response.json()["meta"]["session_token"]
-    client.actor = user
-    return client
+    user = get_user_model().objects.create_user(username=email, email=email)
+    return authenticated_client(user)
+
+
+def authenticated_client(user):
+    """A normal Django test session; dedicated OTP tests cover production sign-in."""
+    result = Client()
+    result.force_login(user, backend="allauth.account.auth_backends.AuthenticationBackend")
+    result.defaults["HTTP_X_SESSION_TOKEN"] = result.session.session_key
+    result.cookies.clear()
+    result.actor = user
+    return result
 
 
 @pytest.fixture
@@ -195,15 +195,8 @@ def test_simultaneous_replay_posts_once(client, group):
 
 def test_authenticated_outsider_cannot_read_or_change(client, group):
     group_id, ids, _ = group
-    outsider = Client()
     email = f"{uid()}@splitdumb.invalid"
-    response = outsider.post(
-        "/_allauth/app/v1/auth/signup",
-        data=json.dumps({"email": email, "password": "Another-functional-test-Password2026!"}),
-        content_type="application/json",
-    )
-    assert response.status_code == 200
-    outsider.defaults["HTTP_X_SESSION_TOKEN"] = response.json()["meta"]["session_token"]
+    outsider = authenticated_client(get_user_model().objects.create_user(username=email, email=email))
     assert send(outsider, "get", f"/groups/{group_id}").status_code == 404
     assert send(outsider, "post", f"/groups/{group_id}/expenses", expense(ids)).status_code == 404
     assert send(outsider, "get", "/groups").json() == {"groups": []}
@@ -228,8 +221,7 @@ def test_private_health_host_is_read_only():
     assert send(client, "post", "/health", {}).status_code == 400
 
 
-def test_auth_rate_limit_is_enforced(settings):
-    settings.ACCOUNT_RATE_LIMITS = {"login": "2/m/ip"}
+def test_password_login_cannot_bypass_email_code_policy():
     email = f"{uid()}@splitdumb.invalid"
     password = "Rate-limit-functional-Password2026!"
     get_user_model().objects.create_user(username=email, email=email, password=password)
@@ -242,7 +234,7 @@ def test_auth_rate_limit_is_enforced(settings):
             content_type="application/json",
         )
         statuses.append(response.status_code)
-    assert statuses == [200, 200, 429]
+    assert statuses == [403, 403, 403]
 
 
 def test_wrong_group_objects_and_reused_command_target(client, group):

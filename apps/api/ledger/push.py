@@ -15,7 +15,8 @@ from django.db.models import Q
 from django.utils import timezone
 from ninja.errors import HttpError
 
-from .models import ExpensePushDelivery, Participant, PushDevice
+from .models import ExpensePushDelivery, Group, Participant, PushDevice
+from .store_review import groups_for_actor, review_ids
 
 
 def register_device(request, installation_id, payload):
@@ -103,6 +104,8 @@ def queue_new_bill(expense, actor):
 
 def eligible_delivery(delivery):
     device, expense = delivery.device, delivery.expense
+    if review_ids() and not groups_for_actor(Group.objects.filter(pk=expense.group_id), delivery.recipient).exists():
+        return False
     if (
         not PushDevice.objects.filter(
             pk=device.pk, user_id=delivery.recipient_id, revision=delivery.device_revision

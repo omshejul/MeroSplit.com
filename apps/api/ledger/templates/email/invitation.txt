@@ -1,0 +1,13 @@
+{{ inviter_name }} invited you to MeroSplit
+
+They would like to track shared expenses with you.
+
+View invitation:
+{{ invite_url }}
+
+Opening the invitation does not accept it. You can review it in your browser first, no download needed.
+
+If you do not know {{ inviter_name }}, you can ignore this email.
+
+Need help? mail@merosplit.com
+MeroSplit

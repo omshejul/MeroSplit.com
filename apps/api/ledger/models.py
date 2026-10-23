@@ -30,6 +30,7 @@ class Participant(models.Model):
     name = models.CharField(max_length=120)
     user = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL)
     removed = models.BooleanField(default=False)
+    contact_email = models.EmailField(blank=True, default="")
 
     class Meta:
         constraints = [
@@ -54,6 +55,7 @@ class Expense(models.Model):
     deleted = models.BooleanField(default=False)
 
     class Meta:
+        indexes = [models.Index(fields=["group", "date", "id"], name="bill_history_keyset")]
         constraints = [
             models.CheckConstraint(
                 condition=Q(total__gt=0, total__lte=1_000_000_000), name="expense_amount_bound"
@@ -75,6 +77,7 @@ class PaymentAttempt(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        indexes = [models.Index(fields=["group", "created_at", "id"], name="attempt_history_keyset")]
         constraints = [
             models.CheckConstraint(
                 condition=Q(amount__gt=0, amount__lte=1_000_000_000), name="attempt_amount_bound"
@@ -104,6 +107,7 @@ class Settlement(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        indexes = [models.Index(fields=["group", "created_at", "id"], name="payment_history_keyset")]
         constraints = [
             models.CheckConstraint(
                 condition=Q(amount__gt=0, amount__lte=1_000_000_000), name="settlement_amount_bound"
@@ -132,6 +136,31 @@ class Invite(models.Model):
     revoked = models.BooleanField(default=False)
     claimant = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL)
     approved = models.BooleanField(default=False)
+    intended_email = models.EmailField(blank=True, default="")
+    send_state = models.CharField(max_length=8, default="unsent")
+    send_attempts = models.PositiveSmallIntegerField(default=0)
+    last_send_at = models.DateTimeField(null=True)
+    sent_at = models.DateTimeField(null=True)
+    provider_id = models.CharField(max_length=200, blank=True)
+    delivery_origin = models.CharField(max_length=300, blank=True)
+    email_payload = models.JSONField(default=dict, blank=True)
+
+
+class EmailCodeChallenge(models.Model):
+    email = models.EmailField(unique=True)
+    challenge_id = models.UUIDField(default=uuid.uuid4, unique=True)
+    digest = models.CharField(max_length=64, blank=True)
+    expires_at = models.DateTimeField()
+    requested_at = models.DateTimeField()
+    attempts = models.PositiveSmallIntegerField(default=0)
+    consumed = models.BooleanField(default=False)
+    delivered = models.BooleanField(default=False)
+
+
+class EmailRateBucket(models.Model):
+    key = models.CharField(max_length=64, primary_key=True)
+    count = models.PositiveIntegerField(default=0)
+    expires_at = models.DateTimeField()
 
 
 class PaymentProfile(models.Model):

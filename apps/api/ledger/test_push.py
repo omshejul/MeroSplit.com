@@ -1,4 +1,3 @@
-import json
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 from uuid import uuid4
@@ -13,8 +12,8 @@ from .models import Expense, ExpensePushDelivery, Group, Participant, PushDevice
 from .push import claim_delivery, send_pending_bill_notifications
 from .push_provider import PushFailure
 from .services import save_expense
+from .test_api import authenticated_client, expense, send, uid
 from .test_api import client as client
-from .test_api import expense, send, uid
 from .test_api import group as group
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -27,18 +26,8 @@ def configured(settings):
 
 def login():
     email = f"{uuid4().hex}@push.invalid"
-    password = "Only-synthetic-Push-tests-2026!"
-    user = get_user_model().objects.create_user(username=email, email=email, password=password)
-    result = Client()
-    response = result.post(
-        "/_allauth/app/v1/auth/login",
-        data=json.dumps({"email": email, "password": password}),
-        content_type="application/json",
-    )
-    assert response.status_code == 200
-    result.defaults["HTTP_X_SESSION_TOKEN"] = response.json()["meta"]["session_token"]
-    result.actor = user
-    return result
+    user = get_user_model().objects.create_user(username=email, email=email)
+    return authenticated_client(user)
 
 
 def register(client, installation=None, token=None):

@@ -17,6 +17,7 @@ from .services import (
     visible_group,
     writable,
 )
+from .store_review import require_group_scope
 
 
 def profile_for(user):
@@ -33,6 +34,8 @@ def update_profile(actor, vpa):
         Group.objects.filter(participants__user=actor, participants__removed=False)
         .order_by("id").select_for_update(of=("self",))
     )
+    for group in groups:
+        require_group_scope(actor, group)
     profile = PaymentProfile.objects.select_for_update().filter(user=actor).first()
     if profile:
         if profile.vpa == vpa:
@@ -152,7 +155,9 @@ def launch_details(actor, group_id, attempt_id):
             "recipient": attempt.recipient.name,
             "note": "Group repayment",
             "bank_verified": False,
-            "direct_launch_supported": False,
+            "direct_launch_supported": True,
+            "expires_at": attempt.expires_at.isoformat(),
+            "group_version": attempt.group_version,
         }
 
 

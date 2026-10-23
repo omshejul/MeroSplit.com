@@ -22,3 +22,5 @@ research/raw/emulator_setup/*.log
 *.key
 .coverage
 .dev/DEPLOYMENT_STATUS.md
+
+apps/api/web-dist/
