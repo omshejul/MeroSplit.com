@@ -32,7 +32,7 @@ export default function ProfileSettings({ name, vpa, busy, onSaveName, onSaveUPI
     <SettingsRow rowRef={nameRow} icon="edit" label="Name" value={name} disabled={busy} onPress={() => open('name')} />
     <SettingsRow rowRef={upiRow} icon="pay" label="UPI ID" value={vpa || 'Not set'} disabled={busy} onPress={() => open('upi')} />
     <SettingsRow rowRef={appearanceRow} icon="appearance" label="Appearance" value={appearance[0].toUpperCase() + appearance.slice(1)} disabled={busy} onPress={() => open('appearance')} />
-    <Portal><KeyboardAvoidingView behavior="height" style={{ flex: 1 }} pointerEvents="box-none"><Dialog style={{ flexShrink: 1 }} visible={!!editing} onDismiss={() => { if (!disabled) close(); }} dismissable={!disabled}>
+    <Portal><KeyboardAvoidingView behavior="height" style={{ flex: 1 }} pointerEvents="box-none"><Dialog style={{ flexShrink: 1, marginVertical: 0 }} visible={!!editing} onDismiss={() => { if (!disabled) close(); }} dismissable={!disabled}>
       <Dialog.Title>{isAppearance ? 'Appearance' : isName ? 'Name' : 'UPI ID'}</Dialog.Title>
       <Dialog.Content style={{ flexShrink: 1 }}><ScrollView keyboardShouldPersistTaps="handled">
         {isAppearance ? (['system', 'light', 'dark'] as const).map(value => <RadioChoice key={value} value={value} label={value[0].toUpperCase() + value.slice(1)} selected={appearance === value} disabled={disabled} onPress={() => void save(value)} />)
