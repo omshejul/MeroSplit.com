@@ -71,7 +71,7 @@ export default function ProfilePhoto({ session, busy, onBusyChange, compact = fa
           <Menu.Item title="Remove photo" disabled={disabled} onPress={() => { setOptionsOpen(false); remove(); }} />
         </Menu>}
       </View>
-      {!!error && <><Text accessibilityRole="alert" style={ui.error}>{error}</Text><Button title="Refresh photo" kind="text" disabled={busy || working} onPress={() => void run(async () => { await load(); })} /></>}
+      {!!error && <><Text accessibilityRole="alert" style={ui.error}>{error}</Text><Button title="Refresh" accessibilityLabel="Refresh photo" kind="text" disabled={busy || working} onPress={() => void run(async () => { await load(); })} /></>}
     </>}
   </View>;
 }

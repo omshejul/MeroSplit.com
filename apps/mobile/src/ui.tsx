@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Appearance, Platform, Pressable, StyleSheet, useColorScheme, View } from 'react-native';
-import { Button as PaperButton, IconButton as PaperIconButton, List, Tooltip, MD3DarkTheme, MD3LightTheme, PaperProvider, Text, useTheme } from 'react-native-paper';
+import { Animated, Appearance, Platform, Pressable, StyleSheet, useColorScheme, View } from 'react-native';
+import { Button as PaperButton, IconButton as PaperIconButton, List, Tooltip, MD3DarkTheme, MD3LightTheme, PaperProvider, ThemeProvider, Text, useTheme } from 'react-native-paper';
 import type { MD3Theme } from 'react-native-paper';
 import { savedAppearance, saveAppearance } from './native';
 import type { AppearancePreference } from './native';
@@ -31,6 +31,7 @@ import HelpCircleIcon from '@hugeicons/core-free-icons/HelpCircleIcon';
 import Sun03Icon from '@hugeicons/core-free-icons/Sun03Icon';
 import Notification01Icon from '@hugeicons/core-free-icons/Notification01Icon';
 import { formatMoney } from './accounting';
+import { observeMotionPreference, useMotionValue, type MotionPreference } from './motion';
 
 export type Palette = { background: string; surface: string; text: string; muted: string; accent: string; soft: string; line: string; outline: string; error: string; positive: string; negative: string; info: string; warning: string };
 export const radii = { control: 12, surface: 16, navigation: 20 } as const;
@@ -71,10 +72,10 @@ function makeTheme(palette: Palette, dark: boolean): MD3Theme {
 }
 const theme = makeTheme(colors, false);
 const darkTheme = makeTheme(darkColors, true);
-type UITheme = MD3Theme & { palette: Palette; ui: ReturnType<typeof makeUI>; inputColors: ReturnType<typeof makeInputColors>; appearance: AppearancePreference; changeAppearance: (value: AppearancePreference) => Promise<void> };
+type UITheme = MD3Theme & { palette: Palette; ui: ReturnType<typeof makeUI>; inputColors: ReturnType<typeof makeInputColors>; appearance: AppearancePreference; changeAppearance: (value: AppearancePreference) => Promise<void>; motion: MotionPreference };
 export function useUI() {
-  const { palette, ui, inputColors, dark, appearance, changeAppearance } = useTheme<UITheme>();
-  return { palette, ui, inputColors, dark, appearance, changeAppearance };
+  const { palette, ui, inputColors, dark, appearance, changeAppearance, motion } = useTheme<UITheme>();
+  return { palette, ui, inputColors, dark, appearance, changeAppearance, motion };
 }
 function LibraryIcon({ name, color, size }: { name: string; color?: string; size: number }) {
   const { palette } = useUI();
@@ -84,6 +85,8 @@ function LibraryIcon({ name, color, size }: { name: string; color?: string; size
 export function UIProvider({ children }: { children: React.ReactNode }) {
   const system = useColorScheme();
   const [appearance, setAppearance] = useState<AppearancePreference>('system');
+  const [motion, setMotion] = useState<MotionPreference>({ enabled: false, active: false });
+  useEffect(() => observeMotionPreference(value => setMotion(previous => previous.enabled === value.enabled && previous.active === value.active ? previous : value)), []);
   const revision = useRef(0), writes = useRef(Promise.resolve());
   useEffect(() => {
     let mounted = true;
@@ -106,23 +109,35 @@ export function UIProvider({ children }: { children: React.ReactNode }) {
   }, []);
   const dark = appearance === 'system' ? system === 'dark' : appearance === 'dark';
   const value = useMemo<UITheme>(() => ({ ...(dark ? darkTheme : theme), palette: dark ? darkColors : colors,
-    ui: dark ? darkUI : ui, inputColors: dark ? darkInputColors : inputColors, appearance, changeAppearance,
-  }), [dark, appearance, changeAppearance]);
-  return <PaperProvider theme={value} settings={{ icon: LibraryIcon }}>{children}</PaperProvider>;
+    ui: dark ? darkUI : ui, inputColors: dark ? darkInputColors : inputColors, appearance, changeAppearance, motion, animation: { scale: 0 },
+  }), [dark, appearance, changeAppearance, motion]);
+  // PaperProvider overwrites animation.scale. Its public ThemeProvider also
+  // supplies the corrected theme to Portals, without replacing their owner.
+  return <PaperProvider theme={value} settings={{ icon: LibraryIcon, rippleEffectEnabled: false }}><ThemeProvider theme={value}>{children}</ThemeProvider></PaperProvider>;
+}
+function usePressFeedback(disabled: boolean) {
+  const { motion } = useUI();
+  const [pressed, setPressed] = useState(false);
+  useEffect(() => { setPressed(false); }, [disabled, motion.active]);
+  return { onPressIn: () => { if (!disabled && motion.active) setPressed(true); }, onPressOut: () => setPressed(false),
+    pressedStyle: { opacity: pressed && !disabled && motion.active ? 0.65 : 1 } };
 }
 export function Button({ title, onPress, disabled = false, kind = 'secondary', icon, accessibilityLabel }: { title: string; accessibilityLabel?: string; onPress: () => void; disabled?: boolean; kind?: 'primary' | 'secondary' | 'text' | 'danger'; icon?: IconName }) {
   const { palette: colors } = useUI();
-  return <PaperButton accessibilityLabel={accessibilityLabel ?? title} mode={kind === 'text' ? 'text' : kind === 'secondary' ? 'contained-tonal' : 'contained'} onPress={onPress} disabled={disabled}
+  const { pressedStyle, ...press } = usePressFeedback(disabled);
+  return <PaperButton {...press} accessibilityLabel={accessibilityLabel ?? title} mode={kind === 'text' ? 'text' : kind === 'secondary' ? 'contained-tonal' : 'contained'} onPress={onPress} disabled={disabled}
     icon={icon ? ({ size, color }) => <Icon name={icon} size={size} color={color} /> : undefined}
-    buttonColor={kind === 'danger' ? colors.error : undefined} style={{ borderRadius: radii.control }} contentStyle={{ minHeight: Platform.OS === 'ios' ? 44 : 48 }} labelStyle={{ fontSize: 16, fontWeight: '600' }}>{title}</PaperButton>;
+    buttonColor={kind === 'danger' ? colors.error : undefined} style={[{ borderRadius: radii.control }, pressedStyle]} contentStyle={{ minHeight: Platform.OS === 'ios' ? 44 : 48 }} labelStyle={{ fontSize: 16, fontWeight: '600' }}>{title}</PaperButton>;
 }
 export function IconAction({ name, label, onPress, disabled = false, hint }: { name: IconName; label: string; onPress: () => void; disabled?: boolean; hint?: string }) {
-  return <Tooltip title={hint ?? label}><PaperIconButton accessibilityLabel={label} accessibilityHint={hint} disabled={disabled} onPress={onPress} hitSlop={4} size={22} style={{ width: 44, height: 44, margin: 0 }} icon={({ size, color }) => <Icon name={name} size={size} color={color} />} /></Tooltip>;
+  const { pressedStyle, ...press } = usePressFeedback(disabled);
+  return <Tooltip title={hint ?? label}><PaperIconButton {...press} accessibilityLabel={label} accessibilityHint={hint} disabled={disabled} onPress={onPress} hitSlop={4} size={22} style={[{ width: 44, height: 44, margin: 0 }, pressedStyle]} icon={({ size, color }) => <Icon name={name} size={size} color={color} />} /></Tooltip>;
 }
 export function SettingsRow({ icon, label, value, disabled = false, onPress, rowRef, danger = false, chevron = true }: { icon: IconName; label: string; value?: string; disabled?: boolean; onPress: () => void; rowRef?: React.Ref<React.ComponentRef<typeof View>>; danger?: boolean; chevron?: boolean }) {
   const { ui, palette } = useUI();
-  return <List.Item ref={rowRef as React.ComponentProps<typeof List.Item>['ref']} title={label} titleStyle={[ui.body, danger && { color: palette.error }]} titleNumberOfLines={2} accessibilityRole="button" accessibilityLabel={value ? `${label}, ${value}` : label} accessibilityState={{ disabled }} disabled={disabled} onPress={onPress}
-    style={{ minHeight: 52, paddingVertical: 2, paddingLeft: 0, paddingRight: 0, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: palette.line }}
+  const { pressedStyle, ...press } = usePressFeedback(disabled);
+  return <List.Item {...press} ref={rowRef as React.ComponentProps<typeof List.Item>['ref']} title={label} titleStyle={[ui.body, danger && { color: palette.error }]} titleNumberOfLines={2} accessibilityRole="button" accessibilityLabel={value ? `${label}, ${value}` : label} accessibilityState={{ disabled }} disabled={disabled} onPress={onPress}
+    style={[{ minHeight: 52, paddingVertical: 2, paddingLeft: 0, paddingRight: 0, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: palette.line }, pressedStyle]}
     left={props => <List.Icon {...props} icon={() => <Icon name={icon} size={22} color={danger ? palette.error : palette.text} />} />}
     right={() => <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, maxWidth: '48%' }}>{value !== undefined && <Text numberOfLines={1} ellipsizeMode="tail" style={[ui.caption, { flexShrink: 1 }]}>{value}</Text>}{chevron && <Icon name="next" size={18} color={palette.muted} />}</View>} />;
 }
@@ -145,11 +160,12 @@ export function Avatar({ name }: { name: string }) {
   return <View accessible={false} style={ui.avatar}><Text style={ui.initials}>{name.trim().split(/\s+/).map(word => word[0]).join('').slice(0, 2).toUpperCase()}</Text></View>;
 }
 export function Disclosure({ title, children, initialOpen = false }: { title: string; children: React.ReactNode; initialOpen?: boolean }) {
-  const { ui } = useUI();
+  const { ui, motion } = useUI();
   const [open, setOpen] = useState(initialOpen);
+  const progress = useMotionValue(open ? 1 : 0, motion.enabled);
   return <View style={ui.disclosure}>
     <Pressable accessibilityRole="button" accessibilityState={{ expanded: open }} onPress={() => setOpen(value => !value)} style={ui.disclosureHeading}>
-      <Text style={ui.section}>{title}</Text><View style={{ transform: [{ rotate: open ? '180deg' : '0deg' }] }}><Icon name="down" size={20} /></View>
+      <Text style={ui.section}>{title}</Text><Animated.View pointerEvents="none" accessible={false} style={{ transform: [{ rotate: progress.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '180deg'] }) }] }}><Icon name="down" size={20} /></Animated.View>
     </Pressable>
     {open && <View style={ui.disclosureBody}>{children}</View>}
   </View>;
