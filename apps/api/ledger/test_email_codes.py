@@ -13,7 +13,7 @@ from django.test import Client, RequestFactory
 from django.utils import timezone
 
 from . import email_delivery, otp
-from .models import EmailCodeChallenge, EmailRateBucket
+from .models import EmailCodeChallenge, EmailRateBucket, NotificationPreference
 from .test_api import authenticated_client, send
 
 pytestmark = pytest.mark.django_db
@@ -75,6 +75,49 @@ def test_new_account_native_otp_verifies_allauth_and_never_persists_raw_code(mai
         assert code not in leaves(decoded)
     assert post(Client(), "confirm", {"challenge_id": challenge_id, "code": code}).status_code == 400
     assert get_user_model().objects.count() == 1
+
+
+@pytest.mark.parametrize("browser", [False, True])
+@pytest.mark.parametrize("disclosed", [None, False, True])
+def test_new_identity_email_default_requires_explicit_disclosure_flag(mailbox, browser, disclosed):
+    client = Client(enforce_csrf_checks=browser)
+    if browser:
+        client.get("/_allauth/browser/v1/config")
+    csrf = client.cookies["csrftoken"].value if browser else None
+    challenge_id, code = requested(client, mailbox, browser=browser, csrf=csrf)
+    body = {"challenge_id": challenge_id, "code": code}
+    if disclosed is not None:
+        body["email_reminders_disclosed"] = disclosed
+    response = post(client, "confirm", body, browser=browser, csrf=csrf)
+    assert response.status_code == 200
+    user_id = response.json()["data"]["user"]["id"]
+    pref = NotificationPreference.objects.filter(user_id=user_id).first()
+    assert bool(pref and pref.email_reminders) == (disclosed is True)
+    assert bool(pref and pref.email_enabled_at) == (disclosed is True)
+    assert not pref or pref.expense_updates
+
+
+@pytest.mark.parametrize("invalid", [None, 0, 1, "true", "false", [], {}, "unknown"])
+def test_email_disclosure_flag_is_strict_and_invalid_shape_does_not_consume_code(mailbox, invalid):
+    challenge_id, code = requested(Client(), mailbox)
+    response = post(Client(), "confirm", {"challenge_id": challenge_id, "code": code, "email_reminders_disclosed": invalid})
+    assert response.status_code == 400 and not get_user_model().objects.exists()
+    challenge = EmailCodeChallenge.objects.get(challenge_id=challenge_id)
+    assert not challenge.consumed and challenge.attempts == 0
+    assert post(Client(), "confirm", {"challenge_id": challenge_id, "code": code}).status_code == 200
+    assert not NotificationPreference.objects.exists()
+
+
+@pytest.mark.parametrize("current,disclosed", [(None, True), (False, True), (True, True), (True, False)])
+def test_disclosure_flag_never_changes_an_existing_identity_preference(mailbox, current, disclosed):
+    user = get_user_model().objects.create_user(username="existing-disclosure", email="existing-disclosure@example.invalid")
+    if current is not None:
+        NotificationPreference.objects.create(user=user, expense_updates=False, email_reminders=current, email_enabled_at=timezone.now() if current else None)
+    before = list(NotificationPreference.objects.values())
+    challenge_id, code = requested(Client(), mailbox, user.email)
+    response = post(Client(), "confirm", {"challenge_id": challenge_id, "code": code, "email_reminders_disclosed": disclosed})
+    assert response.status_code == 200 and response.json()["data"]["user"]["id"] == user.pk
+    assert list(NotificationPreference.objects.values()) == before
 
 
 def test_existing_identity_password_hash_and_valid_sessions_are_preserved(mailbox):

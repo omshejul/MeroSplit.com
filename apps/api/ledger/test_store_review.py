@@ -16,7 +16,15 @@ from django.utils import timezone
 
 from . import otp
 from .collaboration import invite_token
-from .models import EmailCodeChallenge, Expense, ExpensePushDelivery, Invite, Participant, UploadedFile
+from .models import (
+    EmailCodeChallenge,
+    Expense,
+    ExpensePushDelivery,
+    Invite,
+    NotificationPreference,
+    Participant,
+    UploadedFile,
+)
 from .push import send_pending_bill_notifications
 from .test_api import authenticated_client, expense, send, uid
 from .test_email_codes import mailbox as mailbox
@@ -69,11 +77,12 @@ def test_demo_credential_uses_normal_challenge_session_without_email_or_verifica
     identifier = challenge(users[0].email)
     row = EmailCodeChallenge.objects.get()
     assert not row.delivered and row.digest != pins[0] and len(row.digest) == 64
-    response = post(native, "confirm", {"challenge_id": identifier, "code": pins[0]})
+    response = post(native, "confirm", {"challenge_id": identifier, "code": pins[0], "email_reminders_disclosed": True})
     assert response.status_code == 200 and response.json()["data"]["user"]["id"] == users[0].pk
     native.defaults["HTTP_X_SESSION_TOKEN"] = response.json()["meta"]["session_token"]
     assert send(native, "get", "/me").json()["email_verified"] is False
     assert not EmailAddress.objects.filter(user=users[0], verified=True).exists()
+    assert not NotificationPreference.objects.filter(user=users[0]).exists()
     assert mailbox == [] and get_user_model().objects.count() == 2
     assert post(Client(), "confirm", {"challenge_id": identifier, "code": pins[0]}).status_code == 400
     for session in Session.objects.all():

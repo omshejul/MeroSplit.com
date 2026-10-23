@@ -116,7 +116,7 @@ def request_email_code(email: str, network: str) -> dict:
 
 
 @sensitive_variables()
-def confirm_email_code(challenge_id, code: str, network: str):
+def confirm_email_code(challenge_id, code: str, network: str, *, email_reminders_disclosed: bool = False):
     # A nonexistent challenge still consumes the shared network verification quota.
     email = EmailCodeChallenge.objects.filter(challenge_id=challenge_id).values_list("email", flat=True).first()
     failure, user, login_email, method = False, None, email, "code"
@@ -148,7 +148,7 @@ def confirm_email_code(challenge_id, code: str, network: str):
                     identity = (identity_user, email) if identity_user else None
                     method = "demo_credential"
                 else:
-                    identity = _verified_user(email)
+                    identity = _verified_user(email, email_reminders_disclosed=email_reminders_disclosed)
                 if identity:
                     user, login_email = identity
                 challenge.consumed = True
@@ -160,7 +160,7 @@ def confirm_email_code(challenge_id, code: str, network: str):
     return user, login_email, method
 
 
-def _verified_user(email: str):
+def _verified_user(email: str, *, email_reminders_disclosed: bool = False):
     User = get_user_model()
     ids = set(User.objects.filter(email__iexact=email).values_list("pk", flat=True))
     ids.update(EmailAddress.objects.filter(email__iexact=email).values_list("user_id", flat=True))
@@ -175,9 +175,10 @@ def _verified_user(email: str):
         user.username, user.email = f"email-{uuid4().hex}", email
         user.set_unusable_password()
         user.save()
-        # The sign-in screen discloses daily unread reminders for new accounts.
-        from .models import NotificationPreference
-        NotificationPreference.objects.create(user=user, email_reminders=True, email_enabled_at=timezone.now())
+        # Older clients lack the disclosure/off control and omit this flag.
+        if email_reminders_disclosed:
+            from .models import NotificationPreference
+            NotificationPreference.objects.create(user=user, email_reminders=True, email_enabled_at=timezone.now())
     addresses = list(EmailAddress.objects.filter(user=user, email__iexact=email))
     if len(addresses) > 1:
         return None

@@ -224,12 +224,16 @@ def test_account_preferences_are_prospective_and_master_off_survives_registratio
 def test_only_actual_new_otp_identity_has_disclosed_email_default(client, clock):
     assert not NotificationPreference.objects.filter(user=client.actor).exists()
     with transaction.atomic():
-        _verified_user(client.actor.email)
+        _verified_user(client.actor.email, email_reminders_disclosed=True)
     assert not NotificationPreference.objects.filter(user=client.actor).exists()
     with transaction.atomic():
-        user, _ = _verified_user("new-synthetic@example.com")
+        user, _ = _verified_user("new-synthetic@example.com", email_reminders_disclosed=True)
     preference = NotificationPreference.objects.get(user=user)
     assert preference.expense_updates and preference.email_reminders and preference.email_enabled_at == clock[0]
+    with transaction.atomic():
+        older_client_user, _ = _verified_user("older-client-synthetic@example.com")
+    assert notifications.preferences(older_client_user) == {"expense_updates": True, "email_reminders": False}
+    assert not NotificationPreference.objects.filter(user=older_client_user).exists()
 
 
 def test_digest_waits_both_thresholds_and_sends_generic_once_across_groups(client, group, recipient, clock, providers):

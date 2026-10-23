@@ -49,8 +49,11 @@ class ConfirmEmailCodeView(APIView):
             return ConflictResponse(request)
         try:
             data = self.data or {}
+            disclosed = data.get("email_reminders_disclosed", False)
+            if type(disclosed) is not bool:
+                raise ValueError()
             challenge_id = UUID(str(data.get("challenge_id", "")))
-            user, email, method = confirm_email_code(challenge_id, data.get("code"), client_network(request))
+            user, email, method = confirm_email_code(challenge_id, data.get("code"), client_network(request), email_reminders_disclosed=disclosed)
         except (ValueError, EmailCodeInvalid):
             return auth_error(request)
         except EmailCodeLimited:
