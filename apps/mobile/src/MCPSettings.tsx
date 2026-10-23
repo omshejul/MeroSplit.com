@@ -1,40 +1,68 @@
-import React, { useEffect, useState } from 'react';
-import { Linking, Share, View } from 'react-native';
-import { Text } from 'react-native-paper';
+import React, { useEffect, useRef, useState } from 'react';
+import { Linking, Platform, Share, View } from 'react-native';
+import { Dialog, Text } from 'react-native-paper';
 import { request } from './api';
+import { DialogScrollBody } from './DialogParts';
+import KeyboardDialog from './KeyboardDialog';
 import type { Session } from './types';
-import { Button, Disclosure, ErrorText, useUI } from './ui';
+import { Button, ErrorText, SettingsRow, useUI } from './ui';
 
-type Connection = { id: string; client_name: string; created_at: string; last_used_at: string | null };
+type Connection = { id: string; client_name: string };
 export default function MCPSettings({ session, busy, onBusyChange }: { session: Session; busy: boolean; onBusyChange: (value: boolean) => void }) {
   const { ui } = useUI();
-  const [connections, setConnections] = useState<Connection[] | null>(null), [error, setError] = useState('');
+  const [open, setOpen] = useState(false), [connections, setConnections] = useState<Connection[] | null>(null), [error, setError] = useState('');
+  const [loading, setLoading] = useState(false), [working, setWorking] = useState(false);
+  const row = useRef<React.ComponentRef<typeof View>>(null), mounted = useRef(true), inFlight = useRef(false), revision = useRef(0);
+  const disabled = busy || working;
   const setup = `${session.baseUrl.replace(/\/$/, '')}/mcp/setup`;
   const prompt = `Connect MeroSplit to this client using the instructions at ${setup}, then verify with get_account_context.`;
+  useEffect(() => {
+    mounted.current = true; ++revision.current; setOpen(false); setConnections(null); setError(''); setLoading(false);
+    return () => { mounted.current = false; ++revision.current; };
+  }, [session.token, session.baseUrl]);
   async function load() {
-    try { setConnections((await request<{ connections: Connection[] }>(session, '/me/mcp')).connections); setError(''); }
-    catch { setError('Could not load connected agents. Try again.'); }
+    const current = ++revision.current;
+    setLoading(true); setError('');
+    try { const value = await request<{ connections: Connection[] }>(session, '/me/mcp'); if (mounted.current && current === revision.current) setConnections(value.connections); }
+    catch { if (mounted.current && current === revision.current) setError('Could not load connections. Try again.'); }
+    finally { if (mounted.current && current === revision.current) setLoading(false); }
   }
-  useEffect(() => { let active = true; void request<{ connections: Connection[] }>(session, '/me/mcp').then(value => { if (active) setConnections(value.connections); }).catch(() => { if (active) setError('Could not load connected agents. Try again.'); }); return () => { active = false; }; }, [session.token]);
+  function close() {
+    if (disabled || inFlight.current) return;
+    setOpen(false); requestAnimationFrame(() => row.current?.focus());
+  }
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !open) return;
+    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape' && !disabled && !inFlight.current) { event.preventDefault(); event.stopPropagation(); close(); } };
+    document.addEventListener('keydown', escape, true);
+    return () => document.removeEventListener('keydown', escape, true);
+  }, [open, disabled]);
   async function disconnect(id: string) {
-    if (busy) return;
-    onBusyChange(true);
-    try { await request(session, `/me/mcp/${encodeURIComponent(id)}`, 'DELETE'); await load(); }
-    catch { setError('Could not disconnect this agent. Try again.'); }
-    finally { onBusyChange(false); }
+    if (disabled || inFlight.current) return;
+    inFlight.current = true; const current = ++revision.current; setWorking(true); setError(''); onBusyChange(true);
+    try { await request(session, `/me/mcp/${encodeURIComponent(id)}`, 'DELETE'); if (mounted.current && current === revision.current) await load(); }
+    catch { if (mounted.current && current === revision.current) setError('Could not disconnect this agent. Try again.'); }
+    finally { inFlight.current = false; if (mounted.current) setWorking(false); onBusyChange(false); }
   }
-  return <Disclosure title="Connect MCP">
-    <Text style={ui.caption}>Let an agent read your groups and record bills or payments with your existing permissions. It cannot send money. You approve each connection in your browser.</Text>
-    <Button title="Setup instructions" disabled={busy} onPress={() => void Linking.openURL(setup).catch(() => setError('Could not open setup instructions. Try again.'))} />
-    <Text selectable style={ui.caption}>{prompt}</Text>
-    <Button title="Share setup prompt" disabled={busy} onPress={() => void Share.share({ message: prompt }).catch(() => setError('Could not share this prompt. You can select and copy it above.'))} />
-    {connections?.map(value => <View key={value.id} style={{ gap: 4 }}>
-      <Text style={ui.rowTitle}>{value.client_name}</Text>
-      <Text style={ui.caption}>Connected {new Date(value.created_at).toLocaleDateString('en-IN')}{value.last_used_at ? ` · Last used ${new Date(value.last_used_at).toLocaleDateString('en-IN')}` : ''}</Text>
-      <Button title="Disconnect" accessibilityLabel={`Disconnect ${value.client_name}`} kind="text" disabled={busy} onPress={() => void disconnect(value.id)} />
-    </View>)}
-    {connections?.length === 0 && <Text style={ui.caption}>No connected agents.</Text>}
-    {!!error && <ErrorText>{error}</ErrorText>}
-    <Button title="Refresh connected agents" kind="text" disabled={busy} onPress={() => void load()} />
-  </Disclosure>;
+  return <>
+    <SettingsRow rowRef={row} icon="settings" label="Connect MCP" disabled={disabled} onPress={() => { if (!disabled && !inFlight.current) { setOpen(true); void load(); } }} />
+    <KeyboardDialog visible={open} dismissable={!disabled} onDismiss={close}>
+      <Dialog.Title>Connect MCP</Dialog.Title>
+      <DialogScrollBody maxHeight={440} gap={12}>
+        <Text style={ui.caption}>Let an assistant read your groups and record bills or payments. It cannot send money.</Text>
+        <Button title="Setup instructions" kind="text" disabled={disabled} onPress={() => void Linking.openURL(setup).catch(() => setError('Could not open setup instructions. Try again.'))} />
+        <Button title="Share setup prompt" kind="primary" disabled={disabled} onPress={() => void Share.share({ message: prompt }).catch(() => setError('Could not share the setup prompt. Try again.'))} />
+        <Text style={ui.label}>Connected agents</Text>
+        {loading && <Text accessibilityLiveRegion="polite" style={ui.caption}>Loading connections…</Text>}
+        {connections?.map(value => <View key={value.id} style={{ gap: 4 }}>
+          <Text style={ui.rowTitle}>{value.client_name}</Text>
+          <Button title="Disconnect" accessibilityLabel={`Disconnect ${value.client_name}`} kind="text" disabled={disabled || loading} onPress={() => void disconnect(value.id)} />
+        </View>)}
+        {connections?.length === 0 && !loading && <Text style={ui.caption}>No connected agents</Text>}
+        {!!error && <ErrorText live>{error}</ErrorText>}
+        <Button title="Refresh" kind="text" disabled={disabled || loading} onPress={() => { if (!disabled && !loading) void load(); }} />
+      </DialogScrollBody>
+      <Dialog.Actions><Button title="Done" kind="text" disabled={disabled} onPress={close} /></Dialog.Actions>
+    </KeyboardDialog>
+  </>;
 }
