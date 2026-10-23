@@ -13,7 +13,8 @@
       },
       "android": {
         "buildType": "app-bundle"
-      }
+      },
+      "pnpm": "10.33.4"
     }
   },
   "submit": {

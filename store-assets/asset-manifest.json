@@ -24,20 +24,36 @@
     "bytes": 58861
   },
   "store-assets/google-play/screenshots/04-38-canonical-draft-restored.png": {
-    "sha256": "54e5a3edd133efb93e94608f60c5e662db8d42b696f7478b47fdf665cbc81278",
-    "bytes": 82863
+    "sha256": "660394742d04cc1057f95eec5f6639d41431d1671f53cc43a08fdda8347a59ca",
+    "bytes": 86799,
+    "dimensions": [
+      524,
+      932
+    ]
   },
   "store-assets/google-play/screenshots/03-32-canonical-totals-disclosure.png": {
-    "sha256": "83401ffd144841098aabf34a65e8005e2fea1cf3adcb6e1f3a06e1b98b69b15a",
-    "bytes": 129769
+    "sha256": "a16904ad4cc0820131bb0428e0359e8167a366c3fcb7b62c65303ddd777ea166",
+    "bytes": 135014,
+    "dimensions": [
+      524,
+      932
+    ]
   },
   "store-assets/google-play/screenshots/01-45-final-5040-groups-preserved.png": {
-    "sha256": "6d338abb773832904f5a01f3e759e86fc275306e5e0503eead4d8318163c2581",
-    "bytes": 80795
+    "sha256": "345c5fff5068c044a48e9f1a461dc043c4176299960ee1bfd340c4af6b8f8cd0",
+    "bytes": 84102,
+    "dimensions": [
+      524,
+      932
+    ]
   },
   "store-assets/google-play/screenshots/02-31-canonical-joined-group.png": {
-    "sha256": "2b8192f9f2cfd6323bb2c161fa3d583169e04da9135d06364c5f05bac569ffcf",
-    "bytes": 104462
+    "sha256": "e70cc38ee7d6aa606c245268765ac5723aab3344cce7a0e891a264cde91a844b",
+    "bytes": 107968,
+    "dimensions": [
+      524,
+      932
+    ]
   },
   "approved_master": {
     "path": "apps/mobile/assets/brand/03-linked-friends.png",
