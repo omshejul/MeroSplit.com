@@ -19,6 +19,7 @@ import UserCircleIcon from '@hugeicons/core-free-icons/UserCircleIcon';
 import UserGroupIcon from '@hugeicons/core-free-icons/UserGroupIcon';
 import UserMultipleIcon from '@hugeicons/core-free-icons/UserMultipleIcon';
 import Wallet01Icon from '@hugeicons/core-free-icons/Wallet01Icon';
+import MoneyExchange03Icon from '@hugeicons/core-free-icons/MoneyExchange03Icon';
 import Calendar03Icon from '@hugeicons/core-free-icons/Calendar03Icon';
 import Refresh01Icon from '@hugeicons/core-free-icons/Refresh01Icon';
 import Delete02Icon from '@hugeicons/core-free-icons/Delete02Icon';
@@ -40,7 +41,7 @@ const darkColors: Palette = { background: '#111111', surface: '#1C1C1C', text: '
 export const balanceColor = (value: string | bigint, palette: Palette) => BigInt(value) > 0n ? palette.positive : BigInt(value) < 0n ? palette.negative : palette.muted;
 const makeInputColors = (palette: Palette) => ({ selectionColor: Platform.OS === 'ios' ? palette.accent : palette.line, cursorColor: palette.accent, selectionHandleColor: palette.accent });
 const inputColors = makeInputColors(colors);
-const icons = { add: Add01Icon, down: ArrowDown01Icon, back: ArrowLeft01Icon, next: ArrowRight01Icon, check: CheckmarkCircle01Icon, history: Clock01Icon, bill: Invoice01Icon, settings: Settings01Icon, me: UserCircleIcon, groups: UserGroupIcon, people: UserMultipleIcon, pay: Wallet01Icon, remove: Delete02Icon, refresh: Refresh01Icon, export: Download01Icon, import: Upload01Icon, edit: PencilEdit02Icon, personAdd: UserAdd01Icon, privacy: Shield01Icon, help: HelpCircleIcon, appearance: Sun03Icon, notifications: Notification01Icon };
+const icons = { add: Add01Icon, down: ArrowDown01Icon, back: ArrowLeft01Icon, next: ArrowRight01Icon, check: CheckmarkCircle01Icon, history: Clock01Icon, bill: Invoice01Icon, settings: Settings01Icon, me: UserCircleIcon, groups: UserGroupIcon, people: UserMultipleIcon, pay: Wallet01Icon, payment: MoneyExchange03Icon, remove: Delete02Icon, refresh: Refresh01Icon, export: Download01Icon, import: Upload01Icon, edit: PencilEdit02Icon, personAdd: UserAdd01Icon, privacy: Shield01Icon, help: HelpCircleIcon, appearance: Sun03Icon, notifications: Notification01Icon };
 export type IconName = keyof typeof icons;
 export function Icon({ name, size = 22, color }: { name: IconName; size?: number; color?: string }) {
   const { palette } = useUI();

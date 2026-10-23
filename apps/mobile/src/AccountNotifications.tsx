@@ -1,6 +1,8 @@
+import { DialogScrollBody } from './DialogParts';
+import KeyboardDialog from './KeyboardDialog';
 import React, { useEffect, useRef, useState } from 'react';
-import { AppState, Platform, ScrollView, View } from 'react-native';
-import { Dialog, Portal, Switch, Text } from 'react-native-paper';
+import { AppState, Platform, View } from 'react-native';
+import { Dialog, Switch, Text } from 'react-native-paper';
 import { request } from './api';
 import PushSettings, { type PushControls } from './PushSettings';
 import type { Session } from './types';
@@ -48,13 +50,13 @@ export default function AccountNotifications({ session, push, busy, onBusyChange
     return () => document.removeEventListener('keydown', escape, true);
   }, [open, busy, working]);
   return <><SettingsRow rowRef={row} icon="notifications" label="Notifications" value={value} disabled={busy} onPress={() => { setOpen(true); void load(); }} />
-    <Portal><Dialog visible={open} dismissable={!busy && !working} onDismiss={() => { if (!busy && !working) close(); }}><Dialog.Title>Notifications</Dialog.Title>
-      <Dialog.ScrollArea style={{ maxHeight: 440 }}><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingVertical: 12, gap: 12 }}>
-        {preferences && <><NotificationSwitch label="Expense updates" checked={preferences.expense_updates} disabled={!!disabled} onChange={expense_updates => void update({ ...preferences, expense_updates })} />
-          <NotificationSwitch label="Daily unread email reminders" checked={preferences.email_reminders} disabled={!!disabled || !preferences.expense_updates} onChange={email_reminders => void update({ ...preferences, email_reminders })} />
-          <Text style={ui.caption}>Email reminders arrive after a day away. Expense updates off stops push and email.</Text></>}
+    <KeyboardDialog visible={open} dismissable={!busy && !working} onDismiss={() => { if (!busy && !working) close(); }}><Dialog.Title>Notifications</Dialog.Title>
+      <DialogScrollBody maxHeight={440} gap={12}>
+        {preferences && <><NotificationSwitch label="Bill updates" checked={preferences.expense_updates} disabled={!!disabled} onChange={expense_updates => void update({ ...preferences, expense_updates })} />
+          <NotificationSwitch label="Unread bill emails" checked={preferences.email_reminders} disabled={!!disabled || !preferences.expense_updates} onChange={email_reminders => void update({ ...preferences, email_reminders })} />
+          <Text style={ui.caption}>Email arrives if you haven’t seen a new bill after 10 minutes. Bill updates off stops push and email.</Text></>}
         <PushSettings push={push} busy={busy} onBusyChange={onBusyChange} />
         {!!error && <><ErrorText>{error}</ErrorText>{!preferences && <Button title="Retry" disabled={busy || working} onPress={() => void load()} />}</>}
-      </ScrollView></Dialog.ScrollArea><Dialog.Actions><Button title="Done" kind="text" disabled={busy || working} onPress={close} /></Dialog.Actions></Dialog></Portal>
+      </DialogScrollBody><Dialog.Actions><Button title="Done" kind="text" disabled={busy || working} onPress={close} /></Dialog.Actions></KeyboardDialog>
   </>;
 }

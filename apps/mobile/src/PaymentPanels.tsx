@@ -1,6 +1,8 @@
+import { DialogScrollBody, CancelDialogActions } from './DialogParts';
+import KeyboardDialog from './KeyboardDialog';
 import React from 'react';
-import { ScrollView, View } from 'react-native';
-import { Dialog, Portal, Text } from 'react-native-paper';
+import { View } from 'react-native';
+import { Dialog, Text } from 'react-native-paper';
 import QRCode from 'react-native-qrcode-svg';
 import { formatMoney } from './accounting';
 import type { UPIApp, UPILaunchQuote } from './upi';
@@ -26,12 +28,12 @@ export function UPIAppChooser({ apps, disabled, onChoose, onDismiss }: {
   apps: UPIApp[] | null; disabled: boolean; onChoose: (app: UPIApp) => void; onDismiss: () => void;
 }) {
   const { ui } = useUI();
-  return <Portal><Dialog visible={apps !== null} onDismiss={onDismiss}>
+  return <KeyboardDialog visible={apps !== null} onDismiss={onDismiss}>
     <Dialog.Title>Pay with UPI</Dialog.Title>
     <Dialog.Content><Text style={ui.body}>Check the recipient and amount before paying.</Text></Dialog.Content>
-    <Dialog.ScrollArea style={{ maxHeight: 360 }}><ScrollView contentContainerStyle={{ paddingVertical: 8, gap: 8 }}>
+    <DialogScrollBody maxHeight={360} paddingVertical={8} gap={8}>
       {apps?.map(app => <Button key={app.id} title={app.name} disabled={disabled} onPress={() => onChoose(app)} />)}
-    </ScrollView></Dialog.ScrollArea>
-    <Dialog.Actions><Button title="Cancel" kind="text" disabled={disabled} onPress={onDismiss} /></Dialog.Actions>
-  </Dialog></Portal>;
+    </DialogScrollBody>
+    <CancelDialogActions disabled={disabled} onCancel={onDismiss} />
+  </KeyboardDialog>;
 }

@@ -83,10 +83,26 @@ export async function readVisibleGroup(db: Database, owner: string, id: string):
 
 // Only call after the index and every listed snapshot were fetched successfully.
 // A failed refresh must not interpret a partial result as revoked access.
-export async function reconcileGroupCache(db: Database, owner: string, authorized: Group[]): Promise<string[]> {
+export type MembershipReceipt = { id: string; version: number; disposition: 'left' | 'hidden' | 'restored' };
+export type AcceptedMembership = { commandId: string; receipt: MembershipReceipt };
+
+export async function reconcileGroupCache(db: Database, owner: string, authorized: Group[], acceptedMembership?: AcceptedMembership): Promise<string[]> {
   const visible = new Set(authorized.map(group => group.id)), unavailable: string[] = [];
   if (visible.size !== authorized.length) throw new Error('The group refresh was incomplete. Try again.');
   await db.withExclusiveTransactionAsync(async tx => {
+    if (acceptedMembership) {
+      const { commandId, receipt } = acceptedMembership;
+      const command = (await pendingCommands(tx, owner)).find(row => row.command_id === commandId);
+      const action = receipt.disposition === 'restored' ? 'restore' : 'leave';
+      const group = authorized.find(row => row.id === receipt.id);
+      if (!command || command.state !== 'pending' || command.method !== 'POST' || command.group_id !== receipt.id
+        || command.path !== `/groups/${receipt.id}/${action}` || command.body.command_id !== commandId || Object.keys(command.body).length !== 1
+        || !Number.isSafeInteger(receipt.version) || receipt.version < 0 || !['left', 'hidden', 'restored'].includes(receipt.disposition)
+        || (receipt.disposition === 'left' ? !!group : !group || group.version < receipt.version || !!group.hidden !== (receipt.disposition === 'hidden'))) {
+        throw new Error('The membership update could not be confirmed. Try again.');
+      }
+      await discardCommand(tx, owner, commandId);
+    }
     for (const group of authorized) await saveGroup(tx, owner, group, 'shared');
     const queued = await pendingCommands(tx, owner);
     const cached = await tx.getAllAsync<{ id: string; kind: string; snapshot: string }>(visibleGroups, owner, owner);

@@ -24,7 +24,7 @@ export type Group = {
   read_mode?: 'summary'; focused_expense?: Expense; focused_settlement?: Settlement; history?: Partial<Record<HistoryResource, HistoryWindow>>; transactions?: GroupTransaction[];
   id: string; name: string; version: number; participants: Participant[]; expenses: Expense[];
   settlements: Settlement[]; balances: Amounts; transfers: Transfer[]; activity: unknown[];
-  is_direct?: boolean; archived?: boolean; owner_id?: number;
+  is_direct?: boolean; archived?: boolean; hidden?: boolean; owner_id?: number;
   opening_balance?: { id: string; balances: Amounts; source: string; cutoff: string; acknowledgments: Record<string, unknown>; accepted: boolean } | null;
   invites?: { id: string; participant_id: string; claimant_id: number | null; claimant_email: string | null; approved: boolean; revoked: boolean; intended_email?: string; send_state?: string; sent_at?: string | null; expires_at?: string }[];
   totals?: { spending: string; paid: Amounts; shares: Amounts };

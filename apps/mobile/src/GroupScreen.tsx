@@ -73,7 +73,7 @@ function PersonalTransferRow({ transfer, group, selfId, disabled, onSettle }: { 
 }
 
 function TransactionRow({ icon, title, amount, cashflow, label, busy, onPress, children }: {
-  icon: 'bill' | 'pay'; title: string; amount: string; cashflow?: string; label: string; busy: boolean; onPress: () => void; children: React.ReactNode;
+  icon: 'bill' | 'payment'; title: string; amount: string; cashflow?: string; label: string; busy: boolean; onPress: () => void; children: React.ReactNode;
 }) {
   const { palette: colors, ui } = useUI();
   return <Pressable accessibilityRole="button" accessibilityLabel={label} disabled={busy} style={({ pressed }) => [ui.row, pressed && s.pressed]} onPress={onPress}>
@@ -91,9 +91,9 @@ function PaymentRow({ payment, accepted, group, selfId, busy, onPayment }: Pick<
   const isAccepted = accepted.settlements.some(record => record.id === payment.id) || accepted.transactions?.some(record => record.kind === 'payment' && record.payment.id === payment.id);
   if (!isAccepted) return null;
   const presentation = paymentPresentation(payment, selfId, id => participantName(group.participants, selfId, id));
-  return <TransactionRow icon="pay" title={presentation.title} amount={payment.amount} cashflow={presentation.cashflow} busy={busy} onPress={() => onPayment(payment)}
-    label={`${presentation.title}, ${formatMoney(payment.amount)}, ${presentation.status}, ${displayDate(payment.date)}`}>
-    <Text style={ui.rowSub}>{payment.reversed ? 'Record reversed · No bank refund' : presentation.status}</Text>
+  return <TransactionRow icon="payment" title={presentation.title} amount={payment.amount} cashflow={presentation.cashflow} busy={busy} onPress={() => onPayment(payment)}
+    label={`Payment, ${presentation.title}, ${formatMoney(payment.amount)}, ${presentation.status}, ${displayDate(payment.date)}`}>
+    <Text style={ui.rowSub}>Payment · {payment.reversed ? 'Record reversed · No bank refund' : presentation.status}</Text>
     <Text style={ui.rowSub}>{displayDate(payment.date)}</Text>
   </TransactionRow>;
 }
@@ -101,12 +101,14 @@ function PaymentRow({ payment, accepted, group, selfId, busy, onPayment }: Pick<
 function BillTimelineRow({ expense, group, selfId, busy, onExpense, noticeVisibility }: Pick<Props, 'group' | 'selfId' | 'busy' | 'onExpense' | 'noticeVisibility'> & { expense: BillRow }) {
   const { palette: colors, ui } = useUI();
   const change = expenseBalanceChange(expense, selfId);
+  const ownShare = formatMoney(expense.shares[selfId] ?? '0');
   const payers = Object.entries(expense.paid).filter(([, amount]) => BigInt(amount) > 0n).map(([id, amount]) => `${participantName(group.participants, selfId, id)} paid ${formatMoney(amount)}`).join(', ');
   return <VisibleExpense groupId={group.id} expense={expense} visibility={noticeVisibility}>
     <TransactionRow icon="bill" title={`${expense.description}${expense.deleted ? ' · Deleted' : ''}`} amount={expense.total} busy={busy} onPress={() => onExpense(expense)}
-      label={`${expense.description}, total ${formatMoney(expense.total)}, ${billImpact(change)}, ${payers}, ${displayDate(expense.date)}${expense.deleted ? ', deleted' : ''}`}>
+      label={`Bill, ${expense.description}, total ${formatMoney(expense.total)}, ${billImpact(change)}, ${payers}, Your share ${ownShare}, ${displayDate(expense.date)}${expense.deleted ? ', deleted' : ''}`}>
+      <Text style={ui.rowSub}>Bill · {payers}</Text>
+      <Text style={ui.rowSub}>Your share {ownShare} · {displayDate(expense.date)}</Text>
       <Text style={[ui.rowSub, { color: balanceColor(change, colors) }]}>{billImpact(change)}</Text>
-      <Text style={ui.rowSub}>{displayDate(expense.date)}</Text>
     </TransactionRow>
   </VisibleExpense>;
 }

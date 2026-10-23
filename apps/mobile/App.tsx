@@ -25,6 +25,7 @@ import SavedChangeScreen from './src/SavedChangeScreen';
 import SplitwiseImportScreen from './src/SplitwiseImportScreen';
 import AccountHeader from './src/AccountHeader';
 import GroupList from './src/GroupList';
+import { groupListRows } from './src/groupListRows';
 import Mascot from './src/Mascot';
 import { AppFrame, pageContentStyle, ScreenHeader, AppTabs } from './src/AppNavigation';
 import { EmailSignIn, CodeSignIn } from './src/SignInForms';
@@ -41,6 +42,9 @@ import { SavedChanges, LegacyRecovery as LegacyRecords } from './src/AccountReco
 import ProfileSettings from './src/ProfileSettings';
 import { usePushNotifications } from './src/PushSettings';
 import AccountNotifications from './src/AccountNotifications';
+import MCPSettings from './src/MCPSettings';
+import OAuthContinuation from './src/OAuthContinuation';
+import { changeGroupMembership } from './src/groupMembership';
 import type { PushTarget } from './src/notifications';
 import BillAttachments from './src/BillAttachments';
 import { clearAccountMediaUploads, clearMediaPreviews } from './src/media';
@@ -64,6 +68,8 @@ function AppContent() {
   const [verifiedEmptyOwner, setVerifiedEmptyOwner] = useState('');
   const [online, setOnline] = useState(isOnline);
   const [groups, setGroups] = useState<CachedGroup[]>([]), [commands, setCommands] = useState<Command[]>([]);
+  const [showArchived, setShowArchived] = useState(false), [showHidden, setShowHidden] = useState(false);
+  const [needsInvitation, setNeedsInvitation] = useState(false);
   const [screen, setScreen] = useState<Screen>('home'), [tab, setTab] = useState('Groups'), [groupId, setGroupId] = useState<string | null>(null);
   const [expenseId, setExpenseId] = useState<string | null>(null), [draft, setDraft] = useState<ExpenseFormDraft | null>(null), [transfer, setTransfer] = useState<Transfer | undefined>();
   const [reviewCommand, setReviewCommand] = useState<Command | null>(null), [reviewInput, setReviewInput] = useState<Expense | undefined>();
@@ -121,7 +127,7 @@ function AppContent() {
     setVerifiedEmptyOwner('');
     ownerRef.current = value ? accountOwner(value) : '';
     activeSessionRef.current = value;
-    setSession(value); setExpired(false); setGroups([]); setCommands([]); setLegacy([]); setRecoveries([]); setUnavailable([]); setLegacySelf({});
+    setShowArchived(false); setShowHidden(false); setNeedsInvitation(false); setSession(value); setExpired(false); setGroups([]); setCommands([]); setLegacy([]); setRecoveries([]); setUnavailable([]); setLegacySelf({});
     setGroupId(null); setExpenseId(null); setDraft(null); setVpa(''); setScreen(value ? 'home' : 'login'); setTab('Groups');
     setMyName(value?.displayName || value?.email.split('@')[0] || 'You');
     setReviewCommand(null); setReviewInput(undefined); setReturns([]); setReturnAttemptId(null); setSettlementId(null); setActivity(null); setActivityError(''); activityOwner.current = ''; groupVersions.current = '';
@@ -183,6 +189,7 @@ function AppContent() {
     setVerifiedEmptyOwner('');
     const db = await getDatabase(), scope = accountOwner(active);
     await readProfile(active);
+    try { const entry = await request<{ needs_invitation: boolean }>(active, '/me/bill-email-entry'); if (activeSessionRef.current?.token === active.token) setNeedsInvitation(entry.needs_invitation); } catch { /* The ledger remains usable if this optional entry hint is unavailable. */ }
     let writeError: unknown;
     try { await syncOutbox(db, active, 'summary'); } catch (error) { if (error instanceof ApiError && error.status === 401) throw error; writeError = error; }
     const removed = await refreshGroups(db, active, 'summary');
@@ -448,11 +455,12 @@ function AppContent() {
     await push.clear(); setPushTarget(null);
   }
   function back() {
+    if (screen === 'home' && tab === 'Groups' && (showArchived || showHidden)) { setShowArchived(false); setShowHidden(false); return; }
     if (screen === 'expense' || screen === 'expenseDetail' || screen === 'settle' || screen === 'members' || screen === 'review' || screen === 'paymentDetail') navigate('group');
     else if (screen === 'import') openMe();
     else navigate(session ? 'home' : 'login');
   }
-  useEffect(() => { const event = BackHandler.addEventListener('hardwareBackPress', () => { if (busy) return true; if (screen === 'home' || !session && screen === 'login') return false; back(); return true; }); return () => event.remove(); }, [screen, busy, !!session]);
+  useEffect(() => { const event = BackHandler.addEventListener('hardwareBackPress', () => { if (busy) return true; if (screen === 'home' && !(tab === 'Groups' && (showArchived || showHidden)) || !session && screen === 'login') return false; back(); return true; }); return () => event.remove(); }, [screen, tab, showArchived, showHidden, busy, !!session]);
   function command(method: Command['method'], path: string, body: Record<string, unknown>): Command {
     const id = typeof body.command_id === 'string' ? body.command_id : uuid(); return { command_id: id, group_id: groupId!, base_version: selected?.group.version ?? 0, method, path, body: { ...body, command_id: id }, state: 'pending', error: null };
   }
@@ -515,6 +523,17 @@ function AppContent() {
     if (!selected) return;
     if (selected.group.archived) throw new Error('Reopen this group in settings before making changes.');
     await queue(command('POST', `/groups/${groupId}/settlements/${value.id}/reverse`, {}));
+  }
+  async function changeMembership(action: 'leave' | 'restore') {
+    await perform(async () => {
+      if (!session || !groupId) throw new Error('Open a group to continue.');
+      const scope = owner, currentGroup = groupId;
+      const result = await changeGroupMembership(await getDatabase(), session, currentGroup, action, { isOnline, flushDrafts: () => draftWrites.current, uuid });
+      await load(scope);
+      if (ownerRef.current !== scope) return;
+      setGroupId(null); setShowArchived(false); setShowHidden(false); navigate('home');
+      setNotice(result.disposition === 'left' ? 'You left the group. Its shared history remains.' : result.disposition === 'hidden' ? 'Removed from your list. You remain the organizer.' : 'Restored to your list.', 'success');
+    });
   }
   async function groupAction(suffix: string, body: Record<string, unknown>): Promise<Record<string, unknown>> {
     return perform(async () => {
@@ -743,8 +762,11 @@ function AppContent() {
   }
   const mascotEligible = online && isOnline() && !busy && !expired && !notice && !commands.length && !hasDrafts && !legacy.length && !recoveries.length && !unavailable.length && !returns.length;
   const direct = tab === 'Friends';
-  const visibleGroups = groups.filter(row => direct ? !!session && visiblePeopleSummary(row.group, session.userId, commands.some(command => command.group_id === row.group.id)) : !row.group.is_direct);
-  const title = screen === 'home' ? (tab === 'Friends' ? 'People' : tab === 'Account' ? 'Me' : tab) : screen === 'login' ? 'Sign in' : screen === 'create' ? (direct ? 'Add a person' : 'New group') : screen === 'expense' ? (expenseId ? 'Edit bill' : 'Add a bill') : screen === 'expenseDetail' ? expense?.description ?? 'Bill' : screen === 'settle' ? 'Payment' : screen === 'members' ? 'Group settings' : screen === 'review' ? 'Review your bill' : screen === 'paymentDetail' ? 'Payment record' : screen === 'import' ? 'Import from Splitwise' : selected?.group.name ?? 'Group';
+  const hiddenGroups = groups.filter(row => row.group.hidden);
+  const listedGroups = groups.filter(row => !row.group.hidden || commands.some(value => value.group_id === row.group.id) || !!session && row.group.participants.some(person => !person.removed && String(person.user_id) === session.userId && BigInt(row.group.balances[person.id] ?? '0') !== 0n));
+  const archivedGroups = groupListRows(listedGroups, true);
+  const visibleGroups = !direct && showHidden ? hiddenGroups : direct ? listedGroups.filter(row => !!session && visiblePeopleSummary(row.group, session.userId, commands.some(command => command.group_id === row.group.id))) : groupListRows(listedGroups, showArchived);
+  const title = screen === 'home' ? (tab === 'Friends' ? 'People' : tab === 'Account' ? 'Me' : tab === 'Groups' && showHidden ? 'Removed from my list' : tab === 'Groups' && showArchived ? 'Archived groups' : tab) : screen === 'login' ? 'Sign in' : screen === 'create' ? (direct ? 'Add a person' : 'New group') : screen === 'expense' ? (expenseId ? 'Edit bill' : 'Add a bill') : screen === 'expenseDetail' ? expense?.description ?? 'Bill' : screen === 'settle' ? 'Payment' : screen === 'members' ? 'Group settings' : screen === 'review' ? 'Review your bill' : screen === 'paymentDetail' ? 'Payment record' : screen === 'import' ? 'Import from Splitwise' : selected?.group.name ?? 'Group';
   if (!ready) return <SafeAreaView style={[s.screen, s.loading]}><ActivityIndicator color={colors.accent} /><Text style={ui.caption}>Opening your groups…</Text></SafeAreaView>;
   if (storageError) return <SafeAreaView style={[s.screen, pageContentStyle]}><Text style={ui.section}>Could not open saved records</Text><Text accessibilityRole="alert" style={ui.error}>{storageError}</Text><Button title="Retry" disabled={busy} onPress={() => launch(restore)} /></SafeAreaView>;
   if (authHeld) return <EmailLinkScreen title={emailEntry?.phase === 'name' ? 'Name' : 'Sign in'} busy={busy}>
@@ -753,7 +775,7 @@ function AppContent() {
   </EmailLinkScreen>;
   return <AppFrame onTouchStart={notices.engage}>
     {screen === 'login' && !session && !challenge && !emailRequested && mascotEligible && <Mascot size="welcome" />}
-    <ScreenHeader title={title} busy={busy} onBack={screen !== 'home' && (session || screen !== 'login') ? back : undefined}>
+    <ScreenHeader title={title} busy={busy} onBack={screen === 'home' && tab === 'Groups' && (showArchived || showHidden) || screen !== 'home' && (session || screen !== 'login') ? back : undefined}>
       {Platform.OS === 'web' && session && (screen === 'home' && tab !== 'Account' || screen === 'group') && <IconAction name="refresh" label="Refresh" disabled={busy} onPress={() => { if (screen === 'home' && tab === 'Activity') void refreshActivity().catch(() => {}); else launch(sync); }} />}
       {screen === 'group' && selected && <IconAction name="add" label="Add bill" disabled={busy || !!selected.group.archived} onPress={() => launch(() => openExpense())} />}
       {screen === 'group' && selected && <IconAction name="settings" label="Group settings" disabled={busy} onPress={() => navigate('members')} />}
@@ -763,9 +785,13 @@ function AppContent() {
       refreshControl={session && !expired && (screen === 'home' || screen === 'group') ? <RefreshControl refreshing={busy} tintColor={colors.accent} colors={[colors.accent]} onRefresh={() => { if (screen === 'home' && tab === 'Activity') void refreshActivity().catch(() => {}); else launch(() => sync()); }} /> : undefined}>
       {!!notice && <Text accessibilityLiveRegion="polite" accessibilityRole={feedback.tone === 'error' ? 'alert' : undefined} style={[ui.notice, feedback.tone === 'success' ? ui.success : feedback.tone === 'warning' ? ui.warning : feedback.tone === 'error' ? ui.error : undefined]}>{notice}</Text>}
       {expired && screen !== 'login' && <Button title="Sign in again" kind="primary" onPress={() => { setChallenge(null); setCode(''); navigate('login'); }} />}
+      {screen === 'home' && session && Platform.OS === 'web' && <OAuthContinuation session={session} busy={busy} onSaveName={value => saveName(value, true)} beforeContinue={async () => { await draftWrites.current; }} />}
+      {screen === 'home' && needsInvitation && <Text style={ui.notice}>A new bill includes your email. Ask its organizer to send you an invitation to see the bill.</Text>}
       {screen === 'home' && (tab === 'Groups' || tab === 'Friends') && <>
-        <GroupList emptyVerified={mascotEligible && !!owner && verifiedEmptyOwner === owner} groups={visibleGroups} commands={commands} userId={session?.userId} busy={busy} direct={direct} onOpen={row => launch(() => openGroup(row))} />
-        <Button title={direct ? 'Add person' : 'New group'} icon="add" kind={!visibleGroups.length ? 'primary' : 'secondary'} disabled={busy} onPress={() => navigate('create')} />
+        <GroupList emptyLabel={!direct && showHidden ? 'No removed groups' : !direct && showArchived ? 'No archived groups' : !direct && archivedGroups.length ? 'No active groups' : undefined} emptyVerified={!showArchived && !showHidden && !archivedGroups.length && !hiddenGroups.length && mascotEligible && !!owner && verifiedEmptyOwner === owner} groups={visibleGroups} commands={commands} userId={session?.userId} busy={busy} direct={direct} onOpen={row => launch(() => openGroup(row))} />
+        {(direct || !showArchived && !showHidden) && <Button title={direct ? 'Add person' : 'New group'} icon="add" kind={!visibleGroups.length ? 'primary' : 'secondary'} disabled={busy} onPress={() => navigate('create')} />}
+        {!direct && !showArchived && !showHidden && archivedGroups.length > 0 && <Button title="Archived groups" kind="text" disabled={busy} onPress={() => { setShowArchived(true); scroll.current?.scrollTo({ y: 0, animated: false }); }} />}
+        {!direct && !showArchived && !showHidden && hiddenGroups.length > 0 && <Button title="Removed from my list" kind="text" disabled={busy} onPress={() => { setShowHidden(true); scroll.current?.scrollTo({ y: 0, animated: false }); }} />}
         {!!(legacy.length || unavailable.length) && <Button title="Review saved work" kind="text" onPress={openMe} />}
       </>}
       {screen === 'home' && session && returns.filter(value => value.launch === 'opened' || value.decision !== null || value.launch === 'opening').slice(0, 1).map(value => <Button key={value.attemptId} title="Review payment" disabled={busy} onPress={() => launch(async () => { const group = await fetchGroup(session, value.groupId); await saveGroup(await getDatabase(), owner, group, 'shared'); setGroupId(group.id); setReturnAttemptId(value.attemptId); setTransfer({ sender: value.sender, recipient: value.recipient, amount: value.amount }); navigate('settle'); })} />)}
@@ -779,7 +805,7 @@ function AppContent() {
       {screen === 'review' && selected && reviewCommand && <SavedChangeScreen command={reviewCommand} group={selected.group} busy={busy} onDiscard={() => confirm('Discard this unsent change?', 'Accepted records remain. Your saved change will be removed from this phone.', async () => { await discardCommand(await getDatabase(), owner, reviewCommand.command_id); setReviewCommand(null); navigate('group'); })} onEditSaved={value => { setReviewInput(value); setDraft(null); setExpenseId(reviewCommand.method === 'PUT' ? value.id : null); navigate('expense'); }} />}
       {screen === 'settle' && selected && preview && <SettleForm key={`${owner}|${groupId}`} group={preview} initial={transfer} busy={busy} selfId={selfId} onReviewAttempt={reviewPaymentAttempt} onPrepareUPI={prepareUPI} onCancelUPI={async id => { await groupAction(`/payment-attempts/${id}/cancel`, {}); await clearPaymentReturn(await getDatabase(), owner, id); await load(); }} returnPayment={returnPayment} onArmReturn={armPaymentReturn} onReturnPaymentChange={persistPaymentReturn} onResolveReturn={finishPaymentReturn} onSave={savePayment} onCancel={() => { setReturnAttemptId(null); back(); }} />}
       {screen === 'paymentDetail' && selected && settlement && <PaymentDetail payment={settlement} group={selected.group} selfId={selfId} busy={busy} canReverse={!pending.length && !selected.group.archived} onReverse={() => confirm('Reverse payment record?', 'Balances will change. No bank transfer is reversed.', () => reversePayment(settlement))} />}
-      {screen === 'members' && selected && <MembersScreen key={`${owner}|${groupId}`} group={selected.group} selfId={selfId} busy={busy} onAction={groupAction} onExport={exportGroup} addPersonRequest={addPersonRequest} />}
+      {screen === 'members' && selected && <MembersScreen key={`${owner}|${groupId}`} group={selected.group} selfId={selfId} busy={busy} onAction={groupAction} onExport={exportGroup} onMembership={action => { if (action === 'restore') launch(() => changeMembership(action)); else confirm('Leave or remove this group?', 'Shared bills and balances stay with the group. If you are the organizer, the next eligible joined member takes over. With no eligible member, this only removes the group from your list and you remain its organizer. Your saved drafts are kept.', () => changeMembership(action)); }} addPersonRequest={addPersonRequest} />}
       {screen === 'home' && tab === 'Activity' && session && <ActivityScreen emptyVerified={mascotEligible && activity?.firstPage === true && activityOwner.current === owner} items={activity?.items ?? []} busy={busy} error={activityError} hasMore={!!activity?.next_cursor} onRefresh={() => { void refreshActivity().catch(() => {}); }} onLoadMore={() => { void refreshActivity(true).catch(() => {}); }} onOpen={target => { void openActivityTarget(target).catch(() => {}); }} />}
       {screen === 'login' && <>
         {emailRequested ? <EmailLinkSent busy={busy} resendSeconds={Math.max(0, Math.ceil((retryAt - clock) / 1000))} onResend={() => launch(sendSignInLink)} onCode={() => setEmailRequested(false)} onChangeEmail={() => { setEmailRequested(false); setChallenge(null); setCode(''); }} />
@@ -818,7 +844,7 @@ function AppContent() {
         </View></View>
       </>}
     </ScrollView>
-    {screen === 'home' && session && <AppTabs selected={tab} busy={busy} onSelect={value => { if (value === 'Activity') { activityOwner.current = ''; setActivityError(''); } setTab(value); setNotice(''); }} />}
+    {screen === 'home' && session && <AppTabs selected={tab} busy={busy} onSelect={value => { setShowArchived(false); setShowHidden(false); if (value === 'Activity') { activityOwner.current = ''; setActivityError(''); } setTab(value); setNotice(''); }} />}
   </AppFrame>;
 }
 export default function App() { return <SafeAreaProvider><UIProvider><AppContent /></UIProvider></SafeAreaProvider>; }

@@ -3,7 +3,7 @@ import { sessionRequest } from './transport.ts';
 export { requestEmailCode, confirmEmailCode, signOut as endSession } from './transport.ts';
 export type { EmailCodeChallenge } from './transport.ts';
 import { acceptCommand, bindLegacyGroup, markCommand, pendingCommands, readGroup, readLegacyRecovery, readLegacySource, reconcileGroupCache, readVisibleGroup } from './storage.ts';
-import type { Database } from './storage.ts';
+import type { AcceptedMembership, Database, MembershipReceipt } from './storage.ts';
 import { legacyMatchesServer, previewPending } from './ledger.ts';
 
 export class ApiError extends Error {
@@ -35,7 +35,7 @@ export async function request<T>(session: Session, path: string, method = 'GET',
 
 // Never replay a command under another account or backend. GET follows the
 // idempotent write so a lost response can be recovered by retrying the same ID.
-export async function syncOutbox(db: Database, session: Session, mode: 'full' | 'summary' = 'full'): Promise<Record<string, unknown>[]> {
+export async function syncOutbox(db: Database, session: Session, mode: 'full' | 'summary' = 'full', stopAfterCommandId?: string): Promise<Record<string, unknown>[]> {
   const owner = accountOwner(session);
   const receipts: Record<string, unknown>[] = [];
   for (const command of await pendingCommands(db, owner)) {
@@ -44,9 +44,21 @@ export async function syncOutbox(db: Database, session: Session, mode: 'full' | 
     try {
       const receipt = await request<Record<string, unknown>>(session, command.path, command.method, command.body);
       writeAccepted = true;
-      const group = await fetchGroup(session, command.group_id, mode);
-      await acceptCommand(db, owner, command.command_id, group);
+      const membership = command.method === 'POST' && [
+        `/groups/${command.group_id}/leave`, `/groups/${command.group_id}/restore`,
+      ].includes(command.path);
+      if (membership) {
+        if (receipt.id !== command.group_id || !Number.isSafeInteger(receipt.version)
+          || !(command.path.endsWith('/restore') ? receipt.disposition === 'restored' : ['left', 'hidden'].includes(String(receipt.disposition)))) {
+          throw new Error('The membership update could not be confirmed. Try again.');
+        }
+        await refreshGroups(db, session, mode, { commandId: command.command_id, receipt: receipt as MembershipReceipt });
+      } else {
+        const group = await fetchGroup(session, command.group_id, mode);
+        await acceptCommand(db, owner, command.command_id, group);
+      }
       receipts.push(receipt);
+      if (command.command_id === stopAfterCommandId) break;
     } catch (error) {
       if (!writeAccepted && error instanceof ApiError && error.status >= 400 && error.status < 500 && error.status !== 401 && error.status !== 429) {
         await markCommand(db, owner, command.command_id, error.status === 409 ? 'conflict' : 'rejected', error.message);
@@ -65,21 +77,22 @@ export async function fetchGroup(session: Session, id: string, mode: 'full' | 's
 
 // The complete authorized index is the pruning boundary. Changed groups still
 // use complete snapshots; untouched versions need neither another GET nor a write.
-export async function refreshGroups(db: Database, session: Session, mode: 'full' | 'summary' = 'full'): Promise<string[]> {
-  const owner = accountOwner(session), index = await request<{ groups: { id: string; version: number }[] }>(session, '/groups');
-  if (!Array.isArray(index.groups) || new Set(index.groups.map(row => row.id)).size !== index.groups.length || index.groups.some(row => !row.id || !Number.isSafeInteger(row.version))) throw new Error('The group refresh was incomplete. Try again.');
+export async function refreshGroups(db: Database, session: Session, mode: 'full' | 'summary' = 'full', acceptedMembership?: AcceptedMembership): Promise<string[]> {
+  const owner = accountOwner(session), index = await request<{ groups: { id: string; version: number; hidden?: boolean }[] }>(session, '/groups');
+  if (!Array.isArray(index.groups) || new Set(index.groups.map(row => row.id)).size !== index.groups.length || index.groups.some(row => !row.id || !Number.isSafeInteger(row.version) || (row.hidden !== undefined && typeof row.hidden !== 'boolean'))) throw new Error('The group refresh was incomplete. Try again.');
   const snapshots: Group[] = [];
   const complete = (group: Group | undefined): group is Group => !!group && Array.isArray(group.participants) && Array.isArray(group.expenses) && Array.isArray(group.settlements) && Array.isArray(group.transfers) && Array.isArray(group.activity) && !!group.balances;
+  const withVisibility = (group: Group, hidden: boolean): Group => !!group.hidden === hidden ? group : { ...group, hidden };
   for (const row of index.groups) {
     const cached = await (mode === 'summary' ? readVisibleGroup : readGroup)(db, owner, row.id);
-    if (cached?.kind === 'shared' && complete(cached.group) && cached.group.id === row.id && cached.group.version === row.version && (mode === 'summary' ? cached.group.read_mode === 'summary' && Array.isArray(cached.group.transactions) && !!cached.group.history?.transactions && cached.group.participants.every(person => typeof person.recorded_name === 'string') : !cached.group.read_mode)) snapshots.push(cached.group);
+    if (cached?.kind === 'shared' && complete(cached.group) && cached.group.id === row.id && cached.group.version === row.version && (mode === 'summary' ? cached.group.read_mode === 'summary' && Array.isArray(cached.group.transactions) && !!cached.group.history?.transactions && cached.group.participants.every(person => typeof person.recorded_name === 'string') : !cached.group.read_mode)) snapshots.push(withVisibility(cached.group, row.hidden === true));
     else {
       const group = await fetchGroup(session, row.id, mode);
       if (!complete(group) || group.id !== row.id || group.version < row.version) throw new Error('The group refresh was incomplete. Try again.');
-      snapshots.push(group);
+      snapshots.push(withVisibility(group, row.hidden === true));
     }
   }
-  return reconcileGroupCache(db, owner, snapshots);
+  return reconcileGroupCache(db, owner, snapshots, acceptedMembership);
 }
 
 // Called only after the person explicitly chooses this account and their name.

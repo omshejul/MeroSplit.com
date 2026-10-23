@@ -1,7 +1,10 @@
+import { DialogScrollBody, CancelDialogActions } from './DialogParts';
+import KeyboardDialog from './KeyboardDialog';
+import { GroupMembershipActions } from './GroupMembershipActions';
 import React, { useEffect, useRef, useState } from 'react';
-import { Keyboard, KeyboardAvoidingView, Platform, ScrollView, Share, StyleSheet, View } from 'react-native';
+import { Keyboard, Platform, Share, StyleSheet, View } from 'react-native';
 import type { TextInputProps } from 'react-native';
-import { Dialog, Portal, SegmentedButtons, Text } from 'react-native-paper';
+import { Dialog, SegmentedButtons, Text } from 'react-native-paper';
 import * as Crypto from 'expo-crypto';
 import { Alert } from './alerts';
 import { formatMoney, integer } from './accounting';
@@ -16,6 +19,7 @@ type Props = {
   selfId: string;
   busy: boolean;
   addPersonRequest?: number;
+  onMembership: (action: 'leave' | 'restore') => void;
   onAction: (suffix: string, body: Record<string, unknown>) => Promise<Record<string, unknown>>;
   onExport: (format: 'json' | 'csv') => Promise<void>;
 };
@@ -79,16 +83,16 @@ function AddPersonDialog({ visible, disabled, working, archived, name, email, on
   visible: boolean; disabled: boolean; working: boolean; archived: boolean; name: string; email: string;
   onName: (value: string) => void; onEmail: (value: string) => void; onClose: () => void; onSave: () => void; feedback: Feedback;
 }) {
-  return <Portal>{visible && <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' ? 'height' : undefined} style={StyleSheet.absoluteFill} pointerEvents="box-none"><Dialog visible onDismiss={() => { if (!disabled) onClose(); }}>
+  return <KeyboardDialog visible={visible} onDismiss={() => { if (!disabled) onClose(); }}>
     <Dialog.Title>Add person</Dialog.Title>
-    <Dialog.ScrollArea style={{ maxHeight: 280 }}><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={[s.field, { paddingVertical: 12 }]}>
+    <DialogScrollBody maxHeight={280} gap={8}>
       <Field label="Name" value={name} onChange={onName} disabled={disabled} autoFocus autoCapitalize="words" />
       <Field label="Email (optional)" value={email} onChange={onEmail} disabled={disabled} keyboardType="email-address" maxLength={254} />
       <FeedbackNote section="add-person" feedback={feedback} />
-    </ScrollView></Dialog.ScrollArea>
-    <Dialog.Actions><Button title="Cancel" kind="text" disabled={disabled} onPress={onClose} />
-      <Button title={working ? 'Adding…' : 'Add person'} kind="primary" disabled={disabled || !name.trim() || archived} onPress={onSave} /></Dialog.Actions>
-  </Dialog></KeyboardAvoidingView>}</Portal>;
+    </DialogScrollBody>
+    <CancelDialogActions disabled={disabled} onCancel={onClose}>
+      <Button title={working ? 'Adding…' : 'Add person'} kind="primary" disabled={disabled || !name.trim() || archived} onPress={onSave} /></CancelDialogActions>
+  </KeyboardDialog>;
 }
 
 function ManualInviteRow({ name, disabled, onInvite }: { name: string; disabled: boolean; onInvite: () => void }) {
@@ -151,7 +155,7 @@ export default function MembersScreen(props: Props) {
   return <MemberSettings key={`${props.group.id}|${props.selfId}`} {...props} />;
 }
 
-function MemberSettings({ group, selfId, busy, addPersonRequest = 0, onAction, onExport }: Props) {
+function MemberSettings({ group, selfId, busy, addPersonRequest = 0, onAction, onExport, onMembership }: Props) {
   const { ui } = useUI();
   const [newName, setNewName] = useState(''), [newEmail, setNewEmail] = useState(''), [addingPerson, setAddingPerson] = useState(false);
   const pendingPerson = useRef<AddPersonRequest | null>(null), lastAddRequest = useRef(addPersonRequest);
@@ -358,6 +362,10 @@ function MemberSettings({ group, selfId, busy, addPersonRequest = 0, onAction, o
       <FeedbackNote section="opening" feedback={feedback} />
     </Disclosure>}
 
+    <GroupMembershipActions hidden={!!group.hidden} busy={disabled} canLeave={BigInt(group.balances[selfId] ?? '0') === 0n}
+      actionTitle={organizer && !group.participants.some(person => !person.removed && person.user_id != null && person.id !== selfId) ? 'Remove from my list' : 'Leave group'}
+      blockedReason={BigInt(group.balances[selfId] ?? '0') !== 0n ? 'Settle your balance before leaving or removing this group.' : undefined}
+      onLeave={() => onMembership('leave')} onRestore={() => onMembership('restore')} />
     <Disclosure title={organizer ? 'Export and archive' : 'Export'}>
       <Button title="Export spreadsheet" disabled={disabled} onPress={() => void perform('export', () => onExport('csv'))} />
       <Button title="Export data file" disabled={disabled} onPress={() => void perform('export', () => onExport('json'))} />
