@@ -1,58 +1,128 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>MeroSplit participant review</title></head>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow"><meta name="color-scheme" content="light dark">
+<title>{{ data.group_name }} · MeroSplit invitation</title>
+<style>
+:root { font-family: system-ui, sans-serif; color-scheme: light dark; line-height: 1.5; color: light-dark(#1b222c,#edf0f5); background: light-dark(#fafbfc,#14171d); }
+body { max-width: 44rem; margin: auto; padding: 1.5rem; } header { display: flex; justify-content: space-between; padding-bottom: 1rem; border-bottom: 1px solid #8885; }
+a { color: light-dark(#075db4,#83b9ff); text-underline-offset: .2em; } h1 { font-size: 1.75rem; line-height: 1.2; margin: 1.75rem 0 .5rem; overflow-wrap: anywhere; text-wrap: balance; }
+h2 { font-size: 1.15rem; margin: 1.5rem 0 .75rem; } h3 { font-size: 1rem; margin: 0; font-weight: 500; } p { margin: .5rem 0; text-wrap: pretty; }
+.muted { color: light-dark(#59636f,#aab2c0); } .balance { font-size: 1.5rem; font-variant-numeric: tabular-nums; margin: .25rem 0 1.5rem; }
+section { margin: 1.5rem 0; } .join { padding: 1rem; border: 1px solid #8885; border-radius: 1rem; } .join h2 { margin-top: 0; }
+form { display: grid; gap: .75rem; max-width: 26rem; } label { display: grid; gap: .25rem; }
+input { font: inherit; font-size: 1rem; padding: .65rem .75rem; border: 1px solid #8888; border-radius: .65rem; background: transparent; color: inherit; min-width: 0; }
+button { font: inherit; min-height: 44px; padding: .6rem 1rem; border: 1px solid #8888; border-radius: .7rem; background: light-dark(#fff,#242a33); color: inherit; cursor: pointer; }
+button.primary { background: light-dark(#1765c1,#91beff); color: light-dark(#fff,#142237); border-color: transparent; }
+button.link { padding: .4rem 0; border: 0; background: none; color: light-dark(#075db4,#91beff); justify-self: start; }
+button:disabled { opacity: .6; cursor: wait; } :focus-visible { outline: 3px solid light-dark(#1765c1,#91beff); outline-offset: 3px; }
+article { padding: 1rem 0; border-top: 1px solid #8885; } .row { display: flex; justify-content: space-between; gap: 1rem; align-items: baseline; }
+.row strong { font-weight: 500; font-variant-numeric: tabular-nums; white-space: nowrap; } ul { list-style: none; padding: 0; margin: .35rem 0; }
+li { display: flex; justify-content: space-between; gap: 1rem; padding: .15rem 0; font-variant-numeric: tabular-nums; } li span:first-child { overflow-wrap: anywhere; }
+details { margin-top: .75rem; } summary { cursor: pointer; } #actions { display: grid; justify-items: start; gap: .75rem; } #actions:empty { display: none; }
+#status { color: light-dark(#9a351d,#ffb4a3); } footer { padding: 1rem 0; margin-top: 2rem; border-top: 1px solid #8885; font-size: .9rem; }
+@media (max-width: 400px) { body { padding: 1rem; } .row { flex-wrap: wrap; gap: .25rem; } }
+</style>
+</head>
 <body>
-<h1>{{ data.group_name }}</h1><h2>{{ data.participant.name }}</h2>
-<p>Balance in paise: {{ data.balance }}. Positive means owed to you. No money moves on this page.</p>
-<p>The link shows your involved records. Signing in does not claim this participant until the organizer approves.</p>
-{% csrf_token %}
+<header><strong>MeroSplit</strong><a href="/support">Help</a></header>
+<main>
+<h1>{{ data.group_name }}</h1><p>{{ data.participant.name }}</p><p class="balance">{{ review.balance }}</p>
+<section class="join" aria-labelledby="join-title">
+<h2 id="join-title">Join as {{ data.participant.name }}</h2>{% csrf_token %}
 {% if not viewer_id %}
-<form id="login"><label>Email <input id="email" type="email" autocomplete="username" required></label>
-<label>Password <input id="password" type="password" autocomplete="current-password" required></label>
-<button type="submit">Sign in</button><button id="signup" type="button">Create account</button></form>
-{% else %}<button id="claim" type="button">Request this participant claim</button>{% endif %}
-<p id="status" role="status"></p>
-<pre id="opening"></pre><div id="actions"></div><pre id="records"></pre>
-{{ data|json_script:"review-data" }}
-{{ token|json_script:"invite-token" }}
-{{ viewer_id|json_script:"viewer-id" }}
+<form id="login"><label>Email<input id="email" type="email" autocomplete="username" required></label>
+<label>Password<input id="password" type="password" autocomplete="current-password" required></label>
+<button id="login-submit" class="primary" type="submit">Sign in to join</button><button id="signup" class="link" type="button">Create account</button></form>
+{% else %}
+<p id="join-state" class="muted">{% if data.approved %}This person has joined.{% elif data.claim_pending %}Waiting for the organizer to approve the request.{% else %}The organizer will approve the account you use.{% endif %}</p>
+{% if not data.approved and not data.claim_pending %}<button id="claim" class="primary" type="button">Request to join</button>{% endif %}
+{% endif %}
+<p id="status" role="status" aria-live="polite"></p>
+</section>
+{% if review.opening %}<section aria-labelledby="opening-title"><h2 id="opening-title">{% if review.opening.accepted %}Opening balance{% else %}Proposed opening balance{% endif %}</h2>
+<p>{{ review.opening.position }} · {{ review.opening.cutoff }}</p><p class="muted">{{ review.opening.source }}</p>
+{% if not review.opening.accepted %}<p class="muted">Not included until everyone required agrees.</p>{% endif %}<div id="opening-people"></div></section>{% endif %}
+<div id="actions" aria-label="Actions for your account"></div>
+<section aria-labelledby="bills-title"><h2 id="bills-title">Bills</h2>
+{% for bill in review.expenses %}<article><div class="row"><h3>{{ bill.description }}</h3><strong>{{ bill.amount }}</strong></div>
+<p class="muted">{{ bill.date }}{% if bill.deleted %} · Deleted{% endif %}</p>
+<p>{% for payer in bill.payers %}{{ payer.name }} paid {{ payer.amount }}{% if not forloop.last %} · {% endif %}{% endfor %}</p>
+<details><summary>Shares</summary><ul>{% for share in bill.shares %}<li><span>{{ share.name }}</span><span>{{ share.amount }}</span></li>{% endfor %}</ul></details>
+{% if bill.notes %}<details><summary>Notes</summary><p>{{ bill.notes }}</p></details>{% endif %}</article>
+{% empty %}<p class="muted">No bills involving {{ data.participant.name }} yet.</p>{% endfor %}</section>
+<section aria-labelledby="payments-title"><h2 id="payments-title">Payments</h2>
+{% for payment in review.settlements %}<article><div class="row"><h3>{{ payment.sender_name }} paid {{ payment.recipient_name }}</h3><strong>{{ payment.amount }}</strong></div>
+<p class="muted">{% if payment.date %}{{ payment.date }}{% else %}Date unknown{% endif %} · {% if payment.reversed %}Reversed{% elif payment.method == 'recipient_confirmed' or payment.method == 'manual_then_confirmed' %}Receipt acknowledged{% else %}Recorded{% endif %}</p></article>
+{% empty %}<p class="muted">No payments recorded yet.</p>{% endfor %}</section>
+</main>
+<footer>This link shows the records involving {{ data.participant.name }}. No money is sent from this page. <a href="/privacy">Privacy</a></footer>
+{{ data|json_script:"review-data" }}{{ token|json_script:"invite-token" }}{{ viewer_id|json_script:"viewer-id" }}
 <script>
 const data = JSON.parse(document.getElementById('review-data').textContent);
 const token = JSON.parse(document.getElementById('invite-token').textContent);
 const viewerId = JSON.parse(document.getElementById('viewer-id').textContent);
 const status = document.getElementById('status');
-const csrf = document.querySelector('[name=csrfmiddlewaretoken]').value;
+const csrf = () => decodeURIComponent(document.cookie.split('; ').find(value => value.startsWith('csrftoken='))?.slice(10) || document.querySelector('[name=csrfmiddlewaretoken]').value);
 const command = () => ({command_id: crypto.randomUUID()});
+const money = amount => new Intl.NumberFormat('en-IN',{style:'currency',currency:'INR',maximumFractionDigits:Number(amount)%100?2:0}).format(Math.abs(Number(amount))/100);
+const position = (name, amount) => Number(amount)>0 ? `${name} is owed ${money(amount)}` : Number(amount)<0 ? `${name} owes ${money(amount)}` : `${name} is settled up`;
 const showError = error => { status.textContent = error.message; };
 async function call(path, method='GET', body) {
-  const response = await fetch(path, {method, credentials:'same-origin', headers:{'Content-Type':'application/json','X-CSRFToken':csrf}, body:body === undefined ? undefined : JSON.stringify(body)});
+  const response = await fetch(path,{method,credentials:'same-origin',headers:{'Content-Type':'application/json','X-CSRFToken':csrf()},body:body===undefined?undefined:JSON.stringify(body)});
   const result = await response.json();
-  if (!response.ok) throw new Error(result.detail || result.errors?.map(e=>e.message).join(' ') || 'Request could not be completed.');
+  if (!response.ok) { const error=new Error(result.detail || result.errors?.map(e=>e.message).join(' ') || 'Request could not be completed.'); error.status=response.status; throw error; }
   return result;
 }
-document.getElementById('records').textContent = JSON.stringify({participants:data.participants,opening_balance:data.opening_balance,expenses:data.expenses,settlements:data.settlements}, null, 2);
-async function login(signup) {
-  await call('/_allauth/browser/v1/auth/' + (signup ? 'signup' : 'login'), 'POST', {email:document.getElementById('email').value,password:document.getElementById('password').value});
-  location.reload();
-}
-document.getElementById('login')?.addEventListener('submit', event => {event.preventDefault(); login(false).catch(showError);});
-document.getElementById('signup')?.addEventListener('click', () => login(true).catch(showError));
-document.getElementById('claim')?.addEventListener('click', async () => {
-  try {await call('/api/v1/invites/'+encodeURIComponent(token)+'/claim','POST',command()); status.textContent='Claim requested. The organizer must approve your account.';} catch(error) {showError(error);}
+let signup=false;
+document.getElementById('signup')?.addEventListener('click',()=>{
+  signup=!signup; document.getElementById('login-submit').textContent=signup?'Create account to join':'Sign in to join';
+  document.getElementById('signup').textContent=signup?'Already have an account? Sign in':'Create account';
+  document.getElementById('password').autocomplete=signup?'new-password':'current-password';
+});
+document.getElementById('login')?.addEventListener('submit',async event=>{
+  event.preventDefault(); const form=event.currentTarget, submit=document.getElementById('login-submit'); if(!form.reportValidity())return;
+  submit.disabled=true; status.textContent='';
+  try { await call('/_allauth/browser/v1/auth/'+(signup?'signup':'login'),'POST',{email:document.getElementById('email').value,password:document.getElementById('password').value}); location.reload(); }
+  catch(error){showError(error);submit.disabled=false;}
+});
+document.getElementById('claim')?.addEventListener('click',async event=>{
+  const element=event.currentTarget; element.disabled=true; status.textContent='';
+  try { await call('/api/v1/invites/'+encodeURIComponent(token)+'/claim','POST',command()); location.reload(); }
+  catch(error){showError(error);element.disabled=false;}
 });
 function button(label, action) {
-  const element=document.createElement('button');element.textContent=label;element.type='button';element.onclick=()=>action().then(()=>location.reload()).catch(showError);document.getElementById('actions').appendChild(element);
+  const element=document.createElement('button'); element.textContent=label; element.type='button';
+  element.onclick=async()=>{element.disabled=true;status.textContent='';try{if(await action()!==false)location.reload();}catch(error){showError(error);}finally{element.disabled=false;}};
+  document.getElementById('actions').appendChild(element);
 }
 async function memberActions() {
-  if (!viewerId) return;
-  const group = await call('/api/v1/groups/'+data.group_id);
-  const member = group.participants.find(person=>person.id===data.participant.id);
-  const opening = group.opening_balance;
-  if (opening) {
-    const balances = group.participants.map(person=>({name:person.name,amount:opening.balances[person.id] || '0'}));
-    document.getElementById('opening').textContent = (opening.accepted ? 'Accepted opening balance' : 'Proposed opening balance — not yet included in totals')+'\nAll amounts are paise. Positive means owed to that person.\n'+JSON.stringify({source:opening.source,cutoff:opening.cutoff,your_amount:opening.balances[data.participant.id] || '0',balances},null,2);
-    if (member?.user_id===viewerId && !opening.accepted && !Object.hasOwn(opening.acknowledgments,data.participant.id) && (opening.balances[data.participant.id] || '0') !== '0') button('I agree to this opening balance',async()=>{if (!confirm('Agree to '+opening.balances[data.participant.id]+' paise from '+opening.source+' as of '+opening.cutoff+'? This affects balances once everyone required agrees.')) return; await call('/api/v1/groups/'+group.id+'/opening-balances/'+opening.id+'/acknowledge','POST',command());});
+  if(!viewerId)return;
+  let group; try{group=await call('/api/v1/groups/'+data.group_id);}catch(error){if(error.status===404)return;throw error;}
+  document.getElementById('claim')?.remove();
+  const member=group.participants.find(person=>person.id===data.participant.id), own=member?.user_id===viewerId&&!member.removed;
+  document.getElementById('join-title').textContent=own?`Joined as ${member.name}`:'Group membership';
+  document.getElementById('join-state').textContent=own?'Your account is linked to this person.':'You already belong to this group.';
+  if(group.owner_id===viewerId)for(const invitation of group.invites||[]){
+    if(invitation.participant_id!==data.participant.id||invitation.revoked||invitation.approved||!invitation.claimant_id||new Date(invitation.expires_at)<=new Date())continue;
+    button(`Approve ${invitation.claimant_email} as ${member.name}`,async()=>{if(!confirm(`Let ${invitation.claimant_email} join as ${member.name}? Email addresses are not verified. This account will have access to the group.`))return false;await call('/api/v1/groups/'+group.id+'/invites/'+invitation.id+'/approve','POST',command());});
+    button('Decline request',()=>call('/api/v1/groups/'+group.id+'/invites/'+invitation.id+'/revoke','POST',command()));
   }
-  for (const attempt of group.payment_attempts || []) if (member?.user_id===viewerId && attempt.recipient===data.participant.id && ['reported','recorded','cancelled'].includes(attempt.state)) button('Confirm received '+(attempt.recorded_amount || attempt.amount)+' paise',()=>call('/api/v1/groups/'+group.id+'/payment-attempts/'+attempt.id+'/confirm','POST',command()));
+  const opening=group.opening_balance;
+  if(opening){
+    const list=document.createElement('ul');for(const person of group.participants){const row=document.createElement('li');row.textContent=position(person.name,opening.balances[person.id]||'0');list.appendChild(row);}document.getElementById('opening-people')?.appendChild(list);
+    if(own&&!opening.accepted&&!Object.hasOwn(opening.acknowledgments,data.participant.id)&&Number(opening.balances[data.participant.id]||'0')!==0)button('Agree to opening balance',async()=>{if(!confirm(`Agree that ${position('you',opening.balances[data.participant.id])} from ${opening.source}, as of ${opening.cutoff}? This changes balances once everyone required agrees.`))return false;await call('/api/v1/groups/'+group.id+'/opening-balances/'+opening.id+'/acknowledge','POST',command());});
+  }
+  for(const attempt of group.payment_attempts||[]){
+    const reversed=group.settlements.find(payment=>payment.id===attempt.settlement_id)?.reversed;
+    if(!own||attempt.recipient!==data.participant.id||!['reported','recorded','cancelled'].includes(attempt.state)||reversed)continue;
+    const sender=group.participants.find(person=>person.id===attempt.sender);if(!sender||sender.removed)continue;
+    const amount=money(attempt.recorded_amount||attempt.amount);
+    button(`Mark ${amount} received from ${sender.name}`,async()=>{if(!confirm(`Confirm you received ${amount} from ${sender.name}? This records receipt and updates balances. It does not verify a bank transfer.`))return false;await call('/api/v1/groups/'+group.id+'/payment-attempts/'+attempt.id+'/confirm','POST',command());});
+  }
 }
-memberActions().catch(error=>{ if(!error.message.includes('not found')) showError(error); });
-</script></body></html>
+memberActions().catch(showError);
+</script>
+</body>
+</html>

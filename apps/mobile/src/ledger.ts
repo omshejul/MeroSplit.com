@@ -6,18 +6,26 @@ export function emptyGroup(id: string, name: string, participants: Participant[]
   return { id, name: name.trim(), version: 0, participants, expenses: [], settlements: [], balances: Object.fromEntries(participants.map(p => [p.id, '0'])), transfers: [], activity: [] };
 }
 
-export function recalculateLocal(group: Group): Group {
-  let balances = Object.fromEntries(group.participants.map(p => [p.id, '0']));
-  for (const expense of group.expenses) if (!expense.deleted) balances = addExpense(balances, expense.paid, expense.shares);
-  for (const settlement of group.settlements) if (!settlement.reversed) balances = addSettlement(balances, settlement.sender, settlement.recipient, settlement.amount);
-  return { ...group, balances, transfers: proposeTransfers(balances) };
-}
-
-export function putLocalExpense(group: Group, input: Omit<Expense, 'shares'>): Group {
-  const vectors = validateExpense(input.total, input.paid, input.split, group.participants.map(p => p.id));
-  const expenses = group.expenses.filter(expense => expense.id !== input.id);
-  expenses.push({ ...input, ...vectors });
-  return recalculateLocal({ ...group, version: group.version + 1, expenses });
+// Local revision counters and server bookkeeping are not comparable. Keep the
+// complete original separately; this comparison only decides whether to reuse
+// an existing server ledger without uploading its bills again.
+export function legacyMatchesServer(legacy: Group, canonical: Group): boolean {
+  const sort = <T extends { id: string }>(rows: T[]) => [...rows].sort((a, b) => a.id.localeCompare(b.id));
+  const amounts = (values: Record<string, string>) => Object.entries(values).filter(([, value]) => value !== '0').sort(([a], [b]) => a.localeCompare(b));
+  const content = (group: Group) => ({
+    id: group.id, name: group.name, is_direct: !!group.is_direct, archived: !!group.archived,
+    participants: sort(group.participants).map(({ id, name, removed }) => ({ id, name, removed: !!removed })),
+    expenses: sort(group.expenses).map(({ id, description, total, paid, shares, split, date, category, notes, deleted }) => ({
+      id, description, total, paid: amounts(paid), shares: amounts(shares), split: { mode: split.mode, values: amounts(split.values) }, date, category, notes, deleted,
+    })),
+    settlements: sort(group.settlements).map(({ id, sender, recipient, amount, reversed, date }) => ({
+      id, sender, recipient, amount, reversed: !!reversed,
+      // Early phone-only payments did not record a date.
+      date: legacy.settlements.find(row => row.id === id)?.date ? date : undefined,
+    })),
+    opening_balance: group.opening_balance ? { balances: amounts(group.opening_balance.balances), source: group.opening_balance.source, cutoff: group.opening_balance.cutoff, accepted: group.opening_balance.accepted } : null,
+  });
+  return JSON.stringify(content(legacy)) === JSON.stringify(content(canonical));
 }
 
 // Accepted balances remain untouched. This is explicitly a pending preview.

@@ -1,4 +1,4 @@
-import type { CachedGroup, Command, Group } from './types';
+import type { CachedGroup, Command, Group, LegacyRecovery, LegacySource } from './types';
 
 type Bind = string | number | null;
 // Small seam for native SQLite and the real SQLite adapter used by Node tests.
@@ -50,8 +50,34 @@ export async function readDraft<T>(db: Database, owner: string, groupId: string)
 }
 
 export async function listGroups(db: Database, owner: string): Promise<CachedGroup[]> {
-  const rows = await db.getAllAsync<{ kind: CachedGroup['kind']; snapshot: string }>('SELECT kind,snapshot FROM groups_cache WHERE owner=? ORDER BY id', owner);
+  const rows = await db.getAllAsync<{ kind: CachedGroup['kind']; snapshot: string }>("SELECT kind,snapshot FROM groups_cache WHERE owner=? AND kind<>'unavailable' ORDER BY id", owner);
   return rows.map(row => ({ kind: row.kind, group: JSON.parse(row.snapshot) as Group }));
+}
+
+export async function listUnavailableGroups(db: Database, owner: string): Promise<Group[]> {
+  const rows = await db.getAllAsync<{ snapshot: string }>("SELECT snapshot FROM groups_cache WHERE owner=? AND kind='unavailable' ORDER BY id", owner);
+  return rows.map(row => JSON.parse(row.snapshot) as Group);
+}
+
+// Only call after the index and every listed snapshot were fetched successfully.
+// A failed refresh must not interpret a partial result as revoked access.
+export async function reconcileGroupCache(db: Database, owner: string, authorized: Group[]): Promise<string[]> {
+  const visible = new Set(authorized.map(group => group.id)), unavailable: string[] = [];
+  if (visible.size !== authorized.length) throw new Error('The group refresh was incomplete. Try again.');
+  await db.withExclusiveTransactionAsync(async tx => {
+    for (const group of authorized) await saveGroup(tx, owner, group, 'shared');
+    const queued = await pendingCommands(tx, owner);
+    const cached = await tx.getAllAsync<{ id: string; kind: string; snapshot: string }>('SELECT id,kind,snapshot FROM groups_cache WHERE owner=?', owner);
+    for (const row of cached) {
+      if (visible.has(row.id)) continue;
+      const commands = queued.filter(command => command.group_id === row.id), group = JSON.parse(row.snapshot) as Group;
+      if (group.version === 0 && commands.some(command => command.method === 'POST' && command.path === '/groups' && command.body.id === row.id)) continue;
+      if (commands.length || await readDraft(tx, owner, row.id) != null || await readLegacyRecovery(tx, owner, row.id)) await tx.runAsync("UPDATE groups_cache SET kind='unavailable' WHERE owner=? AND id=?", owner, row.id);
+      else await tx.runAsync('DELETE FROM groups_cache WHERE owner=? AND id=?', owner, row.id);
+      if (row.kind !== 'unavailable') unavailable.push(row.id);
+    }
+  });
+  return unavailable;
 }
 
 export async function readGroup(db: Database, owner: string, id: string): Promise<CachedGroup | null> {
@@ -112,13 +138,67 @@ export async function acceptCommand(db: Database, owner: string, id: string, gro
   });
 }
 
-export async function publishLocal(db: Database, owner: string, group: Group, commands: Command[]): Promise<void> {
+export async function createPendingGroup(db: Database, owner: string, group: Group, commands: Command[]): Promise<void> {
+  if (!owner || owner === 'local') throw new Error('Sign in before creating a group.');
   await db.withExclusiveTransactionAsync(async tx => {
     if (await readGroup(tx, owner, group.id)) throw new Error('This account already has this group.');
     // Local revisions do not share the server's sequence space.
     const empty = { ...group, version: 0, activity: [], expenses: [], settlements: [], balances: Object.fromEntries(group.participants.map(p => [p.id, '0'])), transfers: [] };
     await saveGroup(tx, owner, empty, 'shared');
     for (const command of commands) await enqueue(tx, owner, command);
+  });
+}
+
+// Existing installs have unowned phone data. Only an explicit claim can bind it
+// to an account. Recovery snapshots are not another visible ledger or outbox.
+const legacyKey = (id: string) => `legacy-recovery:${id}`;
+export async function listLegacyGroups(db: Database): Promise<Group[]> {
+  return (await listGroups(db, 'local')).map(row => row.group);
+}
+
+export async function readLegacySource(db: Database, id: string): Promise<LegacySource | null> {
+  const cached = await readGroup(db, 'local', id);
+  return cached ? { group: cached.group, draft: await readDraft(db, 'local', id), commands: (await pendingCommands(db, 'local')).filter(command => command.group_id === id) } : null;
+}
+
+export async function listLegacyRecoveries(db: Database, owner: string): Promise<LegacyRecovery[]> {
+  const rows = await db.getAllAsync<{ body: string }>("SELECT body FROM drafts WHERE owner=? AND group_id LIKE 'legacy-recovery:%' ORDER BY group_id", owner);
+  return rows.map(row => JSON.parse(row.body) as LegacyRecovery | null).filter((row): row is LegacyRecovery => row !== null);
+}
+
+export async function removeLegacyRecovery(db: Database, owner: string, id: string): Promise<void> {
+  await db.runAsync('DELETE FROM drafts WHERE owner=? AND group_id=?', owner, legacyKey(id));
+}
+
+export async function readLegacyRecovery(db: Database, owner: string, id: string): Promise<LegacyRecovery | null> {
+  return readDraft(db, owner, legacyKey(id));
+}
+
+export async function bindLegacyGroup(db: Database, owner: string, recovery: LegacyRecovery, canonical: Group | null, commands: Command[]): Promise<void> {
+  if (!owner || owner === 'local') throw new Error('Sign in before recovering phone records.');
+  await db.withExclusiveTransactionAsync(async tx => {
+    const source = await readLegacySource(tx, recovery.group.id);
+    if (!source || JSON.stringify(source) !== JSON.stringify({ group: recovery.group, draft: recovery.draft, commands: recovery.commands })) throw new Error('Phone records changed. Review them again before recovering.');
+    if (await readLegacyRecovery(tx, owner, recovery.group.id)) throw new Error('This account already has a recovery snapshot for this group.');
+    await saveDraft(tx, owner, legacyKey(recovery.group.id), recovery);
+    if (recovery.status !== 'conflict' && recovery.draft != null && await readDraft(tx, owner, recovery.group.id) == null) {
+      let draft = recovery.draft;
+      if (typeof draft === 'object' && !Array.isArray(draft)) {
+        const body = draft as Record<string, unknown>, editing = body.editing as { id?: string; version?: number } | null | undefined;
+        const id = body.schemaVersion === 1 ? body.expenseId : editing?.id;
+        const original = recovery.group.expenses.find(expense => expense.id === id);
+        const version = canonical?.expenses.find(expense => expense.id === id)?.version ?? (recovery.status === 'queued' && original ? original.deleted ? 2 : 1 : undefined);
+        // Only rebase the copied draft. Keep every proposed financial value and
+        // the complete original draft in recovery for review/export.
+        if (version) draft = body.schemaVersion === 1 ? { ...body, expenseVersion: version } : { ...body, editing: { ...editing, version } };
+      }
+      await saveDraft(tx, owner, recovery.group.id, draft);
+    }
+    if (canonical) await saveGroup(tx, owner, canonical, 'shared');
+    for (const command of commands) await enqueue(tx, owner, command);
+    await tx.runAsync('DELETE FROM outbox WHERE owner=? AND group_id=?', 'local', recovery.group.id);
+    await tx.runAsync('DELETE FROM drafts WHERE owner=? AND group_id=?', 'local', recovery.group.id);
+    await tx.runAsync('DELETE FROM groups_cache WHERE owner=? AND id=?', 'local', recovery.group.id);
   });
 }
 

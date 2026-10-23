@@ -29,6 +29,7 @@ class Participant(models.Model):
     group = models.ForeignKey(Group, on_delete=models.CASCADE, related_name="participants")
     name = models.CharField(max_length=120)
     user = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL)
+    removed = models.BooleanField(default=False)
 
     class Meta:
         constraints = [
@@ -95,7 +96,7 @@ class Settlement(models.Model):
     sender = models.ForeignKey(Participant, on_delete=models.RESTRICT, related_name="sent_settlements")
     recipient = models.ForeignKey(Participant, on_delete=models.RESTRICT, related_name="received_settlements")
     amount = models.BigIntegerField()
-    date = models.DateField()
+    date = models.DateField(null=True, blank=True)
     method = models.CharField(max_length=24, default="manual_record")
     recorded_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL)
     attempt = models.OneToOneField(PaymentAttempt, null=True, on_delete=models.RESTRICT)

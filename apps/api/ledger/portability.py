@@ -122,7 +122,7 @@ def csv_export(export):
 
 @transaction.atomic
 def account_export(actor):
-    groups = Group.objects.filter(participants__user=actor).order_by("id")
+    groups = Group.objects.filter(participants__user=actor, participants__removed=False).order_by("id")
     return {
         "schema_version": 1,
         "account": {"id": actor.pk, "email": actor.email, "avatar": avatar_for(actor)},
@@ -229,7 +229,8 @@ def delete_account(actor):
     for group in groups:
         if group.owner_id == actor.pk:
             successor = (
-                group.participants.filter(user__isnull=False).exclude(user=actor).order_by("id").first()
+                group.participants.filter(user__isnull=False, removed=False)
+                .exclude(user=actor).order_by("id").first()
             )
             if not successor:
                 files = UploadedFile.objects.filter(expense__group=group)

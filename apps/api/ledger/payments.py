@@ -8,6 +8,7 @@ from ninja.errors import HttpError
 from .accounting import AccountingError
 from .models import Change, CommandReceipt, Group, PaymentAttempt, PaymentProfile, Settlement
 from .services import (
+    keep_removed_balances_zero,
     people,
     positive_amount,
     previous_result,
@@ -29,7 +30,8 @@ def update_profile(actor, vpa):
         raise AccountingError("Enter a UPI address; format checks do not verify its owner")
     # Lock shared groups in the same order as other financial writes.
     groups = list(
-        Group.objects.filter(participants__user=actor).order_by("id").select_for_update(of=("self",))
+        Group.objects.filter(participants__user=actor, participants__removed=False)
+        .order_by("id").select_for_update(of=("self",))
     )
     profile = PaymentProfile.objects.select_for_update().filter(user=actor).first()
     if profile:
@@ -41,6 +43,8 @@ def update_profile(actor, vpa):
     else:
         profile = PaymentProfile.objects.create(user=actor, vpa=vpa)
     for group in groups:
+        if not group.participants.filter(user=actor, removed=False).exists():
+            continue
         group.version += 1
         group.save(update_fields=["version"])
         Change.objects.create(
@@ -130,6 +134,8 @@ def launch_details(actor, group_id, attempt_id):
         profile = PaymentProfile.objects.filter(user_id=attempt.recipient.user_id).first()
         if (
             attempt.state != "prepared"
+            or attempt.sender.removed
+            or attempt.recipient.removed
             or attempt.expires_at <= timezone.now()
             or group.version != attempt.group_version
             or not profile
@@ -161,6 +167,8 @@ def change_payment(actor, group_id, attempt_id, payload, action):
     attempt = group.attempts.select_related("sender", "recipient").filter(id=attempt_id).first()
     if not attempt:
         raise HttpError(404, "Payment attempt not found")
+    if attempt.sender.removed or attempt.recipient.removed:
+        raise HttpError(409, "This payment involves a removed person")
     if action == "confirm":
         if attempt.recipient.user_id != actor.pk:
             raise HttpError(403, "Only the recipient can acknowledge receipt")
@@ -200,6 +208,7 @@ def change_payment(actor, group_id, attempt_id, payload, action):
     else:
         raise HttpError(400, "Unknown payment action")
     attempt.save(update_fields=["state"])
+    keep_removed_balances_zero(group)
     data = {"id": str(attempt.id), "state": attempt.state}
     if action == "confirm":
         data.update(

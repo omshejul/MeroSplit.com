@@ -1,6 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Alert, Text, View } from 'react-native';
+import { Alert, Pressable, Text, View } from 'react-native';
 import * as Crypto from 'expo-crypto';
+import { IconButton, Menu } from 'react-native-paper';
+import { HugeiconsIcon } from '@hugeicons/react-native';
+import MoreVerticalIcon from '@hugeicons/core-free-icons/MoreVerticalIcon';
 import { accountOwner, request } from './api';
 import { clearPickedMedia, pickMedia, uploadMedia } from './media';
 import type { AvatarResult, MediaMetadata } from './media';
@@ -11,12 +14,13 @@ import { Button, Icon, useUI } from './ui';
 export type ProfilePhotoProps = { session: Session | null; busy: boolean; onBusyChange: (busy: boolean) => void };
 export default function ProfilePhoto({ session, busy, onBusyChange }: ProfilePhotoProps) {
   const { ui, palette } = useUI(), [avatar, setAvatar] = useState<MediaMetadata | null>(null), [loading, setLoading] = useState(true), [working, setWorking] = useState(false), [error, setError] = useState('');
+  const [optionsOpen, setOptionsOpen] = useState(false);
   const lock = useRef(false), mounted = useRef(true), owner = session ? accountOwner(session) : '';
   const ownerRef = useRef(owner); ownerRef.current = owner;
   const current = () => mounted.current && ownerRef.current === owner;
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   useEffect(() => {
-    let active = true; setAvatar(null); setError(''); setLoading(true);
+    let active = true; setAvatar(null); setOptionsOpen(false); setError(''); setLoading(true);
     if (!session) { setLoading(false); return; }
     void request<AvatarResult>(session, '/me').then(result => { if (active) setAvatar(result.avatar); })
       .catch(() => { if (active) setError('Could not load your photo. Refresh when online.'); })
@@ -56,14 +60,16 @@ export default function ProfilePhoto({ session, busy, onBusyChange }: ProfilePho
   }
   const disabled = busy || loading || working;
   return <View style={{ gap: 10 }}>
-    <Text style={ui.section}>Profile photo</Text>
     {!session ? <Text style={ui.caption}>Sign in to add your profile photo.</Text> : <>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-        {avatar ? <PrivateMediaImage session={session} media={avatar} size={64} profile /> : <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: palette.soft, alignItems: 'center', justifyContent: 'center' }}><Icon name="me" size={30} /></View>}
-        <View style={{ flex: 1, gap: 4 }}><Text style={ui.body}>{loading ? 'Loading photo…' : working ? 'Processing photo…' : avatar ? 'Your photo' : 'No photo yet'}</Text><Text style={ui.caption}>JPEG, PNG or WebP · Up to 5 MB</Text></View>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <Pressable accessibilityRole="button" accessibilityLabel={avatar ? 'Change profile photo' : 'Choose profile photo'} accessibilityState={{ disabled }} disabled={disabled} onPress={() => void run(choose)} style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 64 }}>
+          {avatar ? <PrivateMediaImage session={session} media={avatar} size={64} profile /> : <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: palette.soft, alignItems: 'center', justifyContent: 'center' }}><Icon name="me" size={30} /></View>}
+          <Text style={[ui.body, { flex: 1 }]}>{loading ? 'Loading photo…' : working ? 'Updating photo…' : avatar ? 'Change photo' : 'Choose photo'}</Text>
+        </Pressable>
+        {avatar && <Menu visible={optionsOpen} onDismiss={() => setOptionsOpen(false)} anchor={<IconButton accessibilityLabel="Photo options" disabled={disabled} style={{ width: 48, height: 48, margin: 0 }} icon={({ color, size }) => <HugeiconsIcon icon={MoreVerticalIcon} color={color} size={size} />} onPress={() => setOptionsOpen(true)} />}>
+          <Menu.Item title="Remove photo" disabled={disabled} onPress={() => { setOptionsOpen(false); remove(); }} />
+        </Menu>}
       </View>
-      <Button title={avatar ? 'Change photo' : 'Choose photo'} onPress={() => void run(choose)} disabled={disabled} />
-      {avatar && <Button title="Remove photo" kind="text" onPress={remove} disabled={disabled} />}
       {!!error && <><Text accessibilityRole="alert" style={ui.error}>{error}</Text><Button title="Refresh photo" kind="text" disabled={busy || working} onPress={() => void run(async () => { await load(); })} /></>}
     </>}
   </View>;

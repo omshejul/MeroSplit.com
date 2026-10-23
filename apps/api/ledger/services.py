@@ -22,11 +22,13 @@ from .models import (
 
 
 def visible_group(actor, group_id, *, lock=False):
-    query = Group.objects.filter(id=group_id, participants__user=actor)
+    query = Group.objects.filter(id=group_id, participants__user=actor, participants__removed=False)
     if lock:
         query = query.select_for_update(of=("self",))
     group = query.first()
-    if not group:
+    # The participant join may have been read before waiting for the group lock.
+    # Recheck membership after acquiring it so a waiting write cannot outlive removal.
+    if not group or (lock and not group.participants.filter(user=actor, removed=False).exists()):
         raise HttpError(404, "Group not found")
     return group
 
@@ -63,8 +65,20 @@ def positive_amount(raw):
     return int(raw)
 
 
-def people(group):
-    return {str(p.id): p for p in group.participants.all()}
+def people(group, *, include_removed=False):
+    participants = group.participants.all()
+    if not include_removed:
+        participants = participants.filter(removed=False)
+    return {str(p.id): p for p in participants}
+
+
+def keep_removed_balances_zero(group):
+    removed = list(group.participants.filter(removed=True).values_list("id", flat=True))
+    if not removed:
+        return
+    balances = snapshot(group)["balances"]
+    if any(int(balances[str(person)]) for person in removed):
+        raise HttpError(409, "This change would reopen a removed person's balance")
 
 
 def expense_dict(expense):
@@ -110,7 +124,10 @@ def snapshot(group):
         "archived": group.archived,
         "is_direct": group.is_direct,
         "owner_id": group.owner_id,
-        "participants": [{"id": str(p.id), "name": p.name, "user_id": p.user_id} for p in participants],
+        "participants": [
+            {"id": str(p.id), "name": p.name, "user_id": p.user_id, "removed": p.removed}
+            for p in participants
+        ],
         "expenses": [expense_dict(e) for e in expenses],
         "settlements": [
             {
@@ -120,7 +137,7 @@ def snapshot(group):
                 "amount": str(p.amount),
                 "method": p.method,
                 "recorded_by": p.recorded_by_id,
-                "date": p.date.isoformat(),
+                "date": p.date.isoformat() if p.date else None,
                 "attempt_id": str(p.attempt_id) if p.attempt_id else None,
                 "reversed": p.reversed,
             }
@@ -134,7 +151,7 @@ def snapshot(group):
     profiles = {
         profile.user_id: {"vpa": profile.vpa, "version": profile.version, "bank_verified": False}
         for profile in PaymentProfile.objects.filter(
-            user_id__in=[p.user_id for p in participants if p.user_id]
+            user_id__in=[p.user_id for p in participants if p.user_id and not p.removed]
         )
     }
     for participant in result["participants"]:
@@ -234,7 +251,10 @@ def save_expense(actor, group_id, payload, expense_id=None):
     writable(group)
     if expense_id and str(expense_id) != payload["id"]:
         raise AccountingError("Expense ID must match the URL")
-    paid, shares = validate_expense(payload["total"], payload["paid"], payload["split"], list(people(group)))
+    paid, shares = validate_expense(
+        payload["total"], payload["paid"], payload["split"],
+        list(people(group, include_removed=bool(expense_id))),
+    )
     fields = {key: payload[key] for key in ["description", "split", "category", "notes"]}
     fields.update(
         total=int(payload["total"]), paid=paid, shares=shares, date=date.fromisoformat(payload["date"])
@@ -245,6 +265,12 @@ def save_expense(actor, group_id, payload, expense_id=None):
             raise HttpError(404, "Expense not found")
         if expense.version != payload["version"] or expense.deleted:
             raise HttpError(409, "Expense changed; fetch the current revision before retrying")
+        for person in group.participants.filter(removed=True):
+            key = str(person.id)
+            if (paid.get(key, "0"), shares.get(key, "0")) != (
+                expense.paid.get(key, "0"), expense.shares.get(key, "0")
+            ):
+                raise HttpError(409, "Keep the removed person's historical paid amount and share unchanged")
         for key, value in fields.items():
             setattr(expense, key, value)
         expense.version += 1
@@ -255,6 +281,7 @@ def save_expense(actor, group_id, payload, expense_id=None):
         if group.expenses.count() >= 10_000:
             raise HttpError(409, "Group reached its tested expense limit")
         expense = Expense.objects.create(id=payload["id"], group=group, **fields)
+    keep_removed_balances_zero(group)
     result = record_change(
         group, actor, payload["command_id"], fingerprint, "expense_saved", expense_dict(expense)
     )
@@ -281,6 +308,7 @@ def set_expense_deleted(actor, group_id, expense_id, payload, deleted):
     expense.deleted = deleted
     expense.version += 1
     expense.save(update_fields=["deleted", "version"])
+    keep_removed_balances_zero(group)
     return record_change(
         group,
         actor,
@@ -294,7 +322,21 @@ def set_expense_deleted(actor, group_id, expense_id, payload, deleted):
 @transaction.atomic
 def record_settlement(actor, group_id, payload):
     group = visible_group(actor, group_id, lock=True)
-    previous, fingerprint = previous_result(actor, payload["command_id"], f"settlement:{group_id}", payload)
+    payload = {"attempt_id": None, **payload}
+    try:
+        previous, fingerprint = previous_result(
+            actor, payload["command_id"], f"settlement:{group_id}", payload,
+        )
+    except HttpError as error:
+        # Older clients omitted date but the schema fingerprint included date:null.
+        # Replay only an existing dated record, never turn a new unknown date into Today.
+        if error.status_code != 409 or "date" in payload or not Settlement.objects.filter(
+            id=payload["id"], group=group, recorded_by=actor, date__isnull=False,
+        ).exists():
+            raise
+        previous, fingerprint = previous_result(
+            actor, payload["command_id"], f"settlement:{group_id}", {**payload, "date": None},
+        )
     if previous:
         return previous
     writable(group)
@@ -334,10 +376,12 @@ def record_settlement(actor, group_id, payload):
         sender=members[payload["sender"]],
         recipient=members[payload["recipient"]],
         amount=amount,
-        date=date.fromisoformat(payload["date"]) if payload.get("date") else timezone.localdate(),
+        date=(date.fromisoformat(payload["date"]) if payload["date"] else None)
+        if "date" in payload else timezone.localdate(),
         recorded_by=actor,
         attempt=attempt,
     )
+    keep_removed_balances_zero(group)
     return record_change(
         group,
         actor,
@@ -350,6 +394,7 @@ def record_settlement(actor, group_id, payload):
             "recipient": payload["recipient"],
             "amount": str(amount),
             "method": payment.method,
+            "date": payment.date.isoformat() if payment.date else None,
         },
     )
 
@@ -377,6 +422,7 @@ def reverse_settlement(actor, group_id, settlement_id, payload):
         raise HttpError(403, "Only the involved people or organizer can reverse this record")
     payment.reversed = True
     payment.save(update_fields=["reversed"])
+    keep_removed_balances_zero(group)
     return record_change(
         group, actor, payload["command_id"], fingerprint, "settlement_reversed", {"id": str(payment.id)}
     )

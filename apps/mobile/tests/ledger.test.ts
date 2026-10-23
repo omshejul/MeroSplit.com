@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { emptyGroup, previewPending, putLocalExpense, recalculateLocal } from '../src/ledger.ts';
+import { emptyGroup, legacyMatchesServer, previewPending } from '../src/ledger.ts';
+import { putLocalExpense, recalculateLocal } from './fixtures.ts';
 import type { Command } from '../src/types.ts';
 
 const original = putLocalExpense(emptyGroup('g', 'Trip', [{ id: 'A', name: 'A' }, { id: 'B', name: 'B' }]), {
@@ -45,4 +46,21 @@ test('A local partial repayment can be reversed once while retaining its origina
   assert.deepEqual(recalculateLocal(reversed).balances, { A: '5000', B: '-5000' });
   assert.deepEqual(reversed.settlements, [{ id: 'past', sender: 'B', recipient: 'A', amount: '1250', provenance: 'manual_record', reversed: true }]);
   assert.equal(paid.settlements[0].reversed, undefined);
+});
+
+test('Legacy shadow comparison ignores revision counters, vector order and server-only bookkeeping', () => {
+  const canonical = { ...original, version: 99, owner_id: 1, activity: ['accepted server history'], participants: [...original.participants].reverse().map(person => ({ ...person, user_id: person.id === 'A' ? 1 : null })), expenses: original.expenses.map(expense => ({ ...expense, version: 42, paid: { B: '0', A: '10000' } })) };
+  assert.equal(legacyMatchesServer({ ...original, version: 1000 }, canonical), true);
+  assert.equal(legacyMatchesServer(original, { ...canonical, expenses: canonical.expenses.map(expense => ({ ...expense, notes: 'Private edit still needs review' })) }), false);
+  assert.equal(legacyMatchesServer(original, { ...canonical, participants: canonical.participants.map(person => ({ ...person, name: `${person.name} changed` })) }), false);
+  assert.equal(legacyMatchesServer(original, { ...canonical, expenses: canonical.expenses.map(expense => ({ ...expense, deleted: true })) }), false);
+});
+
+test('Deleted bills, reversed payments and a recorded payment date cannot be discarded as a matching shadow', () => {
+  const legacy = { ...original, expenses: original.expenses.map(expense => ({ ...expense, deleted: true })), settlements: [{ id: 'past', sender: 'B', recipient: 'A', amount: '1250', reversed: true }] };
+  assert.equal(legacyMatchesServer(legacy, { ...legacy, expenses: [] }), false);
+  assert.equal(legacyMatchesServer(legacy, { ...legacy, settlements: [] }), false);
+  assert.equal(legacyMatchesServer(legacy, { ...legacy, settlements: legacy.settlements.map(row => ({ ...row, reversed: false })) }), false);
+  assert.equal(legacyMatchesServer(legacy, { ...legacy, settlements: legacy.settlements.map(row => ({ ...row, date: '2026-10-17' })) }), true);
+  assert.equal(legacyMatchesServer({ ...legacy, settlements: legacy.settlements.map(row => ({ ...row, date: '2026-10-16' })) }, { ...legacy, settlements: legacy.settlements.map(row => ({ ...row, date: '2026-10-17' })) }), false);
 });

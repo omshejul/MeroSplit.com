@@ -38,8 +38,8 @@ export async function saveAppearance(value: AppearancePreference): Promise<void>
   await SecureStore.setItemAsync(APPEARANCE_KEY, value);
 }
 
-export async function savedSyncPaused(): Promise<boolean> { return (await SecureStore.getItemAsync('splitdumb.syncPaused')) === 'true'; }
-export async function saveSyncPaused(value: boolean): Promise<void> { await SecureStore.setItemAsync('splitdumb.syncPaused', String(value)); }
+// Older releases allowed pausing sync. All account changes now sync automatically.
+export async function retireSyncPause(): Promise<void> { await SecureStore.deleteItemAsync('splitdumb.syncPaused'); }
 
 export async function shareJson(filename: string, data: unknown): Promise<void> {
   return shareText(`${filename}.json`, JSON.stringify(data, null, 2), 'application/json');

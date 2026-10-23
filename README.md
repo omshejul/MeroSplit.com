@@ -1,8 +1,12 @@
 # MeroSplit
 
-Functional shared-expense app for iOS and Android, built with Expo React Native and a Django/PostgreSQL backend. Backend: [Railway readiness](https://api-production-fb6ac.up.railway.app/api/v1/ready). Source: [private GitHub repository](https://github.com/omshejul/SplitDumb). The app uses Groups, People and Me, React Native Paper controls, native pickers and Hugeicons. The 0.3.1 candidate adds compact monochrome light/dark appearance, Splitwise CSV import and private optimized profile/bill media. See the [design decisions](.dev/merosplit-design-decisions.md).
+Shared-expense app for iOS and Android, built with Expo React Native and a Django/PostgreSQL backend. [Railway API](https://api-production-fb6ac.up.railway.app/api/v1/ready) · [Private source repository](https://github.com/omshejul/SplitDumb).
 
-Version 0.3.0 is the earlier mint release. The current 0.3.1 candidate and pending live/native gates are recorded in [the combined update status](.dev/MEROSPLIT_MONOCHROME_STATUS.md). Current results, artifact identities and limitations are in the [design acceptance report](.dev/merosplit-acceptance.md), with separate [Android](.dev/merosplit-native-qa.md) and [iOS simulator](.dev/merosplit-ios-qa.md) evidence. This release keeps the installed package identity, SQLite database and account session. The earlier 0.2.0 builds and iPhone installer are historical evidence, not artifacts for this version.
+The current 0.3.3 source uses Groups, People and Me with React Native Paper controls, native pickers and Hugeicons. Accounts sync automatically. PostgreSQL owns accepted records; the phone keeps an account-scoped cache, drafts and an idempotent offline queue. Sign-out preserves unsent work for that account. Earlier unowned phone records require explicit account and participant confirmation before recovery. Original history remains available in recovery export.
+
+Groups show Bills and Balances. Simplify computes named repayments without changing anyone's net balance. Removing a person requires organizer permission and a zero balance, revokes their access, and retains historical splits. Me contains profile/UPI, optional notifications, appearance, history and data actions. There is no storage-mode selector or sync pause.
+
+The tested source and native coverage for this follow-up are recorded in [the canonical-app verification](.dev/MEROSPLIT_SERVER_CORE.md). Earlier 0.3.1/0.3.2 reports and simulator ZIPs describe previous builds, not a current iPhone installer. The installed package identity, SQLite database and session are retained.
 
 See the [original verification and artifacts](.dev/VERIFICATION.md), [development instructions](.dev/DEV.md), [implementation phases](PLAN.md), and [API contract](API_CONTRACT.md). Email verification/recovery, direct UPI app launch, physical-device payments, public store release, and measured maximum-capacity performance remain outside this controlled functional build.
 

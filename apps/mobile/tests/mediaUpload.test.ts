@@ -6,9 +6,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { accountOwner, ApiError, request } from '../src/api.ts';
-import { pendingMediaUpload, retryMediaUpload, saveMediaUpload, uploadMedia } from '../src/media.ts';
+import { clearAccountMediaUploads, clearMediaPreviews, pendingMediaUpload, retryMediaUpload, saveMediaUpload, uploadMedia } from '../src/media.ts';
 import type { MediaMetadata, PendingMediaUpload, PickedMedia } from '../src/media.ts';
-import { migrate, readDraft, saveDraft } from '../src/storage.ts';
+import { migrate, readDraft, saveDraft, wipeAccount } from '../src/storage.ts';
 import { sqliteAdapter } from './sqlite.ts';
 import type { Session } from '../src/types.ts';
 
@@ -17,6 +17,38 @@ const path = '/groups/g/expenses/e/attachments';
 const pending: PendingMediaUpload = { id: 'd2c160d0-847c-4ea1-b4f7-60d06d5994c6', path, file: { uri: 'file:///synthetic/staged.png', name: 'receipt.png', type: 'image/png', size: 15 } };
 const metadata: MediaMetadata = { id: pending.id, name: 'receipt.jpg', content_type: 'image/jpeg', size: 10 };
 const emptyList: typeof request = async <T>(): Promise<T> => ({ attachments: [], can_modify: true }) as T;
+
+test('Sign-out preview cleanup preserves staged uploads and unrelated files, including after one cleanup fails', async () => {
+  const folder = mkdtempSync(join(tmpdir(), 'merosplit-preview-'));
+  const names = [`merosplit-${pending.id}.png`, `merosplit-upload-${pending.id}.png`, 'unrelated-photo.png', 'merosplit-13dc400e-268e-4ab3-a905-08b357ca7850.pdf'];
+  try {
+    for (const name of names) writeFileSync(join(folder, name), 'synthetic bytes');
+    await clearMediaPreviews(async () => names.map((name, index) => ({ name, delete: () => { if (index === 0) throw new Error('Busy preview'); unlinkSync(join(folder, name)); } })));
+    assert.equal(existsSync(join(folder, names[0])), true); assert.equal(existsSync(join(folder, names[1])), true); assert.equal(existsSync(join(folder, names[2])), true); assert.equal(existsSync(join(folder, names[3])), false);
+  } finally { rmSync(folder, { recursive: true, force: true }); }
+});
+
+test('Account deletion cleans only its own app-staged bytes before its drafts are wiped', async () => {
+  const raw = new DatabaseSync(':memory:'), db = sqliteAdapter(raw), folder = mkdtempSync(join(tmpdir(), 'merosplit-account-files-'));
+  const accounts = [session, { ...session, userId: '2' }, { ...session, baseUrl: 'https://other.test' }];
+  const ids = [pending.id, '13dc400e-268e-4ab3-a905-08b357ca7850', '4b8f5680-c7c4-45ec-8a2f-842fb5854090'];
+  try {
+    await migrate(db);
+    for (const [index, account] of accounts.entries()) {
+      const file = join(folder, `merosplit-upload-${ids[index]}.png`); writeFileSync(file, 'synthetic bytes');
+      await saveMediaUpload(db, account, { ...pending, id: ids[index], file: { ...pending.file, uri: pathToFileURL(file).href } });
+    }
+    const originalFile = join(folder, 'original-user-photo.png'); writeFileSync(originalFile, 'Do not remove picker sources');
+    await saveDraft(db, accountOwner(session), 'media-upload:malformed', { ...pending, file: { ...pending.file, uri: pathToFileURL(originalFile).href } });
+    const cleaned: string[] = [];
+    await clearAccountMediaUploads(db, session, async file => { cleaned.push(file.uri); unlinkSync(fileURLToPath(file.uri)); });
+    assert.equal(cleaned.length, 1); assert.equal(existsSync(join(folder, `merosplit-upload-${ids[0]}.png`)), false);
+    assert.equal(existsSync(originalFile), true);
+    assert.ok(await pendingMediaUpload(db, session, path), 'Read pending paths before wipeAccount');
+    await wipeAccount(db, accountOwner(session)); assert.equal(await pendingMediaUpload(db, session, path), null);
+    for (const index of [1, 2]) { assert.ok(await pendingMediaUpload(db, accounts[index], path)); assert.equal(existsSync(join(folder, `merosplit-upload-${ids[index]}.png`)), true); }
+  } finally { raw.close(); rmSync(folder, { recursive: true, force: true }); }
+});
 
 test('Accepted POST plus lost POST/GET responses survives restart and recovers one attachment with the same ID', async () => {
   const folder = mkdtempSync(join(tmpdir(), 'merosplit-upload-')), dbPath = join(folder, 'app.db'), filePath = join(folder, 'staged.png');

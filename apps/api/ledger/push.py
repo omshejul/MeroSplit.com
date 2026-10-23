@@ -77,7 +77,9 @@ def remove_device(actor, installation_id):
 
 def queue_new_bill(expense, actor):
     """Called only by the normal CREATE transaction, never imports or edits."""
-    members = Participant.objects.filter(group=expense.group, user__is_active=True).exclude(user=actor)
+    members = Participant.objects.filter(
+        group=expense.group, user__is_active=True, removed=False,
+    ).exclude(user=actor)
     # Bill creation already holds the group lock. Rebinding/revocation must not
     # remove a selected device between this read and the delivery FK insert.
     devices = PushDevice.objects.select_for_update(of=("self",)).filter(
@@ -112,7 +114,9 @@ def eligible_delivery(delivery):
         or expense.deleted
         or expense.group.archived
         or device.session.expire_date <= timezone.now()
-        or not Participant.objects.filter(group=expense.group, user_id=delivery.recipient_id).exists()
+        or not Participant.objects.filter(
+            group=expense.group, user_id=delivery.recipient_id, removed=False,
+        ).exists()
     ):
         return False
     user = get_session_user(SessionStore(session_key=device.session_id))

@@ -8,9 +8,9 @@ import type { Palette } from './ui';
 
 type Transfer = { sender: string; recipient: string; amount: string };
 type Props = {
-  group: Group; accepted: Group; pending: Command[]; busy: boolean; local: boolean; selfId: string;
+  group: Group; accepted: Group; pending: Command[]; busy: boolean; selfId: string;
   onAdd: () => void; onExpense: (expense: Expense) => void; onSettle: (transfer?: Transfer) => void;
-  onReverse: (settlement: Settlement) => void; onSettings: () => void;
+  onReverse: (settlement: Settlement) => void;
   onSync: () => void; onDiscard: (command: Command) => void;
   onReview: (command: Command) => void;
   onConfirmReceipt: (attempt: NonNullable<Group['payment_attempts']>[number]) => void;
@@ -21,7 +21,7 @@ const displayDate = (value: string) => {
   return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 };
 
-export default function GroupScreen({ group, accepted, pending, busy, local, selfId, onAdd, onExpense, onSettle, onReverse, onSettings, onSync, onDiscard, onReview, onConfirmReceipt }: Props) {
+export default function GroupScreen({ group, accepted, pending, busy, selfId, onAdd, onExpense, onSettle, onReverse, onSync, onDiscard, onReview, onConfirmReceipt }: Props) {
   const { palette: colors, ui, inputColors } = useUI();
   const s = useMemo(() => makeStyles(colors), [colors]);
   const [section, setSection] = useState('Bills');
@@ -31,6 +31,7 @@ export default function GroupScreen({ group, accepted, pending, busy, local, sel
   const balance = BigInt(group.balances[selfId] ?? '0');
   const needsAttention = pending.some(command => command.state !== 'pending' || !!command.error);
   const receipts = (group.payment_attempts ?? []).filter(attempt => attempt.recipient === selfId && ['reported', 'recorded', 'cancelled'].includes(attempt.state));
+  const transfers = group.transfers.filter(transfer => BigInt(transfer.amount) > 0n && transfer.sender !== transfer.recipient && [transfer.sender, transfer.recipient].every(id => group.participants.some(person => person.id === id && !person.removed)));
   const purchases = group.expenses.filter(expense => !expense.deleted);
   const spending = purchases.reduce((total, expense) => total + BigInt(expense.total), 0n).toString();
   const searchField = <TextInput {...inputColors} accessibilityLabel="Search bills" placeholder="Find a bill by name or note" placeholderTextColor={colors.muted} value={search} onChangeText={setSearch} style={ui.input} />;
@@ -38,12 +39,12 @@ export default function GroupScreen({ group, accepted, pending, busy, local, sel
     <View style={s.summary}>
       <Text style={ui.caption}>{balance > 0n ? 'You are owed' : balance < 0n ? 'You owe' : 'Your balance'}</Text>
       <Text style={[ui.numeric, { color: balanceColor(balance, colors) }]}>{balance === 0n ? 'All settled' : formatMoney((balance < 0n ? -balance : balance).toString())}</Text>
-      <Text style={ui.caption}>{pending.length ? 'Includes your changes saved on this phone' : local ? 'Saved on this phone' : 'In this group'}</Text>
+      {pending.length > 0 && <Text style={ui.caption}>Includes unsynced changes</Text>}
     </View>
-    {group.archived && <Text style={ui.notice}>This group is archived. Reopen it in settings to add bills or record payments.{receipts.length > 0 ? ' You can still confirm money received.' : ''}</Text>}
+    {group.archived && <Text style={ui.notice}>Archived. Reopen in settings to make changes.{receipts.length > 0 ? ' You can still confirm money received.' : ''}</Text>}
     <Button title="Add a bill" icon="add" kind="primary" disabled={busy || group.archived} onPress={onAdd} />
     {pending.length > 0 && <View style={s.section}>
-      <Text style={[ui.notice, ui.warning]}>{needsAttention ? 'Some saved changes need your attention.' : 'Saved on this phone. Waiting to sync.'} Other people see the shared records until these changes are sent.</Text>
+      <Text style={[ui.notice, ui.warning]}>{needsAttention ? 'Some saved changes need your attention.' : 'Waiting to sync.'}</Text>
       <Disclosure title={`${pending.length} saved ${pending.length === 1 ? 'change' : 'changes'}`} initialOpen={needsAttention}>
         {needsAttention && <Button title="Retry sync" disabled={busy} onPress={onSync} />}
         {pending.map(command => <View key={command.command_id} style={s.section}>
@@ -60,7 +61,7 @@ export default function GroupScreen({ group, accepted, pending, busy, local, sel
       <Button title={`Yes, I got ${formatMoney(attempt.recorded_amount ?? attempt.amount)}`} icon="check" disabled={busy || pending.length > 0} onPress={() => onConfirmReceipt(attempt)} />
     </View>)}
     <View style={s.tabs} accessibilityRole="tablist">
-      {['Bills', 'Who owes?', 'Totals'].map(value => <Pressable key={value} accessibilityRole="tab" accessibilityState={{ selected: section === value }} onPress={() => setSection(value)} style={[s.tab, section === value && s.selectedTab]}>
+      {['Bills', 'Balances'].map(value => <Pressable key={value} accessibilityRole="tab" accessibilityState={{ selected: section === value }} onPress={() => setSection(value)} style={[s.tab, section === value && s.selectedTab]}>
         <Text style={[s.tabText, section === value && s.selectedTabText]}>{value}</Text>
       </Pressable>)}
     </View>
@@ -68,8 +69,7 @@ export default function GroupScreen({ group, accepted, pending, busy, local, sel
       {group.expenses.length >= 5 && searchField}
       {!expenses.length && <View style={s.empty}>
         <Icon name="bill" size={32} />
-        <Text style={ui.section}>{search.trim() ? 'No matching bills' : 'Your first bill goes here'}</Text>
-        <Text style={ui.caption}>{search.trim() ? 'Try another name or a word from the notes.' : 'Add what was paid and who shared it.'}</Text>
+        <Text style={ui.section}>{search.trim() ? 'No matching bills' : 'No bills yet'}</Text>
       </View>}
       {[...expenses].reverse().map(expense => <Pressable accessibilityRole="button" accessibilityLabel={`${expense.description}, ${formatMoney(expense.total)}${expense.deleted ? ', deleted' : ''}`} key={expense.id} style={({ pressed }) => [ui.row, pressed && s.pressed]} onPress={() => onExpense(expense)}>
         <View style={s.billMark}><Icon name="bill" /></View>
@@ -81,55 +81,44 @@ export default function GroupScreen({ group, accepted, pending, busy, local, sel
         <View style={s.trailing}><Text style={s.amount}>{formatMoney(expense.total)}</Text><Icon name="next" size={18} color={colors.muted} /></View>
       </Pressable>)}
       {group.settlements.length > 0 && <Disclosure title="Payment records">
-        <Text style={ui.caption}>These record money paid outside the app. A record does not verify a bank transfer.</Text>
         {group.settlements.map(payment => <View key={payment.id} style={s.payment}>
           <Text style={ui.rowTitle}>{name(payment.sender)} paid {name(payment.recipient)}</Text>
           <Text style={s.amount}>{formatMoney(payment.amount)}</Text>
-          <Text style={[ui.caption, { color: payment.reversed ? colors.warning : payment.method === 'recipient_confirmed' || payment.method === 'manual_then_confirmed' ? colors.positive : colors.warning }]}>{payment.reversed ? 'Record reversed' : payment.method === 'recipient_confirmed' || payment.method === 'manual_then_confirmed' ? 'Receipt confirmed by the recipient' : 'Recorded outside the app. Receipt not confirmed.'}</Text>
+          <Text style={[ui.caption, { color: payment.reversed ? colors.warning : payment.method === 'recipient_confirmed' || payment.method === 'manual_then_confirmed' ? colors.positive : colors.warning }]}>{payment.reversed ? 'Record reversed' : payment.method === 'recipient_confirmed' || payment.method === 'manual_then_confirmed' ? 'Recipient confirmed' : 'Receipt unconfirmed'}</Text>
           {!payment.reversed && <Button title="Reverse record" accessibilityLabel={`Reverse ${formatMoney(payment.amount)} payment from ${name(payment.sender)} to ${name(payment.recipient)}`} kind="text" disabled={busy || group.archived || pending.length > 0} onPress={() => onReverse(payment)} />}
         </View>)}
       </Disclosure>}
     </>}
-    {section === 'Who owes?' && <>
-      <Text style={ui.section}>In this group</Text>
+    {section === 'Balances' && <>
       {group.participants.map(person => <View key={person.id} style={ui.row}>
         <Avatar name={name(person.id)} />
         <View style={ui.rowBody}>
-          <Text style={ui.rowTitle}>{name(person.id)}</Text>
+          <Text style={ui.rowTitle}>{name(person.id)}{person.removed ? ' · Removed' : ''}</Text>
           <Text style={[ui.rowSub, { color: balanceColor(group.balances[person.id] ?? '0', colors) }]}>{position(name(person.id), group.balances[person.id] ?? '0')}</Text>
-          {pending.length > 0 && <Text style={ui.rowSub}>Shared record: {position(name(person.id), accepted.balances[person.id] ?? '0')}</Text>}
+          {pending.length > 0 && <Text style={ui.rowSub}>Synced: {position(name(person.id), accepted.balances[person.id] ?? '0')}</Text>}
         </View>
       </View>)}
       <View style={s.section}>
-        <Text style={ui.section}>Pay back</Text>
-        <Text style={ui.caption}>A simpler plan for this group. Your bills stay the same.</Text>
-        {group.transfers.map((transfer, index) => <View key={index} style={s.transfer}>
+        <Text style={ui.section}>Simplify</Text>
+        <Text style={ui.caption}>Fewer payments. Same balances.</Text>
+        {transfers.map((transfer, index) => <View key={index} style={s.transfer}>
           <Text style={[ui.rowTitle, { color: transfer.sender === selfId ? colors.negative : transfer.recipient === selfId ? colors.positive : colors.text }]}>{name(transfer.sender)} {transfer.sender === selfId ? 'owe' : 'owes'} {name(transfer.recipient)} {formatMoney(transfer.amount)}</Text>
           <Button title={`Record ${formatMoney(transfer.amount)}`} accessibilityLabel={`Record ${formatMoney(transfer.amount)} from ${name(transfer.sender)} to ${name(transfer.recipient)}`} icon="pay" disabled={busy || group.archived} onPress={() => onSettle(transfer)} />
         </View>)}
-        {!group.transfers.length && <Text style={[ui.body, ui.success]}>Everyone is settled up.</Text>}
-        <Text style={ui.caption}>Already paid outside the app? Record it here. No money is sent by this app.</Text>
-        <Disclosure title="How fewer payments work">
-          <Text style={ui.body}>Each person keeps the same total to pay or receive. The plan combines repayments within {group.name}, so you may pay someone other than the person who paid a bill.</Text>
-          <Text style={ui.caption}>Other groups are separate. Recording a payment updates this group's balances.</Text>
-        </Disclosure>
-        <Disclosure title="A different payment was already made">
-          <Button title="Record a payment" disabled={busy || group.archived} onPress={() => onSettle()} />
-        </Disclosure>
+        {!transfers.length && <Text style={[ui.body, ui.success]}>Everyone is settled up.</Text>}
       </View>
-    </>}
-    {section === 'Totals' && <>
-      <View style={s.summary}><Text style={ui.caption}>Spent together</Text><Text style={ui.numeric}>{formatMoney(spending)}</Text><Text style={ui.caption}>Repayments are not spending.</Text></View>
+      <Disclosure title="Totals">
+      <View style={s.summary}><Text style={ui.caption}>Total spending</Text><Text style={ui.numeric}>{formatMoney(spending)}</Text></View>
       {group.participants.map(person => <View key={person.id} style={ui.row}>
         <Avatar name={name(person.id)} />
         <View style={ui.rowBody}>
-          <Text style={ui.rowTitle}>{name(person.id)}</Text>
+          <Text style={ui.rowTitle}>{name(person.id)}{person.removed ? ' · Removed' : ''}</Text>
           <Text style={ui.rowSub}>Paid {formatMoney(purchases.reduce((total, expense) => total + BigInt(expense.paid[person.id] ?? '0'), 0n).toString())}</Text>
           <Text style={ui.rowSub}>Share {formatMoney(purchases.reduce((total, expense) => total + BigInt(expense.shares[person.id] ?? '0'), 0n).toString())}</Text>
         </View>
       </View>)}
+      </Disclosure>
     </>}
-    <Button title="Group settings and people" icon="settings" kind="text" disabled={busy} onPress={onSettings} />
   </View>;
 }
 
@@ -139,12 +128,11 @@ export function ExpenseDetail({ expense, group, busy, canEdit, onEdit, onDelete,
   const hasCategory = !!expense.category && !['general', 'other'].includes(expense.category);
   return <View style={s.content}>
     <View style={s.summary}>
-      
       <Text style={ui.numeric}>{formatMoney(expense.total)}</Text>
       <Text style={ui.caption}>{group.name} · {displayDate(expense.date)}</Text>
     </View>
     {expense.deleted ? <>
-      <Text style={ui.notice}>This bill was deleted. Its original split is kept so you can restore it.</Text>
+      <Text style={ui.notice}>Deleted bill</Text>
       <Button title="Restore bill" icon="history" kind="primary" disabled={busy || !canEdit} onPress={onRestore} />
     </> : <Button title="Edit bill" icon="bill" kind="primary" disabled={busy || !canEdit} onPress={onEdit} />}
     <View style={s.section}>

@@ -15,6 +15,7 @@ const extensions: Record<string, string> = { 'image/jpeg': 'jpg', 'image/png': '
 const mimeForExtension: Record<string, string> = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', pdf: 'application/pdf' };
 const uploadDraftKey = (path: string) => `media-upload:${path}`;
 const pendingFilename = /^merosplit-upload-[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}\.(?:jpg|png|webp|pdf|bin)$/i;
+const previewFilename = /^merosplit-[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}\.(?:jpg|png|webp|pdf|bin)$/i;
 
 export function validateMedia(file: PickedMedia, avatar = false): void {
   if (!(avatar ? imageTypes : [...imageTypes, 'application/pdf']).includes(file.type)) throw new Error(avatar ? 'Choose a JPEG, PNG or WebP photo.' : 'Choose a JPEG, PNG, WebP image or PDF.');
@@ -82,7 +83,19 @@ export async function clearStagedMedia(file: PickedMedia): Promise<void> {
   try {
     const { File, Paths } = await import('expo-file-system'), staged = new File(file.uri);
     if (staged.parentDirectory.uri.replace(/\/$/, '') === Paths.document.uri.replace(/\/$/, '') && pendingFilename.test(staged.name) && staged.exists) staged.delete();
-  } catch { /* Resolved uploads can be cleaned again at account sign-out. */ }
+  } catch { /* Account deletion can retry cleanup of this app-owned staged file. */ }
+}
+
+// Call before wiping the deleting account's drafts. Sign-out must retain these
+// bytes so that a later sign-in can retry the same immutable upload.
+export async function clearAccountMediaUploads(db: Database, session: Session, cleanup: (file: PickedMedia) => Promise<void> = clearStagedMedia): Promise<void> {
+  const rows = await db.getAllAsync<{ body: string }>("SELECT body FROM drafts WHERE owner=? AND group_id LIKE 'media-upload:%'", accountOwner(session));
+  for (const row of rows) {
+    try {
+      const upload = JSON.parse(row.body) as PendingMediaUpload | null;
+      if (upload?.file?.uri && pendingFilename.test(upload.file.uri.split('/').at(-1) ?? '')) await cleanup(upload.file);
+    } catch { /* One failed file cleanup must not affect another account's data. */ }
+  }
 }
 
 export function pendingMediaUpload(db: Database, session: Session, path: string): Promise<PendingMediaUpload | null> {
@@ -163,18 +176,14 @@ export async function clearMediaPreview(media: MediaMetadata): Promise<void> {
   catch { /* An already removed preview does not affect the accepted server deletion. */ }
 }
 
-export async function clearMediaPreviews(): Promise<void> {
+export async function clearMediaPreviews(cacheFiles: () => Promise<{ name: string; delete(): void }[]> = async () => {
+  const { Directory, File, Paths } = await import('expo-file-system');
+  return new Directory(Paths.cache).list().filter(file => file instanceof File);
+}): Promise<void> {
   try {
-    const { Directory, File, Paths } = await import('expo-file-system');
-    for (const [directory, pattern] of [[Paths.cache, /^merosplit-[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}\.(?:jpg|png|webp|pdf|bin)$/i], [Paths.document, pendingFilename]] as const) {
-      try {
-        for (const file of new Directory(directory).list()) {
-          if (file instanceof File && pattern.test(file.name)) {
-            try { file.delete(); } catch { /* Continue cleaning after a single-file failure. */ }
-          }
-        }
-      } catch { /* A missing cache directory must not skip staged upload cleanup. */ }
-      }
+    for (const file of await cacheFiles()) if (previewFilename.test(file.name)) {
+      try { file.delete(); } catch { /* Continue cleaning after a single-file failure. */ }
+    }
   } catch { /* Preview cleanup must not prevent account sign-out or deletion. */ }
 }
 

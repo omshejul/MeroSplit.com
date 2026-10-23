@@ -4,7 +4,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { migrate, saveGroup, readGroup, enqueue, pendingCommands, acceptCommand, publishLocal, markCommand, wipeAccount, saveDraft, readDraft, discardUnsentGroup } from '../src/storage.ts';
+import { migrate, saveGroup, readGroup, enqueue, pendingCommands, acceptCommand, createPendingGroup, markCommand, wipeAccount, saveDraft, readDraft, discardUnsentGroup, listGroups, listUnavailableGroups, reconcileGroupCache } from '../src/storage.ts';
 import { sqliteAdapter as adapter } from './sqlite.ts';
 import type { Group, Command } from '../src/types.ts';
 
@@ -20,7 +20,7 @@ test('SQLite restart, ownership, migrations, duplicate IDs and atomic publish', 
     await migrate(db); await migrate(db);
     await saveGroup(db, 'local', group, 'local');
     await saveDraft(db, 'account1', 'g', { description: 'Unfinished bill', amount: '100' });
-    await publishLocal(db, 'account1', { ...group, version: 20, activity: ['local-only history'] }, [command]);
+    await createPendingGroup(db, 'account1', { ...group, version: 20, activity: ['local-only history'] }, [command]);
     assert.equal((await readGroup(db, 'account1', 'g'))?.group.version, 0);
     assert.deepEqual((await readGroup(db, 'account1', 'g'))?.group.activity, []);
     await enqueue(db, 'account1', command);
@@ -39,7 +39,7 @@ test('SQLite restart, ownership, migrations, duplicate IDs and atomic publish', 
     assert.equal((await readGroup(db, 'account1', 'g'))?.group.version, 1);
     await saveGroup(db, 'account1', group, 'shared');
     assert.equal((await readGroup(db, 'account1', 'g'))?.group.version, 1, 'stale snapshot cannot rewind cache');
-    await assert.rejects(publishLocal(db, 'account1', group, [command]));
+    await assert.rejects(createPendingGroup(db, 'account1', group, [command]));
     await wipeAccount(db, 'account1');
     assert.equal(await readGroup(db, 'account1', 'g'), null);
     assert.equal(await readDraft(db, 'account1', 'g'), null);
@@ -68,13 +68,13 @@ test('Discard provisional group atomically removes its dependent commands and dr
     await migrate(db);
     const creation = { ...command, body: { command_id: command.command_id, id: group.id } };
     const dependent = { ...command, command_id: 'expense', path: '/groups/g/expenses', body: { id: 'bill' } };
-    await publishLocal(db, 'account1', group, [creation, dependent]);
+    await createPendingGroup(db, 'account1', group, [creation, dependent]);
     await saveDraft(db, 'account1', 'g', { description: 'Unsaved trip bill' });
-    await publishLocal(db, 'account2', group, [creation]);
+    await createPendingGroup(db, 'account2', group, [creation]);
     await saveDraft(db, 'account2', 'g', { description: 'Other account draft' });
     await saveGroup(db, 'local', group, 'local');
     await saveDraft(db, 'local', 'g', { description: 'Original local draft' });
-    await publishLocal(db, 'account1', { ...group, id: 'other' }, [{ ...creation, command_id: 'other-create', group_id: 'other', body: { id: 'other' } }]);
+    await createPendingGroup(db, 'account1', { ...group, id: 'other' }, [{ ...creation, command_id: 'other-create', group_id: 'other', body: { id: 'other' } }]);
     await saveDraft(db, 'account1', 'other', { description: 'Other group draft' });
 
     await discardUnsentGroup(db, 'account1', 'g');
@@ -113,12 +113,53 @@ test('Discard rolls every deletion back when SQLite interrupts the transaction',
   try {
     await migrate(db);
     const creation = { ...command, body: { id: group.id } };
-    await publishLocal(db, 'account1', group, [creation]);
+    await createPendingGroup(db, 'account1', group, [creation]);
     await saveDraft(db, 'account1', 'g', { description: 'Keep after interruption' });
     raw.exec("CREATE TRIGGER interrupt_draft_delete BEFORE DELETE ON drafts BEGIN SELECT RAISE(ABORT, 'interrupted deletion'); END;");
     await assert.rejects(discardUnsentGroup(db, 'account1', 'g'), /interrupted deletion/);
     assert.ok(await readGroup(db, 'account1', 'g'));
     assert.deepEqual(await pendingCommands(db, 'account1'), [creation]);
     assert.deepEqual(await readDraft(db, 'account1', 'g'), { description: 'Keep after interruption' });
+  } finally { raw.close(); }
+});
+
+test('Complete authorized refresh hides revoked bases, preserves pending creations/work, and restores reauthorized groups', async () => {
+  const raw = new DatabaseSync(':memory:'), db = adapter(raw);
+  try {
+    await migrate(db);
+    const accepted = { ...group, version: 4 }, revoked = { ...accepted, id: 'revoked' }, drafted = { ...accepted, id: 'drafted' };
+    await saveGroup(db, 'account1', accepted, 'shared'); await saveGroup(db, 'account1', revoked, 'shared'); await saveGroup(db, 'account1', drafted, 'shared');
+    await saveGroup(db, 'account1', { ...accepted, id: 'gone' }, 'shared');
+    await saveGroup(db, 'account2', revoked, 'shared'); await saveGroup(db, 'local', group, 'local');
+    const rejected: Command = { ...command, group_id: revoked.id, command_id: 'rejected', path: '/groups/revoked/expenses', state: 'conflict', error: 'Review this change' };
+    await enqueue(db, 'account1', rejected); await saveDraft(db, 'account1', drafted.id, { amount: '123.45' });
+    await saveDraft(db, 'account1', 'legacy-recovery:revoked', { group: revoked, draft: null, commands: [], selfId: 'A', status: 'conflict', reason: 'Keep original' });
+    const creation = { ...command, command_id: 'new-group', group_id: 'new', body: { id: 'new' } };
+    await createPendingGroup(db, 'account1', { ...group, id: 'new' }, [creation]);
+    const updated = { ...accepted, name: 'Fresh server name', version: 5 };
+    assert.deepEqual((await reconcileGroupCache(db, 'account1', [updated])).sort(), ['drafted', 'gone', 'revoked']);
+    assert.deepEqual((await listGroups(db, 'account1')).map(row => row.group.id), ['g', 'new']);
+    assert.deepEqual((await listUnavailableGroups(db, 'account1')).map(row => row.id), ['drafted', 'revoked']);
+    assert.equal(await readGroup(db, 'account1', 'gone'), null);
+    assert.deepEqual(await readDraft(db, 'account1', drafted.id), { amount: '123.45' });
+    assert.deepEqual(await pendingCommands(db, 'account1'), [rejected, creation]);
+    assert.ok(await readDraft(db, 'account1', 'legacy-recovery:revoked'));
+    assert.deepEqual((await listGroups(db, 'account2')).map(row => row.group.id), ['revoked']); assert.equal((await listGroups(db, 'local')).length, 1);
+    assert.deepEqual(await reconcileGroupCache(db, 'account1', [updated]), [], 'Repeated refresh does not repeat access-change notices');
+    await reconcileGroupCache(db, 'account1', [updated, revoked, drafted]);
+    assert.equal((await readGroup(db, 'account1', revoked.id))?.kind, 'shared'); assert.deepEqual(await listUnavailableGroups(db, 'account1'), []);
+  } finally { raw.close(); }
+});
+
+test('Interrupted or invalid reconciliation cannot replace the authorized cache with a partial refresh', async () => {
+  const raw = new DatabaseSync(':memory:'), db = adapter(raw);
+  try {
+    await migrate(db); await saveGroup(db, 'account1', { ...group, version: 1 }, 'shared');
+    await saveGroup(db, 'account1', { ...group, id: 'revoked', version: 1 }, 'shared'); await saveDraft(db, 'account1', 'revoked', { amount: '50' });
+    raw.exec("CREATE TRIGGER interrupt_access_update BEFORE UPDATE OF kind ON groups_cache WHEN NEW.kind='unavailable' BEGIN SELECT RAISE(ABORT, 'interrupted refresh'); END;");
+    await assert.rejects(reconcileGroupCache(db, 'account1', [{ ...group, name: 'Changed', version: 2 }]), /interrupted refresh/);
+    assert.equal((await readGroup(db, 'account1', group.id))?.group.name, group.name); assert.equal((await readGroup(db, 'account1', 'revoked'))?.kind, 'shared');
+    await assert.rejects(reconcileGroupCache(db, 'account1', [group, group]), /incomplete/);
+    assert.equal((await listGroups(db, 'account1')).length, 2); assert.deepEqual(await readDraft(db, 'account1', 'revoked'), { amount: '50' });
   } finally { raw.close(); }
 });

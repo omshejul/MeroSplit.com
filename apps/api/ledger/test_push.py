@@ -165,7 +165,7 @@ def test_delivery_generic_payload_and_no_network_transaction(client, group, join
     assert ExpensePushDelivery.objects.get().state == "queued"
 
 
-@pytest.mark.parametrize("change", ["archived", "deleted", "unlinked", "inactive", "expired"])
+@pytest.mark.parametrize("change", ["archived", "deleted", "unlinked", "removed", "inactive", "expired"])
 def test_rechecks_eligibility_before_send(client, group, joined, monkeypatch, change):
     payload = new_bill(client, group)
     if change == "archived":
@@ -174,6 +174,8 @@ def test_rechecks_eligibility_before_send(client, group, joined, monkeypatch, ch
         Expense.objects.filter(pk=payload["id"]).update(deleted=True)
     elif change == "unlinked":
         Participant.objects.filter(user=joined[0].actor).update(user=None)
+    elif change == "removed":
+        Participant.objects.filter(user=joined[0].actor).update(removed=True)
     elif change == "inactive":
         get_user_model().objects.filter(pk=joined[0].actor.pk).update(is_active=False)
     else:

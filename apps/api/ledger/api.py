@@ -19,6 +19,7 @@ from .collaboration import (
     create_opening,
     guest_view,
     invite_token,
+    remove_participant,
     review_invite,
 )
 from .media import avatar_for, download_url, list_attachments, remove_attachment, remove_avatar, upload_file
@@ -126,7 +127,7 @@ def duplicate_error(request, exc):
 def groups(request):
     return {
         "groups": list(
-            Group.objects.filter(participants__user=request.auth).values(
+            Group.objects.filter(participants__user=request.auth, participants__removed=False).values(
                 "id", "name", "version", "archived", "is_direct"
             )
         )
@@ -180,7 +181,7 @@ def expense_restore(request, group_id: UUID, expense_id: UUID, body: Revision):
 
 @api.post("/groups/{group_id}/settlements", response=WriteResult)
 def settlement_create(request, group_id: UUID, body: SettlementIn):
-    return record_settlement(request.auth, group_id, body.model_dump(mode="json"))
+    return record_settlement(request.auth, group_id, body.model_dump(mode="json", exclude_unset=True))
 
 
 @api.post("/groups/{group_id}/settlements/{settlement_id}/reverse", response=WriteResult)
@@ -327,6 +328,11 @@ def account_delete(request):
 @api.post("/groups/{group_id}/participants", response=WriteResult)
 def participant_add(request, group_id: UUID, body: ParticipantIn):
     return add_participant(request.auth, group_id, body.model_dump(mode="json"))
+
+
+@api.post("/groups/{group_id}/participants/{participant_id}/remove", response=WriteResult)
+def participant_remove(request, group_id: UUID, participant_id: UUID, body: Command):
+    return remove_participant(request.auth, group_id, participant_id, body.model_dump(mode="json"))
 
 
 @api.put("/me/push-devices/{installation_id}")

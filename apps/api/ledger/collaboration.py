@@ -3,12 +3,21 @@ from datetime import timedelta
 
 from django.core import signing
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 from ninja.errors import HttpError
 
 from .accounting import AccountingError, propose_transfers
-from .models import Invite, OpeningBalance, Participant
-from .services import people, previous_result, record_change, snapshot, visible_group, writable
+from .models import ExpensePushDelivery, Invite, OpeningBalance, Participant
+from .services import (
+    keep_removed_balances_zero,
+    people,
+    previous_result,
+    record_change,
+    snapshot,
+    visible_group,
+    writable,
+)
 
 
 def invite_token(invite_id):
@@ -17,7 +26,8 @@ def invite_token(invite_id):
 
 def valid_invite(token, *, lock=False):
     query = Invite.objects.select_related("participant__group", "claimant").filter(
-        token_hash=hashlib.sha256(token.encode()).hexdigest(), revoked=False, expires_at__gt=timezone.now()
+        token_hash=hashlib.sha256(token.encode()).hexdigest(), revoked=False,
+        expires_at__gt=timezone.now(), participant__removed=False,
     )
     if lock:
         query = query.select_for_update(of=("self",))
@@ -35,7 +45,9 @@ def create_invite(actor, group_id, payload):
     previous, fingerprint = previous_result(actor, payload["command_id"], f"invite:{group_id}", payload)
     if previous:
         return previous
-    participant = group.participants.filter(id=payload["participant_id"], user__isnull=True).first()
+    participant = group.participants.filter(
+        id=payload["participant_id"], user__isnull=True, removed=False,
+    ).first()
     if not participant:
         raise HttpError(409, "Choose an unclaimed participant in this group")
     token = invite_token(payload["command_id"])
@@ -157,6 +169,7 @@ def review_invite(actor, group_id, invite_id, payload, approve):
             or invite.expires_at <= timezone.now()
             or not invite.claimant_id
             or invite.participant.user_id
+            or invite.participant.removed
         ):
             raise HttpError(409, "This invitation has no valid pending claim")
         if Participant.objects.filter(group=group, user_id=invite.claimant_id).exists():
@@ -233,12 +246,13 @@ def acknowledge_opening(actor, group_id, opening_id, payload):
     opening = OpeningBalance.objects.filter(id=opening_id, group=group).first()
     if not opening:
         raise HttpError(404, "Opening balances not found")
-    person = group.participants.get(user=actor)
+    person = group.participants.get(user=actor, removed=False)
     opening.acknowledgments[str(person.id)] = {"user_id": actor.pk, "at": timezone.now().isoformat()}
     opening.accepted = all(
         p in opening.acknowledgments for p, amount in opening.balances.items() if amount != "0"
     )
     opening.save(update_fields=["acknowledgments", "accepted"])
+    keep_removed_balances_zero(group)
     return record_change(
         group,
         actor,
@@ -296,4 +310,49 @@ def add_participant(actor, group_id, payload):
         fingerprint,
         "participant_added",
         {"id": str(person.id), "name": person.name},
+    )
+
+
+@transaction.atomic
+def remove_participant(actor, group_id, participant_id, payload):
+    group = visible_group(actor, group_id, lock=True)
+    if group.owner_id != actor.pk:
+        raise HttpError(403, "Only the organizer can remove participants")
+    previous, fingerprint = previous_result(
+        actor, payload["command_id"], f"remove_participant:{group_id}:{participant_id}", payload,
+    )
+    if previous:
+        return previous
+    person = group.participants.filter(id=participant_id).first()
+    if not person:
+        raise HttpError(404, "Participant not found")
+    if person.user_id == group.owner_id:
+        raise HttpError(409, "The organizer cannot be removed")
+    if person.removed:
+        raise HttpError(409, "This person was already removed")
+    balance = abs(int(snapshot(group)["balances"][str(person.id)]))
+    if balance:
+        amount = f"{balance // 100:,}" + (f".{balance % 100:02}" if balance % 100 else "")
+        raise HttpError(409, f"Settle ₹{amount} first")
+    involved_attempts = group.attempts.filter(Q(sender=person) | Q(recipient=person))
+    if involved_attempts.filter(state="reported").exists():
+        raise HttpError(409, "Resolve the reported payment first")
+    opening = OpeningBalance.objects.filter(group=group, accepted=False).first()
+    if opening and int(opening.balances.get(str(person.id), "0")):
+        raise HttpError(409, "Resolve the opening balance proposal first")
+    person.removed = True
+    person.save(update_fields=["removed"])
+    Invite.objects.filter(participant=person).update(revoked=True)
+    involved_attempts.filter(state="prepared").update(state="cancelled")
+    if person.user_id:
+        ExpensePushDelivery.objects.filter(
+            expense__group=group, recipient_id=person.user_id,
+            state__in=["pending", "sending", "queued", "checking"],
+        ).update(state="skipped", last_error="member_removed", lease_id=None, lease_until=None)
+    if group.is_direct:
+        group.archived = True
+        group.save(update_fields=["archived"])
+    return record_change(
+        group, actor, payload["command_id"], fingerprint, "participant_removed",
+        {"id": str(person.id), "removed": True, "archived": group.archived},
     )

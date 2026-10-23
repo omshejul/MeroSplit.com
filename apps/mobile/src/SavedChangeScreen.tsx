@@ -22,7 +22,7 @@ export default function SavedChangeScreen({ command, group, busy, onDiscard, onE
   const updating = command.method === 'PUT' && command.path === `${path}/${body.id}`;
   const expenseCommand = command.group_id === group.id && (creating || updating);
   let saved: Expense | undefined;
-  let issue = 'This saved action cannot be edited here. It remains saved until you discard it.';
+  let issue = 'This action cannot be edited here. Your saved change is retained.';
   if (expenseCommand) {
     try {
       if (typeof body.id !== 'string' || !body.id || typeof body.description !== 'string'
@@ -39,7 +39,7 @@ export default function SavedChangeScreen({ command, group, busy, onDiscard, onE
       };
       issue = '';
     } catch {
-      issue = 'This saved expense has incomplete people, amounts or dates. It remains saved until you discard it.';
+      issue = 'Incomplete people, amounts or date. Your saved change is retained.';
     }
   }
   const canEdit = !!saved && (creating ? !current : updating && !!current && !current.deleted);
@@ -48,7 +48,7 @@ export default function SavedChangeScreen({ command, group, busy, onDiscard, onE
     return <View style={s.bill}>
       <Text style={ui.section}>{expense.description}</Text>
       <Text style={ui.numeric}>{formatMoney(expense.total)}</Text>
-      <Text style={ui.caption}>{expense.date}</Text>
+      <Text style={ui.caption}>{new Date(`${expense.date}T12:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</Text>
       {expense.deleted && <Text style={[ui.notice, ui.warning]}>Deleted. This bill is not included in balances.</Text>}
       <Text style={ui.label}>Who paid?</Text>
       {group.participants.filter(person => (expense.paid[person.id] ?? '0') !== '0').map(person => <View key={person.id} style={s.person}>
@@ -69,24 +69,23 @@ export default function SavedChangeScreen({ command, group, busy, onDiscard, onE
 
   return <View style={s.content}>
     <Text style={ui.caption}>{group.name}</Text>
-    <Text style={[ui.notice, ui.warning]}>{expenseCommand ? 'Your change is saved on this phone. Compare both versions before choosing what to keep.' : 'This action is saved on this phone until it can be sent or you discard it.'}</Text>
+    <Text style={[ui.notice, ui.warning]}>{expenseCommand ? 'Review your change against the latest bill.' : 'This change has not synced.'}</Text>
     <View style={s.section}>
-      <Text accessibilityRole="header" style={ui.section}>{expenseCommand ? 'My saved bill' : 'My saved change'}</Text>
+      <Text accessibilityRole="header" style={ui.section}>Your change</Text>
       {saved ? summary(saved) : <Text accessibilityRole="alert" style={ui.body}>{issue}</Text>}
     </View>
     {expenseCommand && <>
       <View style={s.section}>
-        <Text accessibilityRole="header" style={ui.section}>Latest bill</Text>
+        <Text accessibilityRole="header" style={ui.section}>Latest</Text>
         {current ? summary(current) : <Text style={ui.body}>This bill is not in the group's latest records.</Text>}
       </View>
-      {creating && current && <Text style={[ui.notice, ui.warning]}>This bill already exists and will not be overwritten here. Leave your change saved or discard it below.</Text>}
+      {creating && current && <Text style={[ui.notice, ui.warning]}>This bill already exists. Your saved change will not overwrite it.</Text>}
       {updating && current?.deleted && <Text style={[ui.notice, ui.warning]}>Restore the latest bill before editing it.</Text>}
-      {updating && !current && <Text style={[ui.notice, ui.warning]}>The latest bill is no longer available. Your saved change will not recreate it automatically.</Text>}
+      {updating && !current && <Text style={[ui.notice, ui.warning]}>This bill is unavailable. Your saved change will not recreate it.</Text>}
     </>}
     <View style={s.section}>
-      {canEdit && <Button title="Edit my bill" kind="primary" disabled={busy} onPress={editSaved} />}
-      <Button title={expenseCommand ? 'Discard my saved bill' : 'Discard my saved change'} disabled={busy} onPress={onDiscard} />
-      <Text style={ui.caption}>Discarding keeps the latest records as they are.</Text>
+      {canEdit && <Button title="Edit your change" kind="primary" disabled={busy} onPress={editSaved} />}
+      <Button title="Discard saved change" kind="text" disabled={busy} onPress={onDiscard} />
     </View>
   </View>;
 }

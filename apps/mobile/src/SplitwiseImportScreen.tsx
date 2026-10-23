@@ -24,7 +24,7 @@ const balanceText = (value: string) => integer(value, true) > 0n ? `Is owed ${fo
 export default function SplitwiseImportScreen({ session, busy, onBusyChange, onImported, onCancel }: SplitwiseImportScreenProps) {
   const { palette: colors, ui, inputColors } = useUI();
   const [checking, setChecking] = useState(true), [working, setWorking] = useState(false), [error, setError] = useState('');
-  const [preview, setPreview] = useState<SplitwisePreview | null>(null), [csv, setCsv] = useState(''), [filename, setFilename] = useState('');
+  const [preview, setPreview] = useState<SplitwisePreview | null>(null), [csv, setCsv] = useState('');
   const [name, setName] = useState(''), [selfIndex, setSelfIndex] = useState<number | null>(null), [payers, setPayers] = useState<Record<string, number>>({});
   const [pending, setPending] = useState<SplitwiseImportRequest | null>(null);
   const lock = useRef(false), mounted = useRef(true), activeOwner = useRef(accountOwner(session));
@@ -53,14 +53,14 @@ export default function SplitwiseImportScreen({ session, busy, onBusyChange, onI
     const asset = result.assets[0], file = new File(asset.uri);
     try {
       if (!current()) return;
-      setPreview(null); setCsv(''); setFilename(''); setSelfIndex(null); setPayers({});
+      setPreview(null); setCsv(''); setSelfIndex(null); setPayers({});
       if (!asset.name.toLowerCase().endsWith('.csv')) throw new Error('Choose the CSV export from a Splitwise group.');
       if ((asset.size ?? file.size) > MAX_FILE_BYTES) throw new Error('Choose a CSV file up to 1 MB.');
       const contents = await file.text();
       const resultPreview = await request<SplitwisePreview>(session, '/imports/splitwise/preview', 'POST', { csv: contents });
       if (!current()) return;
-      setCsv(contents); setPreview(resultPreview); setFilename(asset.name); setSelfIndex(null); setPayers({});
-      setName(asset.name.replace(/\.csv$/i, '').slice(0, 100));
+      setCsv(contents); setPreview(resultPreview); setSelfIndex(null); setPayers({});
+      setName(asset.name.replace(/\.csv$/i, '').replace(/[_-]+/g, ' ').trim().slice(0, 100));
     } finally {
       // Only remove the picker copy in our cache, never the user's source file.
       try { if (file.uri.startsWith(`${Paths.cache.uri.replace(/\/$/, '')}/`) && file.exists) file.delete(); }
@@ -88,21 +88,19 @@ export default function SplitwiseImportScreen({ session, busy, onBusyChange, onI
   return <View style={styles.form}>
     {checking ? <Text style={ui.caption}>Checking for a saved import…</Text> : pending ? <>
       <Text style={ui.section}>{pending.name}</Text>
-      <Text style={[ui.notice, ui.warning]}>This import was saved before sending. Retry to finish or recover it. The same file and choices will be used, so it won't create another copy.</Text>
+      <Text style={[ui.notice, ui.warning]}>Import not confirmed. Retry safely with the same file and choices.</Text>
       <Button title={working ? 'Finishing import…' : 'Retry saved import'} kind="primary" disabled={disabled} onPress={() => void run(finishImport)} />
       <Button title="Close for now" kind="text" disabled={disabled} onPress={onCancel} />
     </> : <>
-      <Text style={ui.caption}>Bring a Splitwise group CSV into a new shared group. INR exports up to 1 MB are supported. You need an internet connection.</Text>
       <Button title={preview ? 'Choose another CSV' : 'Choose CSV file'} disabled={disabled} onPress={() => void run(pickFile)} />
       {preview && <>
-        <Text style={ui.label}>{filename}</Text>
         <Text style={ui.section}>{preview.expense_count} bills · {preview.payment_count} payments</Text>
         <Text style={ui.caption}>{preview.members.length} people · {preview.currency}</Text>
         {preview.duplicate_group ? <>
           <Text style={ui.notice}>This file was already imported as {preview.duplicate_group.name}.</Text>
           <Button title="Open existing group" kind="primary" disabled={disabled} onPress={() => void run(openExisting)} />
         </> : <>
-          <View style={styles.field}><Text style={ui.label}>New group name</Text><TextInput {...inputColors} accessibilityLabel="New group name" value={name} onChangeText={setName} maxLength={100} editable={!disabled} style={ui.input} /></View>
+          <View style={styles.field}><Text style={ui.label}>Group name</Text><TextInput {...inputColors} accessibilityLabel="Group name" value={name} onChangeText={setName} maxLength={100} editable={!disabled} style={ui.input} /></View>
           <Text style={ui.section}>Which person are you?</Text>
           {preview.members.map((member, index) => <View key={index} style={[styles.person, { borderBottomColor: colors.line }]}>
             <RadioButton.Item label={member} value={String(index)} status={selfIndex === index ? 'checked' : 'unchecked'} onPress={() => setSelfIndex(index)} disabled={disabled} mode="android" labelStyle={ui.body} accessibilityLabel={`I am ${member}`} />
@@ -110,14 +108,14 @@ export default function SplitwiseImportScreen({ session, busy, onBusyChange, onI
           </View>)}
           {preview.unresolved.map(row => <View key={row.row} style={[styles.review, { borderColor: colors.line }]}>
             <Text style={ui.section}>Who paid {formatMoney(row.amount)}?</Text>
-            <Text style={ui.body}>{row.description}</Text><Text style={ui.caption}>{row.date} · {row.category} · CSV row {row.row}</Text>
-            <Text style={ui.caption}>This bill has no balance change. Choose who paid and used it. No one will owe anything for this bill.</Text>
+            <Text style={ui.body}>{row.description}</Text><Text style={ui.caption}>{new Date(`${row.date}T12:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</Text>
+            <Text style={ui.caption}>Choose who paid and used this bill. Balances stay unchanged.</Text>
             {preview.members.map((member, index) => <RadioButton.Item key={index} label={member} value={String(index)} status={payers[String(row.row)] === index ? 'checked' : 'unchecked'}
               onPress={() => setPayers(values => ({ ...values, [String(row.row)]: index }))} disabled={disabled} mode="android" labelStyle={ui.body} accessibilityLabel={`${member} paid CSV row ${row.row}`} />)}
           </View>)}
-          <Text style={ui.caption}>The export shows net amounts, so original payer and split details may be incomplete. Check the balances before importing. Recorded payments do not send money.</Text>
+          <Text style={ui.caption}>Check the balances. Original payer and split details may be incomplete; no money is sent.</Text>
           {preview.warnings.map((warning, index) => <Text key={index} style={[ui.notice, ui.warning]}>{warning}</Text>)}
-          <Button title={working ? 'Importing…' : 'Confirm import'} kind="primary" disabled={disabled || !name.trim() || selfIndex === null || preview.unresolved.some(row => payers[String(row.row)] === undefined)} onPress={() => void run(finishImport)} />
+          <Button title={working ? 'Importing…' : 'Import'} kind="primary" disabled={disabled || !name.trim() || selfIndex === null || preview.unresolved.some(row => payers[String(row.row)] === undefined)} onPress={() => void run(finishImport)} />
         </>}
       </>}
     </>}

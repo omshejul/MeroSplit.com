@@ -11,12 +11,9 @@ import type { Palette } from './ui';
 type Props = {
   group: Group;
   selfId: string;
-  local: boolean;
   busy: boolean;
   onAction: (suffix: string, body: Record<string, unknown>) => Promise<Record<string, unknown>>;
-  onLocalAdd: (name: string) => Promise<void>;
   onExport: (format: 'json' | 'csv') => Promise<void>;
-  onPublish?: () => Promise<void>;
 };
 
 function Field({ label, value, onChange, disabled, maxLength = 120, keyboardType = 'default', placeholder }: {
@@ -46,10 +43,10 @@ function signedPaise(input: string): string {
 }
 
 export default function MembersScreen(props: Props) {
-  return <MemberSettings key={`${props.group.id}|${props.selfId}|${props.local}`} {...props} />;
+  return <MemberSettings key={`${props.group.id}|${props.selfId}`} {...props} />;
 }
 
-function MemberSettings({ group, selfId, local, busy, onAction, onLocalAdd, onExport, onPublish }: Props) {
+function MemberSettings({ group, selfId, busy, onAction, onExport }: Props) {
   const { palette: colors, ui } = useUI();
   const s = useMemo(() => makeStyles(colors), [colors]);
   const [newName, setNewName] = useState('');
@@ -65,7 +62,7 @@ function MemberSettings({ group, selfId, local, busy, onAction, onLocalAdd, onEx
   const [feedback, setFeedback] = useState<{ section: string; text: string; error: boolean } | null>(null);
   const inFlight = useRef(false);
   const self = group.participants.find(person => person.id === selfId);
-  const organizer = !local && self?.user_id != null && self.user_id === group.owner_id;
+  const organizer = !self?.removed && self?.user_id != null && self.user_id === group.owner_id;
   const disabled = busy || working;
   const opening = group.opening_balance;
   const needsOpeningAgreement = !!opening && !opening.accepted && self?.user_id != null
@@ -126,36 +123,45 @@ function MemberSettings({ group, selfId, local, busy, onAction, onLocalAdd, onEx
       {group.participants.map(person => <View key={person.id} style={ui.row}>
         <Avatar name={person.name} />
         <View style={ui.rowBody}>
-          <Text style={ui.rowTitle}>{person.name}{person.id === selfId ? ' (you)' : ''}</Text>
-          <Text style={ui.rowSub}>{local ? 'On this phone' : person.user_id == null ? 'Not joined yet' : person.user_id === group.owner_id ? 'Organizer' : 'Joined'}</Text>
+          <Text style={ui.rowTitle}>{person.name}{person.id === selfId && person.name.toLowerCase() !== 'you' ? ' (you)' : ''}</Text>
+          {(person.removed || person.user_id != null) && <Text style={ui.rowSub}>{person.removed ? 'Removed' : person.user_id === group.owner_id ? 'Organizer' : 'Joined'}</Text>}
+          {organizer && !person.removed && person.id !== selfId && person.user_id !== group.owner_id && <>
+            <Button title="Remove" accessibilityLabel={`Remove ${person.name}`} kind="text" disabled={disabled || BigInt(group.balances[person.id] ?? '0') !== 0n} onPress={() => confirm(
+              `Remove ${person.name}?`, `${person.user_id != null ? 'They will lose access to this group. ' : ''}Existing bills and payment history remain.`,
+              () => void perform('members', async () => { await onAction(`/participants/${person.id}/remove`, {}); }, 'Person removed.'), 'Remove')} />
+            {BigInt(group.balances[person.id] ?? '0') !== 0n && <Text style={ui.caption}>Settle {formatMoney((BigInt(group.balances[person.id]) < 0n ? -BigInt(group.balances[person.id]) : BigInt(group.balances[person.id])).toString())} first</Text>}
+          </>}
         </View>
       </View>)}
     </View>
-    {!group.is_direct && (local || organizer) && <View style={s.section}>
+    {!group.is_direct && organizer && <View style={s.section}>
       <Field label="New person's name" value={newName} onChange={setNewName} disabled={disabled || !!group.archived} />
       <Button title="Add person" icon="add" disabled={disabled || !!group.archived} onPress={() => void perform('members', async () => {
         if (!newName.trim()) throw new Error('Enter a member name.');
-        if (local) await onLocalAdd(newName.trim());
-        else await onAction('/participants', { id: Crypto.randomUUID(), name: newName.trim() });
+        await onAction('/participants', { id: Crypto.randomUUID(), name: newName.trim() });
         setNewName('');
       }, 'Member added.')} />
       {!!group.archived && <Text style={ui.caption}>Reopen the group to add someone.</Text>}
-      {note('members')}
     </View>}
+    {note('members')}
 
-    {!local && organizer && <Disclosure title="Invites">
-      {group.participants.filter(person => person.user_id == null).map(person => <View key={person.id} style={s.section}>
+    {organizer && <Disclosure title="Invites">
+      {group.participants.filter(person => !person.removed && person.user_id == null).map(person => <View key={person.id} style={s.section}>
         <Text style={ui.rowTitle}>{person.name}</Text>
-        <Button title="Create invite" accessibilityLabel={`Create invite for ${person.name}`} disabled={disabled} onPress={() => void perform('invites', async () => {
+        <Button title="Invite" accessibilityLabel={`Invite ${person.name}`} disabled={disabled || !!group.archived} onPress={() => void perform('invites', async () => {
           const result = await onAction('/invites', { participant_id: person.id });
           if (typeof result.url !== 'string' || !/^https?:\/\//.test(result.url)) throw new Error('The link is not available yet. Sync and try again.');
-          setInviteLink({ participantId: person.id, name: person.name, url: result.url });
-        }, 'Invite link ready.')} />
+          const link = { participantId: person.id, name: person.name, url: result.url };
+          setInviteLink(link);
+          const shared = await Share.share({ message: `Join ${group.name} as ${link.name}: ${link.url}` });
+          if (shared.action === Share.sharedAction) setInviteLink(null);
+        })} />
       </View>)}
       {inviteLink && <View style={s.field}>
-        <Text style={ui.label}>Invite for {inviteLink.name}</Text><Text style={ui.body} selectable>{inviteLink.url}</Text>
-        <Button title="Share invite" accessibilityLabel={`Share invite for ${inviteLink.name}`} disabled={disabled} onPress={() => void perform('invites', async () => {
-          await Share.share({ message: `Join ${group.name} as ${inviteLink.name}: ${inviteLink.url}` });
+        <Text style={ui.label}>Invite for {inviteLink.name}</Text>
+        <Button title="Share invite" accessibilityLabel={`Share invite for ${inviteLink.name}`} disabled={disabled || !!group.archived} onPress={() => void perform('invites', async () => {
+          const shared = await Share.share({ message: `Join ${group.name} as ${inviteLink.name}: ${inviteLink.url}` });
+          if (shared.action === Share.sharedAction) setInviteLink(null);
         })} />
       </View>}
       {(group.invites ?? []).filter(invite => !invite.revoked).map(invite => <View key={invite.id} style={s.row}>
@@ -171,16 +177,15 @@ function MemberSettings({ group, selfId, local, busy, onAction, onLocalAdd, onEx
             if (inviteLink?.participantId === invite.participant_id) setInviteLink(null);
           }, 'Invitation revoked.'), 'Revoke')} />
       </View>)}
-      {!group.invites?.some(invite => !invite.revoked) && !inviteLink && <Text style={ui.caption}>Create an invite for someone who has not joined yet. You choose who to share it with.</Text>}
       {note('invites')}
     </Disclosure>}
 
-    {!local && <Disclosure title="Previous balances" initialOpen={needsOpeningAgreement}>
+    <Disclosure title="Previous balances" initialOpen={needsOpeningAgreement}>
       {opening ? <>
         <Text style={[ui.notice, opening.accepted ? ui.success : ui.warning]}>{opening.accepted ? 'Agreed and included in balances.' : 'Waiting for agreement. Not included in balances yet.'}</Text>
         <Text style={ui.body}>From {opening.source}</Text><Text style={ui.caption}>As of {opening.cutoff}</Text>
         {group.participants.map(person => <View key={person.id} style={ui.row}>
-          <View style={ui.rowBody}><Text style={ui.rowTitle}>{person.name}{person.id === selfId ? ' (you)' : ''}</Text>
+          <View style={ui.rowBody}><Text style={ui.rowTitle}>{person.name}{person.id === selfId && person.name.toLowerCase() !== 'you' ? ' (you)' : ''}</Text>
             {Object.hasOwn(opening.acknowledgments, person.id) && <Text style={ui.rowSub}>Agreed</Text>}</View>
           <Text style={s.amount}>{balanceDescription(opening.balances[person.id] ?? '0')}</Text>
         </View>)}
@@ -194,8 +199,8 @@ function MemberSettings({ group, selfId, local, busy, onAction, onLocalAdd, onEx
         <Text style={ui.caption}>No previous balances added.</Text>
         {organizer && !group.archived && <Button title={showOpening ? 'Cancel previous balances' : 'Add previous balances'} disabled={disabled} onPress={() => { setShowOpening(value => !value); setFeedback(null); }} />}
         {organizer && showOpening && !group.archived && <View style={s.field}>
-          <Text style={ui.body}>Choose whether each person owes money or is owed money. Total owed and owing must match.</Text>
-          {group.participants.map(person => {
+          <Text style={ui.body}>Total owed and owing must match.</Text>
+          {group.participants.filter(person => !person.removed).map(person => {
             const balance = previous[person.id] ?? '', owes = balance.startsWith('-');
             return <View key={person.id} style={s.section}>
               <Field label={`${person.name} balance (₹)`} value={balance.replace(/^-/, '')} disabled={disabled} maxLength={39} keyboardType="decimal-pad" placeholder="0"
@@ -210,18 +215,10 @@ function MemberSettings({ group, selfId, local, busy, onAction, onLocalAdd, onEx
         </View>}
       </>}
       {note('opening')}
-    </Disclosure>}
-
-    {local && <Disclosure title="Share this group">
-      <Text style={ui.body}>This group is saved on this phone.</Text>
-      {onPublish ? <Button title="Create a shared copy" disabled={disabled} onPress={() => confirm(
-        'Create a shared copy?', 'Your original stays on this device. The copy will be saved in your account and visible to members you invite.',
-        () => void perform('publish', onPublish, 'Shared copy created.'), 'Create copy')} /> : <Text style={ui.caption}>Sign in from Account to create a shared copy.</Text>}
-      {note('publish')}
-    </Disclosure>}
+    </Disclosure>
 
     <Disclosure title={organizer ? 'Export and archive' : 'Export'}>
-      {!local && <Button title="Export spreadsheet" disabled={disabled} onPress={() => void perform('export', () => onExport('csv'))} />}
+      <Button title="Export spreadsheet" disabled={disabled} onPress={() => void perform('export', () => onExport('csv'))} />
       <Button title="Export data file" disabled={disabled} onPress={() => void perform('export', () => onExport('json'))} />
       {note('export')}
       {organizer && <>

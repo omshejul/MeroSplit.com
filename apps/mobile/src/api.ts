@@ -1,6 +1,7 @@
-import type { Expense, Group, Session } from './types';
-import { acceptCommand, markCommand, pendingCommands } from './storage.ts';
+import type { Command, Expense, Group, LegacyRecovery, Session } from './types';
+import { acceptCommand, bindLegacyGroup, markCommand, pendingCommands, readGroup, readLegacyRecovery, readLegacySource } from './storage.ts';
 import type { Database } from './storage.ts';
+import { legacyMatchesServer, previewPending } from './ledger.ts';
 
 export class ApiError extends Error {
   status: number;
@@ -51,6 +52,49 @@ export async function syncOutbox(db: Database, session: Session): Promise<Record
     }
   }
   return receipts;
+}
+
+// Called only after the person explicitly chooses this account and their name.
+// Queue immutable existing API commands before sending anything to the server.
+export async function claimLegacyGroup(db: Database, session: Session, groupId: string, selfId: string, uuid: () => string, send: typeof request = request): Promise<{ status: LegacyRecovery['status']; groupId: string; reason: string | null }> {
+  const owner = accountOwner(session), source = await readLegacySource(db, groupId);
+  if (!source) {
+    const previous = await readLegacyRecovery(db, owner, groupId);
+    if (!previous) throw new Error('These phone records are no longer available to this account.');
+    return { status: previous.status, groupId, reason: previous.reason };
+  }
+  if (!source.group.participants.some(person => person.id === selfId)) throw new Error('Choose which person you are.');
+  let server: Group | null;
+  try { server = await send<Group>(session, `/groups/${groupId}`); }
+  catch (error) { if (!(error instanceof ApiError && error.status === 404)) throw error; server = null; }
+  if (server && server.id !== groupId) throw new Error('The service returned another group. Try again.');
+  if (server && server.participants.find(person => String(person.user_id) === session.userId)?.id !== selfId) throw new Error('Choose the person already linked to this account in the server group.');
+  const cached = await readGroup(db, owner, groupId), pending = (await pendingCommands(db, owner)).filter(row => row.group_id === groupId);
+  let canonical = server, status: LegacyRecovery['status'] = 'conflict', reason: string | null = 'These phone records could not be safely matched to this account. Their original data is saved for review; server records were not changed.';
+  const commands: Command[] = [];
+  const append = (method: Command['method'], path: string, body: Record<string, unknown>) => {
+    const command_id = uuid(); commands.push({ command_id, group_id: groupId, method, path, body: { ...body, command_id }, state: 'pending', error: null });
+  };
+  if (!source.commands.length && server && legacyMatchesServer(source.group, server)) { status = 'existing'; reason = null; }
+  else if (!source.commands.length && !server && cached?.group.version === 0 && pending.some(row => row.path === '/groups' && row.body.self_participant_id === selfId)) {
+    try { if (legacyMatchesServer(source.group, previewPending(cached.group, pending))) { status = 'queued'; reason = null; canonical = cached.group; } } catch { /* Preserve both records for review. */ }
+  } else if (!source.commands.length && !server && !cached && !pending.length && !source.group.opening_balance && !source.group.participants.some(person => person.removed)) {
+    const group = source.group;
+    append('POST', '/groups', { id: group.id, name: group.name, participants: group.participants.map(({ id, name }) => ({ id, name })), self_participant_id: selfId, is_direct: !!group.is_direct });
+    for (const expense of group.expenses) {
+      append('POST', `/groups/${groupId}/expenses`, expensePayload(expense));
+      if (expense.deleted) append('DELETE', `/groups/${groupId}/expenses/${expense.id}`, { version: 1 });
+    }
+    for (const payment of group.settlements) {
+      append('POST', `/groups/${groupId}/settlements`, { id: payment.id, sender: payment.sender, recipient: payment.recipient, amount: payment.amount, date: payment.date ?? null });
+      if (payment.reversed) append('POST', `/groups/${groupId}/settlements/${payment.id}/reverse`, {});
+    }
+    if (group.archived) append('POST', `/groups/${groupId}/archive`, { archived: true });
+    canonical = { ...group, version: 0, owner_id: Number(session.userId), participants: group.participants.map(({ id, name }) => ({ id, name, user_id: id === selfId ? Number(session.userId) : null })), expenses: [], settlements: [], balances: Object.fromEntries(group.participants.map(person => [person.id, '0'])), transfers: [], activity: [], archived: false };
+    status = 'queued'; reason = null;
+  }
+  await bindLegacyGroup(db, owner, { ...source, selfId, status, reason }, canonical, commands);
+  return { status, groupId, reason };
 }
 
 type AuthResult = { meta?: { session_token?: string; is_authenticated?: boolean }; data?: { user?: { id: string | number; email?: string } }; errors?: { message?: string }[] };
