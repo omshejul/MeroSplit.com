@@ -319,7 +319,7 @@ def test_remove_commit_failure_keeps_photo_and_object_until_retry(client, storag
     assert not storage.objects
 
 
-def test_group_scope_avatar_scope_fresh_urls_archive_and_deleted_bill_guards(client, bill, group, storage):
+def test_group_scope_avatar_scope_fresh_urls_archive_and_reversed_bill_guards(client, bill, group, storage):
     group_id, bill_id, path = bill
     other = account()
     avatar_id = post_file(client).json()["avatar"]["id"]
@@ -345,7 +345,7 @@ def test_group_scope_avatar_scope_fresh_urls_archive_and_deleted_bill_guards(cli
     assert post_file(other, path).status_code == 409
     assert send(other, "delete", f"{path}/{file_id}").status_code == 409
     Group.objects.filter(id=group_id).update(archived=False)
-    assert send(client, "delete", f"/groups/{group_id}/expenses/{bill_id}", {"command_id": uid(), "version": 1}).status_code == 200
+    assert send(client, "post", f"/groups/{group_id}/expenses/{bill_id}/reverse", {"command_id": uid(), "version": 1}).status_code == 200
     assert send(other, "get", path).status_code == 404
     assert send(other, "get", f"/media/{file_id}/url").status_code == 404
     assert post_file(other, path).status_code == 404
