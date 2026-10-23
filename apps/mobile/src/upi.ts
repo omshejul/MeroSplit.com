@@ -6,9 +6,14 @@ export type UPILaunchQuote = {
   id: string; vpa: string; amount: string; currency: string; recipient: string; note: string;
   bank_verified: false; direct_launch_supported: boolean; expires_at: string; group_version: number;
 };
-export type UPIApp = { id: 'google-pay' | 'upi'; name: string };
+export type UPIApp = { id: 'phonepe' | 'google-pay' | 'paytm' | 'cred' | 'bhim' | 'amazon-pay' | 'upi'; name: string };
 const vpaPattern = /^[A-Za-z0-9._-]{2,}@[A-Za-z0-9.-]{2,}$/;
-const prefixes = { 'google-pay': 'gpay://upi/pay', upi: 'upi://pay' };
+// Ordinary-payment routes from the user's QRScanner reference. A detected
+// handler is not proof that the installed version accepts a payment request.
+const prefixes = {
+  phonepe: 'phonepe://upi/pay', 'google-pay': 'gpay://upi/pay', paytm: 'paytmmp://upi/pay',
+  cred: 'credpay://upi/pay', bhim: 'bhim://upi/pay', 'amazon-pay': 'amazonpay://upi/pay', upi: 'upi://pay',
+};
 
 export function validateUPIPayment(group: Group, selfId: string, payment: UPIPayment): { vpa: string; name: string } {
   const sender = group.participants.find(person => person.id === payment.sender && !person.removed);
@@ -36,7 +41,13 @@ export function buildUPIUrl(quote: UPILaunchQuote, app: UPIApp['id'] = 'upi'): s
 export async function availableUPIApps(platform: string, canOpenURL: (url: string) => Promise<boolean>): Promise<UPIApp[]> {
   // Browser scheme probes do not establish whether a payment app is installed.
   if (platform !== 'ios' && platform !== 'android') return [];
-  const choices: UPIApp[] = platform === 'ios' ? [{ id: 'google-pay', name: 'Google Pay' }, { id: 'upi', name: 'Other UPI app' }] : [{ id: 'upi', name: 'UPI apps' }];
+  // iOS has app-specific handlers, not Android's generic UPI resolver. Do not
+  // assume these iOS routes or installed-app detection work on other platforms.
+  const choices: UPIApp[] = platform === 'ios' ? [
+    { id: 'phonepe', name: 'PhonePe' }, { id: 'google-pay', name: 'Google Pay' },
+    { id: 'paytm', name: 'Paytm' }, { id: 'cred', name: 'CRED' }, { id: 'bhim', name: 'BHIM' },
+    { id: 'amazon-pay', name: 'Amazon Pay' }, { id: 'upi', name: 'Other UPI app' },
+  ] : [{ id: 'upi', name: 'UPI apps' }];
   const found = await Promise.all(choices.map(async app => { try { return await canOpenURL(prefixes[app.id]) ? app : null; } catch { return null; } }));
   return found.filter((app): app is UPIApp => app !== null);
 }

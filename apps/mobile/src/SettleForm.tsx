@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Linking, Platform, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { Linking, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { Dialog, Portal, RadioButton, Text } from 'react-native-paper';
 import QRCode from 'react-native-qrcode-svg';
 import { Alert } from './alerts';
@@ -148,7 +148,7 @@ export default function SettleForm({ group, initial, busy, selfId, onSave, onRev
     {!!notice && <Text accessibilityLiveRegion="polite" style={ui.caption}>{notice}</Text>}
     {!!error && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={ui.error}>{error}</Text>}
     <Button title={amountLabel ? `Record ${amountLabel} already paid` : 'Record a payment already made'} accessibilityLabel={amountLabel ? `Record ${amountLabel} to ${label(recipient)}` : 'Record payment'} onPress={confirm} disabled={disabled || group.archived} kind={canPay ? 'secondary' : 'primary'} icon="check" />
-    <Portal><Dialog visible={!!chooser} onDismiss={() => { if (!busy && !saving) setChooser(null); }}><Dialog.Title>Pay with UPI</Dialog.Title><Dialog.Content><Text style={ui.body}>Check the recipient and amount before paying.</Text>{chooser?.apps.map(app => <Button key={app.id} title={app.name} disabled={busy || saving} onPress={() => void pay(app)} />)}</Dialog.Content><Dialog.Actions><Button title="Cancel" kind="text" disabled={busy || saving} onPress={() => setChooser(null)} /></Dialog.Actions></Dialog></Portal>
+    <Portal><Dialog visible={!!chooser} onDismiss={() => { if (!busy && !saving) setChooser(null); }}><Dialog.Title>Pay with UPI</Dialog.Title><Dialog.Content><Text style={ui.body}>Check the recipient and amount before paying.</Text></Dialog.Content><Dialog.ScrollArea style={{ maxHeight: 360 }}><ScrollView contentContainerStyle={{ paddingVertical: 8, gap: 8 }}>{chooser?.apps.map(app => <Button key={app.id} title={app.name} disabled={busy || saving} onPress={() => void pay(app)} />)}</ScrollView></Dialog.ScrollArea><Dialog.Actions><Button title="Cancel" kind="text" disabled={busy || saving} onPress={() => setChooser(null)} /></Dialog.Actions></Dialog></Portal>
   </View>;
 }
 

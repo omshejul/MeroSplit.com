@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { availableUPIApps, buildUPIUrl, openUPIPayment, validateUPIPayment } from '../src/upi.ts';
 import type { UPILaunchQuote } from '../src/upi.ts';
 import type { Group } from '../src/types.ts';
@@ -35,11 +36,11 @@ test('Expired, unsupported-currency, disabled and malformed quotes cannot produc
   assert.throws(() => buildUPIUrl(quote, 'toString' as 'upi'));
 });
 
-test('Only provider-documented native routes are probed; browsers never claim installed-app detection', async () => {
+test('iOS reference routes are probed separately; Android retains its resolver and browsers never claim detection', async () => {
   const probes: string[] = [];
   const probe = async (url: string) => { probes.push(url); return true; };
-  assert.deepEqual((await availableUPIApps('ios', probe)).map(app => app.id), ['google-pay', 'upi']);
-  assert.deepEqual(probes, ['gpay://upi/pay', 'upi://pay']); probes.length = 0;
+  assert.deepEqual((await availableUPIApps('ios', probe)).map(app => app.id), ['phonepe', 'google-pay', 'paytm', 'cred', 'bhim', 'amazon-pay', 'upi']);
+  assert.deepEqual(probes, ['phonepe://upi/pay', 'gpay://upi/pay', 'paytmmp://upi/pay', 'credpay://upi/pay', 'bhim://upi/pay', 'amazonpay://upi/pay', 'upi://pay']); probes.length = 0;
   assert.deepEqual((await availableUPIApps('android', probe)).map(app => app.id), ['upi']); assert.deepEqual(probes, ['upi://pay']); probes.length = 0;
   assert.deepEqual(await availableUPIApps('web', probe), []); assert.deepEqual(probes, []);
   assert.deepEqual(await availableUPIApps('ios', async () => { throw new Error('No supported handler'); }), []);
@@ -53,4 +54,28 @@ test('Opening captures the intended quote only, and mismatch/cancel/failure neve
   assert.equal(opened.length, 1);
   await assert.rejects(openUPIPayment(quote, 'upi', expected, async () => { throw new Error('Cancelled with private URI/token'); }), error => error instanceof Error && /No UPI app opened/.test(error.message) && !error.message.includes('private URI'));
   assert.equal(opened.length, 1);
+});
+
+
+test('Named routes preserve the same payment quote and every iOS probe is allowlisted', async () => {
+  const apps = await availableUPIApps('ios', async () => true);
+  const config = JSON.parse(readFileSync(new URL('../app.json', import.meta.url), 'utf8'));
+  const query = new URL(buildUPIUrl(quote)).search;
+  for (const app of apps) {
+    const url = new URL(buildUPIUrl(quote, app.id));
+    assert.equal(url.search, query, app.name);
+    assert.ok(config.expo.ios.infoPlist.LSApplicationQueriesSchemes.includes(url.protocol.slice(0, -1)), app.name);
+    const opened: string[] = [];
+    await openUPIPayment(quote, app.id, { amount: quote.amount, vpa: quote.vpa, name: quote.recipient }, async value => { opened.push(value); });
+    assert.deepEqual(opened, [url.toString()]);
+  }
+});
+
+test('One unavailable or rejected iOS probe does not hide other detected apps or invent WhatsApp support', async () => {
+  const apps = await availableUPIApps('ios', async url => {
+    if (url.startsWith('paytmmp:')) throw new Error('Probe rejected');
+    return url.startsWith('phonepe:') || url.startsWith('credpay:');
+  });
+  assert.deepEqual(apps.map(app => app.name), ['PhonePe', 'CRED']);
+  assert.deepEqual(await availableUPIApps('ios', async url => url === 'upi://pay'), [{ id: 'upi', name: 'Other UPI app' }]);
 });

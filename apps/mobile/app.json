@@ -12,7 +12,7 @@
       "bundleIdentifier": "com.omshejul.splitdumb",
       "buildNumber": "6",
       "infoPlist": {
-        "LSApplicationQueriesSchemes": ["upi", "gpay"],
+        "LSApplicationQueriesSchemes": ["upi", "gpay", "phonepe", "paytmmp", "credpay", "bhim", "amazonpay"],
         "NSAppTransportSecurity": {
           "NSAllowsLocalNetworking": true
         }
