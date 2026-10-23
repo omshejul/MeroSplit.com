@@ -122,7 +122,7 @@ export function IconAction({ name, label, onPress, disabled = false, hint }: { n
 export function SettingsRow({ icon, label, value, disabled = false, onPress, rowRef, danger = false, chevron = true }: { icon: IconName; label: string; value?: string; disabled?: boolean; onPress: () => void; rowRef?: React.Ref<React.ComponentRef<typeof View>>; danger?: boolean; chevron?: boolean }) {
   const { ui, palette } = useUI();
   return <List.Item ref={rowRef as React.ComponentProps<typeof List.Item>['ref']} title={label} titleStyle={[ui.body, danger && { color: palette.error }]} titleNumberOfLines={2} accessibilityRole="button" accessibilityLabel={value ? `${label}, ${value}` : label} accessibilityState={{ disabled }} disabled={disabled} onPress={onPress}
-    style={{ minHeight: 52, paddingVertical: 2, paddingHorizontal: 0, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: palette.line }}
+    style={{ minHeight: 52, paddingVertical: 2, paddingLeft: 0, paddingRight: 0, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: palette.line }}
     left={props => <List.Icon {...props} icon={() => <Icon name={icon} size={22} color={danger ? palette.error : palette.text} />} />}
     right={() => <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, maxWidth: '48%' }}>{value !== undefined && <Text numberOfLines={1} ellipsizeMode="tail" style={[ui.caption, { flexShrink: 1 }]}>{value}</Text>}{chevron && <Icon name="next" size={18} color={palette.muted} />}</View>} />;
 }
