@@ -1,14 +1,14 @@
 # MeroSplit
 
-Shared-expense app for iOS and Android, built with Expo React Native and a Django/PostgreSQL backend. [Railway API](https://api-production-fb6ac.up.railway.app/api/v1/ready) · [Private source repository](https://github.com/omshejul/SplitDumb).
+Shared-expense app for iOS, Android and web, built with Expo React Native and a Django/PostgreSQL backend. [Railway API](https://api-production-fb6ac.up.railway.app/api/v1/ready) · [Private source repository](https://github.com/omshejul/SplitDumb).
 
 The current 0.3.3 source uses Groups, People and Me with React Native Paper controls, native pickers and Hugeicons. Accounts sync automatically. PostgreSQL owns accepted records; the phone keeps an account-scoped cache, drafts and an idempotent offline queue. Sign-out preserves unsent work for that account. Earlier unowned phone records require explicit account and participant confirmation before recovery. Original history remains available in recovery export.
 
 Groups show Bills and Balances. Simplify computes named repayments without changing anyone's net balance. Removing a person requires organizer permission and a zero balance, revokes their access, and retains historical splits. Me contains profile/UPI, optional notifications, appearance, history and data actions. There is no storage-mode selector or sync pause.
 
-The tested source and native coverage for this follow-up are recorded in [the canonical-app verification](.dev/MEROSPLIT_SERVER_CORE.md). Earlier 0.3.1/0.3.2 reports and simulator ZIPs describe previous builds, not a current iPhone installer. The installed package identity, SQLite database and session are retained.
+The compact app, full web and local acceptance are recorded in [the current acceptance report](.dev/MEROSPLIT_COMPACT_WEB_ACCEPTANCE.md). The earlier canonical-account migration is recorded in [the canonical-app verification](.dev/MEROSPLIT_SERVER_CORE.md). Earlier 0.3.1/0.3.2 reports and simulator ZIPs describe previous builds, not a current iPhone installer. The installed package identity, SQLite database and session are retained.
 
-See the [original verification and artifacts](.dev/VERIFICATION.md), [development instructions](.dev/DEV.md), [implementation phases](PLAN.md), and [API contract](API_CONTRACT.md). Email verification/recovery, direct UPI app launch, physical-device payments, public store release, and measured maximum-capacity performance remain outside this controlled functional build.
+See the [original verification and artifacts](.dev/VERIFICATION.md), [development instructions](.dev/DEV.md), [implementation phases](PLAN.md), and [API contract](API_CONTRACT.md). Current source adds four-digit email-code sign-in, explicit direct-person email invitations, guarded UPI app handoff and the same screens on the web. Live inbox flows, physical-device payments, public store release and maximum-capacity claims require separate release evidence. Historical test reports below do not establish those newer flows.
 
 Start with the [PRD](PRD.md). It specifies the controlled pilot, later public beta, bill-splitting calculations, ledger rules, UPI states, guest participation, migration, architecture, acceptance criteria and delivery sequence.
 

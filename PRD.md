@@ -1,8 +1,9 @@
 # MeroSplit product requirements
 
-Product requirements, 16 October 2026. Public app name: MeroSplit. Product owner: Om Shejul. Platforms: iOS and Android. Implementation is now authorized. The current build uses Django/PostgreSQL and Expo React Native, with the selected mint group-first design and library-backed native controls. [Design decisions](.dev/merosplit-design-decisions.md) record the input, navigation and simplicity choices. [PLAN.md](PLAN.md) records implementation phases and their abstraction checks. P1/P2 remain deferred.
+Product requirements, 16 October 2026. Public app name: MeroSplit. Product owner: Om Shejul. Platforms: iOS and Android. Implementation is now authorized. The current build uses Django/PostgreSQL and Expo React Native, with the selected mint group-first design and library-backed native controls. [Design decisions](.dev/merosplit-design-decisions.md) record the input, navigation and simplicity choices. [PLAN.md](PLAN.md) records implementation phases and their abstraction checks. The original P0/P1/P2 tables remain the research sequence; current implementation details below and in the API contract take precedence where later authorized work shipped earlier items such as media, import and notifications.
 
-This document describes the target product. The current functional build has library-backed native controls, email/password accounts without email verification or delivery, explicit organizer-approved participant claims, and manual payment assistance. Direct UPI launch is disabled; no bank transfer or bank verification has been tested. The original Android and iOS standalone builds passed native accounting, SQLite and end-to-end journeys against the Railway Django/PostgreSQL service. The historical 0.2.0 app passed Android and iOS manual checks. MeroSplit 0.3.0 introduces the new navigation and input controls; its current evidence is in the [native design report](.dev/merosplit-native-qa.md) and [design delivery status](.dev/MEROSPLIT_DELIVERY_STATUS.md). Current automated, server and platform evidence is summarized in the [design acceptance report](.dev/merosplit-acceptance.md). The [0.2.0 acceptance report](.dev/USABLE_ACCEPTANCE.md) remains historical. Signed physical iPhone installation remains unverified. Passing functional phases does not establish every public-beta, accessibility, performance or operational requirement below. Historical evidence remains in the [verification report](.dev/VERIFICATION.md) and [phase reviews](.dev/PHASE_REVIEWS.md).
+This document describes the target product. The latest implementation adds one Expo interface for native and full web use, four-digit email-code sign-in through existing allauth identities, explicit optional email invitations in two-person People ledgers, and guarded UPI app handoff. Merely opening a payment app never posts or verifies a payment. Manual share-link claims still require organizer approval; email-bound claims require the intended verified address. Historical acceptance reports describe their tested versions. Current native/browser, live inbox and physical installer evidence must be recorded separately before release. New clients load50-row history pages with complete server-computed balances and totals; same-version refresh avoids redundant downloads. Legacy complete snapshots remain for older clients and explicit recovery/export. No maximum-capacity or real bank-payment claim is made. See [API contract](API_CONTRACT.md) for current operations and [phase reviews](.dev/PHASE_REVIEWS.md) for implementation and abstraction checks.
+
 
 Build an India-first shared-expense app for friends on trips and people sharing a home. A person should be able to record a bill without an interruption, explain every share, and help a friend repay through their existing UPI app. The group must still work when some participants have not installed the app.
 
@@ -73,7 +74,7 @@ Receipt uploads and comments, complete backup/restore, fixture-tested history im
 
 ### P2 only after validation
 
-OCR-assisted itemization, Hindi interface and additional languages, automated reminder schedules, paid cloud attachment capacity, more export formats, web editing, and provider-backed verified payment status if a suitable P2P partnership exists.
+OCR-assisted itemization, Hindi interface and additional languages, automated reminder schedules, paid cloud attachment capacity, more export formats and provider-backed verified payment status if a suitable P2P partnership exists.
 
 No wallet, stored funds, bank-login aggregation, UPI PIN capture, credit, debt collection, merchant settlement business, automatic reading of all SMS/WhatsApp messages, or lending. No payment gateway inserted between friends merely to obtain a webhook. The functional implementation is authorized; paid features and store submission remain outside this build.
 
@@ -105,9 +106,9 @@ The external UPI app controls authentication and bank transfer. On return, show 
 
 ### Participate without installing
 
-An invited participant opens a secure HTTPS link, sees the sender and group name, accepts the invitation, and reviews the relevant ledger. An invitation token alone permits only a scoped read view. Posting a receipt acknowledgment requires sign-in to the recipient's linked account and an approved participant claim. The current controlled build uses explicit organizer approval with an email-unverified account; it does not prove the account holder's real-world identity or ownership of the email address. Verified email delivery and account recovery remain public-beta gates. A person without an approved claim can ask the organizer to record a manual payment; they cannot create a recipient-confirmed settlement. No guest can change another person's UPI address or publish arbitrary bills. Name-only entries remain unclaimed until an explicit linking flow is accepted.
+An invited participant opens a secure HTTPS link, sees the sender and group name, accepts the invitation, and reviews the relevant ledger. An invitation token alone permits only a scoped read view. Posting a receipt acknowledgment requires sign-in to the recipient's linked account and an approved participant claim. Sign-in verifies mailbox ownership with a short-lived four-digit code. A manual invitation still requires organizer approval; an email-bound invitation grants access only to that exact verified address. Neither route proves a real-world identity. A person without an approved claim can ask the organizer to record a manual payment; they cannot create a recipient-confirmed settlement. No guest can change another person's UPI address or publish arbitrary bills. Name-only entries remain unclaimed until an explicit linking flow is accepted.
 
-The first release needs this small mobile web companion to reduce app-install friction. Share the pure domain engine and API contracts. Do not force the native navigation system into a desktop accounting app in P0.
+The web app is a full product entry point. It shares Expo screens, domain logic and the canonical backend with native clients. Recipients can sign in, join their ledger and manage bills in a browser without installing an app. Platform adapters handle cookies/CSRF, SQLite, files, exports and payment links.
 
 ### Leave, archive or close a group
 
@@ -318,7 +319,7 @@ Restore into a private local recovery space first. Validate hashes, schema, coun
 
 ## 12. Identity, access and social trust
 
-Local mode uses a local identity. Django/allauth owns shared accounts and sessions. The controlled functional build uses email/password accounts with email verification and delivery disabled, plus explicit organizer approval before a participant claim grants membership. Do not label these accounts email verified or treat an email match as identity evidence. Verified delivery and account recovery are required before a public beta. Phone number is optional; do not require contacts permission or assume a phone number remains owned forever. Follow current Apple sign-in requirements if third-party login is offered.
+Local mode uses a local identity. Django/allauth owns shared accounts and sessions. The current source accepts exactly four-digit email codes and preserves existing allauth identities and sessions. Store only keyed challenge digests, enforce atomic attempts/expiry/single-use and shared email/network limits. Typed contact emails are metadata, never proof of identity or a reason to merge accounts. Live inbox and invitation acceptance remain release gates. Phone number is optional; do not require contacts permission or assume a phone number remains owned forever. Follow current Apple sign-in requirements if third-party login is offered.
 
 Guest placeholders and authenticated users are separate entities. A claim requires a valid invitation plus organizer/recipient approval as appropriate. Show outstanding allocations and history before linking. Preserve an audit event and allow administrative correction with consent. Names and VPAs are never identity credentials.
 
@@ -326,7 +327,7 @@ Guest placeholders and authenticated users are separate entities. A claim requir
 |---|---|
 | Local organizer | Entire private local ledger |
 | Shared group member | Group ledger and allowed comments; propose edits with attributed revisions |
-| Guest via approved scoped session | Own billed expenses, own allocations, counterparty names and own payment records only; full group view requires membership. Posting acknowledgment requires the recipient's linked authenticated account plus approved claim; current pilot email remains unverified |
+| Guest via approved scoped session | Own billed expenses, own allocations, counterparty names and own payment records only; full group view requires membership. Posting acknowledgment requires the recipient's linked authenticated account plus approved claim; email-bound claims require exact OTP-verified ownership |
 | Organizer | Invite/revoke, approve claims, archive/reopen and resolve membership; no silent change to others' payment identity |
 | Removed member | Relevant retained historical access under published policy; no new writes |
 | Stranger with guessed IDs | No access, even with a valid account elsewhere |
@@ -401,7 +402,7 @@ The table covers the planned product. Create only entities needed by the current
 
 | Entity | Important fields and invariants |
 |---|---|
-| User | Account identity, verification state, locale, timezone, account state; controlled pilot email is unverified; no VPA in analytics |
+| User | Account identity, verification state, locale, timezone, account state; email is verified by code; no implicit account merges; no VPA in analytics |
 | Participant | Group ID, stable participant ID, optional linked user, display name, claim state |
 | Group | Currency, type, owner, state, settlement policy version, accepted sequence |
 | Membership/invitation | Role, scope, hashed token, expiry, revocation and claim approvals |
