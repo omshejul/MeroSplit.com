@@ -209,6 +209,10 @@ def test_active_pair_lookup_finds_expired_quote_beyond_first_page_without_loadin
 def test_ten_thousand_record_summary_has_bounded_bytes_queries_and_indexed_pages(client, group, capsys):
     group_id, ids, _ = group
     current, _ = populate(group_id, ids, count=10000, payments=10000, attempts=10000)
+    # Planner assertions need this large fixture, not stale statistics left by
+    # earlier rolled-back small fixtures. Keep the index/discard limits intact.
+    with connection.cursor() as cursor:
+        cursor.execute("ANALYZE ledger_change, ledger_group, ledger_participant")
     started = monotonic()
     with CaptureQueriesContext(connection) as queries:
         summary = group_summary(client.actor, group_id)

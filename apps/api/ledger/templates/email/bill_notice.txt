@@ -1,0 +1,6 @@
+Someone added this email address to a bill in MeroSplit.
+
+Sign in to MeroSplit: {{ app_url }}
+This sign-in link works until {{ expires_at }}. It does not join a group or give access to its records. Ask the organizer to send you an invitation to see the bill. If the link does not open, sign in with a code using this email address.
+
+Stop bill emails to this address: {{ stop_url }}

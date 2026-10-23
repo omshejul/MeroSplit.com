@@ -92,8 +92,10 @@ def queue_new_bill(expense, actor):
         enabled = not pref or pref.expense_updates
         notices.append(ExpenseNotice(expense=expense, recipient_id=recipient, expense_version=expense.version,
             created_at=now, push_due_at=now + timedelta(seconds=30), push_processed_at=None if enabled else now,
-            email_eligible=bool(enabled and pref and pref.email_reminders and pref.email_enabled_at)))
+            email_policy=1, email_eligible=bool(enabled and pref and pref.email_reminders and pref.email_enabled_at)))
     ExpenseNotice.objects.bulk_create(notices)
+    from .bill_email import queue_bill_emails
+    queue_bill_emails(expense, actor)
     # Reserve existing bindings inside the bill transaction; grace-time fanout
     # also captures newly available routes once, without replay on later registration.
     _queue_devices(notices, now)

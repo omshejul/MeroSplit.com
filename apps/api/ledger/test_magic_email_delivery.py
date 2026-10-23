@@ -144,7 +144,7 @@ def test_digest_first_attempt_activates_expiry_and_retry_keeps_frozen_recipe(cli
     assert notifications.send_pending_digests(limit=1) == 1
     grant.refresh_from_db()
     digest.refresh_from_db()
-    assert grant.expires_at == digest.first_attempt_at + notifications.DAY
+    assert grant.expires_at == digest.first_attempt_at + notifications.LINK_LIFETIME
     assert digest.first_attempt_at == clock[0] and len(provider) == 1
     original_expiry = grant.expires_at
     clock[0] += timedelta(minutes=2)
@@ -158,20 +158,23 @@ def test_digest_first_attempt_activates_expiry_and_retry_keeps_frozen_recipe(cli
     assert not ExpenseNotice.objects.filter(seen_at__isnull=False).exists()
 
 
-def test_digest_foreground_deferral_does_not_start_link_lifetime(client, group, recipient, clock, provider):
+def test_digest_foreground_does_not_defer_first_attempt_or_restart_link_lifetime(client, group, recipient, clock, provider):
     enable(recipient)
     add_bill(client, group)
-    clock[0] += timedelta(hours=24)
+    clock[0] += timedelta(minutes=10)
     identifier = notifications.create_due_digest()
     grant = EmailLoginGrant.objects.get(source_key=f"expense-digest/{identifier}")
-    notifications.foreground(recipient.actor)
-    assert notifications.send_pending_digests(limit=1) == 1 and not provider
-    grant.refresh_from_db()
     assert grant.expires_at is None and not grant.proof_digest
-    clock[0] += timedelta(hours=24)
-    assert notifications.send_pending_digests(limit=1) == 1
+    notifications.foreground(recipient.actor)
+    assert notifications.send_pending_digests(limit=1) == 1 and len(provider) == 1
     grant.refresh_from_db()
-    assert grant.expires_at == clock[0] + notifications.DAY and len(provider) == 1
+    expiry = grant.expires_at
+    assert expiry == clock[0] + notifications.LINK_LIFETIME
+    clock[0] += timedelta(minutes=2)
+    notifications.foreground(recipient.actor)
+    assert notifications.send_pending_digests(limit=1) == 1 and len(provider) == 2
+    grant.refresh_from_db()
+    assert grant.expires_at == expiry
 
 
 def test_digest_invalid_config_keeps_unread_without_creating_unusable_proof(client, group, recipient, clock, settings):

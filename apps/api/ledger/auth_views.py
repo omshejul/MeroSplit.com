@@ -133,7 +133,17 @@ class ExchangeEmailLinkView(APIView):
         except EmailCodeLimited:
             return link_error(request, 429)
         if request.user.is_authenticated and request.user.pk != user.pk:
+            # Keep only a validated server-held OAuth selector across the account
+            # switch. It grants nothing until the new account explicitly consents.
+            pending = request.session.get("mcp_pending_authorization")
+            from .mcp_oauth import OAuthError, get_pending
+            try:
+                pending = str(get_pending(pending).id) if pending else None
+            except OAuthError:
+                pending = None
             logout(request)  # Django flushes the old session and its push bindings.
+            if pending:
+                request.session["mcp_pending_authorization"] = pending
         record_authentication(request, user, method="email_link", email=email)
         perform_login(request, Login(user=user, email=email))
         return link_response(request, target, user)

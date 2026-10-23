@@ -1,0 +1,9 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Bill emails | MeroSplit</title><style>body{font:17px/1.5 system-ui;max-width:32rem;margin:3rem auto;padding:0 1rem;color:#161616}button{font:inherit;padding:.7rem 1rem;cursor:pointer}a{color:#075db4}</style>
+<h1>{% if stopped %}Bill emails stopped{% else %}Stop bill emails?{% endif %}</h1>
+{% if stopped %}<p>New bill emails to this address are off. This does not delete bills or change any balance.</p>
+{% else %}<p>This stops new bill emails to the address that received this link. It does not delete bills or change any balance.</p>
+<form method="post">{% csrf_token %}<input type="hidden" name="proof" id="proof"><button type="submit" id="stop" disabled>Stop bill emails</button></form>
+<p id="fallback">Open the complete link from your email, or sign in and turn off email under Me, Notifications.</p>
+<script>const p=new URLSearchParams(location.hash.slice(1)).get('proof');history.replaceState(null,'',location.pathname);if(p&&/^[a-f0-9]{64}$/.test(p)){document.getElementById('proof').value=p;document.getElementById('stop').disabled=false;document.getElementById('fallback').hidden=true;}</script>{% endif %}
+<p><a href="/app/">Open MeroSplit</a></p></html>

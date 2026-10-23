@@ -319,6 +319,11 @@ def save_expense(actor, group_id, payload, expense_id=None):
         if group.expenses.count() >= 10_000:
             raise HttpError(409, "Group reached its tested expense limit")
         expense = Expense.objects.create(id=payload["id"], group=group, **fields)
+    if expense_id is not None:
+        from .bill_email import cancel_bill_emails
+        from .bill_email_models import BillEmailNotice
+        involved = [key for key in set(paid) | set(shares) if int(paid.get(key, "0")) > 0 or int(shares.get(key, "0")) > 0]
+        cancel_bill_emails(BillEmailNotice.objects.filter(expense=expense).exclude(participant_id__in=involved), "involvement_removed")
     keep_removed_balances_zero(group)
     result = record_change(
         group, actor, payload["command_id"], fingerprint, "expense_saved", expense_dict(expense)
@@ -347,6 +352,9 @@ def set_expense_deleted(actor, group_id, expense_id, payload, deleted):
     expense.version += 1
     expense.save(update_fields=["deleted", "version"])
     if deleted:
+        from .bill_email import cancel_bill_emails
+        from .bill_email_models import BillEmailNotice
+        cancel_bill_emails(BillEmailNotice.objects.filter(expense=expense), "bill_deleted")
         from .expense_notifications import cancel_notices
         cancel_notices(ExpenseNotice.objects.filter(expense=expense), "bill_deleted")
     keep_removed_balances_zero(group)

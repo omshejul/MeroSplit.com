@@ -1,6 +1,7 @@
 import json
 import os
 from pathlib import Path
+from urllib.parse import urlsplit as _urlsplit
 
 import dj_database_url
 
@@ -44,7 +45,7 @@ MIDDLEWARE = [
 ]
 ROOT_URLCONF = "config.urls"
 WSGI_APPLICATION = "config.wsgi.application"
-DATABASES = {"default": dj_database_url.config(conn_max_age=60, conn_health_checks=True)}
+DATABASES = {"default": dj_database_url.config(conn_max_age=0, conn_health_checks=True)}
 if DATABASES["default"].get("ENGINE") != "django.db.backends.postgresql":
     raise RuntimeError("A PostgreSQL DATABASE_URL is required")
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
@@ -145,3 +146,8 @@ SECURE_REDIRECT_EXEMPT = [r"^api/v1/(health|ready)$"]
 
 PUSH_PROVIDER = os.environ.get("PUSH_PROVIDER", "")
 EXPO_ACCESS_TOKEN = os.environ.get("EXPO_ACCESS_TOKEN", "")
+
+# One canonical OAuth issuer/resource, independent of request Host headers.
+MCP_SERVER_URL = os.environ.get("MCP_SERVER_URL", "https://merosplit.omshejul.com/mcp")
+MCP_ALLOWED_HOSTS = list(dict.fromkeys([_urlsplit(MCP_SERVER_URL).netloc, *ALLOWED_HOSTS]))
+MCP_ALLOWED_ORIGINS = list(dict.fromkeys([f"https://{_urlsplit(MCP_SERVER_URL).netloc}", PUBLIC_WEB_URL.rstrip("/")]))

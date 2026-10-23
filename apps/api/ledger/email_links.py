@@ -51,6 +51,8 @@ def _target(target):
         return target
     if isinstance(target, dict) and set(target) == {"kind", "invite_id"} and target["kind"] == "invite":
         return {"kind": "invite", "invite_id": str(UUID(str(target["invite_id"])))}
+    if isinstance(target, dict) and set(target) == {"kind", "notice_id"} and target["kind"] == "notice":
+        return {"kind": "notice", "notice_id": str(UUID(str(target["notice_id"])))}
     raise ValueError("Unsupported email destination")
 
 
@@ -62,8 +64,14 @@ def issue_email_link(email, *, purpose, target, source_key, expires_at=None, ema
     origin = urlsplit(settings.PUBLIC_WEB_URL)
     if origin.scheme != "https" or not origin.netloc or origin.username or origin.password or origin.query or origin.fragment or origin.path not in {"", "/"}:
         raise ValueError("Email destination is unavailable")
-    if purpose not in {"login", "invite", "digest"} or (target["kind"] == "invite" and purpose != "invite"):
+    if purpose not in {"login", "invite", "digest", "notice"} or (target["kind"] == "invite" and purpose != "invite"):
         raise ValueError("Unsupported email purpose")
+    if (purpose == "notice") != (target["kind"] == "notice"):
+        raise ValueError("Unsupported email purpose")
+    if target["kind"] == "notice":
+        from .bill_email_models import BillEmailNotice
+        if not BillEmailNotice.objects.filter(pk=target["notice_id"], recipient_email=email).exists():
+            raise ValueError("Notification is unavailable")
     if target["kind"] == "invite":
         invite_expiry = Invite.objects.filter(pk=target["invite_id"]).values_list("expires_at", flat=True).first()
         if not invite_expiry:
@@ -156,6 +164,9 @@ def _recipient(grant):
 
 
 def _destination(grant, user, *, claim):
+    if grant.purpose == "notice" and grant.target.get("kind") == "notice":
+        from .bill_email import validate_notification_entry
+        return validate_notification_entry(grant, user)
     if grant.target == {"kind": "home"}:
         return {"kind": "home"}
     target = _target(grant.target)

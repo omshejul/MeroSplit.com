@@ -403,6 +403,7 @@ def group_summary(actor, group_id, *, limit=50):
                    .select_related("claimant").order_by("participant_id", "-expires_at", "-id").distinct("participant_id")[:100]]
     return {
         "read_mode": "summary", "id": str(group.id), "name": group.name, "version": group.version,
+        "hidden": next(person.hidden for person in participants if person.user_id == actor.pk and not person.removed),
         "archived": group.archived, "is_direct": group.is_direct, "owner_id": group.owner_id,
         "participants": [{"id": str(person.id), "name": participant_display_name(person), "recorded_name": person.name,
                           "user_id": person.user_id, "removed": person.removed,

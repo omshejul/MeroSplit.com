@@ -24,7 +24,9 @@ from .models import (
 )
 from .store_review import groups_for_actor, review_ids
 
-DAY = timedelta(hours=24)
+EMAIL_DELAY = timedelta(minutes=10)
+LINK_LIFETIME = timedelta(hours=24)
+PROVIDER_RETRY_WINDOW = timedelta(hours=24)
 
 
 def preferences(actor):
@@ -54,6 +56,10 @@ def update_preferences(actor, expense_updates, email_reminders):
         ExpensePushDelivery.objects.filter(recipient=actor, state__in=["pending", "sending"]).update(
             state="skipped", lease_id=None, lease_until=None, last_error="expense_updates_off")
     if not expense_updates or not email_reminders:
+        from .bill_email import cancel_bill_emails
+        from .bill_email_models import BillEmailNotice
+        addresses = {actor.email.strip().lower(), *EmailAddress.objects.filter(user=actor, verified=True).values_list("email", flat=True)}
+        cancel_bill_emails(BillEmailNotice.objects.filter(Q(issued_user_id=actor.pk) | Q(recipient_email__in=addresses)), "preference_off")
         notices.filter(email_eligible=True).update(email_eligible=False)
         ExpenseDigest.objects.filter(recipient=actor, state__in=["pending", "sending"]).update(
             state="cancelled", lease_id=None, lease_until=None, last_error="preference_off")
@@ -74,6 +80,9 @@ def cancel_notices(query, reason):
     """Deletion/archive is final for this creation event, even after restoration."""
     now = timezone.now()
     query.update(cancelled_at=now, email_eligible=False, push_processed_at=now)
+    from .bill_email import cancel_bill_emails
+    from .bill_email_models import BillEmailNotice
+    cancel_bill_emails(BillEmailNotice.objects.filter(expense_id__in=query.values("expense_id")), reason)
     ExpensePushDelivery.objects.filter(event_id__in=query.values("id"), state__in=["pending", "sending"]).update(
         state="skipped", lease_id=None, lease_until=None, last_error=reason)
 
@@ -141,6 +150,10 @@ def mark_seen(actor, notices):
 
 def verified_recipient(user):
     email = user.email.strip().lower()
+    from .bill_email import mailbox_digest
+    from .bill_email_models import BillEmailPreference
+    if BillEmailPreference.objects.filter(email_digest=mailbox_digest(email), suppressed=True).exists():
+        return None
     domain = email.rpartition("@")[2]
     if not user.is_active or user.pk in review_ids() or not domain or domain == "invalid" or domain.endswith(".invalid"):
         return None
@@ -149,7 +162,7 @@ def verified_recipient(user):
 
 def _unmailed(now):
     return ExpenseNotice.objects.filter(email_eligible=True, digest__isnull=True, seen_at__isnull=True,
-                                        cancelled_at__isnull=True, created_at__lte=now - DAY)
+                                        cancelled_at__isnull=True, email_policy=1, created_at__lte=now - EMAIL_DELAY)
 
 
 def create_due_digest():
@@ -157,11 +170,8 @@ def create_due_digest():
     with transaction.atomic():
         pref = (NotificationPreference.objects.select_for_update(skip_locked=True, of=("self",))
                 .filter(expense_updates=True, email_reminders=True, email_enabled_at__isnull=False)
-                .filter(Q(foreground_at__isnull=True) | Q(foreground_at__lte=now - DAY))
-                .filter(Q(last_digest_at__isnull=True) | Q(last_digest_at__lte=now - DAY))
                 .filter(Exists(_unmailed(now).filter(recipient_id=OuterRef("user_id"), created_at__gte=OuterRef("email_enabled_at"))))
-                .exclude(Exists(ExpenseDigest.objects.filter(recipient_id=OuterRef("user_id"), state__in=["pending", "sending", "held"])))
-                .exclude(Exists(ExpenseDigest.objects.filter(recipient_id=OuterRef("user_id"), first_attempt_at__gt=now - DAY)))
+                .exclude(Exists(ExpenseDigest.objects.filter(recipient_id=OuterRef("user_id"), email_policy=1, state__in=["pending", "sending", "held"])))
                 .select_related("user").order_by("user_id").first())
         if not pref:
             return None
@@ -193,22 +203,14 @@ def create_due_digest():
 def _digest_still_eligible(digest):
     now = timezone.now()
     pref = NotificationPreference.objects.select_related("user").filter(user_id=digest.recipient_id, expense_updates=True, email_reminders=True).first()
-    if (not pref or pref.foreground_at and pref.foreground_at > now - DAY
-        or verified_recipient(pref.user) != digest.recipient_email):
+    if not pref or verified_recipient(pref.user) != digest.recipient_email:
         return False
     rows = list(digest.notices.select_related("expense__group", "recipient"))
-    return any(row.email_eligible and row.created_at <= now - DAY for row in _eligible_notices(rows))
+    return any(row.email_eligible and row.email_policy == 1 and row.created_at <= now - EMAIL_DELAY for row in _eligible_notices(rows))
 
 
-def _defer_or_cancel(digest, current):
-    pref = NotificationPreference.objects.select_related("user").filter(user_id=digest.recipient_id, expense_updates=True, email_reminders=True).first()
-    if (pref and verified_recipient(pref.user) == digest.recipient_email and pref.foreground_at
-        and pref.foreground_at > timezone.now() - DAY):
-        # Foreground engagement defers unread reminders; it never marks them seen.
-        current.update(state="pending", due_at=pref.foreground_at + DAY, lease_until=None,
-                       first_attempt_at=digest.first_attempt_at, attempts=digest.attempts, last_error="foreground_deferred")
-    else:
-        current.update(state="cancelled", lease_until=None, last_error="ineligible")
+def _cancel_digest(current):
+    current.update(state="cancelled", lease_id=None, lease_until=None, last_error="ineligible")
 
 
 def claim_digest():
@@ -219,7 +221,7 @@ def claim_digest():
                .order_by("due_at", "id").first())
         if not row:
             return None
-        if row.first_attempt_at and (now >= row.first_attempt_at + DAY or row.attempts >= 8):
+        if row.first_attempt_at and (now >= row.first_attempt_at + PROVIDER_RETRY_WINDOW or row.attempts >= 8):
             row.state, row.last_error, row.lease_until = "held", "ambiguous_delivery", None
             row.save(update_fields=["state", "last_error", "lease_until"])
             return row.id, None
@@ -244,7 +246,7 @@ def send_pending_digests(*, limit=100):
             continue
         current = ExpenseDigest.objects.filter(id=digest_id, lease_id=lease_id, state="sending", lease_until__gt=timezone.now())
         if not _digest_still_eligible(row):
-            _defer_or_cancel(row, current)
+            _cancel_digest(current)
             processed += 1
             continue
         if not row.first_attempt_at:
@@ -260,11 +262,11 @@ def send_pending_digests(*, limit=100):
             current.update(first_attempt_at=row.first_attempt_at or now, attempts=row.attempts + 1)
             # Expiry starts with the first eligible attempt, never while work is deferred.
             if not _digest_still_eligible(row) or not current.filter(lease_until__gt=timezone.now()).exists():
-                _defer_or_cancel(row, current)
+                _cancel_digest(current)
                 processed += 1
                 continue
             if link_id := row.payload.get("_email_link_id"):
-                activate_email_link(link_id, (locked.first_attempt_at or now) + DAY)
+                activate_email_link(link_id, (locked.first_attempt_at or now) + LINK_LIFETIME)
         try:
             provider_id = email_delivery.send_email(row.recipient_email, row.payload["subject"], row.payload["text"],
                                                     f"expense-digest/{row.id}", payload=row.payload)

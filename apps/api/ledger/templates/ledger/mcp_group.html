@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>MeroSplit group</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { font: 15px/1.5 system-ui; margin: 0; padding: 16px; }
+    h1 { font-size: 20px; margin: 0 0 8px; font-weight: 600; }
+    h2 { font-size: 16px; font-weight: 600; margin: 16px 0 4px; }
+    p { margin: 6px 0; }
+    ul { list-style: none; padding: 0; margin: 0; }
+    li { padding: 8px 0; border-bottom: 1px solid #8885; }
+    button, a { font: inherit; min-height: 44px; padding: 8px 12px; }
+    button { cursor: pointer; }
+    nav { display: flex; gap: 8px; align-items: center; margin-top: 12px; }
+    #status { opacity: .75; }
+  </style>
+</head>
+<body>
+  <h1 id="title">MeroSplit group</h1>
+  <p id="status" role="status">Waiting for an authorized group.</p>
+  <ul id="balances"></ul>
+  <h2>Recent bills and payments</h2>
+  <ul id="items"></ul>
+  <nav>
+    <button id="refresh" disabled>Refresh</button>
+    <button id="open" disabled>Open MeroSplit</button>
+  </nav>
+  <script>
+    let origin = null;
+    let groupId = null;
+    let appUrl = null;
+    let nextId = 2;
+    const pending = new Map();
+    const parent = window.parent;
+
+    function send(method, params, id) {
+      parent.postMessage({ jsonrpc: '2.0', ...(id ? { id } : {}), method, params }, origin || '*');
+    }
+
+    function text(node, value) {
+      node.textContent = String(value).slice(0, 500);
+    }
+
+    function textItem(value) {
+      const item = document.createElement('li');
+      text(item, value);
+      return item;
+    }
+
+    function money(value) {
+      if (typeof value !== 'string' || !/^[-]?[0-9]{1,40}$/.test(value)) {
+        throw Error('Invalid amount');
+      }
+      let amount = BigInt(value);
+      const sign = amount < 0n ? '-' : '';
+      if (amount < 0n) amount = -amount;
+      return sign + '₹' + (amount / 100n).toLocaleString('en-IN') + '.' + String(amount % 100n).padStart(2, '0');
+    }
+
+    function balanceText(person, names, balances) {
+      const value = balances[person.id];
+      const amount = BigInt(value);
+      const name = names.get(person.id) || 'Member';
+      if (amount === 0n) return name + ' is settled up';
+      return name + (amount > 0n ? ' is owed ' + money(value) : ' owes ' + money(String(-amount)));
+    }
+
+    function transactionText(transaction, names) {
+      if (transaction.kind === 'payment' && transaction.payment) {
+        const payment = transaction.payment;
+        return 'Payment: ' + (names.get(payment.sender) || 'Member') + ' paid '
+          + (names.get(payment.recipient) || 'member') + ' ' + money(payment.amount)
+          + (payment.reversed ? ' · Record reversed' : '');
+      }
+      if (transaction.kind === 'bill' && transaction.bill) {
+        const bill = transaction.bill;
+        return String(bill.description) + ' · ' + money(bill.total) + (bill.deleted ? ' · Deleted' : '');
+      }
+      return '';
+    }
+
+    function show(data) {
+      if (!data || typeof data !== 'object' || !data.group || !Array.isArray(data.transactions)) return;
+      const group = data.group;
+      if (typeof group.id !== 'string' || !/^[0-9a-f-]{36}$/i.test(group.id)
+          || !Array.isArray(group.participants) || !group.balances || typeof group.balances !== 'object') return;
+      try {
+        const names = new Map(group.participants.map(person => [person.id, person.is_self ? 'You' : String(person.name)]));
+        document.getElementById('balances').replaceChildren(
+          ...group.participants.map(person => textItem(balanceText(person, names, group.balances)))
+        );
+        document.getElementById('items').replaceChildren(
+          ...data.transactions.slice(0, 25).map(transaction => textItem(transactionText(transaction, names)))
+        );
+        text(document.getElementById('title'), group.name);
+        text(document.getElementById('status'), 'Saved group version ' + group.version + (group.archived ? ' · Archived' : ''));
+        groupId = group.id;
+        appUrl = 'https://merosplit.omshejul.com/app/';
+        document.getElementById('refresh').disabled = false;
+        document.getElementById('open').disabled = false;
+      } catch {
+        text(document.getElementById('status'), 'Could not display this result. Refresh the group.');
+      }
+    }
+
+    function onMessage(event) {
+      const message = event.data;
+      if (event.source !== parent || !message || message.jsonrpc !== '2.0' || typeof message !== 'object'
+          || origin && event.origin !== origin) return;
+      if (message.id === 1 && message.result) {
+        origin = event.origin;
+        send('ui/notifications/initialized', {});
+        return;
+      }
+      if (message.method === 'ui/notifications/tool-result') {
+        show(message.params?.structuredContent);
+        return;
+      }
+      if (pending.has(message.id)) {
+        pending.delete(message.id);
+        if (message.result?.isError || message.error) {
+          text(document.getElementById('status'), 'Could not refresh. Reconnect MeroSplit if access changed.');
+          return;
+        }
+        show(message.result?.structuredContent);
+      }
+    }
+
+    window.addEventListener('message', onMessage);
+    document.getElementById('refresh').onclick = () => {
+      if (!groupId) return;
+      const id = nextId++;
+      pending.set(id, true);
+      text(document.getElementById('status'), 'Refreshing…');
+      send('tools/call', { name: 'render_group', arguments: { group_id: groupId } }, id);
+    };
+    document.getElementById('open').onclick = () => {
+      if (appUrl) send('ui/open-link', { url: appUrl }, nextId++);
+    };
+
+    send('ui/initialize', {
+      appInfo: { name: 'MeroSplit group', version: '1.0.0' },
+      appCapabilities: {},
+      protocolVersion: '2026-01-26'
+    }, 1);
+  </script>
+</body>
+</html>

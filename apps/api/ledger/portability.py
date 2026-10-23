@@ -216,6 +216,14 @@ def delete_account(actor):
     # Serialize with registration, ledger writes and logout before cascade collection.
     if not get_user_model().objects.select_for_update(no_key=True).filter(pk=actor_id).exists():
         return {"deleted": True}
+    # Mailbox workers lock preference before group. Reserve those rows before
+    # any group lock so account deletion cannot invert that ordering.
+    from .bill_email import mailbox_digest
+    from .bill_email_models import BillEmailNotice, BillEmailPreference
+    emails = list({actor.email.strip().lower(), *[address.strip().lower() for address in EmailAddress.objects.filter(user=actor).values_list("email", flat=True)]})
+    for digest in sorted({mailbox_digest(address) for address in emails}):
+        BillEmailPreference.objects.get_or_create(email_digest=digest)
+        BillEmailPreference.objects.select_for_update().get(email_digest=digest)
     # Digest builders take preference→notice; keep the same order during deletion.
     NotificationPreference.objects.select_for_update().filter(user=actor).first()
     groups = list(
@@ -270,11 +278,14 @@ def delete_account(actor):
             },
         )
     PaymentAttempt.objects.filter(recipient__user=actor).update(payee="")
-    Participant.objects.filter(user=actor).update(name="Deleted participant", user=None)
+    Participant.objects.filter(user=actor).update(name="Deleted participant", user=None, contact_email="")
     Settlement.objects.filter(recorded_by=actor).update(recorded_by=None)
     Change.objects.filter(actor=actor).update(actor=None)
     Invite.objects.filter(claimant=actor).update(claimant=None, revoked=True)
     emails = [actor.email.lower(), *EmailAddress.objects.filter(user=actor).values_list("email", flat=True)]
+    for address in emails:
+        BillEmailPreference.objects.update_or_create(email_digest=mailbox_digest(address), defaults={"suppressed": True})
+    BillEmailNotice.objects.filter(Q(issued_user_id=actor_id) | Q(recipient_email__in=emails)).delete()
     EmailLoginGrant.objects.filter(Q(issued_user_id=actor_id) | Q(recipient=actor) | Q(email__in=emails)).delete()
     Session.objects.filter(session_key__in=session_ids).delete()
     # Cascades email/auth records, payment profile, command receipts and devices;

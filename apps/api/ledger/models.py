@@ -32,6 +32,7 @@ class Participant(models.Model):
     name = models.CharField(max_length=120)
     user = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL)
     removed = models.BooleanField(default=False)
+    hidden = models.BooleanField(default=False, db_default=False)
     contact_email = models.EmailField(blank=True, default="")
 
     class Meta:
@@ -299,6 +300,7 @@ class ExpenseDigest(models.Model):
     recipient = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     recipient_email = models.EmailField()
     payload = models.JSONField(default=dict)
+    email_policy = models.PositiveSmallIntegerField(default=1, db_default=1)
     state = models.CharField(max_length=9, default="pending")
     due_at = models.DateTimeField()
     first_attempt_at = models.DateTimeField(null=True)
@@ -311,7 +313,7 @@ class ExpenseDigest(models.Model):
 
     class Meta:
         constraints = [
-            models.UniqueConstraint(fields=["recipient"], condition=Q(state__in=["pending", "sending", "held"]), name="one_open_expense_digest"),
+            models.UniqueConstraint(fields=["recipient", "email_policy"], condition=Q(state__in=["pending", "sending", "held"]), name="one_open_expense_digest"),
             models.CheckConstraint(condition=Q(state__in=["pending", "sending", "accepted", "cancelled", "held"]), name="expense_digest_state"),
         ]
         indexes = [models.Index(fields=["state", "due_at"], name="expense_digest_due"),
@@ -329,6 +331,7 @@ class ExpenseNotice(models.Model):
     seen_at = models.DateTimeField(null=True)
     cancelled_at = models.DateTimeField(null=True)
     email_eligible = models.BooleanField(default=False)
+    email_policy = models.PositiveSmallIntegerField(default=1, db_default=1)
     digest = models.ForeignKey(ExpenseDigest, null=True, on_delete=models.SET_NULL, related_name="notices")
 
     class Meta:
@@ -361,4 +364,14 @@ class EmailLoginGrant(models.Model):
     payload = models.JSONField(default=dict, blank=True)
 
     class Meta:
-        constraints = [models.CheckConstraint(condition=Q(purpose__in=["login", "invite", "digest"]), name="email_login_purpose")]
+        constraints = [models.CheckConstraint(condition=Q(purpose__in=["login", "invite", "digest", "notice"]), name="email_login_purpose")]
+
+
+# Domain models are imported here for Django migration discovery.
+from .bill_email_models import BillEmailNotice, BillEmailPreference  # noqa: E402,F401
+from .mcp_models import (  # noqa: E402,F401
+    McpOAuthClient,
+    McpOAuthGrant,
+    McpOAuthPendingAuthorization,
+    McpOAuthRefreshDigest,
+)

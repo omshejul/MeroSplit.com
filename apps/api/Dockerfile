@@ -9,4 +9,5 @@ RUN test -s web-dist/index.html
 RUN useradd --create-home app
 USER app
 ENV PATH="/app/.venv/bin:$PATH" PYTHONUNBUFFERED=1
-CMD ["sh", "-c", "gunicorn config.wsgi --bind 0.0.0.0:${PORT:-8000} --workers 2 --timeout 60 --access-logfile - --access-logformat '%(m)s status=%(s)s bytes=%(b)s seconds=%(L)s'"]
+# Access logs stay off because OAuth request queries can contain short-lived codes.
+CMD ["sh", "-c", "uvicorn config.asgi:application --host 0.0.0.0 --port ${PORT:-8000} --workers 2 --no-access-log --timeout-keep-alive 5"]

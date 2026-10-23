@@ -40,6 +40,9 @@ def update_contact(actor, group_id, participant_id, payload):
         person.contact_email = email
         person.save(update_fields=["contact_email"])
         Invite.objects.filter(participant=person, approved=False).update(revoked=True)
+        from .bill_email import cancel_bill_emails
+        from .bill_email_models import BillEmailNotice
+        cancel_bill_emails(BillEmailNotice.objects.filter(participant=person), "contact_changed")
     return record_change(group, actor, payload["command_id"], fingerprint, "contact_changed", {"participant_id": str(person.id)})
 
 
@@ -165,6 +168,8 @@ def claim_email_invite(actor, invite, payload):
     invite.participant.save(update_fields=["user"])
     invite.claimant, invite.approved = actor, True
     invite.save(update_fields=["claimant", "approved"])
+    from .bill_email import promote_current_bill_emails
+    promote_current_bill_emails(invite.participant)
     return record_change(
         group, actor, payload["command_id"], fingerprint, "participant_claim_approved",
         {"id": str(invite.id), "participant_id": str(invite.participant_id)},

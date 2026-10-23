@@ -1,6 +1,7 @@
 from allauth.headless.constants import Client
 from django.urls import include, path, re_path
 from django.views.generic import RedirectView, TemplateView
+from ledger import mcp_oauth_views
 from ledger.api import api
 from ledger.auth_views import (
     ConfirmEmailCodeView,
@@ -10,11 +11,22 @@ from ledger.auth_views import (
     RequestEmailLinkView,
     ResumeEmailLinkView,
 )
+from ledger.bill_email_views import stop_bill_emails
+from ledger.mcp_setup import setup as mcp_setup
 
 from config.associations import android_association, apple_association
 from config.web import invite_app, web_app, web_media
 
 urlpatterns = [
+    path("mcp/setup", mcp_setup),
+    path("bill-email/opt-out/<uuid:notice_id>", stop_bill_emails),
+    path(".well-known/oauth-authorization-server", mcp_oauth_views.metadata),
+    path(".well-known/oauth-protected-resource", mcp_oauth_views.resource_metadata),
+    path(".well-known/oauth-protected-resource/mcp", mcp_oauth_views.resource_metadata),
+    path("oauth/register", mcp_oauth_views.register),
+    path("oauth/authorize", mcp_oauth_views.authorize),
+    path("oauth/token", mcp_oauth_views.token),
+    path("oauth/revoke", mcp_oauth_views.revoke),
     path("", RedirectView.as_view(url="/app/", permanent=False)),
     path(".well-known/apple-app-site-association", apple_association),
     path(".well-known/assetlinks.json", android_association),

@@ -236,7 +236,7 @@ def test_only_actual_new_otp_identity_has_disclosed_email_default(client, clock)
     assert not NotificationPreference.objects.filter(user=older_client_user).exists()
 
 
-def test_digest_waits_both_thresholds_and_sends_generic_once_across_groups(client, group, recipient, clock, providers):
+def test_digest_waits_ten_minutes_despite_foreground_and_sends_generic_once_across_groups(client, group, recipient, clock, providers):
     enable(recipient)
     first = add_bill(client, group)
     other_ids = [uid(), uid(), uid()]
@@ -245,16 +245,13 @@ def test_digest_waits_both_thresholds_and_sends_generic_once_across_groups(clien
     assert send(client, "post", "/groups", other_body).status_code == 200
     Participant.objects.filter(pk=other_ids[1]).update(user=recipient.actor)
     add_bill(client, (other_body["id"], other_ids, other_body))
-    clock[0] += timedelta(hours=23)
+    clock[0] += timedelta(minutes=9, seconds=59)
     assert notifications.send_pending_digests() == 0
     assert send(recipient, "post", "/me/notifications/foreground", {}).json() == {"ok": True}
     recorded = NotificationPreference.objects.get(user=recipient.actor).foreground_at
-    clock[0] += timedelta(minutes=1)
+    clock[0] += timedelta(seconds=1)
     send(recipient, "post", "/me/notifications/foreground", {})
     assert NotificationPreference.objects.get(user=recipient.actor).foreground_at == recorded
-    clock[0] += timedelta(hours=1)
-    assert notifications.send_pending_digests() == 0
-    clock[0] = recorded + timedelta(hours=24)
     assert notifications.send_pending_digests() == 1
     digest = ExpenseDigest.objects.get()
     assert digest.state == "accepted" and digest.notices.count() == 2
@@ -354,7 +351,7 @@ def test_digest_rechecks_all_permissions_immediately_before_provider(client, gro
     assert not providers["email"]
 
 
-def test_foreground_activity_after_digest_creation_defers_without_losing_unread(client, group, recipient, clock, providers):
+def test_foreground_activity_after_digest_creation_does_not_defer_unseen_bill(client, group, recipient, clock, providers):
     enable(recipient)
     add_bill(client, group)
     clock[0] += timedelta(hours=24)
@@ -362,9 +359,8 @@ def test_foreground_activity_after_digest_creation_defers_without_losing_unread(
     send(recipient, "post", "/me/notifications/foreground", {})
     notifications.send_pending_digests()
     row = ExpenseDigest.objects.get()
-    assert row.state == "pending" and row.first_attempt_at is None and not providers["email"]
-    clock[0] += timedelta(hours=24)
-    assert notifications.send_pending_digests() == 1 and len(providers["email"]) == 1
+    assert row.state == "accepted" and len(providers["email"]) == 1
+    assert row.notices.get().seen_at is None
 
 
 def test_uncertain_digest_retries_same_frozen_key_payload_and_holds_after_provider_window(client, group, recipient, clock, monkeypatch):
@@ -407,15 +403,15 @@ def test_two_workers_create_and_accept_one_digest_without_repeating_notices(clie
     assert ExpenseNotice.objects.filter(digest=ExpenseDigest.objects.get()).count() == 3
 
 
-def test_new_arrivals_wait_for_next_rolling_day_and_never_reuse_accepted_events(client, group, recipient, clock, providers):
+def test_new_arrivals_wait_ten_minutes_and_never_reuse_accepted_events(client, group, recipient, clock, providers):
     enable(recipient)
     add_bill(client, group)
     clock[0] += timedelta(hours=24)
     assert notifications.send_pending_digests() == 1
     added = add_bill(client, group)
-    clock[0] += timedelta(hours=23, minutes=59)
+    clock[0] += timedelta(minutes=9, seconds=59)
     assert notifications.send_pending_digests() == 0
-    clock[0] += timedelta(minutes=1)
+    clock[0] += timedelta(seconds=1)
     assert notifications.send_pending_digests() == 1 and len(providers["email"]) == 2
     assert ExpenseDigest.objects.count() == 2
     assert all(digest.notices.count() == 1 for digest in ExpenseDigest.objects.all())
@@ -584,7 +580,8 @@ def test_seeded_due_queue_feed_and_claim_use_bounded_indexed_queries(client, gro
         identifier = notifications.create_due_digest()
     # One frozen auth grant adds four fixed identity/source queries; no per-notice
     # work or history expansion beyond the same first100 unread recipients.
-    assert identifier and ExpenseDigest.objects.get(pk=identifier).notices.count() == 100 and len(claimed) <= 16
+    # One mailbox suppression check enforces no-account opt-out for linked mail too.
+    assert identifier and ExpenseDigest.objects.get(pk=identifier).notices.count() == 100 and len(claimed) <= 17
     assert ExpenseNotice.objects.get(pk=original.pk).recipient_id == recipient.actor.pk
     oldest_due = ExpenseNotice.objects.filter(push_processed_at__isnull=True).order_by("push_due_at").first().push_due_at
     started = monotonic()

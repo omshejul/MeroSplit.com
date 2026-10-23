@@ -39,6 +39,9 @@ def materialize_payload(payload: dict, *, recipient: str | None = None) -> dict:
             LINK_PLACEHOLDER: delivery_url(grant.id),
             EXPIRY_PLACEHOLDER: grant.expires_at.astimezone(timezone.utc).strftime("%d %b %Y, %H:%M:%S UTC"),
         }
+        if grant.purpose == "notice":
+            from .bill_email import delivery_stop_url
+            values["MEROSPLIT_BILL_EMAIL_STOP_LINK"] = delivery_stop_url(grant)
         if any(CODE_PLACEHOLDER in payload.get(part, "") for part in ("text", "html")):
             values[CODE_PLACEHOLDER] = fallback_code(grant.id)
     except (EmailLoginGrant.DoesNotExist, ValidationError, ValueError, TypeError):

@@ -209,6 +209,9 @@ def review_invite(actor, group_id, invite_id, payload, approve):
     else:
         invite.revoked = True
     invite.save(update_fields=["approved", "revoked"])
+    if approve:
+        from .bill_email import promote_current_bill_emails
+        promote_current_bill_emails(invite.participant)
     return record_change(
         group,
         actor,
@@ -303,6 +306,9 @@ def archive_group(actor, group_id, payload):
     group.archived = payload["archived"]
     group.save(update_fields=["archived"])
     if group.archived:
+        from .bill_email import cancel_bill_emails
+        from .bill_email_models import BillEmailNotice
+        cancel_bill_emails(BillEmailNotice.objects.filter(expense__group=group), "group_archived")
         cancel_notices(ExpenseNotice.objects.filter(expense__group=group), "group_archived")
     return record_change(
         group,
@@ -376,6 +382,9 @@ def remove_participant(actor, group_id, participant_id, payload):
     opening = OpeningBalance.objects.filter(group=group, accepted=False).first()
     if opening and int(opening.balances.get(str(person.id), "0")):
         raise HttpError(409, "Resolve the opening balance proposal first")
+    from .bill_email import cancel_bill_emails
+    from .bill_email_models import BillEmailNotice
+    cancel_bill_emails(BillEmailNotice.objects.filter(participant=person), "member_removed")
     person.removed = True
     person.save(update_fields=["removed"])
     Invite.objects.filter(participant=person).update(revoked=True)

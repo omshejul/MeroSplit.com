@@ -5,6 +5,7 @@ from allauth.account.models import EmailAddress
 from allauth.headless.contrib.ninja.security import x_session_token_auth
 from django.conf import settings
 from django.db import DatabaseError, IntegrityError, connection, transaction
+from django.db.models import F
 from django.http import HttpResponse, JsonResponse
 from ninja import File, Form, NinjaAPI
 from ninja.errors import HttpError, ValidationError
@@ -146,8 +147,8 @@ def duplicate_error(request, exc):
 def groups(request):
     return {
         "groups": list(
-            groups_for_actor(Group.objects.filter(participants__user=request.auth, participants__removed=False), request.auth).values(
-                "id", "name", "version", "archived", "is_direct"
+            groups_for_actor(Group.objects.filter(participants__user=request.auth, participants__removed=False), request.auth).annotate(hidden=F("participants__hidden")).values(
+                "id", "name", "version", "archived", "is_direct", "hidden"
             )
         )
     }
@@ -178,6 +179,7 @@ def group_get(request, group_id: UUID):
     with transaction.atomic():
         group = visible_group(request.auth, group_id, lock=True)
         state = snapshot(group)
+        state["hidden"] = group.participants.filter(user=request.auth, removed=False).values_list("hidden", flat=True).get()
         if group.owner_id == request.auth.pk:
             emails = dict(group.participants.values_list("id", "contact_email"))
             for person in state["participants"]:
@@ -446,3 +448,42 @@ def push_device_register(request, installation_id: UUID, body: PushDeviceIn):
 def push_device_remove(request, installation_id: UUID):
     from .push import remove_device
     return remove_device(request.auth, installation_id)
+
+
+@api.get("/me/mcp/pending")
+def mcp_pending(request):
+    from .mcp_oauth import pending_authorization
+    return pending_authorization(request)
+
+
+@api.get("/me/mcp")
+def mcp_connections(request):
+    from .mcp_oauth import connected_agents
+    return connected_agents(request.auth)
+
+
+@api.delete("/me/mcp/{grant_id}")
+def mcp_disconnect(request, grant_id: UUID):
+    from .mcp_oauth import OAuthError, disconnect_agent
+    try:
+        return disconnect_agent(request.auth, grant_id)
+    except OAuthError as exc:
+        raise HttpError(exc.status, exc.error) from None
+
+
+@api.get("/me/bill-email-entry")
+def bill_email_entry(request):
+    from .bill_email import notification_entry
+    return notification_entry(request.auth)
+
+
+@api.post("/groups/{group_id}/leave")
+def personal_group_leave(request, group_id: UUID, body: Command):
+    from .group_membership import leave_group
+    return leave_group(request.auth, group_id, body.model_dump(mode="json"))
+
+
+@api.post("/groups/{group_id}/restore")
+def personal_group_restore(request, group_id: UUID, body: Command):
+    from .group_membership import restore_group
+    return restore_group(request.auth, group_id, body.model_dump(mode="json"))
