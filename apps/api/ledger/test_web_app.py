@@ -105,3 +105,43 @@ def test_cookie_authenticated_mutations_require_current_csrf(exported_app):
     assert browser.post("/api/v1/groups", data="{}", content_type="application/json", HTTP_X_CSRFTOKEN=csrf).status_code == 422
     assert browser.delete("/_allauth/browser/v1/auth/session").status_code == 403
     assert browser.get("/api/v1/me").status_code == 200
+
+
+def test_email_entry_get_head_and_prefetch_only_serve_uncached_private_shell(exported_app):
+    browser = Client(enforce_csrf_checks=True)
+    path = f"/app/sign-in/{uuid4()}"
+    for method in ["get", "head"]:
+        response = getattr(browser, method)(path, HTTP_PURPOSE="prefetch", HTTP_SEC_PURPOSE="prefetch")
+        assert response.status_code == 200
+        assert response["Content-Type"] == "text/html; charset=utf-8"
+        assert response["Cache-Control"] == "no-store"
+        assert response["Referrer-Policy"] == "no-referrer"
+        assert "Location" not in response
+        response.close()
+    assert "csrftoken" in browser.cookies
+    assert "sessionid" not in browser.cookies
+    assert browser.get("/api/v1/me").status_code == 401
+
+
+@pytest.mark.parametrize("path", ["/.well-known/apple-app-site-association", "/.well-known/assetlinks.json"])
+def test_verified_app_associations_are_direct_public_json_for_get_and_head(path):
+    browser = Client(enforce_csrf_checks=True)
+    response = browser.get(path)
+    assert response.status_code == 200
+    assert response["Content-Type"] == "application/json"
+    assert response["Cache-Control"] == "public, max-age=300, must-revalidate"
+    assert response["X-Content-Type-Options"] == "nosniff"
+    assert "Location" not in response and "sessionid" not in browser.cookies
+    if path.endswith("assetlinks.json"):
+        target = response.json()[0]["target"]
+        assert target["package_name"] == "com.omshejul.splitdumb"
+        assert len(target["sha256_cert_fingerprints"]) == 3
+        assert target["sha256_cert_fingerprints"][0].startswith("56:1A:")
+        assert all(not fingerprint.startswith("A3:D5:") for fingerprint in target["sha256_cert_fingerprints"])
+    else:
+        details = response.json()["applinks"]["details"]
+        assert details == [{"appIDs": ["M4K84L4TKR.com.omshejul.splitdumb"], "components": [{"/": "/app/sign-in/*"}]}]
+    head = browser.head(path)
+    assert head.status_code == 200 and head.content == b""
+    assert head["Content-Type"] == response["Content-Type"]
+    assert browser.post(path, data="{}", content_type="application/json").status_code in [403, 405]

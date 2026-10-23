@@ -1,7 +1,7 @@
 """Explicit email delivery and verified-address claims for unclaimed participants."""
 
 from datetime import timedelta
-from urllib.parse import quote, urlsplit
+from urllib.parse import urlsplit
 
 from allauth.account.models import EmailAddress
 from django.db import transaction
@@ -10,6 +10,7 @@ from ninja.errors import HttpError
 
 from . import email_delivery
 from .collaboration import invite_token
+from .email_links import EXPIRY_PLACEHOLDER, LINK_PLACEHOLDER, issue_email_link
 from .models import Change, Group, Invite, Participant
 from .otp import EmailCodeLimited, consume_limits
 from .profiles import display_name
@@ -93,7 +94,8 @@ def send_person_invite(actor, group_id, participant_id, payload, origin, network
             if not person.contact_email:
                 raise HttpError(422, "Add this person's email before sending an invitation")
             parsed = urlsplit(origin)
-            if parsed.scheme != "https" or not parsed.netloc or parsed.username or parsed.password or parsed.query or parsed.fragment:
+            if (parsed.scheme != "https" or not parsed.netloc or parsed.username or parsed.password
+                    or parsed.query or parsed.fragment or parsed.path not in {"", "/"}):
                 raise HttpError(503, "Invitation delivery is unavailable")
             if Invite.objects.filter(participant=person, last_send_at__gt=now - timedelta(seconds=60)).exists():
                 raise HttpError(429, "Wait a minute before sending another invitation")
@@ -105,13 +107,18 @@ def send_person_invite(actor, group_id, participant_id, payload, origin, network
                 expires_at=now + timedelta(days=7), intended_email=person.contact_email,
                 delivery_origin=origin.rstrip("/"),
             )
-            url = f"{invite.delivery_origin}/invite/{quote(token, safe='')}"
+            grant = issue_email_link(
+                invite.intended_email, purpose="invite", target={"kind": "invite", "invite_id": str(invite.id)},
+                source_key=f"invite/{invite.id}", expires_at=invite.expires_at,
+            )
             text, html = email_delivery.render_message("invitation", {
-                "inviter_name": display_name(actor) or "Someone", "invite_url": url,
+                "inviter_name": display_name(actor) or "Someone", "invite_url": LINK_PLACEHOLDER,
+                "expires_at": EXPIRY_PLACEHOLDER,
             })
             invite.email_payload = email_delivery.message_payload(
                 invite.intended_email, "Join your MeroSplit ledger", text, html,
             )
+            invite.email_payload["_email_link_id"] = str(grant.id)
             invite.save(update_fields=["email_payload"])
             Invite.objects.filter(participant=person, approved=False).exclude(id=invite.id).update(revoked=True)
             result = record_change(

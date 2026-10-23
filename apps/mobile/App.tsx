@@ -28,6 +28,10 @@ import AccountHeader from './src/AccountHeader';
 import GroupList from './src/GroupList';
 import { ScreenHeader, AppTabs } from './src/AppNavigation';
 import { EmailSignIn, CodeSignIn } from './src/SignInForms';
+import { captureEmailLink, forgetEmailProof, subscribeEmailLinks, type EmailLink, type EmailTarget } from './src/emailLink';
+import { resolveEmailLink, renewEmailLink, requestEmailLink } from './src/emailLinkApi';
+import { pauseBrowserRequests, resumeBrowserRequests, readBrowserSession, updateBrowserSessionMetadata } from './src/browserAuth';
+import { EmailLinkStatus, EmailLinkSent, NameOnlyForm } from './src/EmailLinkScreens';
 import CreateGroupForm from './src/CreateGroupForm';
 import type { NewGroupValues } from './src/CreateGroupForm';
 import { SavedChanges, LegacyRecovery as LegacyRecords } from './src/AccountRecovery';
@@ -48,6 +52,7 @@ const API_URL = process.env.EXPO_PUBLIC_API_URL ?? (Platform.OS === 'web' ? wind
 const uuid = () => Crypto.randomUUID();
 type Screen = 'home' | 'create' | 'group' | 'expense' | 'expenseDetail' | 'settle' | 'members' | 'login' | 'review' | 'paymentDetail' | 'import';
 type Transfer = { sender: string; recipient: string; amount: string };
+type EmailEntry = { id: string | null; phase: 'opening' | 'target' | 'name' | 'error'; error: string; sent: boolean; target?: EmailTarget };
 function AppContent() {
   const { palette: colors, ui, dark, changeAppearance } = useUI();
   const s = makeStyles(colors);
@@ -62,6 +67,13 @@ function AppContent() {
   const setNotice = (text: string, tone: typeof feedback.tone = 'info') => setFeedback({ text, tone });
   const [email, setEmail] = useState(''), [code, setCode] = useState(''), [challenge, setChallenge] = useState<EmailCodeChallenge | null>(null), [retryAt, setRetryAt] = useState(0), [clock, setClock] = useState(Date.now());
   const [appLink, setAppLink] = useState<AppLink | null>(readAppLink);
+  const initialEmailLink = useRef(Platform.OS === 'web' ? captureEmailLink() : null), emailProof = useRef(initialEmailLink.current);
+  const [emailEntry, setEmailEntry] = useState<EmailEntry | null>(() => initialEmailLink.current ? { id: initialEmailLink.current.id, phase: 'opening', error: '', sent: false } : null);
+  const emailEntryRef = useRef(emailEntry); emailEntryRef.current = emailEntry;
+  const [emailRequested, setEmailRequested] = useState(false), [checkingCookie, setCheckingCookie] = useState(false);
+  const authEpoch = useRef(0), cookieCheck = useRef(false), validatedBrowserSession = useRef('');
+  const authHeld = !!emailEntry || checkingCookie, authHeldRef = useRef(authHeld); authHeldRef.current = authHeld;
+  const authPending = checkingCookie || emailEntry?.phase === 'opening' || emailEntry?.phase === 'error';
   const [myName, setMyName] = useState('You');
   const [addPersonRequest, setAddPersonRequest] = useState(0);
   const [foreground, setForeground] = useState(AppState.currentState === 'active' && (Platform.OS !== 'web' || document.visibilityState === 'visible'));
@@ -77,11 +89,11 @@ function AppContent() {
   const [legacySelf, setLegacySelf] = useState<Record<string, string>>({});
   const owner = session ? accountOwner(session) : '', ownerRef = useRef(owner); ownerRef.current = owner;
   const deferredSync = useRef(false);
-  const lock = useRef(false), draftWrites = useRef(Promise.resolve()), activeSessionRef = useRef(session); activeSessionRef.current = session;
+  const lock = useRef(false), draftWrites = useRef(Promise.resolve()), activeSessionRef = useRef(session); activeSessionRef.current = authPending ? null : session;
   const [pushTarget, setPushTarget] = useState<{ token: string; target: PushTarget | null } | null>(null);
   const push = usePushNotifications(session, {
     onOpen: async target => { if (session) setPushTarget({ token: session.token, target }); },
-    onForeground: async () => { if (ready && session && !lock.current) launch(() => sync()); },
+    onForeground: async () => { if (ready && session && !authHeldRef.current && !lock.current) launch(() => sync()); },
     shouldSuppress: data => suppressPush.current(data),
   });
   const activeGroupRef = useRef(groupId); activeGroupRef.current = groupId;
@@ -93,10 +105,10 @@ function AppContent() {
   const expense = preview?.expenses.find(value => value.id === expenseId) ?? (preview?.focused_expense?.id === expenseId ? preview.focused_expense : undefined);
   const returnPayment = returns.find(value => value.groupId === groupId && value.attemptId === returnAttemptId) ?? null;
   const settlement = selected?.group.settlements.find(value => value.id === settlementId) ?? (selected?.group.focused_settlement?.id === settlementId ? selected.group.focused_settlement : undefined);
-  const notices = useExpenseNotices(session, { enabled: ready && foreground && !expired, visibleExpenseIds: screen === 'group' ? selected?.group.transactions?.flatMap(value => value.kind === 'bill' ? [value.bill.id] : []) ?? selected?.group.expenses.map(value => value.id) : screen === 'expenseDetail' && expense ? [expense.id] : [],
-    onRefresh: async () => { if (lock.current || !session || activeSessionRef.current?.token !== session.token) return; await perform(() => syncAccount(session), false).catch(() => {}); } });
+  const notices = useExpenseNotices(session, { enabled: ready && foreground && !expired && !authHeld, visibleExpenseIds: screen === 'group' ? selected?.group.transactions?.flatMap(value => value.kind === 'bill' ? [value.bill.id] : []) ?? selected?.group.expenses.map(value => value.id) : screen === 'expenseDetail' && expense ? [expense.id] : [],
+    onRefresh: async () => { if (authHeldRef.current || lock.current || !session || activeSessionRef.current?.token !== session.token) return; await perform(() => syncAccount(session), false).catch(() => {}); } });
   suppressPush.current = notices.shouldSuppress;
-  const noticeVisibility = { notices: notices.notices, enabled: foreground && !expired && !alertOpen && !pending.length && (screen === 'group' || screen === 'expenseDetail'), viewport, scrollEpoch, onVisible: notices.acknowledgeVisible };
+  const noticeVisibility = { notices: notices.notices, enabled: !authHeld && foreground && !expired && !alertOpen && !pending.length && (screen === 'group' || screen === 'expenseDetail'), viewport, scrollEpoch, onVisible: notices.acknowledgeVisible };
   function measureViewport() { scroll.current?.measureInWindow((x, y, width, height) => setViewport({ x, y, width, height })); }
   function navigate(value: Screen) { setNotice(''); setScreen(value); }
   function changeScope(value: Session | null) {
@@ -140,7 +152,7 @@ function AppContent() {
     if (!current()) return;
     if (activeSessionRef.current?.displayName !== displayName) {
       const updated = { ...active, displayName };
-      await saveSession(updated);
+      if (Platform.OS === 'web') { if (!updateBrowserSessionMetadata(active, updated)) return; } else await saveSession(updated);
       if (current()) { activeSessionRef.current = updated; setSession(updated); }
     }
     if (current()) setMyName(displayName || active.email.split('@')[0] || 'You');
@@ -150,10 +162,10 @@ function AppContent() {
     await rememberName(active, me.display_name ?? active.displayName ?? '');
     return me;
   }
-  async function saveName(display_name: string) {
+  async function saveName(display_name: string, onlyIfUnnamed = false) {
     await perform(async () => {
       if (!session) throw new Error('Sign in to continue.');
-      const active = session, result = await request<{ display_name: string }>(active, '/me/profile', 'PUT', { display_name });
+      const active = session, result = await request<{ display_name: string }>(active, '/me/profile', 'PUT', { display_name, ...(onlyIfUnnamed ? { only_if_unnamed: true } : {}) });
       if (typeof result.display_name !== 'string' || !result.display_name.trim()) throw new Error('Could not confirm the saved name. Try again.');
       await rememberName(active, result.display_name);
       try { await refreshGroups(await getDatabase(), active, 'summary'); await load(accountOwner(active)); }
@@ -227,8 +239,8 @@ function AppContent() {
     }, false);
   }
   useEffect(() => {
-    if (ready && session && !expired && foreground && screen === 'home' && tab === 'Activity' && !busy && activityOwner.current !== owner && !activityError) void refreshActivity().catch(() => {});
-  }, [ready, session?.token, expired, foreground, screen, tab, busy, owner, activityError]);
+    if (ready && session && !authHeld && !expired && foreground && screen === 'home' && tab === 'Activity' && !busy && activityOwner.current !== owner && !activityError) void refreshActivity().catch(() => {});
+  }, [ready, session?.token, authHeld, expired, foreground, screen, tab, busy, owner, activityError]);
   async function openActivityTarget(target: ActivityTarget) {
     await perform(async () => {
       if (!session) return;
@@ -300,7 +312,7 @@ function AppContent() {
     });
     requestAnimationFrame(() => scroll.current?.scrollTo({ y: 0, animated: false }));
   }
-  useEffect(() => { if (ready && session && foreground && !expired) notices.engage(); }, [ready, session?.token, foreground, expired]);
+  useEffect(() => { if (ready && session && foreground && !expired && !authHeld) notices.engage(); }, [ready, session?.token, foreground, expired, authHeld]);
   useEffect(() => {
     const update = () => { const active = AppState.currentState === 'active' && (Platform.OS !== 'web' || document.visibilityState === 'visible'); if (active) activityOwner.current = ''; setForeground(active); if (active) requestAnimationFrame(measureViewport); };
     const listener = AppState.addEventListener('change', update);
@@ -315,15 +327,16 @@ function AppContent() {
   }, [commands.length, hasDrafts]);
   function openMe() { setTab('Account'); navigate('home'); }
   useEffect(() => {
-    if (!challenge) return;
+    if (!challenge && !emailRequested) return;
     const timer = setInterval(() => setClock(Date.now()), 1000);
     return () => clearInterval(timer);
-  }, [challenge]);
+  }, [challenge, emailRequested]);
   useEffect(() => subscribeAppLinks(target => {
-    void draftWrites.current.then(() => { setAppLink(target); if (!target) { setGroupId(null); setExpenseId(null); navigate(session ? 'home' : 'login'); } });
+    if (authHeldRef.current) return;
+    void draftWrites.current.then(() => { if (authHeldRef.current) return; setAppLink(target); if (!target) { setGroupId(null); setExpenseId(null); navigate(session ? 'home' : 'login'); } });
   }), [session?.token]);
   useEffect(() => {
-    if (!ready || !session || expired || busy || !appLink) return;
+    if (!ready || !session || authHeld || expired || busy || !appLink) return;
     const active = session, target = appLink;
     launch(async () => {
       await draftWrites.current;
@@ -349,44 +362,46 @@ function AppContent() {
         else throw error;
       } finally { setAppLink(null); }
     });
-  }, [ready, session?.token, expired, busy, appLink]);
+  }, [ready, session?.token, authHeld, expired, busy, appLink]);
   useEffect(() => {
-    if (!ready || !session || appLink || busy) return;
+    if (!ready || !session || authHeld || appLink || busy) return;
     if (screen === 'group' || screen === 'expenseDetail') writeAppLink(groupId ? { groupId, ...(screen === 'expenseDetail' && expenseId ? { expenseId } : {}) } : null);
     else if (screen === 'home') writeAppLink(null);
-  }, [ready, session?.token, appLink, busy, screen, groupId, expenseId]);
+  }, [ready, session?.token, authHeld, appLink, busy, screen, groupId, expenseId]);
   useEffect(() => {
-    if (screen !== 'home' || tab !== 'Account' || !session || expired) return;
+    if (authHeld || screen !== 'home' || tab !== 'Account' || !session || expired) return;
     const active = session;
     void perform(async () => {
       const me = await readProfile(active);
       if (activeSessionRef.current?.token !== active.token) return;
       setVpa(me.payment_profile?.vpa ?? '');
     }, false).catch(() => {});
-  }, [screen, tab, session?.token, expired]);
+  }, [screen, tab, session?.token, expired, authHeld]);
   async function restore() {
+    const epoch = authEpoch.current;
     try {
       const [value] = await Promise.all([savedSession(), retireSyncPause(), getDatabase()]);
+      if (epoch !== authEpoch.current) return;
       changeScope(value); setStorageError('');
       if (value) setEmail(value.email);
-    } catch (error) { setStorageError(error instanceof Error ? error.message : 'Could not open saved records. Retry without clearing app data.'); }
+    } catch (error) { if (epoch === authEpoch.current) setStorageError(error instanceof Error ? error.message : 'Could not open saved records. Retry without clearing app data.'); }
     finally { setReady(true); }
   }
   useEffect(() => { void restore(); }, []);
   useEffect(() => { if (ready && owner) void load().catch(error => setNotice(error.message, 'error')); }, [owner, ready]);
   useEffect(() => {
-    if (!ready || !session || expired) return;
-    const reconnect = () => { if (!lock.current) launch(() => sync()); else deferredSync.current = true; };
-    reconnect();
+    if (!ready || !session || authHeld || expired) return;
+    const reconnect = () => { if (authHeldRef.current) return; if (Platform.OS === 'web') queueCookieCheck(); else if (!lock.current) launch(() => sync()); else deferredSync.current = true; };
+    if (Platform.OS === 'web' && validatedBrowserSession.current === session.token) { if (!lock.current) launch(sync); else deferredSync.current = true; } else reconnect();
     const listener = AppState.addEventListener('change', state => { if (state === 'active') reconnect(); });
     if (Platform.OS === 'web') window.addEventListener('online', reconnect);
     return () => { listener.remove(); if (Platform.OS === 'web') window.removeEventListener('online', reconnect); };
-  }, [owner, ready, expired, session?.token]);
+  }, [owner, ready, expired, session?.token, authHeld]);
   useEffect(() => {
-    if (ready && session && !expired && !busy && deferredSync.current) { deferredSync.current = false; launch(sync); }
-  }, [ready, session?.token, expired, busy]);
+    if (ready && session && !authHeld && !expired && !busy && deferredSync.current) { deferredSync.current = false; launch(sync); }
+  }, [ready, session?.token, authHeld, expired, busy]);
   useEffect(() => {
-    if (!ready || busy || !pushTarget) return;
+    if (!ready || busy || authHeld || !pushTarget) return;
     setPushTarget(null);
     if (!session || pushTarget.token !== session.token) return;
     const active = session, scope = accountOwner(active);
@@ -408,7 +423,7 @@ function AppContent() {
         setExpenseId(target.expenseId); setScreen(target.expenseId ? 'expenseDetail' : 'group');
       } else setNotice('This bill is no longer available. Your groups are still here.');
     });
-  }, [ready, busy, pushTarget, session?.token]);
+  }, [ready, busy, authHeld, pushTarget, session?.token]);
   async function endPushSession(active: Session) {
     await push.disable().catch(() => {});
     await endSession(active);
@@ -532,16 +547,40 @@ function AppContent() {
       return request<UPILaunchQuote>(session, `/groups/${groupId}/payment-attempts/${attempt.id}/launch`);
     });
   }
+  async function sendSignInLink() {
+    const seconds = await requestEmailLink(API_URL, email);
+    setEmailRequested(true); setChallenge(null); setRetryAt(Date.now() + seconds * 1000); setClock(Date.now());
+  }
   async function sendSignInCode() {
+    setEmailRequested(false);
     const value = await requestEmailCode(API_URL, email);
     setChallenge(value); setRetryAt(Date.now() + value.retryAfter * 1000); setCode(''); setClock(Date.now());
   }
   async function finishSignIn() {
     if (!challenge) return;
-    await draftWrites.current;
-    const value = await confirmEmailCode(API_URL, challenge.challengeId, code);
-    if (session && session.token !== value.token) { if (Platform.OS !== 'web') await endPushSession(session); else await push.clear(); await clearMediaPreviews(); }
-    await saveSession(value); changeScope(value); setChallenge(null); setCode(''); await syncAccount(value);
+    const intendedEmail = email.trim().toLowerCase();
+    const epoch = Platform.OS === 'web' ? ++authEpoch.current : authEpoch.current;
+    if (Platform.OS === 'web') { authHeldRef.current = true; activeSessionRef.current = null; setCheckingCookie(true); await pauseBrowserRequests(); }
+    try {
+      await draftWrites.current;
+      if (epoch !== authEpoch.current) return;
+      let value: Session;
+      try { value = await confirmEmailCode(API_URL, challenge.challengeId, code); }
+      catch (error) {
+        if (Platform.OS !== 'web' || epoch !== authEpoch.current) throw error;
+        // An accepted response can be lost after its cookie reached the browser.
+        const current = await readBrowserSession(API_URL, null);
+        if (!current || current.email.toLowerCase() !== intendedEmail) throw error;
+        value = current;
+      }
+      if (epoch !== authEpoch.current) return;
+      if (session && session.token !== value.token) { if (Platform.OS !== 'web') await endPushSession(session); else await push.clear(); await clearMediaPreviews(); }
+      await saveSession(value); validatedBrowserSession.current = value.token; changeScope(value); setChallenge(null); setCode('');
+      if (Platform.OS === 'web') { resumeBrowserRequests(); setCheckingCookie(false); authHeldRef.current = false; }
+      await syncAccount(value);
+    } finally {
+      if (Platform.OS === 'web' && epoch === authEpoch.current && !emailEntryRef.current) { authHeldRef.current = false; setCheckingCookie(false); resumeBrowserRequests(); }
+    }
   }
   async function createGroup(values: NewGroupValues) {
     if (!session) throw new Error('Sign in first.');
@@ -566,11 +605,116 @@ function AppContent() {
     const drafts = await db.getAllAsync<{ group_id: string; body: string }>('SELECT group_id,body FROM drafts WHERE owner=?', owner);
     await shareJson('merosplit-saved-changes', { groups, unavailable_groups: unavailable, pending_commands: commands, drafts: drafts.map(row => ({ id: row.group_id, data: JSON.parse(row.body) })) });
   }
+  function beginEmailLink(link: EmailLink) {
+    const previous = emailProof.current;
+    if (emailEntryRef.current && previous?.id === link.id && previous.proof === link.proof) return;
+    authEpoch.current++; authHeldRef.current = true; activeSessionRef.current = null;
+    emailProof.current = link; cookieCheck.current = false; setCheckingCookie(false); setAppLink(null); setPushTarget(null);
+    void pauseBrowserRequests();
+    const next: EmailEntry = { id: link.id, phase: 'opening', error: '', sent: false };
+    emailEntryRef.current = next; setEmailEntry(next);
+  }
+  function queueCookieCheck(force = false) {
+    if (Platform.OS !== 'web' || authHeldRef.current && !force) return;
+    if (force) {
+      authEpoch.current++;
+      const entry = emailEntryRef.current;
+      if (entry) { const next: EmailEntry = { ...entry, phase: 'opening', error: '', sent: false }; emailEntryRef.current = next; setEmailEntry(next); }
+    }
+    cookieCheck.current = true; authHeldRef.current = true; activeSessionRef.current = null;
+    setCheckingCookie(true); void pauseBrowserRequests();
+  }
+  async function openEmailTarget(active: Session, target: EmailTarget, epoch: number) {
+    await readProfile(active);
+    if (epoch !== authEpoch.current) return;
+    if (target.kind === 'group') {
+      const group = await fetchGroup(active, target.group_id);
+      if (epoch !== authEpoch.current || activeSessionRef.current?.token !== active.token) return;
+      await saveGroup(await getDatabase(), accountOwner(active), group, 'shared'); await load(accountOwner(active));
+      setGroupId(group.id); setTab(group.is_direct ? 'Friends' : 'Groups'); setExpenseId(null); setScreen('group');
+    } else { setTab('Groups'); setScreen('home'); }
+    if (epoch === authEpoch.current) { forgetEmailProof(); emailProof.current = null; emailEntryRef.current = null; setEmailEntry(null); }
+  }
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    if (initialEmailLink.current) void pauseBrowserRequests();
+    const unsubscribe = subscribeEmailLinks(beginEmailLink);
+    const changed = (event: StorageEvent) => {
+      if (event.key !== 'merosplit.web.session') return;
+      try { if (event.newValue && JSON.parse(event.newValue).token === activeSessionRef.current?.token) return; } catch { /* Revalidate rather than trust malformed metadata. */ }
+      queueCookieCheck(true);
+    };
+    window.addEventListener('storage', changed);
+    return () => { unsubscribe(); window.removeEventListener('storage', changed); };
+  }, []);
+  useEffect(() => {
+    if (!ready || busy || lock.current || !foreground || Platform.OS !== 'web' || document.visibilityState !== 'visible') return;
+    const entry = emailEntry;
+    if (entry?.phase !== 'opening' && !cookieCheck.current) return;
+    const epoch = authEpoch.current;
+    void perform(async () => {
+      await pauseBrowserRequests(); await draftWrites.current;
+      if (epoch !== authEpoch.current) return;
+      if (cookieCheck.current) {
+        const active = await savedSession();
+        if (epoch !== authEpoch.current) return;
+        const prior = session;
+        if (active?.token !== prior?.token) { await push.clear(); await clearMediaPreviews(); changeScope(active); }
+        else { activeSessionRef.current = active; setSession(active); }
+        validatedBrowserSession.current = active?.token ?? '';
+        cookieCheck.current = false; setCheckingCookie(false);
+        if (!entry || !active || active.userId !== prior?.userId || active.baseUrl !== prior.baseUrl) {
+          // A later account change supersedes this tab's unfinished link or Name step.
+          forgetEmailProof(); initialEmailLink.current = null; emailProof.current = null; emailEntryRef.current = null; setEmailEntry(null);
+          authHeldRef.current = false; resumeBrowserRequests();
+          return;
+        }
+      }
+      if (!entry?.id) throw new Error('This link has expired or was already used.');
+      const proof = emailProof.current?.id === entry.id ? emailProof.current.proof : null;
+      const result = await resolveEmailLink(API_URL, { id: entry.id, proof }, () => epoch === authEpoch.current);
+      if (!result) return;
+      await push.clear(); await clearMediaPreviews(); setPushTarget(null);
+      await saveSession(result.session); validatedBrowserSession.current = result.session.token; changeScope(result.session); setChallenge(null); setCode(''); setEmailRequested(false);
+      forgetEmailProof(); initialEmailLink.current = null; emailProof.current = { id: entry.id, proof: null };
+      const next: EmailEntry = { ...entry, phase: result.needsName ? 'name' : 'target', target: result.target };
+      emailEntryRef.current = next; setEmailEntry(next); cookieCheck.current = false; setCheckingCookie(false); resumeBrowserRequests();
+      if (!result.needsName) await openEmailTarget(result.session, result.target, epoch);
+    }, false).catch(error => {
+      if (epoch !== authEpoch.current) return;
+      cookieCheck.current = false; setCheckingCookie(false);
+      if (entry) { const next: EmailEntry = { ...entry, phase: 'error', error: error instanceof ApiError && [403, 404].includes(error.status) ? 'This page is not available.' : error instanceof Error ? error.message : 'Could not connect. Try again.', sent: false }; emailEntryRef.current = next; setEmailEntry(next); }
+      else { authHeldRef.current = false; resumeBrowserRequests(); setNotice('Could not check this account. Refresh to try again.', 'error'); }
+    });
+  }, [ready, busy, foreground, emailEntry?.phase, emailEntry?.id, checkingCookie]);
+  async function finishEmailName(name: string) {
+    const entry = emailEntryRef.current, active = session, epoch = authEpoch.current;
+    if (!entry?.target || !active) throw new Error('Open the email link again.');
+    await saveName(name, true);
+    if (epoch !== authEpoch.current) return;
+    const next: EmailEntry = { ...entry, phase: 'target' }; emailEntryRef.current = next; setEmailEntry(next);
+    try { await perform(() => openEmailTarget(activeSessionRef.current ?? active, entry.target!, epoch), false); }
+    catch (error) { if (epoch === authEpoch.current) { const failed: EmailEntry = { ...entry, phase: 'error', error: error instanceof ApiError && [403, 404].includes(error.status) ? 'This page is not available.' : 'Could not open this page. Try again.', sent: false }; emailEntryRef.current = failed; setEmailEntry(failed); } }
+  }
+  async function renewCurrentEmailLink() {
+    const entry = emailEntryRef.current;
+    if (!entry?.id) return;
+    await perform(async () => { await renewEmailLink(API_URL, entry.id!); if (emailEntryRef.current?.id === entry.id) setEmailEntry({ ...entry, error: '', sent: true }); }, false).catch(() => { if (emailEntryRef.current?.id === entry.id) setEmailEntry({ ...entry, error: 'Could not send a new link. Try again.', sent: false }); });
+  }
+  function retryEmailLink() { const entry = emailEntryRef.current; if (entry) setEmailEntry({ ...entry, phase: 'opening', error: '', sent: false }); }
+  function leaveEmailLink() {
+    forgetEmailProof(); initialEmailLink.current = null; emailProof.current = null; emailEntryRef.current = null; setEmailEntry(null);
+    authHeldRef.current = false; resumeBrowserRequests(); queueCookieCheck();
+  }
   const direct = tab === 'Friends';
   const visibleGroups = groups.filter(row => direct ? !!session && visiblePeopleSummary(row.group, session.userId, commands.some(command => command.group_id === row.group.id)) : !row.group.is_direct);
   const title = screen === 'home' ? (tab === 'Friends' ? 'People' : tab === 'Account' ? 'Me' : tab) : screen === 'login' ? 'Sign in' : screen === 'create' ? (direct ? 'Add a person' : 'New group') : screen === 'expense' ? (expenseId ? 'Edit bill' : 'Add a bill') : screen === 'expenseDetail' ? expense?.description ?? 'Bill' : screen === 'settle' ? 'Payment' : screen === 'members' ? 'Group settings' : screen === 'review' ? 'Review your bill' : screen === 'paymentDetail' ? 'Payment record' : screen === 'import' ? 'Import from Splitwise' : selected?.group.name ?? 'Group';
   if (!ready) return <SafeAreaView style={[s.screen, s.loading]}><ActivityIndicator color={colors.accent} /><Text style={ui.caption}>Opening your groups…</Text></SafeAreaView>;
   if (storageError) return <SafeAreaView style={[s.screen, s.content]}><Text style={ui.section}>Could not open saved records</Text><Text accessibilityRole="alert" style={ui.error}>{storageError}</Text><Button title="Retry" disabled={busy} onPress={() => launch(restore)} /></SafeAreaView>;
+  if (authHeld) return <SafeAreaView style={s.screen} edges={['top', 'bottom']}><StatusBar style={dark ? 'light' : 'dark'} /><ScreenHeader title={emailEntry?.phase === 'name' ? 'Name' : 'Sign in'} busy={busy} /><ScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
+    {!checkingCookie && emailEntry?.phase === 'name' ? <NameOnlyForm key={emailEntry.id} busy={busy} onSave={finishEmailName} />
+      : <EmailLinkStatus opening={checkingCookie || emailEntry?.phase === 'opening' || emailEntry?.phase === 'target'} busy={busy} error={emailEntry?.error ?? ''} sent={!!emailEntry?.sent} canRenew={!!emailEntry?.id} onRetry={retryEmailLink} onRenew={() => void renewCurrentEmailLink()} onSignIn={leaveEmailLink} />}
+  </ScrollView></SafeAreaView>;
   return <SafeAreaView style={s.screen} edges={['top', 'bottom']} onTouchStart={notices.engage}><StatusBar style={dark ? 'light' : 'dark'} /><KeyboardAvoidingView style={s.screen} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
     <ScreenHeader title={title} busy={busy} onBack={screen !== 'home' && (session || screen !== 'login') ? back : undefined}>
       {Platform.OS === 'web' && session && (screen === 'home' && tab !== 'Account' || screen === 'group') && <IconAction name="refresh" label="Refresh" disabled={busy} onPress={() => { if (screen === 'home' && tab === 'Activity') void refreshActivity().catch(() => {}); else launch(sync); }} />}
@@ -601,7 +745,10 @@ function AppContent() {
       {screen === 'members' && selected && <MembersScreen key={`${owner}|${groupId}`} group={selected.group} selfId={selfId} busy={busy} onAction={groupAction} onExport={exportGroup} addPersonRequest={addPersonRequest} />}
       {screen === 'home' && tab === 'Activity' && session && <ActivityScreen items={activity?.items ?? []} busy={busy} error={activityError} hasMore={!!activity?.next_cursor} onRefresh={() => { void refreshActivity().catch(() => {}); }} onLoadMore={() => { void refreshActivity(true).catch(() => {}); }} onOpen={target => { void openActivityTarget(target).catch(() => {}); }} />}
       {screen === 'login' && <>
-        {!challenge ? <EmailSignIn email={email} busy={busy} onEmail={setEmail} onSend={() => launch(sendSignInCode)} />
+        {emailRequested ? <EmailLinkSent busy={busy} resendSeconds={Math.max(0, Math.ceil((retryAt - clock) / 1000))} onResend={() => launch(sendSignInLink)} onCode={() => launch(sendSignInCode)} onChangeEmail={() => setEmailRequested(false)} />
+          : !challenge ? <EmailSignIn email={email} busy={busy} onEmail={setEmail} sendLabel={Platform.OS === 'web' ? 'Email me a sign-in link' : undefined} onSend={() => launch(Platform.OS === 'web' ? sendSignInLink : sendSignInCode)}>
+            {Platform.OS === 'web' && <Button title="Use a code instead" kind="text" disabled={busy} onPress={() => launch(sendSignInCode)} />}
+          </EmailSignIn>
           : <CodeSignIn email={email} code={code} busy={busy} resendSeconds={Math.max(0, Math.ceil((retryAt - clock) / 1000))} onCode={setCode} onConfirm={() => launch(finishSignIn)} onResend={() => launch(sendSignInCode)} onChangeEmail={() => { setChallenge(null); setCode(''); }} />}
         <Button title="Help" kind="text" onPress={() => launch(() => Linking.openURL(`${API_URL}/support`))} />
       </>}

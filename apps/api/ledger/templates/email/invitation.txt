@@ -2,10 +2,13 @@
 
 They would like to track shared expenses with you.
 
-View invitation:
+View ledger:
 {{ invite_url }}
 
-Opening the invitation does not accept it. You can review it in your browser first, no download needed.
+This link signs you in and joins this ledger. No download needed.
+{% if expires_at %}
+This link works until {{ expires_at }}.
+{% endif %}
 
 If you do not know {{ inviter_name }}, you can ignore this email.
 

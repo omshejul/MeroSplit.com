@@ -27,8 +27,8 @@ def _headers(response):
 @ensure_csrf_cookie
 def _shell(request, index):
     response = FileResponse(index.open("rb"), content_type="text/html; charset=utf-8")
-    response["Cache-Control"] = "no-cache"
-    response["Referrer-Policy"] = "same-origin"
+    response["Cache-Control"] = "no-store" if request.path.startswith("/app/sign-in/") else "no-cache"
+    response["Referrer-Policy"] = "no-referrer"
     return _headers(response)
 
 

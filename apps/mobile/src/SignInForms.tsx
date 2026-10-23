@@ -3,12 +3,13 @@ import { Text } from 'react-native-paper';
 import { TextField } from './FormFields';
 import { Button, useUI } from './ui';
 
-export function EmailSignIn({ email, busy, onEmail, onSend }: { email: string; busy: boolean; onEmail: (value: string) => void; onSend: () => void }) {
+export function EmailSignIn({ email, busy, onEmail, onSend, sendLabel = 'Send sign-in code', children }: { email: string; busy: boolean; onEmail: (value: string) => void; onSend: () => void; sendLabel?: string; children?: React.ReactNode }) {
   const { ui } = useUI();
   return <>
     <Text style={ui.caption}>New accounts get daily unread email reminders. Turn them off in Me → Notifications.</Text>
     <TextField label="Email" value={email} onChangeText={onEmail} autoCorrect={false} autoCapitalize="none" autoComplete="email" keyboardType="email-address" />
-    <Button title="Send sign-in code" kind="primary" disabled={busy || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())} onPress={onSend} />
+    <Button title={sendLabel} kind="primary" disabled={busy || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())} onPress={onSend} />
+    {children}
   </>;
 }
 export function CodeSignIn({ email, code, resendSeconds, busy, onCode, onConfirm, onResend, onChangeEmail }: { email: string; code: string; resendSeconds: number; busy: boolean; onCode: (value: string) => void; onConfirm: () => void; onResend: () => void; onChangeEmail: () => void }) {

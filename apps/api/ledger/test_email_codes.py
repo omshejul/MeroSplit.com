@@ -45,7 +45,7 @@ def requested(client, mailbox, email="new-person@example.invalid", **kwargs):
     assert response.status_code == 200
     challenge_id = response.json()["data"]["challenge_id"]
     message = next(message for message in reversed(mailbox) if message["id"] == f"otp/{challenge_id}")
-    code = re.search(r"\b([0-9]{4})\b", message["text"]).group(1)
+    code = re.search(r"(?m)^([0-9]{4})$", message["text"]).group(1)
     return challenge_id, code
 
 
@@ -151,7 +151,8 @@ def test_browser_code_login_requires_csrf_and_uses_cookie_session(mailbox):
 
 
 def test_exact_ascii_four_digits_preserve_leading_zero(mailbox, monkeypatch):
-    monkeypatch.setattr(otp.secrets, "randbelow", lambda maximum: 7)
+    from . import email_links
+    monkeypatch.setattr(email_links, "fallback_code", lambda grant_id: "0007")
     native = Client()
     challenge_id, code = requested(native, mailbox)
     assert len(code) == 4 and code.startswith("0") and code.isascii() and code.isdecimal()

@@ -209,7 +209,9 @@ def _remove_authored_text(group, actor_id):
 
 @transaction.atomic
 def delete_account(actor):
-    from .models import ExpenseDigest, ExpenseNotice, NotificationPreference, PushDevice
+    from allauth.account.models import EmailAddress
+
+    from .models import EmailLoginGrant, ExpenseDigest, ExpenseNotice, NotificationPreference, PushDevice
     actor_id = actor.pk
     # Serialize with registration, ledger writes and logout before cascade collection.
     if not get_user_model().objects.select_for_update(no_key=True).filter(pk=actor_id).exists():
@@ -272,6 +274,8 @@ def delete_account(actor):
     Settlement.objects.filter(recorded_by=actor).update(recorded_by=None)
     Change.objects.filter(actor=actor).update(actor=None)
     Invite.objects.filter(claimant=actor).update(claimant=None, revoked=True)
+    emails = [actor.email.lower(), *EmailAddress.objects.filter(user=actor).values_list("email", flat=True)]
+    EmailLoginGrant.objects.filter(Q(issued_user_id=actor_id) | Q(recipient=actor) | Q(email__in=emails)).delete()
     Session.objects.filter(session_key__in=session_ids).delete()
     # Cascades email/auth records, payment profile, command receipts and devices;
     # shared participant/payment/change FKs above remain anonymous numeric history.

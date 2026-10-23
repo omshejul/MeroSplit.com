@@ -80,3 +80,32 @@ def test_unconfigured_provider_cannot_silently_succeed(settings, monkeypatch):
     monkeypatch.setattr(email_delivery, "urlopen", lambda *args, **kwargs: pytest.fail("No outbound request expected"))
     with pytest.raises(email_delivery.EmailDeliveryUnavailable):
         email_delivery.send_email("synthetic@example.invalid", "Sign in", "Synthetic text", "otp/synthetic")
+
+
+def test_login_template_keeps_one_click_cta_and_code_fallback():
+    from .email_links import CODE_PLACEHOLDER, EXPIRY_PLACEHOLDER, LINK_PLACEHOLDER
+    text, html = email_delivery.render_message("sign_in", {
+        "login_url": LINK_PLACEHOLDER, "expires_at": EXPIRY_PLACEHOLDER,
+        "code": CODE_PLACEHOLDER, "expires_minutes": TTL // 60,
+    })
+    assert LINK_PLACEHOLDER in text and f'href="{LINK_PLACEHOLDER}"' in html
+    assert ">Sign in</a>" in html and "Or enter this code" in text and "Or enter this code" in html
+    assert f"This link works until {EXPIRY_PLACEHOLDER}." in text and EXPIRY_PLACEHOLDER in html
+    assert f"\n{CODE_PLACEHOLDER}\n" in text and CODE_PLACEHOLDER in html
+
+
+@pytest.mark.parametrize("template,url_name,label", [
+    ("invitation", "invite_url", "View ledger"), ("expense_digest", "app_url", "Open MeroSplit"),
+])
+def test_invitation_and_digest_ctas_have_actual_expiry_and_keep_help_purpose(template, url_name, label):
+    from .email_links import EXPIRY_PLACEHOLDER, LINK_PLACEHOLDER
+    text, html = email_delivery.render_message(template, {
+        url_name: LINK_PLACEHOLDER, "expires_at": EXPIRY_PLACEHOLDER, "inviter_name": "Synthetic organizer",
+    })
+    assert LINK_PLACEHOLDER in text and f'href="{LINK_PLACEHOLDER}"' in html and label in html
+    assert f"This link works until {EXPIRY_PLACEHOLDER}." in text and EXPIRY_PLACEHOLDER in html
+    if template == "invitation":
+        assert "signs you in and joins this ledger" in text and "Opening the invitation does not accept" not in text
+        assert 'href="mailto:mail@merosplit.com"' in html
+    else:
+        assert "turn off Email reminders in Me" in text

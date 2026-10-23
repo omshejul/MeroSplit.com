@@ -255,7 +255,7 @@ def me(request):
 
 @api.put("/me/profile")
 def account_profile_update(request, body: DisplayNameIn):
-    return update_display_name(request.auth, body.display_name)
+    return update_display_name(request.auth, body.display_name, only_if_unnamed=body.only_if_unnamed)
 
 
 @api.get("/me/notifications/preferences")

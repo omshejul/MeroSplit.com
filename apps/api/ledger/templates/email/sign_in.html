@@ -1,7 +1,6 @@
 {% comment %}
 MeroSplit sign-in email, HTML part.
-Context from trusted backend only: logo_url, code, expires_minutes. Autoescape stays on.
-Visual preview only: code="4827", expires_minutes=<real backend value>.
+Context from trusted backend only: logo_url, code, expires_minutes, login_url, expires_at. Autoescape stays on.
 {% endcomment %}<!DOCTYPE html>
 <html lang="en" xmlns="http://www.w3.org/1999/xhtml" xmlns:o="urn:schemas-microsoft-com:office:office">
 <head>
@@ -12,7 +11,7 @@ Visual preview only: code="4827", expires_minutes=<real backend value>.
 <meta name="format-detection" content="telephone=no, date=no, address=no, email=no, url=no">
 <meta name="color-scheme" content="light dark">
 <meta name="supported-color-schemes" content="light dark">
-<title>Your MeroSplit sign-in code</title>
+<title>{% if login_url %}Sign in to MeroSplit{% else %}Your MeroSplit sign-in code{% endif %}</title>
 <!--[if mso]>
 <noscript><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml></noscript>
 <style>body, table, td, h1, p, a, span { font-family: "Segoe UI", Arial, sans-serif !important; }</style>
@@ -60,12 +59,18 @@ Visual preview only: code="4827", expires_minutes=<real backend value>.
 
         <tr>
           <td class="px" style="padding:0 32px 8px 32px;">
-            <h1 class="ink h1" style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:24px;line-height:32px;font-weight:600;color:#202024;mso-line-height-rule:exactly;">Your sign-in code</h1>
+            <h1 class="ink h1" style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:24px;line-height:32px;font-weight:600;color:#202024;mso-line-height-rule:exactly;">{% if login_url %}Sign in to MeroSplit{% else %}Your sign-in code{% endif %}</h1>
           </td>
         </tr>
 
+        {% if login_url %}<tr>
+          <td class="px" style="padding:20px 32px;">
+            <a href="{{ login_url }}" style="display:inline-block;padding:14px 28px;background:#e87870;border-radius:10px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:16px;font-weight:600;color:#202024;text-decoration:none;">Sign in</a>
+            <p class="muted" style="margin:16px 0 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:14px;line-height:22px;color:#6b6b73;">This link works until {{ expires_at }}.</p>
+          </td>
+        </tr>{% endif %}
         <tr>
-          <td class="px ink" style="padding:0 32px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:16px;line-height:24px;color:#202024;mso-line-height-rule:exactly;">Enter this code in MeroSplit to sign in.</td>
+          <td class="px ink" style="padding:0 32px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:16px;line-height:24px;color:#202024;mso-line-height-rule:exactly;">{% if login_url %}Or enter this code in MeroSplit.{% else %}Enter this code in MeroSplit to sign in.{% endif %}</td>
         </tr>
 
         <tr>

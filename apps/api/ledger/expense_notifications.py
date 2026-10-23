@@ -13,6 +13,7 @@ from django.utils import timezone
 from ninja.errors import HttpError
 
 from . import email_delivery
+from .email_links import EXPIRY_PLACEHOLDER, LINK_PLACEHOLDER, activate_email_link, issue_email_link
 from .models import (
     ExpenseDigest,
     ExpenseNotice,
@@ -176,11 +177,15 @@ def create_due_digest():
         if not eligible:
             return None
         origin = urlsplit(settings.PUBLIC_WEB_URL)
-        if origin.scheme != "https" or not origin.netloc or origin.username or origin.password:
+        if (origin.scheme != "https" or not origin.netloc or origin.username or origin.password
+                or origin.query or origin.fragment or origin.path not in {"", "/"}):
             return None
-        text, html = email_delivery.render_message("expense_digest", {"app_url": f"{settings.PUBLIC_WEB_URL.rstrip('/')}/app/"})
-        digest = ExpenseDigest.objects.create(recipient=pref.user, recipient_email=email, due_at=now,
-            payload=email_delivery.message_payload(email, "You have unread updates in MeroSplit", text, html))
+        identifier = uuid4()
+        grant = issue_email_link(email, purpose="digest", target={"kind": "home"}, source_key=f"expense-digest/{identifier}")
+        text, html = email_delivery.render_message("expense_digest", {"app_url": LINK_PLACEHOLDER, "expires_at": EXPIRY_PLACEHOLDER})
+        payload = email_delivery.message_payload(email, "You have unread updates in MeroSplit", text, html)
+        payload["_email_link_id"] = str(grant.id)
+        digest = ExpenseDigest.objects.create(id=identifier, recipient=pref.user, recipient_email=email, due_at=now, payload=payload)
         ExpenseNotice.objects.filter(id__in=eligible).update(digest=digest)
         return digest.id
 
@@ -247,14 +252,19 @@ def send_pending_digests(*, limit=100):
             notices = list(row.notices.select_related("expense__group", "recipient"))
             allowed = {notice.id for notice in _eligible_notices(notices) if notice.email_eligible}
             ExpenseNotice.objects.filter(pk__in=[notice.id for notice in notices if notice.id not in allowed]).update(digest=None, email_eligible=False)
-        now = timezone.now()
-        if not current.update(first_attempt_at=row.first_attempt_at or now, attempts=row.attempts + 1):
-            continue
-        # Recheck after recording the attempt, immediately before the external boundary.
-        if not _digest_still_eligible(row) or not current.filter(lease_until__gt=timezone.now()).exists():
-            _defer_or_cancel(row, current)
-            processed += 1
-            continue
+        with transaction.atomic():
+            locked = current.select_for_update().first()
+            if not locked:
+                continue
+            now = timezone.now()
+            current.update(first_attempt_at=row.first_attempt_at or now, attempts=row.attempts + 1)
+            # Expiry starts with the first eligible attempt, never while work is deferred.
+            if not _digest_still_eligible(row) or not current.filter(lease_until__gt=timezone.now()).exists():
+                _defer_or_cancel(row, current)
+                processed += 1
+                continue
+            if link_id := row.payload.get("_email_link_id"):
+                activate_email_link(link_id, (locked.first_attempt_at or now) + DAY)
         try:
             provider_id = email_delivery.send_email(row.recipient_email, row.payload["subject"], row.payload["text"],
                                                     f"expense-digest/{row.id}", payload=row.payload)

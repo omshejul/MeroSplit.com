@@ -3,5 +3,8 @@ You have unread updates
 There are expense updates you have not seen yet.
 
 Open MeroSplit: {{ app_url }}
+{% if expires_at %}
+This link works until {{ expires_at }}.
+{% endif %}
 
 To stop these emails, turn off Email reminders in Me > Notifications.

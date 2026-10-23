@@ -582,7 +582,9 @@ def test_seeded_due_queue_feed_and_claim_use_bounded_indexed_queries(client, gro
     assert "expense_notice_email_due" in plans["email"]
     with CaptureQueriesContext(connection) as claimed:
         identifier = notifications.create_due_digest()
-    assert identifier and ExpenseDigest.objects.get(pk=identifier).notices.count() == 100 and len(claimed) <= 12
+    # One frozen auth grant adds four fixed identity/source queries; no per-notice
+    # work or history expansion beyond the same first100 unread recipients.
+    assert identifier and ExpenseDigest.objects.get(pk=identifier).notices.count() == 100 and len(claimed) <= 16
     assert ExpenseNotice.objects.get(pk=original.pk).recipient_id == recipient.actor.pk
     oldest_due = ExpenseNotice.objects.filter(push_processed_at__isnull=True).order_by("push_due_at").first().push_due_at
     started = monotonic()

@@ -87,8 +87,16 @@ def consume_limits(limits: list[tuple[str, str, int, int]]) -> None:
 
 
 @sensitive_variables()
-def request_email_code(email: str, network: str) -> dict:
-    now, code = timezone.now(), f"{secrets.randbelow(10000):04d}"
+def request_email_code(email: str, network: str, *, email_reminders_disclosed=False, link_target=None, link_purpose="login", renewal_of=None) -> dict:
+    from .email_links import (
+        CODE_PLACEHOLDER,
+        EXPIRY_PLACEHOLDER,
+        LINK_PLACEHOLDER,
+        fallback_code,
+        issue_email_link,
+    )
+
+    now = timezone.now()
     demo = store_review.entry_for_email(email)
     with transaction.atomic():
         EmailCodeChallenge.objects.get_or_create(
@@ -102,6 +110,19 @@ def request_email_code(email: str, network: str) -> dict:
             ("otp-request-network", network, 3600, 30), ("otp-request-network", network, 86400, 100),
         ])
         challenge.challenge_id = uuid4()
+        grant = None
+        if not demo:
+            grant = issue_email_link(email, purpose=link_purpose, target=link_target or {"kind": "home"},
+                                     source_key=f"otp/{challenge.challenge_id}", expires_at=now + timedelta(seconds=TTL),
+                                     email_reminders_disclosed=email_reminders_disclosed, renewal_of=renewal_of)
+            code = fallback_code(grant.id)
+            text, html = email_delivery.render_message("sign_in", {
+                "code": CODE_PLACEHOLDER, "expires_minutes": TTL // 60,
+                "login_url": LINK_PLACEHOLDER, "expires_at": EXPIRY_PLACEHOLDER,
+            })
+            grant.payload = {**email_delivery.message_payload(email, "Your MeroSplit sign-in link", text, html),
+                             "_email_link_id": str(grant.id)}
+            grant.save(update_fields=["payload"])
         challenge.digest = _digest(f"{challenge.challenge_id}:demo:{demo['pin_hash']}") if demo else _digest(f"{challenge.challenge_id}:{email}:{code}")
         challenge.requested_at, challenge.expires_at = now, now + timedelta(seconds=TTL)
         challenge.attempts, challenge.consumed, challenge.delivered = 0, False, False
@@ -109,10 +130,22 @@ def request_email_code(email: str, network: str) -> dict:
     result = {"challenge_id": str(challenge.challenge_id), "expires_in": TTL, "retry_after": COOLDOWN}
     if demo:
         return result  # A reusable demo credential is not a delivered email code.
-    text, html = email_delivery.render_message("sign_in", {"code": code, "expires_minutes": TTL // 60})
-    email_delivery.send_email(email, "Your MeroSplit sign-in code", text, f"otp/{challenge.challenge_id}", html=html)
+    deliver_login_link(grant.id)
     EmailCodeChallenge.objects.filter(pk=challenge.pk, challenge_id=challenge.challenge_id).update(delivered=True)
     return result
+
+
+@sensitive_variables()
+def deliver_login_link(grant_id):
+    """Frozen login retry: same nonsecret payload, derived credentials and key."""
+    from .models import EmailLoginGrant
+    grant = EmailLoginGrant.objects.get(pk=grant_id)
+    payload = email_delivery.materialize_payload(grant.payload, recipient=grant.email)
+    email_delivery.send_email(grant.email, payload["subject"], payload["text"], grant.source_key,
+                              html=payload.get("html"), payload=grant.payload)
+    EmailLoginGrant.objects.filter(pk=grant.id, delivered_at__isnull=True).update(delivered_at=timezone.now())
+    if grant.source_key.startswith("otp/"):
+        EmailCodeChallenge.objects.filter(email=grant.email, challenge_id=grant.source_key.removeprefix("otp/")).update(delivered=True)
 
 
 @sensitive_variables()
@@ -151,6 +184,8 @@ def confirm_email_code(challenge_id, code: str, network: str, *, email_reminders
                     identity = _verified_user(email, email_reminders_disclosed=email_reminders_disclosed)
                 if identity:
                     user, login_email = identity
+                    from .models import EmailLoginGrant
+                    EmailLoginGrant.objects.filter(source_key=f"otp/{challenge_id}", consumed_at__isnull=True).update(consumed_at=timezone.now(), recipient=user)
                 challenge.consumed = True
             else:
                 failure = True
@@ -167,8 +202,8 @@ def _verified_user(email: str, *, email_reminders_disclosed: bool = False):
     if len(ids) > 1:
         return None  # Conflicting legacy identities require recovery, never an implicit merge.
     if ids:
-        user = User.objects.select_for_update().get(pk=next(iter(ids)))
-        if not user.is_active:
+        user = User.objects.select_for_update(no_key=True).filter(pk=next(iter(ids))).first()
+        if not user or not user.is_active:
             return None
     else:
         user = get_adapter().new_user(None)

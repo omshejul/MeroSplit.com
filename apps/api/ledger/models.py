@@ -338,3 +338,27 @@ class ExpenseNotice(models.Model):
             models.Index(fields=["recipient", "-created_at", "-id"], condition=Q(seen_at__isnull=True, cancelled_at__isnull=True), name="expense_notice_unread"),
             models.Index(fields=["recipient", "created_at", "id"], condition=Q(email_eligible=True, digest__isnull=True, seen_at__isnull=True, cancelled_at__isnull=True), name="expense_notice_email_due"),
         ]
+
+
+class EmailLoginGrant(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    source_key = models.CharField(max_length=160, unique=True)
+    email = models.EmailField()
+    purpose = models.CharField(max_length=6)
+    target = models.JSONField()
+    delivery_origin = models.URLField()
+    recipient = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.CASCADE)
+    issued_user_id = models.BigIntegerField(null=True)
+    invitation = models.ForeignKey(Invite, null=True, on_delete=models.CASCADE)
+    renewal_of = models.ForeignKey("self", null=True, on_delete=models.CASCADE, related_name="renewals")
+    delivered_at = models.DateTimeField(null=True)
+    expires_at = models.DateTimeField(null=True)
+    proof_digest = models.CharField(max_length=64, blank=True)
+    consumed_at = models.DateTimeField(null=True)
+    revoked_at = models.DateTimeField(null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    email_reminders_disclosed = models.BooleanField(default=False)
+    payload = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        constraints = [models.CheckConstraint(condition=Q(purpose__in=["login", "invite", "digest"]), name="email_login_purpose")]

@@ -20,13 +20,15 @@ def participant_display_name(person):
 
 
 @transaction.atomic
-def update_display_name(actor, value):
+def update_display_name(actor, value, *, only_if_unnamed=False):
     name = value.strip()
     if not name or len(name) > 120:
         raise AccountingError("Enter a display name of up to 120 characters")
     user = get_user_model().objects.select_for_update(no_key=True).filter(pk=actor.pk, is_active=True).first()
     if not user:
         raise HttpError(401, "Sign in again to update your profile")
+    if only_if_unnamed and user.first_name.strip():
+        return {"display_name": user.first_name.strip()}
     if user.first_name == name:
         return {"display_name": name}
     groups = list(Group.objects.filter(participants__user=user, participants__removed=False)

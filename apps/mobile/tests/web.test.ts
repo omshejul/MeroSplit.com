@@ -56,7 +56,7 @@ test('Browser OTP uses same-origin cookies, fresh CSRF and no bearer credentials
     const challenge = await requestEmailCode(session.baseUrl, 'two@example.test');
     assert.deepEqual(challenge, { challengeId: 'challenge', expiresIn: 180, retryAfter: 60 });
     const active = await confirmEmailCode(session.baseUrl, challenge.challengeId, '0123');
-    assert.equal(active.token, 'browser-session:2');
+    assert.match(active.token, /^browser-session:2:[0-9a-f-]{36}$/);
     assert.deepEqual(JSON.parse(String(calls.find(call => call.url.endsWith('/code/confirm'))?.init.body)), { challenge_id: 'challenge', code: '0123', email_reminders_disclosed: true });
     await sessionRequest(active, '/api/v1/groups', { method: 'POST', body: '{}' });
     await signOut(active);

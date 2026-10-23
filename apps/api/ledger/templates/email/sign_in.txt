@@ -1,6 +1,15 @@
-Your sign-in code
+{% if login_url %}Sign in to MeroSplit
+
+Sign in:
+{{ login_url }}
+
+This link works until {{ expires_at }}.
+
+Or enter this code in MeroSplit:
+{% else %}Your sign-in code
 
 Enter this code in MeroSplit to sign in:
+{% endif %}
 
 {{ code }}
 

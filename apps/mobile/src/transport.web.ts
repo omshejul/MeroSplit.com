@@ -1,4 +1,5 @@
 import type { Session } from './types';
+import { browserAccountRequest, makeBrowserSession } from './browserAuth.ts';
 
 function sameOrigin(baseUrl: string): string {
   const normalized = new URL(baseUrl, window.location.origin);
@@ -11,9 +12,12 @@ function csrf(): string {
 export function sessionRequest(session: Session, path: string, init: RequestInit = {}, fetcher: typeof fetch = fetch): Promise<Response> {
   const headers = new Headers(init.headers);
   headers.delete('X-Session-Token');
+  headers.delete('X-MeroSplit-Account');
   if (session.userId) headers.set('X-MeroSplit-Account', session.userId);
   if (!['GET', 'HEAD', 'OPTIONS'].includes((init.method ?? 'GET').toUpperCase())) headers.set('X-CSRFToken', csrf());
-  return fetcher(`${sameOrigin(session.baseUrl)}${path}`, { ...init, headers, credentials: 'same-origin', mode: 'same-origin' });
+  const url = `${sameOrigin(session.baseUrl)}${path}`;
+  const send = () => fetcher(url, { ...init, headers, credentials: 'same-origin', mode: 'same-origin', referrerPolicy: 'same-origin' });
+  return session.userId ? browserAccountRequest(send) : send();
 }
 
 export async function signOut(session: Session): Promise<void> {
@@ -41,6 +45,5 @@ export async function confirmEmailCode(baseUrl: string, challengeId: string, cod
   const response = await sessionRequest({ baseUrl: base } as Session, '/_allauth/browser/v1/auth/code/confirm', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ challenge_id: challengeId, code, email_reminders_disclosed: true }), signal: AbortSignal.timeout(15_000) });
   const data = await response.json() as EmailCodeResponse;
   if (!response.ok || !data.data?.user || data.meta?.is_authenticated === false) throw new Error(emailCodeError(data, 'The code is incorrect or expired. Try again.'));
-  const userId = String(data.data.user.id);
-  return { baseUrl: base, userId, email: data.data.user.email ?? '', token: `browser-session:${userId}` };
+  return makeBrowserSession(base, { ...data.data.user, email: data.data.user.email ?? '' });
 }

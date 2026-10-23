@@ -88,6 +88,7 @@ class ProfileIn(Input):
 class DisplayNameIn(Input):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
     display_name: Annotated[StrictStr, Field(min_length=1, max_length=120, pattern=r"\S")]
+    only_if_unnamed: StrictBool = False
 
 
 class NotificationPreferencesIn(Input):

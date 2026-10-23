@@ -4,6 +4,7 @@ import { serializedDatabase } from './webDatabase';
 import { openBrowserStorage } from './browserStorage';
 import type { Database } from './storage';
 import type { Session } from './types';
+import { cachedBrowserSession, readBrowserSession } from './browserAuth.ts';
 
 let database: Promise<Database> | undefined;
 let durable = true;
@@ -32,22 +33,16 @@ const SESSION_KEY = 'merosplit.web.session', APPEARANCE_KEY = 'merosplit.web.app
 function readPreference(key: string): string | null { try { return localStorage.getItem(key); } catch { return null; } }
 function writePreference(key: string, value: string | null): void { try { if (value === null) localStorage.removeItem(key); else localStorage.setItem(key, value); } catch { /* HttpOnly account cookies remain authoritative when metadata storage is blocked. */ } }
 export async function savedSession(): Promise<Session | null> {
-  const raw = readPreference(SESSION_KEY);
-  try {
-    const value = raw ? JSON.parse(raw) as Session : null;
-    if (value?.baseUrl === window.location.origin && value.userId && value.email) return { ...value, token: `browser-session:${value.userId}` };
-  } catch { /* Recover the existing HttpOnly session if browser metadata was cleared. */ }
-  try {
-    const response = await fetch('/api/v1/me', { credentials: 'same-origin', signal: AbortSignal.timeout(5000) });
-    if (!response.ok) return null;
-    const user = await response.json() as { id?: string | number; email?: string; display_name?: string };
-    if (!user.id || !user.email) return null;
-    const session = { baseUrl: window.location.origin, userId: String(user.id), email: user.email, displayName: user.display_name ?? '', token: `browser-session:${user.id}` };
-    await saveSession(session); return session;
-  } catch { return null; }
+  const raw = readPreference(SESSION_KEY), base = window.location.origin;
+  const value = await readBrowserSession(base, cachedBrowserSession(base, raw));
+  // Another tab or an explicit sign-in may have adopted a newer account while
+  // /me was in flight. Never overwrite that metadata with an older response.
+  if (readPreference(SESSION_KEY) !== raw) throw new Error('The signed-in account changed. Please retry.');
+  await saveSession(value);
+  return value;
 }
 export async function saveSession(session: Session | null): Promise<void> {
-  writePreference(SESSION_KEY, session ? JSON.stringify({ ...session, token: `browser-session:${session.userId}` }) : null);
+  writePreference(SESSION_KEY, session ? JSON.stringify(session) : null);
 }
 export type AppearancePreference = 'system' | 'light' | 'dark';
 export async function savedAppearance(): Promise<AppearancePreference> { const value = readPreference(APPEARANCE_KEY); return value === 'light' || value === 'dark' ? value : 'system'; }
