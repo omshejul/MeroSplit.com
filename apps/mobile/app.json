@@ -10,7 +10,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.omshejul.splitdumb",
-      "buildNumber": "7",
+      "buildNumber": "8",
       "infoPlist": {
         "LSApplicationQueriesSchemes": [
           "upi",
@@ -28,7 +28,7 @@
     },
     "android": {
       "package": "com.omshejul.splitdumb",
-      "versionCode": 7,
+      "versionCode": 8,
       "adaptiveIcon": {
         "backgroundColor": "#FFFFFF",
         "foregroundImage": "./assets/android-icon-foreground.png"
