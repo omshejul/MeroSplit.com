@@ -79,7 +79,8 @@ def email_invite(email="recipient@example.invalid", name="Invited name", recipie
 
 def test_request_click_cross_browser_creates_same_allauth_identity_and_no_raw_db_proof(mailbox):
     response = post(Client(), "request", {"email": " RECIPIENT@example.invalid ", "email_reminders_disclosed": True})
-    assert response.status_code == 200 and response.json()["data"] == {"retry_after": 60, "accepted": True}
+    assert response.status_code == 200
+    assert response.json()["data"] == {"challenge_id": str(EmailCodeChallenge.objects.get().challenge_id), "expires_in": 180, "retry_after": 60, "accepted": True}
     row = EmailLoginGrant.objects.get()
     token = proof(row)
     assert token in mailbox[0][1]["text"] and len(token) == 43
@@ -102,6 +103,24 @@ def test_request_click_cross_browser_creates_same_allauth_identity_and_no_raw_db
     assert resumed.status_code == 200 and resumed.json()["data"]["user"]["id"] == identity.pk
     assert get_user_model().objects.count() == 1
     assert post(Client(), "resume", {"grant_id": str(row.id)}).status_code == 401
+
+
+def test_link_request_allows_immediate_existing_code_fallback_without_resending(mailbox):
+    response = post(Client(), "request", {"email": "recipient@example.invalid"})
+    assert response.status_code == 200
+    data = response.json()["data"]
+    row = EmailLoginGrant.objects.get()
+    code = email_links.fallback_code(row.id)
+    assert data["challenge_id"] == str(EmailCodeChallenge.objects.get().challenge_id)
+    assert data["expires_in"] == 180 and len(mailbox) == 1
+    assert "proof" not in data and "code" not in data
+    confirmed = Client().post("/_allauth/app/v1/auth/code/confirm", data=json.dumps({
+        "challenge_id": data["challenge_id"], "code": code,
+    }), content_type="application/json", REMOTE_ADDR="192.0.2.12")
+    assert confirmed.status_code == 200 and len(mailbox) == 1
+    row.refresh_from_db()
+    assert row.consumed_at is not None
+    assert get_user_model().objects.count() == 1
 
 
 @pytest.mark.parametrize("disclosed", [False, True])

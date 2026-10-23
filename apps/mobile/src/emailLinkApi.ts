@@ -1,6 +1,7 @@
 import { sessionRequest } from './transport.web.ts';
 import { makeBrowserSession } from './browserAuth.ts';
 import { emailTarget } from './emailLink.ts';
+import { challengeFromResponse, type EmailCodeChallenge } from './emailCode.ts';
 import type { EmailLinkResult } from './emailLink.ts';
 import type { Session } from './types.ts';
 
@@ -11,7 +12,7 @@ export class EmailLinkError extends Error {
     this.status = status;
   }
 }
-type Result = { data?: { user?: { id: string | number; email: string }; target?: unknown; needs_name?: boolean; retry_after?: number; accepted?: boolean }; meta?: { is_authenticated?: boolean } };
+type Result = { data?: { user?: { id: string | number; email: string }; target?: unknown; needs_name?: boolean; retry_after?: number; accepted?: boolean; challenge_id?: string; expires_in?: number }; meta?: { is_authenticated?: boolean } };
 async function post(baseUrl: string, action: 'request' | 'exchange' | 'resume' | 'renew', body: unknown): Promise<Result> {
   if (typeof window === 'undefined' || new URL(baseUrl).origin !== window.location.origin) throw new EmailLinkError(400);
   const base = window.location.origin;
@@ -28,10 +29,10 @@ function authenticated(baseUrl: string, result: Result): EmailLinkResult {
   if (!result.data?.user || result.meta?.is_authenticated === false || typeof result.data.needs_name !== 'boolean') throw new EmailLinkError(503);
   return { session: makeBrowserSession(baseUrl, result.data.user), target: emailTarget(result.data.target), needsName: result.data.needs_name };
 }
-export async function requestEmailLink(baseUrl: string, email: string): Promise<number> {
+export async function requestEmailLink(baseUrl: string, email: string): Promise<EmailCodeChallenge> {
   const result = await post(baseUrl, 'request', { email: email.trim(), email_reminders_disclosed: true });
   if (result.data?.accepted !== true) throw new Error('Could not send a sign-in link. Use a code instead.');
-  return result.data.retry_after ?? 60;
+  return challengeFromResponse(result);
 }
 export async function exchangeEmailLink(baseUrl: string, grantId: string, proof: string): Promise<EmailLinkResult> {
   return authenticated(baseUrl, await post(baseUrl, 'exchange', { grant_id: grantId, proof }));

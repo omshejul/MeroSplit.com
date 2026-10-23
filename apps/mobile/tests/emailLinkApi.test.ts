@@ -10,14 +10,15 @@ test('proof exchanges use only same-origin POST bodies with current CSRF while a
   const calls: { url: string; init: RequestInit }[] = [];
   globalThis.fetch = async (url, init = {}) => {
     calls.push({ url: String(url), init });
-    return Response.json(String(url).endsWith('/renew') || String(url).endsWith('/request') ? { data: { accepted: true, retry_after: 60 } } : { meta: { is_authenticated: true }, data: { user: { id: 2, email: 'two@example.invalid' }, target: { kind: 'group', group_id: id }, needs_name: false } });
+    return Response.json(String(url).endsWith('/renew') || String(url).endsWith('/request') ? { data: { accepted: true, retry_after: 60, challenge_id: id, expires_in: 180 } } : { meta: { is_authenticated: true }, data: { user: { id: 2, email: 'two@example.invalid' }, target: { kind: 'group', group_id: id }, needs_name: false } });
   };
   try {
     await pauseBrowserRequests();
     const result = await exchangeEmailLink(base, id, proof);
     assert.equal(result.session.userId, '2'); assert.equal(result.needsName, false);
     assert.deepEqual(result.target, { kind: 'group', group_id: id });
-    await resumeEmailLink(base, id); await renewEmailLink(base, id); await requestEmailLink(base, 'two@example.invalid');
+    await resumeEmailLink(base, id); await renewEmailLink(base, id);
+    assert.deepEqual(await requestEmailLink(base, 'two@example.invalid'), { challengeId: id, expiresIn: 180, retryAfter: 60 });
     for (const { url, init } of calls) {
       assert.ok(!url.includes(proof)); assert.equal(init.method, 'POST'); assert.equal(init.credentials, 'same-origin'); assert.equal(init.referrerPolicy, 'same-origin'); assert.equal(init.cache, 'no-store'); assert.equal(init.redirect, 'error');
       const headers = new Headers(init.headers); assert.equal(headers.get('X-CSRFToken'), 'current'); assert.equal(headers.get('X-MeroSplit-Account'), null); assert.equal(headers.get('X-Session-Token'), null);

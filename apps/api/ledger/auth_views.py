@@ -100,7 +100,7 @@ class RequestEmailLinkView(APIView):
             disclosed = data.get("email_reminders_disclosed", False)
             if type(disclosed) is not bool or set(data) - {"email", "email_reminders_disclosed"}:
                 raise ValueError()
-            request_email_code(normalized_email(data.get("email")), client_network(request), email_reminders_disclosed=disclosed)
+            challenge = request_email_code(normalized_email(data.get("email")), client_network(request), email_reminders_disclosed=disclosed)
         except (ValidationError, ValueError):
             return link_error(request)
         except EmailCodeLimited:
@@ -108,7 +108,7 @@ class RequestEmailLinkView(APIView):
         except EmailDeliveryUnavailable:
             return link_error(request, 503)
         from .store_review import entry_for_email
-        return APIResponse(request, data={"retry_after": 60, "accepted": not bool(entry_for_email(normalized_email(data.get("email"))))}, meta={"is_authenticated": False})
+        return APIResponse(request, data={**challenge, "accepted": not bool(entry_for_email(normalized_email(data.get("email"))))}, meta={"is_authenticated": False})
 
 
 class ExchangeEmailLinkView(APIView):

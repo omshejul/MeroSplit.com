@@ -548,8 +548,8 @@ function AppContent() {
     });
   }
   async function sendSignInLink() {
-    const seconds = await requestEmailLink(API_URL, email);
-    setEmailRequested(true); setChallenge(null); setRetryAt(Date.now() + seconds * 1000); setClock(Date.now());
+    const value = await requestEmailLink(API_URL, email);
+    setEmailRequested(true); setChallenge(value); setCode(''); setRetryAt(Date.now() + value.retryAfter * 1000); setClock(Date.now());
   }
   async function sendSignInCode() {
     setEmailRequested(false);
@@ -745,7 +745,7 @@ function AppContent() {
       {screen === 'members' && selected && <MembersScreen key={`${owner}|${groupId}`} group={selected.group} selfId={selfId} busy={busy} onAction={groupAction} onExport={exportGroup} addPersonRequest={addPersonRequest} />}
       {screen === 'home' && tab === 'Activity' && session && <ActivityScreen items={activity?.items ?? []} busy={busy} error={activityError} hasMore={!!activity?.next_cursor} onRefresh={() => { void refreshActivity().catch(() => {}); }} onLoadMore={() => { void refreshActivity(true).catch(() => {}); }} onOpen={target => { void openActivityTarget(target).catch(() => {}); }} />}
       {screen === 'login' && <>
-        {emailRequested ? <EmailLinkSent busy={busy} resendSeconds={Math.max(0, Math.ceil((retryAt - clock) / 1000))} onResend={() => launch(sendSignInLink)} onCode={() => launch(sendSignInCode)} onChangeEmail={() => setEmailRequested(false)} />
+        {emailRequested ? <EmailLinkSent busy={busy} resendSeconds={Math.max(0, Math.ceil((retryAt - clock) / 1000))} onResend={() => launch(sendSignInLink)} onCode={() => setEmailRequested(false)} onChangeEmail={() => { setEmailRequested(false); setChallenge(null); setCode(''); }} />
           : !challenge ? <EmailSignIn email={email} busy={busy} onEmail={setEmail} sendLabel={Platform.OS === 'web' ? 'Email me a sign-in link' : undefined} onSend={() => launch(Platform.OS === 'web' ? sendSignInLink : sendSignInCode)}>
             {Platform.OS === 'web' && <Button title="Use a code instead" kind="text" disabled={busy} onPress={() => launch(sendSignInCode)} />}
           </EmailSignIn>
