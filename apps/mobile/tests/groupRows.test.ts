@@ -53,7 +53,7 @@ test('accepted payment is a compact, wrapping sentence with an unboxed icon and 
   assert.equal(tree.props.accessibilityLabel, `Payment, You paid Noor, ${formatMoney('334')}, Receipt unconfirmed, Date unavailable`);
   const nodes = elements(tree), sentence = nodes.find(node => node.type === 'Text')!;
   assert.ok(text(sentence).startsWith(`You paid Noor ${formatMoney('334')}`));
-  assert.ok(text(sentence).includes('Receipt unconfirmed')); assert.ok(text(sentence).includes('Date unavailable'));
+  assert.ok(!text(sentence).includes('Receipt unconfirmed')); assert.ok(text(sentence).includes('Date unavailable'));
   assert.ok(nodes.some(node => node.type === 'Icon' && node.props.name === 'payment' && node.props.size === 18));
   assert.ok(!nodes.some(node => ['TransactionRow', 'IconBadge', 'AmountText'].includes(String(node.type))));
   assert.ok(nodes.filter(node => node.type === 'Text').every(node => !node.props.numberOfLines && !node.props.ellipsizeMode));
@@ -75,7 +75,7 @@ test('compact payments retain exact confirmation and reversal truth in text and 
     const payment = { id: 'record', sender: 'other', recipient: 'self', amount: '334', method, reversed, date: '2026-10-18' };
     const tree = render({ group, selfId: 'self', busy: false, payment, accepted: { settlements: [], transactions: [{ kind: 'payment', payment }] } });
     assert.ok(text(tree).includes(`Noor paid you ${formatMoney('334')}`));
-    assert.ok(text(tree).includes(status)); assert.ok(tree.props.accessibilityLabel.includes(status));
+    assert.equal(text(tree).includes(status), status !== 'Receipt unconfirmed'); assert.ok(tree.props.accessibilityLabel.includes(status));
     assert.ok(tree.props.accessibilityLabel.includes('18 Oct 2026'));
     assert.ok(!/bank verified|bank confirmed|refunded/i.test(text(tree)));
   }

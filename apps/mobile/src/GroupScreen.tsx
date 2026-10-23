@@ -95,7 +95,7 @@ function PaymentRow({ payment, accepted, group, selfId, busy, onPayment }: Pick<
   return <Pressable accessibilityRole="button" accessibilityLabel={`Payment, ${presentation.title}, ${formatMoney(payment.amount)}, ${status}, ${displayDate(payment.date)}`}
     disabled={busy} style={({ pressed }) => [ui.row, s.paymentRow, pressed && s.pressed]} onPress={() => onPayment(payment)}>
     <Icon name="payment" size={18} color={colors.muted} />
-    <Text style={[ui.rowSub, s.paymentSentence, { color: colors.text }]}>{presentation.title} {formatMoney(payment.amount)}<Text style={ui.rowSub}> · {status} · {displayDate(payment.date)}</Text></Text>
+    <Text style={[ui.rowSub, s.paymentSentence, { color: colors.text }]}>{presentation.title} {formatMoney(payment.amount)}<Text style={ui.rowSub}>{presentation.status !== 'Receipt unconfirmed' && ` · ${status}`} · {displayDate(payment.date)}</Text></Text>
   </Pressable>;
 }
 
