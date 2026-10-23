@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Platform, ScrollView, View } from 'react-native';
+import { Keyboard, Platform, ScrollView, useWindowDimensions, View } from 'react-native';
 import { Dialog, Text } from 'react-native-paper';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import KeyboardDialog from './KeyboardDialog';
 import { Button, SettingsRow, useUI } from './ui';
 
@@ -8,8 +9,9 @@ export default function ExportData({ busy, onAccount, onSaved }: {
   busy: boolean; onAccount: () => Promise<unknown>; onSaved: () => Promise<unknown>;
 }) {
   const { ui } = useUI(), [open, setOpen] = useState(false), [selection, setSelection] = useState<'account' | 'saved' | null>(null);
+  const { height } = useWindowDimensions(), { top, bottom } = useSafeAreaInsets();
   const locked = useRef(false), trigger = useRef<React.ComponentRef<typeof View>>(null);
-  const close = () => { setOpen(false); requestAnimationFrame(() => trigger.current?.focus()); };
+  const close = () => { Keyboard.dismiss(); setOpen(false); requestAnimationFrame(() => trigger.current?.focus()); };
   function choose(value: NonNullable<typeof selection>) { if (busy || locked.current) return; locked.current = true; setOpen(false); setSelection(value); }
   useEffect(() => {
     if (!selection) return;
@@ -27,7 +29,7 @@ export default function ExportData({ busy, onAccount, onSaved }: {
   }, [open, busy]);
   return <>
     <SettingsRow rowRef={trigger} label="Export data" icon="export" disabled={busy || !!selection} onPress={() => { if (!busy && !locked.current) setOpen(true); }} />
-    {!selection && <KeyboardDialog visible={open} onDismiss={() => { if (!busy) close(); }} dismissable={!busy}>
+    {!selection && <KeyboardDialog visible={open} onDismiss={() => { if (!busy) close(); }} dismissable={!busy} maxHeight={Math.max(0, height - top - bottom)}>
       <Dialog.Title>Export data</Dialog.Title>
       <Dialog.Content style={{ flexShrink: 1 }}><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: 12 }}>
         <SettingsRow label="Account data" icon="export" chevron={false} disabled={busy} onPress={() => choose('account')} />

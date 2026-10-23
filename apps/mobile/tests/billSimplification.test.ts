@@ -13,7 +13,7 @@ const tick = async () => { for (let i = 0; i < 15; i++) await Promise.resolve();
 function harness(file: string, name: string, extra: Record<string, any> = {}) {
   let cursor = 0, states: any[] = [], effects: (() => void)[] = [], cleanups: Record<number, () => void> = {};
   const deps: Record<number, any[]> = {};
-  const env: Record<string, any> = { React, Dialog, View: 'View', ScrollView: 'ScrollView', KeyboardDialog: 'KeyboardDialog', Pressable: 'Pressable', Text: 'Text', Button: 'Button', Icon: 'Icon', SettingsRow: 'SettingsRow', BillPeople: 'BillPeople', AmountField: 'AmountField', TextField: 'TextField', DateField: 'DateField', ErrorText: 'ErrorText', Checkbox: { Item: 'Checkbox' }, RadioChoice: 'RadioChoice', Crypto: { randomUUID: () => 'bill-id' }, StyleSheet: { create: (value: any) => value }, Keyboard: { dismiss() {} }, Platform: { OS: 'native' }, requestAnimationFrame: (fn: () => void) => fn(), useUI: () => ({ ui: {} }), formatMoney, integer, rupeesToPaise, validateExpense, ...extra,
+  const env: Record<string, any> = { React, Dialog, View: 'View', ScrollView: 'ScrollView', KeyboardDialog: 'KeyboardDialog', Pressable: 'Pressable', Text: 'Text', Button: 'Button', Icon: 'Icon', SettingsRow: 'SettingsRow', BillPeople: 'BillPeople', AmountField: 'AmountField', TextField: 'TextField', DateField: 'DateField', ErrorText: 'ErrorText', Checkbox: { Item: 'Checkbox' }, RadioChoice: 'RadioChoice', Crypto: { randomUUID: () => 'bill-id' }, StyleSheet: { create: (value: any) => value }, Keyboard: { dismiss() {} }, useWindowDimensions: () => ({ height: 667 }), useSafeAreaInsets: () => ({ top: 20, bottom: 0 }), Platform: { OS: 'native' }, requestAnimationFrame: (fn: () => void) => fn(), useUI: () => ({ ui: {} }), formatMoney, integer, rupeesToPaise, validateExpense, ...extra,
     useState: (initial: any) => { const id = cursor++; if (!(id in states)) states[id] = typeof initial === 'function' ? initial() : initial; return [states[id], (value: any) => { states[id] = typeof value === 'function' ? value(states[id]) : value; }]; },
     useRef: (initial: any) => { const id = cursor++; return states[id] ??= { current: initial }; },
     useEffect: (fn: () => any, values: any[]) => { const id = cursor++; if (!deps[id] || values.some((value, i) => value !== deps[id][i])) { effects.push(() => { cleanups[id]?.(); cleanups[id] = fn(); }); deps[id] = values; } },
@@ -129,6 +129,30 @@ test('people dialog opens/closes/reopens without changing its existing inputs an
     find(tree, 'title', 'Done').props.onPress(); tree = app.render(props); app.commit();
     assert.equal(nodes(tree).find(node => node.type === 'KeyboardDialog')!.props.visible, false);
   }
+});
+
+test('export and people callers cap to changing window/safe-area height while first Done dismisses the keyboard', () => {
+  const viewport = { height: 667 }, safe = { top: 20, bottom: 0 }; let dismisses = 0, exports = 0;
+  const env = { useWindowDimensions: () => viewport, useSafeAreaInsets: () => safe, Keyboard: { dismiss: () => dismisses++ } };
+  const choices = harness('src/ExportData.tsx', 'ExportData', env), people = harness('src/BillPeople.tsx', 'BillPeople', env);
+  const exportProps = { busy: false, onAccount: async () => exports++, onSaved: async () => exports++ };
+  const child = React.createElement('Input', { value: '700.00', label: 'Long name preserved' });
+  const peopleProps = { title: 'Who paid?', summary: '2 people', inline: false, disabled: false, children: child };
+  for (const [height, top, bottom] of [[667, 20, 0], [844, 47, 34], [375, 0, 21]]) {
+    Object.assign(viewport, { height }); Object.assign(safe, { top, bottom });
+    for (const [app, props] of [[choices, exportProps], [people, peopleProps]] as const) {
+      const dialog = nodes(app.render(props)).find(node => node.type === 'KeyboardDialog')!;
+      assert.equal(dialog.props.maxHeight, height - top - bottom);
+    }
+  }
+  let tree = people.render(peopleProps); people.commit(); nodes(tree).find(node => node.type === 'Pressable')!.props.onPress();
+  tree = people.render(peopleProps); people.commit(); find(tree, 'title', 'Done').props.onPress();
+  assert.equal(dismisses, 1); assert.equal(nodes(people.render(peopleProps)).find(node => node.type === 'KeyboardDialog')!.props.visible, false);
+  assert.equal(nodes(people.render(peopleProps)).find(node => node.type === 'Input'), child);
+  tree = choices.render(exportProps); choices.commit(); find(tree, 'label', 'Export data').props.onPress();
+  tree = choices.render(exportProps); choices.commit(); find(tree, 'title', 'Done').props.onPress();
+  assert.equal(dismisses, 2); assert.equal(nodes(choices.render(exportProps)).find(node => node.type === 'KeyboardDialog')!.props.visible, false);
+  assert.equal(exports, 0);
 });
 
 

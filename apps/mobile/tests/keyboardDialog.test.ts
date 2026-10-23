@@ -12,7 +12,11 @@ function production(file: string, name: string) {
   const declaration = source.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === name);
   assert.ok(declaration, name);
   const code = declaration.getText(source).replace(/^export (default )?/, '');
-  return new Function('env', `with(env) { ${ts.transpile(code, { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React })}; return ${name}; }`)(env);
+  let cursor = 0; const states: any[] = [];
+  const scope = { ...env, useSafeAreaInsets: () => ({ top: 20, bottom: 0 }),
+    useState: (initial: any) => { const i = cursor++; if (!(i in states)) states[i] = initial; return [states[i], (value: any) => { states[i] = value; }]; } };
+  const render = new Function('env', `with(env) { ${ts.transpile(code, { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React })}; return ${name}; }`)(scope);
+  return (props: any) => { cursor = 0; return render(props); };
 }
 env.DialogScrollBody = production('DialogParts.tsx', 'DialogScrollBody');
 env.CancelDialogActions = production('DialogParts.tsx', 'CancelDialogActions');
@@ -42,6 +46,24 @@ test('hidden dialogs retain the height-measuring ancestor and keep scrolling con
     assert.equal(elements(dialog).find(node => node.type === Dialog.ScrollArea), body);
     assert.equal(elements(dialog).find(node => node.type === Dialog.Actions), footer);
   }
+});
+
+test('opted-in dialog cards track the measured keyboard viewport, safe area, rotation and a smaller caller cap', () => {
+  const render = production('KeyboardDialog.tsx', 'KeyboardDialog');
+  const body = React.createElement(Dialog.ScrollArea, {}, 'Inputs retain their values');
+  const footer = React.createElement(Dialog.Actions, {}, 'Done');
+  const props = { visible: false, onDismiss() {}, maxHeight: 647, children: [body, footer] };
+  let tree = render(props);
+  assert.equal(one(tree, Dialog).props.style.maxHeight, 647, 'the first hidden layout has a window/safe-area cap');
+  for (const [height, callerCap, expected] of [[667, 647, 647], [433, 647, 413], [375, 355, 355], [300, 647, 280], [667, 400, 400], [667, 647, 647], [10, 647, 0]]) {
+    one(tree, 'KeyboardAvoidingView').props.onLayout({ nativeEvent: { layout: { height } } });
+    tree = render({ ...props, visible: true, maxHeight: callerCap });
+    assert.equal(one(tree, Dialog).props.style.maxHeight, expected);
+    assert.equal(elements(one(tree, Dialog)).find(node => node.type === Dialog.Actions), footer);
+    assert.equal(elements(body).includes(footer), false);
+  }
+  tree = render({ ...props, maxHeight: undefined });
+  assert.equal(one(tree, Dialog).props.style.maxHeight, undefined, 'non-opted-in callers retain their original layout');
 });
 
 test('Add person preserves drafts and action guards across hidden/open renders without conditionally mounting the keyboard boundary', () => {

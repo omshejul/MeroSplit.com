@@ -141,8 +141,9 @@ test('the changing safe viewport bounds Paper iOS content, not just its outer sh
   const createElement = (type: unknown, props: object, ...children: unknown[]): Element => ({ type, props, children });
   const shared = ts.createSourceFile('KeyboardDialog.tsx', readFileSync(new URL('../src/KeyboardDialog.tsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   const declaration = shared.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === 'KeyboardDialog')!;
+  let measuredHeight: number | undefined;
   const renderDialog = new Function('env', `with(env) { ${ts.transpile(declaration.getText(shared).replace('export default ', ''), { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React })}; return KeyboardDialog; }`)(
-    { React: { createElement }, Dialog: 'PaperDialog', Portal: 'Portal', KeyboardAvoidingView: 'KeyboardBoundary' });
+    { React: { createElement }, Dialog: 'PaperDialog', Portal: 'Portal', KeyboardAvoidingView: 'KeyboardBoundary', useSafeAreaInsets: () => ({ top: 20, bottom: 34 }), useState: () => [measuredHeight, (value: number) => { measuredHeight = value; }] });
   // Execute the INSTALLED iOS Surface style partition. Its container has two
   // layers: flexShrink goes outside; maxHeight constrains the content inside.
   // This checks the actual forwarding boundary, not native text/Yoga layout.
@@ -174,4 +175,10 @@ test('the changing safe viewport bounds Paper iOS content, not just its outer sh
     assert.equal(content.height, undefined, 'normal content keeps its intrinsic height instead of filling the viewport');
     previous = content.maxHeight;
   }
+  const props = one(app.render(), 'KeyboardDialog').props;
+  const boundary = one(renderDialog({ ...props, children: [] }), 'KeyboardBoundary');
+  boundary.props.onLayout({ nativeEvent: { layout: { height: 433 } } });
+  assert.equal(contentStyle(props).maxHeight, 379, 'keyboard-resized height reaches the actual inner iOS Surface content layer');
+  boundary.props.onLayout({ nativeEvent: { layout: { height: 844 } } });
+  assert.equal(contentStyle(props).maxHeight, 790, 'MCP restores its original safe-window cap after keyboard dismissal');
 });
