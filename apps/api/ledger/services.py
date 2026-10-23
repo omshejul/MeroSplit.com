@@ -324,6 +324,9 @@ def save_expense(actor, group_id, payload, expense_id=None):
         from .bill_email_models import BillEmailNotice
         involved = [key for key in set(paid) | set(shares) if int(paid.get(key, "0")) > 0 or int(shares.get(key, "0")) > 0]
         cancel_bill_emails(BillEmailNotice.objects.filter(expense=expense).exclude(participant_id__in=involved), "involvement_removed")
+        from .chat_notifications import cancel_chat_notices
+        from .models import BillChatNotice
+        cancel_chat_notices(BillChatNotice.objects.filter(message__expense=expense).exclude(participant_id__in=involved), 'involvement_removed')
     keep_removed_balances_zero(group)
     result = record_change(
         group, actor, payload["command_id"], fingerprint, "expense_saved", expense_dict(expense)
@@ -357,6 +360,9 @@ def reverse_expense(actor, group_id, expense_id, payload):
     cancel_bill_emails(BillEmailNotice.objects.filter(expense=expense), "bill_reversed")
     from .expense_notifications import cancel_notices
     cancel_notices(ExpenseNotice.objects.filter(expense=expense), "bill_reversed")
+    from .chat_notifications import cancel_chat_notices
+    from .models import BillChatNotice
+    cancel_chat_notices(BillChatNotice.objects.filter(message__expense=expense), 'bill_reversed')
     keep_removed_balances_zero(group)
     return record_change(
         group,

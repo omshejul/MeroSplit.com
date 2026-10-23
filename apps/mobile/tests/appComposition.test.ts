@@ -17,7 +17,11 @@ function elements(value: unknown): Element[] {
 const source = ts.createSourceFile('App.tsx', readFileSync(new URL('../App.tsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
 const app = source.statements.find((node): node is ts.FunctionDeclaration => ts.isFunctionDeclaration(node) && node.name?.text === 'AppContent')!;
 const main = app.body!.statements.filter(ts.isReturnStatement).map(node => node.expression).find((node): node is ts.JsxElement => !!node && ts.isJsxElement(node) && node.openingElement.tagName.getText(source) === 'AppFrame')!;
-const scroll = main.children.find((node): node is ts.JsxElement => ts.isJsxElement(node) && node.openingElement.tagName.getText(source) === 'ScrollView')!;
+function pageScroll(node: ts.Node): ts.JsxElement | undefined {
+  if (ts.isJsxElement(node) && node.openingElement.tagName.getText(source) === 'ScrollView') return node;
+  return ts.forEachChild(node, pageScroll);
+}
+const scroll = pageScroll(main)!;
 const me = scroll.children.find((node): node is ts.JsxExpression => ts.isJsxExpression(node) && !!node.expression && node.expression.getText(source).startsWith("screen === 'home' && tab === 'Account' && session &&"))!;
 assert.ok(me?.expression, 'exercise the actual Me host inside the rendered app');
 const code = ts.transpile(`return (${me.expression.getText(source)});`, { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React });

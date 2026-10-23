@@ -80,13 +80,13 @@ def check_status(item):
     raise PushFailure("provider_rejected", permanent=True)
 
 
-def send_bill_notification(device, data):
+def send_bill_notification(device, data, *, body="A new bill was added."):
     result = expo_request(
         "send",
         {
             "to": device.token,
             "title": "MeroSplit",
-            "body": "A new bill was added.",
+            "body": body,
             "data": data,
             "sound": "default",
             "channelId": "shared-bills",

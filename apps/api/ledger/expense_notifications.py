@@ -46,10 +46,20 @@ def _locked_preference(actor):
 def update_preferences(actor, expense_updates, email_reminders):
     row = _locked_preference(actor)
     now = timezone.now()
+    if expense_updates and not row.expense_updates:
+        row.updates_enabled_at = now
     if email_reminders and (not row.email_reminders or not row.expense_updates and expense_updates):
         row.email_enabled_at = now
     row.expense_updates, row.email_reminders = expense_updates, email_reminders
-    row.save(update_fields=["expense_updates", "email_reminders", "email_enabled_at"])
+    row.save(update_fields=["expense_updates", "email_reminders", "email_enabled_at", "updates_enabled_at"])
+    from .models import BillChatDelivery, BillChatNotice
+    chat = BillChatNotice.objects.filter(recipient=actor)
+    if not expense_updates:
+        chat.update(push_eligible=False)
+        BillChatDelivery.objects.filter(recipient=actor, channel='push', state__in=['pending', 'sending']).update(state='cancelled', lease_id=None, lease_until=None)
+    if not expense_updates or not email_reminders:
+        chat.update(email_eligible=False)
+        BillChatDelivery.objects.filter(recipient=actor, channel='email', state__in=['pending', 'sending', 'held']).update(state='cancelled', lease_id=None, lease_until=None)
     notices = ExpenseNotice.objects.filter(recipient=actor)
     if not expense_updates:
         notices.filter(push_processed_at__isnull=True).update(push_processed_at=now)

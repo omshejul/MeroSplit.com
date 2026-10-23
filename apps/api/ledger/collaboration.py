@@ -310,6 +310,9 @@ def archive_group(actor, group_id, payload):
         from .bill_email_models import BillEmailNotice
         cancel_bill_emails(BillEmailNotice.objects.filter(expense__group=group), "group_archived")
         cancel_notices(ExpenseNotice.objects.filter(expense__group=group), "group_archived")
+        from .chat_notifications import cancel_chat_notices
+        from .models import BillChatNotice
+        cancel_chat_notices(BillChatNotice.objects.filter(message__expense__group=group), 'group_archived')
     return record_change(
         group,
         actor,
@@ -385,6 +388,9 @@ def remove_participant(actor, group_id, participant_id, payload):
     from .bill_email import cancel_bill_emails
     from .bill_email_models import BillEmailNotice
     cancel_bill_emails(BillEmailNotice.objects.filter(participant=person), "member_removed")
+    from .chat_notifications import cancel_chat_notices
+    from .models import BillChatNotice
+    cancel_chat_notices(BillChatNotice.objects.filter(participant=person), 'member_removed')
     person.removed = True
     person.save(update_fields=["removed"])
     Invite.objects.filter(participant=person).update(revoked=True)

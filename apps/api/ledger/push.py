@@ -22,6 +22,8 @@ from .store_review import groups_for_actor, review_ids
 def register_device(request, installation_id, payload):
     if not settings.PUSH_PROVIDER or payload["provider"] != settings.PUSH_PROVIDER:
         raise HttpError(503, "Push notifications are not configured for this provider")
+    payload = dict(payload)
+    bill_chat = payload.pop("bill_chat", False)
     token = request.headers.get("X-Session-Token")
     session = app_settings.TOKEN_STRATEGY.lookup_session(token) if token else request.session
     user = get_session_user(session) if session else None
@@ -57,15 +59,16 @@ def register_device(request, installation_id, payload):
             **payload,
         }
         if device:
+            device.bill_chat = bill_chat
             if any(getattr(device, key) != value for key, value in binding.items()):
                 device.revision += 1
                 for key, value in binding.items():
                     setattr(device, key, value)
                 device.save()
             else:
-                device.save(update_fields=["updated_at"])
+                device.save(update_fields=["updated_at", "bill_chat"])
         else:
-            device = PushDevice.objects.create(id=installation_id, **binding)
+            device = PushDevice.objects.create(id=installation_id, bill_chat=bill_chat, **binding)
     return {"id": str(device.id), "enabled": True}
 
 

@@ -41,6 +41,7 @@ urlpatterns = [
       for action, view in [("request", RequestEmailLinkView), ("exchange", ExchangeEmailLinkView),
                            ("resume", ResumeEmailLinkView), ("renew", RenewEmailLinkView)]],
     path("privacy", TemplateView.as_view(template_name="ledger/public.html", extra_context={"page": "privacy"})),
+    path("chat-policy", TemplateView.as_view(template_name="ledger/public.html", extra_context={"page": "chat"})),
     path("support", TemplateView.as_view(template_name="ledger/public.html", extra_context={"page": "support"})),
     path("delete-account", TemplateView.as_view(template_name="ledger/public.html", extra_context={"page": "delete"})),
     path("invite/<str:token>", invite_app),

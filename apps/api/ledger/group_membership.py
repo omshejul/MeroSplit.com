@@ -89,6 +89,9 @@ def leave_group(actor, group_id, payload):
         state="skipped", last_error="member_left", lease_id=None, lease_until=None,
     )
     cancel_bill_emails(BillEmailNotice.objects.filter(participant=person), "member_left")
+    from .chat_notifications import cancel_chat_notices
+    from .models import BillChatNotice
+    cancel_chat_notices(BillChatNotice.objects.filter(participant=person), 'member_left')
     result = record_change(group, actor, payload["command_id"], fingerprint, "participant_removed",
                            {"id": str(person.id), "removed": True, "owner_id": group.owner_id})
     result["disposition"] = "left"

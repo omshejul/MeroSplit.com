@@ -50,7 +50,7 @@ test('Consent is persisted before registration, and only confirmed current-token
   const consent = await consentToPush(session, initial, save);
   assert.equal(writes[0].opted_in, true); assert.equal(writes[0].binding, null);
   const send: typeof request = async <T>(active: Session, path: string, method?: string, body?: unknown): Promise<T> => {
-    calls.push(`${method} ${path}`); assert.equal(active, session); assert.deepEqual(body, device); assert.equal(writes.length, 1);
+    calls.push(`${method} ${path}`); assert.equal(active, session); assert.deepEqual(body, { ...device, bill_chat: true }); assert.equal(writes.length, 1);
     return { id: installation, enabled: true } as T;
   };
   const result = await refreshPushDevice(session, consent, 'granted', async () => device, save, send);
@@ -58,7 +58,7 @@ test('Consent is persisted before registration, and only confirmed current-token
   assert.deepEqual(calls, [`PUT /me/push-devices/${installation}`]);
   const newer = { ...device, token: 'ExpoPushToken[rotated]' };
   await refreshPushDevice(session, result, 'granted', async () => newer, save, async <T>(_active: Session, _path: string, _method?: string, body?: unknown): Promise<T> => {
-    assert.deepEqual(body, newer); return { id: installation, enabled: true } as T;
+    assert.deepEqual(body, { ...newer, bill_chat: true }); return { id: installation, enabled: true } as T;
   });
   assert.deepEqual(writes.at(-1)?.binding, newer);
 });
