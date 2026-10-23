@@ -448,7 +448,7 @@ function AppContent() {
           <Button title="Send sign-in code" kind="primary" disabled={busy || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())} onPress={() => launch(async () => { const value = await requestEmailCode(API_URL, email); setChallenge(value); setRetryAt(Date.now() + value.retryAfter * 1000); setCode(''); setClock(Date.now()); })} />
           <Text style={ui.caption}>New here? Your account is created when you verify your email.</Text>
         </> : <>
-          <Text style={ui.body}>Enter the four-digit code sent to {email.trim()}.</Text>
+          <Text style={ui.body}>Enter your four-digit sign-in code for {email.trim()}.</Text>
           <Input label="4-digit code" value={code} onChange={setCode} code />
           <Button title="Continue" kind="primary" disabled={busy || !/^[0-9]{4}$/.test(code)} onPress={() => launch(async () => {
             await draftWrites.current;
