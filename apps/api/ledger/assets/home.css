@@ -1,3 +1,27 @@
+/* Heroicons v2.1.5 outline SVGs in the public templates.
+MIT License
+
+Copyright (c) Tailwind Labs, Inc.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+*/
+
 /* MeroSplit home. Light by default, dark from the OS. html[data-theme] pins either one for local fixtures. */
 :root {
   color-scheme: light;
@@ -32,10 +56,18 @@ p { margin: 0; max-width: 62ch; }
 
 .wrap { width: min(72rem, 100% - 2.5rem); margin-inline: auto; }
 
-.top { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding-block: 1.25rem; }
-.brand { display: flex; align-items: center; gap: .6rem; color: var(--ink); text-decoration: none; font-weight: 600; font-size: 1.15rem; }
+/* Heroicons (MIT): 24px outline paths, sized with the text. */
+.i { width: 1.15em; height: 1.15em; flex-shrink: 0; }
+
+/* Shared by home and the help pages: brand, help links, Open MeroSplit. */
+.top { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem 1.5rem; padding-block: 1.25rem; border-bottom: 1px solid var(--rule); }
+.brand { min-height: 2.75rem; display: flex; align-items: center; gap: .6rem; margin-right: auto; color: var(--ink); text-decoration: none; font-weight: 600; font-size: 1.15rem; }
 .brand img { width: 2.25rem; height: 2.25rem; border-radius: 22%; }
-.open { display: inline-block; padding: .7rem 1.2rem; border-radius: 12px; background: var(--blue); color: var(--on-blue); font-weight: 600; text-decoration: none; }
+.top ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: .25rem 1.25rem; }
+.top nav a { display: inline-flex; align-items: center; gap: .4rem; min-height: 2.75rem; color: var(--quiet); text-decoration: none; }
+.top nav a:hover, .top nav a[aria-current="page"] { color: var(--ink); text-decoration: underline; text-decoration-thickness: 2px; }
+.top .open { padding: .5rem .9rem; }
+.open { min-height: 2.75rem; display: inline-flex; align-items: center; gap: .45rem; padding: .7rem 1.2rem; border-radius: 12px; background: var(--blue); color: var(--on-blue); font-weight: 600; text-decoration: none; }
 .open:hover { text-decoration: underline; }
 .open:focus-visible { outline-color: var(--ink); }
 
@@ -70,11 +102,9 @@ p { margin: 0; max-width: 62ch; }
 
 .flow { list-style: decimal; margin: 2rem 0 0; padding-left: 1.5rem; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2rem; }
 .flow li::marker { color: var(--quiet); font-weight: 600; }
-.flow h3, .features h3 { font-size: 1.1rem; margin-bottom: .4rem; }
-.flow p, .features p { color: var(--quiet); }
-
-.features { margin: 2rem 0 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 3rem; }
-.features li { padding-block: 1.1rem; border-top: 1px solid var(--rule); }
+.flow h3 { font-size: 1.1rem; margin-bottom: .4rem; }
+.flow p { color: var(--quiet); }
+.flow + p { margin-top: 2rem; }
 
 .note { margin-top: 2rem; padding: 1.25rem 1.5rem; border-left: 4px solid var(--blue); background: var(--paper); border-radius: 0 12px 12px 0; }
 .note p + p { margin-top: .6rem; }
@@ -84,6 +114,20 @@ p { margin: 0; max-width: 62ch; }
 .faq summary { cursor: pointer; padding-block: 1rem; font-weight: 500; font-size: 1.05rem; }
 .faq details p { padding-bottom: 1.1rem; color: var(--quiet); }
 
+/* Help pages: one calm reading column. */
+.doc { width: min(42rem, 100% - 2.5rem); margin-inline: auto; padding-block: clamp(2.5rem, 6vw, 4rem) clamp(3rem, 7vw, 5rem); }
+.doc .mark { display: inline-flex; color: var(--blue); margin-bottom: 1rem; }
+.doc .mark .i { width: 2rem; height: 2rem; }
+.doc h1 { font-size: clamp(2rem, 4.5vw, 2.6rem); letter-spacing: -.015em; }
+.doc h1 + p { margin-top: 1rem; font-size: 1.1rem; color: var(--quiet); }
+.doc h2 { font-size: 1.25rem; margin-top: 2.5rem; padding-top: 1.5rem; border-top: 1px solid var(--rule); }
+.doc h2 + p, .doc h2 + ol { margin-top: .75rem; }
+.doc p + p { margin-top: .9rem; }
+.doc p, .doc li { max-width: 68ch; }
+.doc ol { padding-left: 1.4rem; } .doc li + li { margin-top: .5rem; }
+.doc .contact { margin-top: 1.5rem; }
+.doc .contact + p { margin-top: 1.25rem; }
+
 .foot { border-top: 1px solid var(--rule); padding-block: 2rem 3rem; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 1rem 2rem; color: var(--quiet); font-size: .95rem; }
 .foot nav ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: .5rem 1.5rem; }
 
@@ -91,7 +135,9 @@ p { margin: 0; max-width: 62ch; }
   .hero { grid-template-columns: minmax(0, 1fr); }
   .slip { max-width: 30rem; }
   .flow { grid-template-columns: minmax(0, 1fr); gap: 1.5rem; }
-  .features { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 40rem) {
+  .top nav { order: 3; width: 100%; }
 }
 @media (max-width: 30rem) {
   .slip { padding-inline: 1rem; }
@@ -100,3 +146,5 @@ p { margin: 0; max-width: 62ch; }
   .slip { -webkit-mask: none; mask: none; border: 1px solid CanvasText; }
   .open { border: 1px solid ButtonText; }
 }
+
+.foot nav a { display: inline-flex; align-items: center; min-height: 2.75rem; }

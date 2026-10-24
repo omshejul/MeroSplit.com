@@ -27,10 +27,9 @@
   <script type="application/ld+json">{"@context": "https://schema.org", "@type": "WebSite", "name": "MeroSplit", "url": "https://merosplit.com/"}</script>
 </head>
 <body>
+  <!-- Icons: Heroicons v2.1.5, 24 outline (https://heroicons.com). MIT License, Copyright (c) Tailwind Labs, Inc. -->
   <a class="skip" href="#main">Skip to content</a>
-  <header class="wrap top">
-    <a class="brand" href="/"><img src="/assets/merosplit-icon.png" alt="" width="36" height="36">MeroSplit</a>
-  </header>
+  {% include "ledger/components/public_header.html" %}
 
   <main id="main">
     <section class="wrap hero" aria-labelledby="title">
@@ -38,7 +37,7 @@
         <h1 id="title">Who paid, who owes, and how to settle up.</h1>
         <p class="lede">MeroSplit keeps the bills you share with friends, flatmates and travel groups, and works out each person's balance.</p>
         <div class="actions">
-          <a class="open" href="/app/">Open MeroSplit</a>
+          <a class="open" href="/app/">Open MeroSplit<svg class="i" aria-hidden="true" focusable="false" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 19.5 15-15m0 0H8.25m11.25 0v11.25"/></svg></a>
           <a href="#how">How it works</a>
         </div>
       </div>
@@ -74,17 +73,7 @@
         <li><h3>See balances</h3><p>Each group shows who is owed and who owes. Simplify suggests payments that bring everyone's balance to zero.</p></li>
         <li><h3>Record payments</h3><p>When someone pays back outside the app, record it and the balances update. A mistaken record can be reversed.</p></li>
       </ol>
-    </section>
-
-    <section class="wrap band" aria-labelledby="keeps-title">
-      <h2 id="keeps-title">What MeroSplit keeps track of</h2>
-      <ul class="features">
-        <li><h3>Groups and one-to-one tabs</h3><p>Keep a group for a trip or a shared flat, or a running tab with one person.</p></li>
-        <li><h3>Receipts with the bill</h3><p>Attach a photo or PDF to a bill and preview it later. Files are stored privately.</p></li>
-        <li><h3>Changes made offline</h3><p>On your phone or a supported regular browser, changes are saved offline and sync when you reconnect.</p></li>
-        <li><h3>Your Splitwise history</h3><p>Import a Splitwise CSV export and check the preview before adding it to your groups.</p></li>
-        <li><h3>Your own copy</h3><p>Export your account data whenever you need it.</p></li>
-      </ul>
+      <p>Keep a group for a trip or a shared flat, or a running tab with one person. Attach a photo or PDF to a bill; files are stored privately. On your phone or a supported regular browser, changes made offline sync when you reconnect. You can import a Splitwise CSV export after checking its preview, and export your account data whenever you need it.</p>
     </section>
 
     <section class="wrap band" aria-labelledby="upi-title">
@@ -107,16 +96,6 @@
     </section>
   </main>
 
-  <footer class="wrap foot">
-    <p>MeroSplit is made by Om Shejul. Write to <a href="mailto:mail@merosplit.com">mail@merosplit.com</a>.</p>
-    <nav aria-label="Legal and support">
-      <ul>
-        <li><a href="/support">Support</a></li>
-        <li><a href="/privacy">Privacy</a></li>
-        <li><a href="/chat-policy">Chat policy</a></li>
-        <li><a href="/delete-account">Delete account</a></li>
-      </ul>
-    </nav>
-  </footer>
+  {% include "ledger/components/public_footer.html" %}
 </body>
 </html>
