@@ -4,6 +4,12 @@ export function selfParticipant(group: Group, userId: string) {
   return group.participants.find(person => !person.removed && person.user_id != null && String(person.user_id) === userId);
 }
 
+/** Direct ledgers display the other person, whichever member is signed in. */
+export function groupDisplayName(group: Group, userId?: string): string {
+  const self = userId ? selfParticipant(group, userId) : undefined;
+  return group.is_direct && self ? group.participants.find(person => person.id !== self.id)?.name ?? group.name : group.name;
+}
+
 /** Filter the complete canonical plan; never recalculate from a subset of people or bills. */
 export function personalTransfers(group: Group, selfId: string) {
   if (!group.participants.some(person => person.id === selfId && !person.removed)) return [];
@@ -18,17 +24,13 @@ export function personalSettlements(group: Group, selfId: string) {
   return group.settlements.filter(payment => payment.sender === selfId || payment.recipient === selfId);
 }
 
-/** Keep new contacts reachable, and never hide an obligation or a saved change. */
+/** A settled balance never removes a contact. Only an explicit removal hides it. */
 export function visiblePeopleSummary(group: Group, userId: string, hasPending = false): boolean {
   if (!group.is_direct) return false;
   const self = selfParticipant(group, userId);
   if (!self) return false;
   if (hasPending || BigInt(group.balances[self.id] ?? '0') !== 0n) return true;
-  if (group.archived || !group.participants.some(person => person.id !== self.id && !person.removed)) return false;
-  return !group.expenses.length && !group.settlements.length && !group.opening_balance
-    && BigInt(group.totals?.spending ?? '0') === 0n
-    && !group.history?.bills?.next_cursor && !group.history?.bills?.previous?.length
-    && !group.history?.settlements?.next_cursor && !group.history?.settlements?.previous?.length;
+  return !group.hidden && group.participants.some(person => person.id !== self.id);
 }
 
 /** Personal payment entry must include the signed-in active participant in either direction. */

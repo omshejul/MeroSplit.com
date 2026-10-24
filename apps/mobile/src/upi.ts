@@ -34,7 +34,7 @@ export function buildUPIUrl(quote: UPILaunchQuote, app: UPIApp['id'] = 'upi'): s
   if (amount <= 0n || amount > MAX_AMOUNT || !vpaPattern.test(quote.vpa) || quote.vpa.length > 254) throw new Error('The payment details are invalid. Refresh and review them again.');
   if (!/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(quote.id) || !Number.isFinite(Date.parse(quote.expires_at)) || Date.parse(quote.expires_at) <= Date.now()) throw new Error('These payment details expired. Review them again before paying.');
   if (typeof quote.recipient !== 'string' || !quote.recipient.trim() || quote.recipient.length > 120 || typeof quote.note !== 'string' || quote.note.length > 200 || !Number.isSafeInteger(quote.group_version) || quote.group_version < 1 || !Object.hasOwn(prefixes, app)) throw new Error('The payment details are invalid. Refresh and review them again.');
-  const values = { pa: quote.vpa, pn: quote.recipient, am: `${amount / 100n}.${(amount % 100n).toString().padStart(2, '0')}`, cu: 'INR', tn: quote.note, tr: quote.id.replaceAll('-', '') };
+  const values = { pa: quote.vpa, pn: quote.recipient, am: `${amount / 100n}.${(amount % 100n).toString().padStart(2, '0')}`, cu: 'INR', tr: quote.id.replaceAll('-', '') };
   return `${prefixes[app]}?${Object.entries(values).map(([key, value]) => `${key}=${encodeURIComponent(value)}`).join('&')}`;
 }
 

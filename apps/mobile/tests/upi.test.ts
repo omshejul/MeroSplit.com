@@ -8,11 +8,12 @@ import type { Group } from '../src/types.ts';
 const quote: UPILaunchQuote = { id: '4b8f5680-c7c4-45ec-8a2f-842fb5854090', vpa: 'rita.pay@okaxis', amount: '12501', currency: 'INR', recipient: 'Rita & ऋता + friend', note: 'Group repayment & dinner? pa=wrong@bank', bank_verified: false, direct_launch_supported: true, expires_at: new Date(Date.now() + 600_000).toISOString(), group_version: 4 };
 const group: Group = { id: 'g', name: 'Synthetic trip', version: 4, participants: [{ id: 'A', name: 'A', user_id: 1 }, { id: 'B', name: quote.recipient, user_id: 2, payment_profile: { vpa: quote.vpa, version: 3, bank_verified: false } }], expenses: [], settlements: [], balances: { A: '-15000', B: '15000' }, transfers: [{ sender: 'A', recipient: 'B', amount: '15000' }], activity: [] };
 
-test('UPI URLs preserve exact paise and safely encode the intended address, Unicode name and note', () => {
+test('UPI URLs preserve exact paise and the recipient without adding a payment note', () => {
   const url = new URL(buildUPIUrl(quote));
   assert.equal(url.protocol, 'upi:'); assert.equal(url.hostname, 'pay');
   assert.equal(url.searchParams.get('pa'), quote.vpa); assert.equal(url.searchParams.getAll('pa').length, 1);
-  assert.equal(url.searchParams.get('pn'), quote.recipient); assert.equal(url.searchParams.get('tn'), quote.note);
+  assert.equal(url.searchParams.get('pn'), quote.recipient); assert.equal(url.searchParams.has('tn'), false);
+  for (const app of ['phonepe', 'google-pay', 'paytm', 'cred', 'bhim', 'amazon-pay', 'upi'] as const) assert.equal(new URL(buildUPIUrl(quote, app)).searchParams.has('tn'), false, app);
   assert.equal(url.searchParams.get('am'), '125.01'); assert.equal(url.searchParams.get('cu'), 'INR');
   assert.equal(url.searchParams.get('tr'), quote.id.replaceAll('-', ''));
   assert.match(buildUPIUrl(quote, 'google-pay'), /^gpay:\/\/upi\/pay\?/);

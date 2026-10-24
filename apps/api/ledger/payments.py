@@ -157,7 +157,7 @@ def launch_details(actor, group_id, attempt_id):
             "amount": str(attempt.amount),
             "currency": "INR",
             "recipient": participant_display_name(attempt.recipient),
-            "note": "Group repayment",
+            "note": "",
             "bank_verified": False,
             "direct_launch_supported": True,
             "expires_at": attempt.expires_at.isoformat(),

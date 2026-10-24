@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { addExpense, addSettlement, proposeTransfers, validateExpense } from '../src/accounting.ts';
-import { personalSettlements, personalTransfers, selfParticipant, visiblePeopleSummary } from '../src/personalBalances.ts';
+import { groupDisplayName, personalSettlements, personalTransfers, selfParticipant, visiblePeopleSummary } from '../src/personalBalances.ts';
 import type { Group } from '../src/types.ts';
 
 function group(balances: Record<string, string>): Group {
@@ -66,15 +66,17 @@ test('self resolution uses active account identity; removed counterpart cannot h
   assert.deepEqual(personalTransfers(ledger, 'other'), []);
 });
 
-test('People keeps fresh contacts and pending changes, hides settled history and irrelevant removed people', () => {
+test('People keeps contacts and settled history until an explicit removal', () => {
   const ledger = group({ self: '0', other: '0' });
   ledger.is_direct = true;
   assert.equal(visiblePeopleSummary(ledger, '1'), true);
   ledger.totals = { spending: '200', paid: { self: '100', other: '100' }, shares: { self: '100', other: '100' } };
-  assert.equal(visiblePeopleSummary(ledger, '1'), false);
+  assert.equal(visiblePeopleSummary(ledger, '1'), true);
   assert.equal(visiblePeopleSummary(ledger, '1', true), true);
   delete ledger.totals;
   ledger.participants[1].removed = true;
+  assert.equal(visiblePeopleSummary(ledger, '1'), true);
+  ledger.hidden = true;
   assert.equal(visiblePeopleSummary(ledger, '1'), false);
   assert.equal(visiblePeopleSummary(ledger, '1', true), true);
   ledger.participants[0].removed = true;
@@ -117,4 +119,37 @@ test('an unlinked or deleted-account active counterpart remains eligible for per
   assert.equal(isPersonalPayment(ledger, 'self', 'other', 'self'), true);
   ledger.participants[1].removed = true;
   assert.equal(isPersonalPayment(ledger, 'self', 'self', 'other'), false);
+});
+
+
+test('a final payment and bounded summary refresh keep the person visible as settled', () => {
+  const ledger = group({ self: '-3533', other: '3533' });
+  ledger.is_direct = true;
+  const before = structuredClone(ledger);
+  assert.equal(visiblePeopleSummary(ledger, '1'), true);
+  ledger.balances = addSettlement(ledger.balances, 'self', 'other', '3533');
+  ledger.settlements = [{ id: 'final-payment', sender: 'self', recipient: 'other', amount: '3533' }];
+  ledger.transfers = proposeTransfers(ledger.balances);
+  assert.equal(ledger.balances.self, '0');
+  assert.equal(visiblePeopleSummary(ledger, '1'), true);
+  assert.equal(visiblePeopleSummary({ ...ledger, settlements: [], totals: { spending: '3533', paid: {}, shares: {} }, history: { settlements: { next_cursor: 'older', previous: [] } } }, '1'), true);
+  assert.equal(visiblePeopleSummary({ ...ledger, archived: true }, '1'), true);
+  assert.equal(visiblePeopleSummary({ ...ledger, hidden: true }, '1'), false);
+  assert.equal(visiblePeopleSummary({ ...before, hidden: true }, '1'), true);
+  assert.equal(visiblePeopleSummary({ ...ledger, hidden: true }, '1', true), true);
+  assert.equal(visiblePeopleSummary(ledger, 'unrelated-account'), false);
+});
+
+
+test('People shows the counterpart canonical name for either account without changing stored history', () => {
+  const ledger = group({ self: '0', other: '0' });
+  ledger.is_direct = true; ledger.name = 'Entered contact label';
+  ledger.participants[0].name = 'Alice'; ledger.participants[1].name = 'Bob';
+  assert.equal(groupDisplayName(ledger, '1'), 'Bob');
+  assert.equal(groupDisplayName(ledger, '2'), 'Alice');
+  ledger.participants[1].name = 'Robert';
+  assert.equal(groupDisplayName(ledger, '1'), 'Robert');
+  assert.equal(groupDisplayName(ledger, 'unrelated'), ledger.name);
+  assert.equal(groupDisplayName({ ...ledger, is_direct: false }, '1'), ledger.name);
+  assert.equal(ledger.name, 'Entered contact label');
 });

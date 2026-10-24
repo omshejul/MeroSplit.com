@@ -8,6 +8,7 @@ import type { Group } from './types';
 import { Button, Disclosure, ErrorText, Icon, useUI } from './ui';
 import type { Palette } from './ui';
 import { AmountField, RadioChoice } from './FormFields';
+import LoadingSpinner from './LoadingSpinner';
 import { UPIAppChooser, WebPaymentQuote } from './PaymentPanels';
 import { availableUPIApps, buildUPIUrl, openUPIPayment, validateUPIPayment } from './upi';
 import type { UPIApp, UPILaunchQuote } from './upi';
@@ -228,6 +229,7 @@ export default function SettleForm({ group, initial, busy, selfId, onSave, onRev
     return <View style={styles.form}>
       <Text style={ui.caption}>{group.name}</Text>
       <Text style={[ui.section, styles.returnTitle]}>{needsAnswer ? `Did you pay ${pendingReturn.payeeName} ${formatMoney(pendingReturn.amount)}?` : `${formatMoney(pendingReturn.amount)} to ${pendingReturn.payeeName}`}</Text>
+      <LoadingSpinner visible={busy || saving || reviewing} />
       {!!returnError && <ErrorText>{returnError}</ErrorText>}
       {returnReview ? <Button title="Review balance" kind="primary" onPress={onCancel} disabled={disabled} /> : pendingReturn.decision !== null ?
         <Button title={saving ? 'Confirming update…' : 'Try again'} kind="primary" onPress={() => void resolveReturn(pendingReturn.decision === 'paid')} disabled={disabled} /> : needsAnswer ? <>
@@ -239,6 +241,7 @@ export default function SettleForm({ group, initial, busy, selfId, onSave, onRev
   return <View style={styles.form}>
     <Text style={ui.caption}>{group.name}</Text>
     {!webQuote && <View style={styles.field}><Text style={ui.rowTitle}>From {label(sender)}</Text><Text style={ui.rowTitle}>To {label(recipient)}</Text></View>}
+    <LoadingSpinner visible={busy || saving || reviewing} />
     {group.archived && <Text style={ui.notice}>Reopen this group in settings before recording a payment.</Text>}
     {!webQuote && <><AmountField label="Amount (₹)" value={amount}
       onChangeText={value => { setAmount(value); setError(''); setWebQuote(null); }} editable={!disabled && !webQuote} placeholder="0" />
