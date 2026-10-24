@@ -41,10 +41,10 @@ export default function AccountNotifications({ session, push, busy, onBusyChange
     if (busy || inFlight.current) return;
     inFlight.current = true; ++revision.current; setWorking(true); setPendingEnabled(enabled); setError(''); onBusyChange(true);
     try {
-      const saved = confirmed(await request<Preferences>(session, '/me/notifications/preferences', 'PUT', { expense_updates: value.expense_updates, email_reminders: value.email_reminders }));
+      let saved = confirmed(await request<Preferences>(session, '/me/notifications/preferences', 'PUT', { expense_updates: value.expense_updates, email_reminders: value.email_reminders }));
       if (!mounted.current || activeToken.current !== session.token) return;
-      if (enablePush && Platform.OS !== 'web' && !push.state.enabled) {
-        try { await push.enable(); }
+      if (enablePush && Platform.OS !== 'web' && (!push.state.enabled || saved.push_device_ids && !saved.push_device_ids.includes(push.state.installationId ?? ''))) {
+        try { if (await push.enable()) saved = confirmed(await request<Preferences>(session, '/me/notifications/preferences')); }
         catch { if (mounted.current) setError('Email is on. Could not enable push notifications.'); }
       }
       if (mounted.current && activeToken.current === session.token) setPreferences(saved);
@@ -53,8 +53,8 @@ export default function AccountNotifications({ session, push, busy, onBusyChange
     finally { inFlight.current = false; if (mounted.current) { setWorking(false); setPendingEnabled(null); } onBusyChange(false); }
   }
   const emailAvailable = !!preferences?.email_reminders && preferences.email_available !== false;
-  const pushAvailable = push.state.enabled || (preferences?.push_device_ids ? preferences.push_device_ids.some(id => Platform.OS === 'web' || push.state.ready && (id !== push.state.installationId || push.state.enabled)) : false);
-  const enabled = pendingEnabled ?? (!!preferences?.expense_updates && (emailAvailable || pushAvailable));
+  const pushAvailable = preferences?.push_device_ids ? preferences.push_device_ids.some(id => Platform.OS === 'web' || push.state.ready && (id !== push.state.installationId || push.state.enabled)) : push.state.enabled;
+  const enabled = pendingEnabled ?? (!!preferences?.expense_updates && preferences.notifications_enabled !== false && (emailAvailable || pushAvailable));
   const disabled = busy || working || push.state.working || !preferences;
   const value = !preferences ? 'Unavailable' : !enabled ? 'Off' : pushAvailable ? emailAvailable ? 'Push and email' : 'Push' : 'Email only';
   function close() { setOpen(false); requestAnimationFrame(() => row.current?.focus()); }

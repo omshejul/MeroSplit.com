@@ -906,3 +906,31 @@ test('master stays confirmed OFF during push registration and confirmed defaults
   assert.equal(reload.pushCalls, 0, 'loading saved choices is not permission consent');
   reload.app.unmount();
 });
+
+
+test('server-revoked push IDs override stale local enabled state', async () => {
+  const panel = notificationPanel({ expense_updates: true, email_reminders: false, email_available: true, push_device_ids: [], notifications_enabled: false });
+  panel.props.push.state.enabled = true;
+  panel.app.render(panel.props); panel.app.commit(); await tick();
+  const tree = panel.app.render(panel.props);
+  assert.equal(notificationToggle(tree, 'Notifications').props.checked, false);
+  assert.equal(notificationToggle(tree, 'Email notifications'), undefined);
+  assert.equal(panel.pushCalls, 0); panel.app.unmount();
+});
+
+test('explicit master ON refreshes server-confirmed channels after a new push registration', async () => {
+  const panel = notificationPanel({ expense_updates: false, email_reminders: false, email_available: false, push_device_ids: [], notifications_enabled: false });
+  panel.props.push.state.enabled = false;
+  panel.props.push.enable = async () => {
+    panel.props.push.state.enabled = true;
+    Object.assign(panel.savedPreferences!, { email_available: false, push_device_ids: ['this-device'], notifications_enabled: true });
+    return true;
+  };
+  panel.app.render(panel.props); panel.app.commit(); await tick();
+  notificationToggle(panel.app.render(panel.props), 'Notifications').props.onChange(true);
+  panel.saved(0); await tick();
+  assert.equal(panel.loads, 2, 'new registration reads authoritative current device IDs');
+  assert.equal(notificationToggle(panel.app.render(panel.props), 'Notifications').props.checked, true);
+  assert.deepEqual(panel.savedPreferences!.push_device_ids, ['this-device']);
+  panel.app.unmount();
+});
