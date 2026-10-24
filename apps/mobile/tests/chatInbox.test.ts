@@ -8,7 +8,7 @@ const nodes = (value: any): Element[] => Array.isArray(value) ? value.flatMap(no
 const tick = async () => { for (let i = 0; i < 20; i++) await Promise.resolve(); };
 function inbox(send: any) {
   let cursor = 0; const states: any[] = [], deps: Record<number, any[]> = {}, cleanups: Record<number, any> = {}; let effects: any[] = [], timer: any;
-  const env = { React: { createElement: (type: any, props: any, ...children: any[]) => ({ type, props: props ?? {}, children }) }, Text: 'Text', SectionHeading: 'SectionHeading', View: 'View', SettingsRow: 'SettingsRow', Button: 'Button', request: send, useUI: () => ({ ui: {} }),
+  const env = { React: { createElement: (type: any, props: any, ...children: any[]) => ({ type, props: props ?? {}, children }) }, Text: 'Text', SectionHeading: 'SectionHeading', View: 'View', MotionReveal: 'MotionReveal', SettingsRow: 'SettingsRow', Button: 'Button', request: send, useUI: () => ({ ui: {} }),
     setTimeout: (fn: () => void) => { assert.equal(timer, undefined, 'one timer'); timer = fn; return 1; }, clearTimeout: () => { timer = undefined; },
     useState: (initial: any) => { const id = cursor++; if (!(id in states)) states[id] = initial; return [states[id], (value: any) => { states[id] = typeof value === 'function' ? value(states[id]) : value; }]; },
     useRef: (initial: any) => { const id = cursor++; return states[id] ??= { current: initial }; },
@@ -27,7 +27,7 @@ test('Unread Activity rows open the exact conversation and fetch never acknowled
   try {
     app.render(props); await app.commit(); const tree = app.render(props); await app.commit();
     const row = nodes(tree).find(node => node.type === 'SettingsRow')!;
-    const rowList = tree.children.find((node: any) => node?.type === 'View');
+    const rowList = nodes(tree).find((node: any) => node !== tree && node?.type === 'View');
     assert.ok(rowList, 'mapped rows share one section container'); assert.equal(rowList.props.style, undefined);
     assert.equal(nodes(rowList).filter(node => node.type === 'SettingsRow').length, 2);
     assert.equal(tree.children.filter((node: any) => node?.type === 'SettingsRow').length, 0);

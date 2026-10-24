@@ -3,6 +3,7 @@ import { Text, View } from 'react-native';
 import { request } from './api';
 import type { Session } from './types';
 import { SectionHeading, Button, SettingsRow, useUI } from './ui';
+import MotionReveal from './MotionReveal';
 
 type Conversation = { group_id: string; expense_id: string; group: string; bill: string; unread: number };
 type Inbox = { conversations: Conversation[]; next_cursor: string | null };
@@ -26,10 +27,12 @@ export default function ChatInbox({ session, active, busy, onOpen, onEmptyChange
   }, [session.baseUrl, session.userId, session.token, active, before]);
   if (!page?.conversations.length && !error && !before) return null;
   return <View role="region" accessibilityLabel="Unread chats" style={{ gap: 8 }}>
+    <MotionReveal style={{ gap: 8 }}>
     <SectionHeading>Unread chats</SectionHeading>
     <View>{page?.conversations.map(row => <SettingsRow key={`${row.group_id}|${row.expense_id}`} icon="people" label={`${row.bill} · ${row.group}`} value={`${row.unread} unread`} disabled={busy || !active} onPress={() => onOpen(row.group_id, row.expense_id)} />)}</View>
     {before && <Button title="Latest chats" kind="text" disabled={busy} onPress={() => setBefore(null)} />}
     {page?.next_cursor && <Button title="Older chats" kind="text" disabled={busy} onPress={() => setBefore(page.next_cursor)} />}
     {!!error && <Text style={ui.caption}>{error}</Text>}
+    </MotionReveal>
   </View>;
 }

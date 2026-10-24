@@ -144,7 +144,7 @@ test('the changing safe viewport bounds Paper iOS content, not just its outer sh
   const declaration = shared.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === 'KeyboardDialog')!;
   let measuredHeight: number | undefined;
   const renderDialog = new Function('env', `with(env) { ${ts.transpile(declaration.getText(shared).replace('export default ', ''), { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React })}; return KeyboardDialog; }`)(
-    { React: { createElement }, Platform: { OS: 'ios' }, useWindowDimensions: () => ({ width: 375 }), Dialog: 'PaperDialog', Portal: 'Portal', KeyboardAvoidingView: 'KeyboardBoundary', useSafeAreaInsets: () => ({ top: 20, bottom: 34 }), useState: () => [measuredHeight, (value: number) => { measuredHeight = value; }] });
+    { React: { createElement }, useUI: () => ({ motion: { enabled: false } }), Platform: { OS: 'ios' }, useWindowDimensions: () => ({ width: 375 }), Dialog: 'PaperDialog', Portal: 'Portal', KeyboardAvoidingView: 'KeyboardBoundary', useSafeAreaInsets: () => ({ top: 20, bottom: 34 }), useState: () => [measuredHeight, (value: number) => { measuredHeight = value; }] });
   // Execute the INSTALLED iOS Surface style partition. Its container has two
   // layers: flexShrink goes outside; maxHeight constrains the content inside.
   // This checks the actual forwarding boundary, not native text/Yoga layout.

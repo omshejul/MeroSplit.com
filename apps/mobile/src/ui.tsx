@@ -46,7 +46,7 @@ import Notification01Icon from '@hugeicons/core-free-icons/Notification01Icon';
 import Mail01Icon from '@hugeicons/core-free-icons/Mail01Icon';
 import SmartPhone01Icon from '@hugeicons/core-free-icons/SmartPhone01Icon';
 import { formatMoney } from './accounting';
-import { observeMotionPreference, useMotionValue, type MotionPreference } from './motion';
+import { observeMotionPreference, useMotionValue, motionDuration, type MotionPreference } from './motion';
 
 export const radii = { button: 8, control: 12, surface: 16, navigation: 20 } as const;
 export const balanceColor = (value: string | bigint, palette: Palette) => BigInt(value) > 0n ? palette.positive : BigInt(value) < 0n ? palette.negative : palette.muted;
@@ -112,7 +112,7 @@ export function UIProvider({ children }: { children: React.ReactNode }) {
     const colors = lookColors(colorFamily, dark), theme = makeTheme(colors, dark);
     return { ...theme, palette: colors.palette,
       fonts: fontsLoaded ? configureFonts({ config: { fontFamily: appFontFamily } }) : theme.fonts,
-      ui: makeUI(colors.palette, fontsLoaded ? appFontFamily : undefined), inputColors: makeInputColors(colors.palette), appearance, changeAppearance, colorFamily, changeColorFamily, motion, animation: { scale: 0 },
+      ui: makeUI(colors.palette, fontsLoaded ? appFontFamily : undefined), inputColors: makeInputColors(colors.palette), appearance, changeAppearance, colorFamily, changeColorFamily, motion, animation: { scale: motion.enabled ? motionDuration.paperScale : 0 },
     };
   }, [dark, appearance, changeAppearance, colorFamily, changeColorFamily, motion, fontsLoaded]);
   // PaperProvider overwrites animation.scale. Its public ThemeProvider also
@@ -172,7 +172,7 @@ export function Disclosure({ title, children, initialOpen = false }: { title: st
     <Pressable accessibilityRole="button" accessibilityState={{ expanded: open }} onPress={() => setOpen(value => !value)} style={ui.disclosureHeading}>
       <Text style={ui.section}>{title}</Text><Animated.View pointerEvents="none" accessible={false} style={{ transform: [{ rotate: progress.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '180deg'] }) }] }}><Icon name="down" size={20} /></Animated.View>
     </Pressable>
-    {open && <View style={ui.disclosureBody}>{children}</View>}
+    {open && <Animated.View style={[ui.disclosureBody, motion.enabled && { opacity: progress.interpolate({ inputRange: [0, 1], outputRange: [0.88, 1] }), transform: [{ translateY: progress.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }) }] }]}>{children}</Animated.View>}
   </View>;
 }
 const makeUI = (colors: Palette, fontFamily?: string) => StyleSheet.create({
