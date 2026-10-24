@@ -2,7 +2,7 @@ import React from 'react';
 import { ActivityIndicator, Animated, KeyboardAvoidingView, Platform, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import { Text } from 'react-native-paper';
+import { FAB, Text, useTheme } from 'react-native-paper';
 import { Icon, IconAction, radii, useUI } from './ui';
 import { useMotionValue } from './motion';
 import TabBarSurface from './TabBarSurface';
@@ -48,7 +48,17 @@ export function AppTabs({ selected, busy, onSelect }: { selected: string; busy: 
     {tabs.map(item => <TabButton key={item.value} item={item} selected={selected === item.value} busy={busy} onSelect={onSelect} />)}
   </TabBarSurface></View>;
 }
+export function AddExpenseButton({ disabled, onPress }: { disabled: boolean; onPress: () => void }) {
+  const { colors } = useTheme();
+  return <View pointerEvents="box-none" style={styles.floating}>
+    <View pointerEvents="box-none" style={[pageWidthStyle, styles.floatingContent]}>
+      <FAB label="Add expense" accessibilityLabel="Add expense" disabled={disabled} onPress={onPress} color={colors.onPrimary} style={{ backgroundColor: colors.primary }} icon={({ size, color }) => <Icon name="add" size={size} color={color} />} />
+    </View>
+  </View>;
+}
 const styles = StyleSheet.create({
+  floating: { position: 'absolute', left: 0, right: 0, bottom: 16 },
+  floatingContent: { width: '100%', alignItems: 'flex-end', paddingHorizontal: 16 },
   header: { ...pageWidthStyle, flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 56, paddingHorizontal: 16, paddingTop: 4, paddingBottom: 8 },
   titleArea: { flex: 1, minWidth: 0, overflow: 'hidden', justifyContent: 'center' },
   title: { fontSize: 24, lineHeight: 30, fontWeight: '600' },

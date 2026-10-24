@@ -93,7 +93,7 @@ function LogDate({ date }: { date?: string | null }) {
 // One compact log row for bills and payments: date, what happened, and (for bills) your balance effect.
 function LogRow({ date, label, busy, onPress, trailing, children, payment = false }: { date?: string | null; label: string; busy: boolean; onPress: () => void; trailing?: React.ReactNode; children: React.ReactNode; payment?: boolean }) {
   const { ui, palette } = useUI();
-  return <Pressable accessibilityRole="button" accessibilityLabel={label} disabled={busy} style={({ pressed }) => [ui.row, s.edgeRow, { borderBottomColor: `${palette.line}80` }, payment && { backgroundColor: palette.surface }, pressed && s.pressed]} onPress={onPress}>
+  return <Pressable accessibilityRole="button" accessibilityLabel={label} disabled={busy} style={({ pressed }) => [ui.row, s.edgeRow, { borderBottomColor: `${palette.line}80` }, payment && { backgroundColor: palette.soft }, pressed && s.pressed]} onPress={onPress}>
     <LogDate date={date} />
     <View style={ui.rowBody}>{children}</View>
     {trailing}
