@@ -148,3 +148,18 @@ p { margin: 0; max-width: 62ch; }
 }
 
 .foot nav a { display: inline-flex; align-items: center; min-height: 2.75rem; }
+
+/* Testing options stay ordinary links, including without JavaScript. */
+.install { margin-top: 1.5rem; scroll-margin-block: 1rem; }
+.badges { display: flex; flex-wrap: wrap; gap: .75rem; align-items: center; }
+.badges a { display: inline-flex; min-height: 3.25rem; border-radius: 10px; }
+.badges img { height: 3.25rem; width: auto; max-width: 100%; }
+.install-hint { color: var(--quiet); font-size: .9rem; margin-top: .9rem; max-width: 42ch; }
+.hero .install .actions { margin-top: 1rem; }
+.install .actions a, .android-install a { display: inline-flex; align-items: center; min-height: 2.75rem; }
+.install-qr { margin: 1.25rem 0 0; display: flex; align-items: center; gap: 1rem; color: var(--quiet); font-size: .9rem; }
+.install-qr img { width: 8.25rem; height: 8.25rem; flex-shrink: 0; background: white; }
+.android-install ol { padding-left: 1.5rem; margin-block: 1.25rem; }
+.android-install p + p { margin-top: .75rem; }
+.install-selected, #install:focus-visible, #android-install:focus-visible { outline: 3px solid var(--blue); outline-offset: 6px; border-radius: 4px; }
+@media (max-width: 52rem) { .install-qr { display: none; } }

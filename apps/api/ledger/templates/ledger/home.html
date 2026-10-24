@@ -24,6 +24,7 @@
   <meta name="twitter:card" content="summary">
   <link rel="stylesheet" href="/assets/typography.css">
   <link rel="stylesheet" href="/assets/home.css">
+  <script src="/assets/install.js" defer></script>
   <script type="application/ld+json">{"@context": "https://schema.org", "@type": "WebSite", "name": "MeroSplit", "url": "https://merosplit.com/"}</script>
 </head>
 <body>
@@ -36,9 +37,14 @@
       <div>
         <h1 id="title">Who paid, who owes, and how to settle up.</h1>
         <p class="lede">MeroSplit keeps the bills you share with friends, flatmates and travel groups, and works out each person's balance.</p>
-        <div class="actions">
-          <a class="open" href="/app/">Open MeroSplit<svg class="i" aria-hidden="true" focusable="false" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 19.5 15-15m0 0H8.25m11.25 0v11.25"/></svg></a>
-          <a href="#how">How it works</a>
+        <div class="install" id="install" tabindex="-1" aria-label="Try MeroSplit">
+          <div class="badges">
+            <a id="iphone-install" href="https://testflight.apple.com/join/7HrHqqnB"><img src="/assets/try-on-iphone.svg" alt="Try on iPhone with TestFlight" height="52"></a>
+            <a href="#android-install" aria-describedby="android-prerequisite"><img src="/assets/try-on-android.svg" alt="Try on Android: see testing steps" height="52"></a>
+          </div>
+          <p class="install-hint" id="android-prerequisite">Android testers: join the Google Group first, then open Google Play testing.</p>
+          <div class="actions"><a href="/app/">Continue on web</a><a href="#how">How it works</a></div>
+          <figure class="install-qr"><img src="/assets/install-qr.svg" width="132" height="132" alt="QR code to open MeroSplit testing options on your phone"><figcaption>Scan to try on your phone.</figcaption></figure>
         </div>
       </div>
 
@@ -64,6 +70,16 @@
           <li><span>Ravi pays Asha</span><span class="num">₹1,400</span></li>
         </ul>
       </figure>
+    </section>
+
+    <section class="wrap band android-install" id="android-install" tabindex="-1" aria-labelledby="android-title">
+      <h2 id="android-title">Try the Android beta in two steps</h2>
+      <ol>
+        <li><a href="https://groups.google.com/g/merosplit-beta">Join the MeroSplit beta Google Group</a></li>
+        <li><a href="https://play.google.com/apps/testing/com.omshejul.splitdumb">Open Google Play testing</a></li>
+      </ol>
+      <p>Use the same Google account for both steps. Google Play checks tester access; this page cannot verify group membership.</p>
+      <p><a href="/app/">Continue on web</a> or <a href="https://testflight.apple.com/join/7HrHqqnB">try the iPhone beta with TestFlight</a>.</p>
     </section>
 
     <section class="wrap band" id="how" aria-labelledby="how-title">

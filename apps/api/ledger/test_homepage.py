@@ -50,7 +50,7 @@ def test_crawler_gets_real_homepage_and_head_without_javascript_or_an_app_export
     assert page.tags.count("main") == 1 and page.tags.count("h1") == 1
     assert page.tags.count("h2") >= 2 and len(" ".join(page.text).split()) >= 100
     assert "/app/" in page.links and {"/privacy", "/support"}.issubset(page.links)
-    assert not any(script.get("type") != "application/ld+json" for script in page.scripts)
+    assert [script.get("src") for script in page.scripts if script.get("type") != "application/ld+json"] == ["/assets/install.js"]
     assert "<div id=\"root\"" not in response.content.decode()
     assert page.meta["canonical"] == ["https://merosplit.com/"]
     assert page.meta["og:url"] == "https://merosplit.com/"
@@ -111,3 +111,19 @@ def test_homepage_does_not_take_over_existing_app_legal_association_or_invitatio
     assert browser.get("/.well-known/apple-app-site-association").json() == APPLE_ASSOCIATION
     assert browser.get("/.well-known/assetlinks.json").json() == ANDROID_ASSOCIATION
     assert browser.get("/api/v1/groups").status_code == 401
+
+
+def test_install_intent_is_manual_safe_and_android_group_precedes_play():
+    browser = Client()
+    for ua in ["Googlebot", "iPhone", "Android", "Macintosh"]:
+        response = browser.get("/?install=1", HTTP_USER_AGENT=ua)
+        assert response.status_code == 200 and "Location" not in response
+        html = response.content.decode()
+        assert "Continue on web" in html and "https://testflight.apple.com/join/7HrHqqnB" in html
+        assert html.index("https://groups.google.com/g/merosplit-beta") < html.index("https://play.google.com/apps/testing/com.omshejul.splitdumb")
+        assert "Use the same Google account" in html and "cannot verify group membership" in html
+    from hashlib import sha256
+    for name, digest in [("try-on-iphone.svg", "aa9309d9b00654d74c722965ff3172c613a6fe6d534d39c2952cda020a516d9d"), ("try-on-android.svg", "235dc98ced6141c589fc655e064479f6719935b90ad04c1a785890226c9ed6fc")]:
+        response = browser.get("/assets/" + name)
+        assert response.status_code == 200
+        assert sha256(b"".join(response.streaming_content)).hexdigest() == digest
