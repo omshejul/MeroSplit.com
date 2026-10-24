@@ -32,8 +32,8 @@ def test_code_template_uses_exact_four_digits_and_real_expiry():
 
 def test_resend_boundary_sends_both_parts_inline_logo_headers_and_final_sender(settings, monkeypatch):
     settings.RESEND_API_KEY = "synthetic-provider-key"
-    settings.DEFAULT_FROM_EMAIL = "MeroSplit <mail@merosplit.com>"
-    settings.EMAIL_REPLY_TO = "mail@merosplit.com"
+    settings.DEFAULT_FROM_EMAIL = "MeroSplit <configured-sender@example.invalid>"
+    settings.EMAIL_REPLY_TO = "configured-reply@example.invalid"
     captured = []
 
     class Response:

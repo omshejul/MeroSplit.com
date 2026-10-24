@@ -37,6 +37,8 @@ def test_public_pages_match_account_sync_and_preserve_deletion_disclosures(path)
     response = Client().get(path)
     assert response.status_code == 200
     text = visible(response)
+    assert b'href="mailto:mail@merosplit.com' in response.content
+    assert b"mail@merosplit.com" not in response.content and b"mail@merosplit.com" not in response.content
     for obsolete in ["without an account", "Phone-only groups", "Sync settings", "pause automatic", "shared account copy", "Your data", "Me → Data", "Me → Account", "uses email and password"]:
         assert obsolete not in text
     if path == "/support":
