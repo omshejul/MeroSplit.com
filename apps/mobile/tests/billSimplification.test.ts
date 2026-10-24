@@ -611,7 +611,7 @@ test('payment page shows the other person’s address in both directions and the
     { id: 'other', name: 'Asha', payment_profile: { vpa: 'asha@example' } },
   ] };
   const env = { useMemo: (fn: () => unknown) => fn(), useUI: () => ({ ui: {}, palette: {} }), isPersonalPayment, paymentReturnNeedsConfirmation,
-    PaymentAddress: 'PaymentAddress', PaymentHelpDialog: 'PaymentHelpDialog', LoadingSpinner: 'LoadingSpinner', UPIAppChooser: 'UPIAppChooser', WebPaymentQuote: 'WebPaymentQuote' };
+    PaymentAddress: 'PaymentAddress', PaymentHelpDialog: 'PaymentHelpDialog', LoadingSpinner: 'LoadingSpinner', UPIAppDirectory: 'UPIAppDirectory', UPIAppChooser: 'UPIAppChooser', WebPaymentQuote: 'WebPaymentQuote' };
   for (const incoming of [false, true]) {
     const props = { group: paymentGroup, selfId: 'self', busy: true, returnPayment: null,
       initial: { sender: incoming ? 'other' : 'self', recipient: incoming ? 'self' : 'other', amount: '500' } };
@@ -711,7 +711,7 @@ test('header keeps a fixed feedback slot, swaps it for the spinner while busy an
 test('Payment failed opens frozen-address help without answering or changing the payment', () => {
   let writes = 0;
   const env = { useMemo: (fn: () => unknown) => fn(), useUI: () => ({ ui: {}, palette: {} }), isPersonalPayment, paymentReturnNeedsConfirmation,
-    PaymentAddress: 'PaymentAddress', PaymentHelpDialog: 'PaymentHelpDialog', LoadingSpinner: 'LoadingSpinner', UPIAppChooser: 'UPIAppChooser' };
+    PaymentAddress: 'PaymentAddress', PaymentHelpDialog: 'PaymentHelpDialog', LoadingSpinner: 'LoadingSpinner', UPIAppDirectory: 'UPIAppDirectory', UPIAppChooser: 'UPIAppChooser' };
   const app = harness('src/SettleForm.tsx', 'SettleForm', env);
   const props = { group: { ...group, transfers: [] }, selfId: 'self', busy: false,
     returnPayment: { groupId: 'g', sender: 'self', recipient: 'other', payeeName: 'Original payee', vpa: 'original@example', amount: '500', launch: 'opened', decision: null, reviewRequested: true },
@@ -767,7 +767,7 @@ test('last email OFF saves master OFF; enabling with no choices stays OFF until 
 
 test('Google Pay info pill opens address help without selecting an app or preparing a payment', () => {
   let chosen = 0;
-  const app = harness('src/PaymentPanels.tsx', 'UPIAppChooser', { TouchableRipple: 'TouchableRipple', radii: { button: 8 }, useUI: () => ({ palette: {} }), UPIAppIcon: 'UPIAppIcon', CancelDialogActions: 'CancelDialogActions' });
+  const app = harness('src/PaymentPanels.tsx', 'UPIAppChooser', { UPIAppDirectory: 'UPIAppDirectory', TouchableRipple: 'TouchableRipple', radii: { button: 8 }, useUI: () => ({ palette: {} }), UPIAppIcon: 'UPIAppIcon', CancelDialogActions: 'CancelDialogActions' });
   const props = { apps: [{ id: 'google-pay', name: 'Google Pay' }, { id: 'upi', name: 'Other UPI app' }], recipient: { name: 'Asha', vpa: 'asha@example' }, disabled: false, onChoose: () => chosen++, onDismiss() {} };
   let tree = app.render(props); app.commit();
   const pill = find(tree, 'accessibilityLabel', 'Why Google Pay might fail');
@@ -841,4 +841,30 @@ test('Shared Button forwards Paper dialog spacing without changing disabled or p
     assert.equal(element.props.onPress, onPress); assert.equal(element.props.disabled, disabled);
     assert.equal(element.props.accessibilityLabel, 'Cancel');
   }
+});
+
+test('UPI directory opens store links without a payment action and reports a failed open', async () => {
+  const opened: string[] = []; let denied = false;
+  const directory = [{ name: 'Verified app', website: 'https://example.test/', ios: 'https://apps.apple.com/in/app/id123' }];
+  const app = harness('src/UPIAppDirectory.tsx', 'UPIAppDirectory', {
+    DialogFocus: 'DialogFocus', SettingsRow: 'SettingsRow', Platform: { OS: 'ios' }, upiDirectory: directory,
+    upiDirectoryLink: (item: any) => ({ url: item.ios, label: 'App Store' }),
+    Linking: { openURL: async (url: string) => { if (denied) throw Error('Unavailable'); opened.push(url); } },
+  });
+  let tree = app.render({ disabled: false });
+  find(tree, 'title', 'Find another UPI app').props.onPress();
+  tree = app.render({ disabled: false });
+  assert.equal(find(tree, 'label', 'Verified app').props.external, true);
+  find(tree, 'label', 'Verified app').props.onPress(); await tick();
+  assert.deepEqual(opened, [directory[0].ios]);
+  denied = true; find(tree, 'label', 'Verified app').props.onPress(); await tick();
+  tree = app.render({ disabled: false });
+  assert.ok(JSON.stringify(tree).includes('Could not open Verified app. Try again.'));
+  find(tree, 'label', 'Search apps').props.onChangeText('missing');
+  tree = app.render({ disabled: false });
+  assert.ok(!nodes(tree).some(node => node.props.label === 'Verified app'));
+  find(tree, 'title', 'Done').props.onPress();
+  tree = app.render({ disabled: true });
+  assert.equal(find(tree, 'title', 'Find another UPI app').props.disabled, true);
+  app.unmount();
 });

@@ -11,6 +11,7 @@ import { AmountField, RadioChoice } from './FormFields';
 import LoadingSpinner from './LoadingSpinner';
 import { PaymentAddress, PaymentHelpDialog, UPIAppChooser, WebPaymentQuote } from './PaymentPanels';
 import { copyText } from './clipboard';
+import UPIAppDirectory from './UPIAppDirectory';
 import { availableUPIApps, buildUPIUrl, openUPIPayment, validateUPIPayment } from './upi';
 import type { UPIApp, UPILaunchQuote } from './upi';
 import { openAndroidUPIChooser } from './upiHandoff';
@@ -266,6 +267,7 @@ export default function SettleForm({ group, initial, busy, selfId, onSave, onRev
     {otherPerson?.payment_profile && !webQuote && <PaymentAddress name={label(otherPerson.id)} vpa={otherPerson.payment_profile.vpa} />}
     {sender === selfId && debt && !profile && <Text style={ui.caption}>Ask {label(recipient)} to {group.participants.find(person => person.id === recipient)?.user_id != null ? 'add a UPI address' : 'join and add a UPI address'}.</Text>}
     {canPay && !webQuote && <><Text style={ui.caption}>Pay up to {formatMoney(debt!.amount)}.</Text><Button title={saving ? 'Preparing…' : amountLabel ? `Pay ${amountLabel} with UPI` : 'Pay with UPI'} kind="primary" icon="pay" disabled={disabled || !amountLabel} onPress={() => void pay()} /></>}
+    {canPay && !webQuote && <UPIAppDirectory disabled={disabled} />}
     {webQuote && <WebPaymentQuote quote={webQuote.quote} url={webQuote.url} disabled={disabled}
       onCopy={text => void copy(text)} onOpen={openWebPayment} onReview={() => void reviewWebPayment()} />}
     {activeAttempt?.state === 'reported' && sender === selfId && <Text style={ui.caption}>This payment is already reported. Check it before paying again.</Text>}
