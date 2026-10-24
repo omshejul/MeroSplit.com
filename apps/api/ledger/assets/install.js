@@ -6,6 +6,13 @@ window.addEventListener("pageshow", () => {
   const id = /Android/i.test(ua) ? "android-install" : /iPhone|iPad|iPod/i.test(ua) || ipad ? "iphone-install" : "install";
   const target = document.getElementById(id);
   if (!target) return;
+  if (id === "iphone-install") {
+    const url = new URL(window.location.href);
+    url.searchParams.delete("install");
+    history.replaceState(null, "", url.pathname + url.search + url.hash);
+    window.location.assign(target.href);
+    return;
+  }
   target.classList.add("install-selected");
   target.focus({ preventScroll: true });
   target.scrollIntoView({ block: "center", behavior: "instant" });
