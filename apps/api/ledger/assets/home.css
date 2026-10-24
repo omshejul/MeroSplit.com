@@ -1,0 +1,102 @@
+/* MeroSplit home. Light by default, dark from the OS. html[data-theme] pins either one for local fixtures. */
+:root {
+  color-scheme: light;
+  --page: #EEF0F3; --paper: #FFFFFF; --ink: #16181C; --quiet: #565D66; --rule: #C9CED6;
+  --blue: #075DB4; --on-blue: #FFFFFF; --owed: #176B3A; --owes: #B42318;
+  font-family: "Stack Sans Text", system-ui, sans-serif; font-size: 100%; line-height: 1.55; color: var(--ink); background: var(--page);
+  -webkit-text-size-adjust: 100%; text-size-adjust: 100%;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --page: #0F1114; --paper: #1A1D22; --ink: #ECEEF1; --quiet: #A9B0BA; --rule: #3A4049;
+    --blue: #83B9FF; --on-blue: #0F1114; --owed: #78D9A0; --owes: #FF9B93;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0F1114; --paper: #1A1D22; --ink: #ECEEF1; --quiet: #A9B0BA; --rule: #3A4049;
+  --blue: #83B9FF; --on-blue: #0F1114; --owed: #78D9A0; --owes: #FF9B93;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+body { margin: 0; }
+img { display: block; max-width: 100%; height: auto; }
+a { color: var(--blue); text-underline-offset: .2em; }
+a:focus-visible, summary:focus-visible { outline: 3px solid var(--blue); outline-offset: 3px; border-radius: 4px; }
+h1, h2, h3 { font-weight: 600; line-height: 1.15; margin: 0; text-wrap: balance; }
+p { margin: 0; max-width: 62ch; }
+
+.skip { position: absolute; left: 1rem; top: -4rem; padding: .6rem 1rem; background: var(--paper); color: var(--ink); border-radius: 8px; z-index: 1; }
+.skip:focus { top: 1rem; }
+
+.wrap { width: min(72rem, 100% - 2.5rem); margin-inline: auto; }
+
+.top { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding-block: 1.25rem; }
+.brand { display: flex; align-items: center; gap: .6rem; color: var(--ink); text-decoration: none; font-weight: 600; font-size: 1.15rem; }
+.brand img { width: 2.25rem; height: 2.25rem; border-radius: 22%; }
+.open { display: inline-block; padding: .7rem 1.2rem; border-radius: 12px; background: var(--blue); color: var(--on-blue); font-weight: 600; text-decoration: none; }
+.open:hover { text-decoration: underline; }
+.open:focus-visible { outline-color: var(--ink); }
+
+/* Hero: the claim beside the one bold element, a worked example ledger slip. */
+.hero { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 27rem); gap: clamp(2rem, 6vw, 5rem); align-items: center; padding-block: clamp(2rem, 7vw, 5.5rem) clamp(3rem, 8vw, 6rem); }
+.hero h1 { font-size: clamp(2.3rem, 5.2vw, 3.6rem); letter-spacing: -.02em; max-width: 14ch; }
+.hero .lede { margin-top: 1.25rem; font-size: 1.2rem; color: var(--quiet); max-width: 34ch; }
+.hero .actions { margin-top: 2rem; display: flex; flex-wrap: wrap; gap: 1rem 1.5rem; align-items: center; }
+
+.slip { margin: 0; position: relative; background: var(--paper); padding: 1.75rem 1.5rem 1.5rem; border-radius: 0 0 14px 14px; font-variant-numeric: tabular-nums; box-shadow: 0 1px 0 var(--rule);
+  /* Perforated top edge, the tear-off line of a bill. */
+  -webkit-mask: radial-gradient(circle at 8px 0, transparent 5px, #000 5.5px) -8px 0 / 16px 100% repeat-x;
+          mask: radial-gradient(circle at 8px 0, transparent 5px, #000 5.5px) -8px 0 / 16px 100% repeat-x; }
+.slip table { width: 100%; border-collapse: collapse; }
+.slip caption { text-align: left; font-weight: 600; font-size: 1.1rem; padding-bottom: .9rem; }
+.slip caption small { display: block; font-weight: 400; font-size: .85rem; color: var(--quiet); }
+.slip th, .slip td { padding: .5rem 0; text-align: left; vertical-align: top; border-bottom: 1px dotted var(--rule); }
+.slip thead th { font-size: .8rem; font-weight: 500; color: var(--quiet); }
+.slip td small { display: block; color: var(--quiet); font-size: .85rem; }
+.slip .num { text-align: right; white-space: nowrap; padding-left: 1rem; }
+.slip .sub { font-weight: 600; font-size: .95rem; margin-top: 1.4rem; padding-bottom: .4rem; border-bottom: 2px solid var(--ink); }
+.slip ul { list-style: none; margin: 0; padding: 0; }
+.slip li { display: flex; justify-content: space-between; gap: 1rem; padding: .45rem 0; border-bottom: 1px dotted var(--rule); }
+.slip li:last-child { border-bottom: 0; }
+.owed { color: var(--owed); font-weight: 600; }
+.owes { color: var(--owes); font-weight: 600; }
+
+/* Quiet sections below. */
+.band { padding-block: clamp(3rem, 7vw, 5rem); border-top: 1px solid var(--rule); }
+.band > h2 { font-size: clamp(1.6rem, 3vw, 2.1rem); letter-spacing: -.01em; }
+.band > h2 + p { margin-top: .9rem; color: var(--quiet); }
+
+.flow { list-style: decimal; margin: 2rem 0 0; padding-left: 1.5rem; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2rem; }
+.flow li::marker { color: var(--quiet); font-weight: 600; }
+.flow h3, .features h3 { font-size: 1.1rem; margin-bottom: .4rem; }
+.flow p, .features p { color: var(--quiet); }
+
+.features { margin: 2rem 0 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 3rem; }
+.features li { padding-block: 1.1rem; border-top: 1px solid var(--rule); }
+
+.note { margin-top: 2rem; padding: 1.25rem 1.5rem; border-left: 4px solid var(--blue); background: var(--paper); border-radius: 0 12px 12px 0; }
+.note p + p { margin-top: .6rem; }
+
+.faq { margin-top: 1.5rem; max-width: 46rem; }
+.faq details { border-bottom: 1px solid var(--rule); }
+.faq summary { cursor: pointer; padding-block: 1rem; font-weight: 500; font-size: 1.05rem; }
+.faq details p { padding-bottom: 1.1rem; color: var(--quiet); }
+
+.foot { border-top: 1px solid var(--rule); padding-block: 2rem 3rem; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 1rem 2rem; color: var(--quiet); font-size: .95rem; }
+.foot nav ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: .5rem 1.5rem; }
+
+@media (max-width: 52rem) {
+  .hero { grid-template-columns: minmax(0, 1fr); }
+  .slip { max-width: 30rem; }
+  .flow { grid-template-columns: minmax(0, 1fr); gap: 1.5rem; }
+  .features { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 30rem) {
+  .slip { padding-inline: 1rem; }
+}
+@media (forced-colors: active) {
+  .slip { -webkit-mask: none; mask: none; border: 1px solid CanvasText; }
+  .open { border: 1px solid ButtonText; }
+}

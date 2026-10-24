@@ -1,5 +1,6 @@
 export type Palette = { background: string; surface: string; text: string; muted: string; accent: string; soft: string; line: string; outline: string; error: string; positive: string; negative: string; info: string; warning: string; switchOn: string };
-export type ColorFamily = 'basic' | 'cove' | 'orchid' | 'rose';
+export type ColorFamily = 'basic' | 'cove' | 'orchid' | 'rose' | 'obsidian';
+type PairedFamily = Exclude<ColorFamily, 'obsidian'>;
 export type ThemeColors = { palette: Palette; elevation: readonly [string, string, string, string, string] };
 
 // Balance, error and warning colors are shared by every family. Family accents
@@ -8,11 +9,21 @@ const lightStates = { error: '#B42318', positive: '#176B3A', negative: '#B42318'
 const darkStates = { error: '#FF9B93', positive: '#78D9A0', negative: '#FF9B93', warning: '#F2C266' };
 
 export const colorFamilies: readonly { value: ColorFamily; label: string }[] = [
-  { value: 'basic', label: 'Basic' }, { value: 'cove', label: 'Cove' }, { value: 'orchid', label: 'Orchid' }, { value: 'rose', label: 'Rose' },
+  { value: 'basic', label: 'Basic' }, { value: 'cove', label: 'Cove' }, { value: 'orchid', label: 'Orchid' }, { value: 'rose', label: 'Rose' }, { value: 'obsidian', label: 'Obsidian' },
 ];
 export const isColorFamily = (value: unknown): value is ColorFamily => colorFamilies.some(family => family.value === value);
+// Obsidian is the one dark-only look: it ignores the saved System/Light/Dark mode
+// without changing it, so other colors still use that mode.
+export const isDarkOnly = (family: ColorFamily) => family === 'obsidian';
+export const lookColors = (family: ColorFamily, dark: boolean): ThemeColors => family === 'obsidian' ? obsidianColors : themeColors[family][dark ? 'dark' : 'light'];
 
-export const themeColors: Record<ColorFamily, { light: ThemeColors; dark: ThemeColors }> = {
+// Pure black page with Basic dark text, accent and money states on bounded dark surfaces.
+export const obsidianColors: ThemeColors = {
+  palette: { background: '#000000', surface: '#121212', text: '#F5F5F5', muted: '#B5B5B5', accent: '#83B9FF', soft: '#242424', line: '#3A3A3A', outline: '#808080', ...darkStates, info: '#83B9FF', switchOn: '#007AFF' },
+  elevation: ['#141414', '#181818', '#1C1C1C', '#202020', '#242424'],
+};
+
+export const themeColors: Record<PairedFamily, { light: ThemeColors; dark: ThemeColors }> = {
   basic: {
     light: { palette: { background: '#F7F7F7', surface: '#FFFFFF', text: '#161616', muted: '#626262', accent: '#075DB4', soft: '#ECECEC', line: '#D4D4D4', outline: '#8A8A8A', ...lightStates, info: '#075DB4', switchOn: '#007AFF' },
       elevation: ['#FAFAFA', '#F7F7F7', '#F2F2F2', '#EEEEEE', '#EAEAEA'] },

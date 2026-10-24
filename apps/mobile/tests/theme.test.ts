@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { colorFamilies, isColorFamily, themeColors } from '../src/theme.ts';
+import { colorFamilies, isColorFamily, isDarkOnly, lookColors, obsidianColors, themeColors } from '../src/theme.ts';
 
 const channel = (value: number) => { const c = value / 255; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; };
 const luminance = (hex: string) => { const [r, g, b] = [1, 3, 5].map(i => channel(parseInt(hex.slice(i, i + 2), 16))); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
@@ -19,10 +19,31 @@ test('Basic light and dark keep the released colors exactly', () => {
   assert.deepEqual(themeColors.basic.dark.elevation, ['#202020', '#242424', '#282828', '#2C2C2C', '#303030']);
 });
 
-test('all eight looks meet text, control and button contrast on every app surface', () => {
-  assert.deepEqual(colorFamilies.map(family => family.value), Object.keys(themeColors));
-  for (const family of colorFamilies) for (const mode of ['light', 'dark'] as const) {
-    const { palette: p, elevation } = themeColors[family.value][mode], onAccent = mode === 'dark' ? '#161616' : '#FFFFFF', name = `${family.label} ${mode}`;
+const looks = [
+  ...(Object.keys(themeColors) as (keyof typeof themeColors)[]).flatMap(family => (['light', 'dark'] as const).map(mode => ({ name: `${family} ${mode}`, mode, colors: themeColors[family][mode] }))),
+  { name: 'obsidian dark', mode: 'dark' as const, colors: obsidianColors },
+];
+test('exactly nine looks: four color families in light and dark, plus dark-only Obsidian', () => {
+  assert.deepEqual(colorFamilies.map(family => family.value), [...Object.keys(themeColors), 'obsidian']);
+  assert.equal(looks.length, 9);
+  for (const family of colorFamilies) for (const dark of [false, true]) {
+    const expected = family.value === 'obsidian' ? obsidianColors : themeColors[family.value as keyof typeof themeColors][dark ? 'dark' : 'light'];
+    assert.equal(lookColors(family.value, dark), expected, `${family.label} ${dark ? 'dark' : 'light'}`);
+    assert.equal(isDarkOnly(family.value), family.value === 'obsidian');
+  }
+  assert.ok(!('obsidian' in themeColors), 'no invented light Obsidian');
+});
+
+test('Obsidian is pure black with bounded dark surfaces and Basic dark accent and money states', () => {
+  const p = obsidianColors.palette, basic = themeColors.basic.dark.palette;
+  assert.equal(p.background, '#000000');
+  for (const ground of [p.surface, p.soft, ...obsidianColors.elevation]) assert.ok(luminance(ground) > 0 && contrast(ground, '#000000') < 1.6, `${ground} is a quiet raised dark surface`);
+  assert.deepEqual([p.text, p.muted, p.accent, p.info, p.error, p.positive, p.negative, p.warning, p.switchOn], [basic.text, basic.muted, basic.accent, basic.info, basic.error, basic.positive, basic.negative, basic.warning, basic.switchOn]);
+});
+
+test('all nine looks meet text, control and button contrast on every app surface', () => {
+  for (const look of looks) {
+    const { palette: p, elevation } = look.colors, onAccent = look.mode === 'dark' ? '#161616' : '#FFFFFF', name = look.name;
     const surfaces = { background: p.background, surface: p.surface, dialog: elevation[2] };
     for (const [where, ground] of Object.entries(surfaces)) {
       assert.ok(contrast(p.text, ground) >= 7, `${name} text on ${where}`);
@@ -38,7 +59,7 @@ test('all eight looks meet text, control and button contrast on every app surfac
 });
 
 test('colorful accents stay apart from money, error and warning states and from Basic', () => {
-  for (const family of colorFamilies.filter(value => value.value !== 'basic')) for (const mode of ['light', 'dark'] as const) {
+  for (const family of (['cove', 'orchid', 'rose'] as const).map(value => ({ value, label: value }))) for (const mode of ['light', 'dark'] as const) {
     const p = themeColors[family.value][mode].palette, basic = themeColors.basic[mode].palette;
     for (const token of ['positive', 'negative', 'warning'] as const) assert.ok(hueGap(p.accent, p[token]) >= 30, `${family.label} ${mode} accent vs ${token}`);
     assert.ok(hueGap(p.accent, basic.accent) >= 20, `${family.label} ${mode} differs from Basic`);
@@ -47,6 +68,6 @@ test('colorful accents stay apart from money, error and warning states and from 
 });
 
 test('only known families are accepted', () => {
-  for (const value of ['basic', 'cove', 'orchid', 'rose']) assert.equal(isColorFamily(value), true);
-  for (const value of [null, '', 'Basic', 'ember', 'system', 1]) assert.equal(isColorFamily(value), false);
+  for (const value of ['basic', 'cove', 'orchid', 'rose', 'obsidian']) assert.equal(isColorFamily(value), true);
+  for (const value of [null, '', 'Basic', 'Obsidian', 'ember', 'system', 'black', 1]) assert.equal(isColorFamily(value), false);
 });

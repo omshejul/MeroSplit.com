@@ -95,3 +95,19 @@ test('full GET caches exact version for offline use without changing the visible
     await assert.rejects(loadBalanceSource(db, session, summary, () => active, async () => { active = false; return full; }), /account changed/);
   } finally { raw.close(); }
 });
+
+
+test('an account change while the cache read is delayed stops before any full-group request', async () => {
+  const raw = new DatabaseSync(':memory:'), db = sqliteAdapter(raw);
+  try {
+    await migrate(db);
+    const full = ledger([bill('Dinner', { B: '501' }, { A: '501' })]);
+    await saveGroup(db, accountOwner(session), full, 'shared');
+    let resume!: () => void, entered!: () => void, active = true, fetches = 0;
+    const gate = new Promise<void>(done => { resume = done; }), started = new Promise<void>(done => { entered = done; });
+    const delayed = { ...db, async getFirstAsync<T>(sql: string, ...params: (string | number | null)[]) { entered(); await gate; return db.getFirstAsync<T>(sql, ...params); } };
+    const result = loadBalanceSource(delayed, session, full, () => active, async () => { fetches++; return full; });
+    await started; active = false; resume();
+    await assert.rejects(result, /account changed/); assert.equal(fetches, 0);
+  } finally { raw.close(); }
+});

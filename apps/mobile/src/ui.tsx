@@ -5,7 +5,7 @@ import type { MD3Theme } from 'react-native-paper';
 import { savedAppearance, saveAppearance, savedColorFamily, saveColorFamily } from './native';
 import type { AppearancePreference } from './native';
 export type { AppearancePreference } from './native';
-import { themeColors, type ColorFamily, type Palette, type ThemeColors } from './theme';
+import { isDarkOnly, lookColors, type ColorFamily, type Palette, type ThemeColors } from './theme';
 export type { ColorFamily, Palette } from './theme';
 import { useSavedChoice } from './savedChoice';
 import { useFonts } from 'expo-font';
@@ -94,19 +94,18 @@ function LibraryIcon({ name, color, size }: { name: string; color?: string; size
   const libraryIcons = { check: CheckmarkCircle01Icon, 'chevron-down': ArrowDown01Icon };
   return <HugeiconsIcon icon={libraryIcons[name as keyof typeof libraryIcons] ?? CheckmarkCircle01Icon} color={color ?? palette.accent} size={size} strokeWidth={1.7} />;
 }
-function applyAppearance(value: AppearancePreference) {
-  if (Platform.OS !== 'web') Appearance.setColorScheme(value === 'system' ? 'auto' : value);
-}
 export function UIProvider({ children }: { children: React.ReactNode }) {
   const [fontsLoaded] = useFonts(appFontFaces);
   const system = useColorScheme();
-  const [appearance, changeAppearance] = useSavedChoice<AppearancePreference>('system', savedAppearance, saveAppearance, applyAppearance);
+  const [appearance, changeAppearance] = useSavedChoice<AppearancePreference>('system', savedAppearance, saveAppearance);
   const [colorFamily, changeColorFamily] = useSavedChoice<ColorFamily>('basic', savedColorFamily, saveColorFamily);
   const [motion, setMotion] = useState<MotionPreference>({ enabled: false, active: false });
   useEffect(() => observeMotionPreference(value => setMotion(previous => previous.enabled === value.enabled && previous.active === value.active ? previous : value)), []);
-  const dark = appearance === 'system' ? system === 'dark' : appearance === 'dark';
+  // Native controls and system bars follow the look; leaving Obsidian restores the saved mode.
+  useEffect(() => { if (Platform.OS !== 'web') Appearance.setColorScheme(isDarkOnly(colorFamily) ? 'dark' : appearance === 'system' ? 'auto' : appearance); }, [appearance, colorFamily]);
+  const dark = isDarkOnly(colorFamily) || (appearance === 'system' ? system === 'dark' : appearance === 'dark');
   const value = useMemo<UITheme>(() => {
-    const colors = themeColors[colorFamily][dark ? 'dark' : 'light'], theme = makeTheme(colors, dark);
+    const colors = lookColors(colorFamily, dark), theme = makeTheme(colors, dark);
     return { ...theme, palette: colors.palette,
       fonts: fontsLoaded ? configureFonts({ config: { fontFamily: appFontFamily } }) : theme.fonts,
       ui: makeUI(colors.palette, fontsLoaded ? appFontFamily : undefined), inputColors: makeInputColors(colors.palette), appearance, changeAppearance, colorFamily, changeColorFamily, motion, animation: { scale: 0 },

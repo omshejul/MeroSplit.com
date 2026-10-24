@@ -4,14 +4,15 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Keyboard, Platform, ScrollView, TextInput, useWindowDimensions, View } from 'react-native';
 import { Dialog, Text } from 'react-native-paper';
 import { RadioChoice } from './FormFields';
-import { colorFamilies } from './theme';
+import { colorFamilies, isDarkOnly } from './theme';
 import { Button, ErrorText, SettingsRow, useUI, type AppearancePreference, type ColorFamily } from './ui';
 
 const modes = [{ value: 'system', label: 'System' }, { value: 'light', label: 'Light' }, { value: 'dark', label: 'Dark' }] as const;
-function ChoiceGroup<T extends string>({ label, group, options, selected, disabled, onChoose }: { label: string; group: string; options: readonly { value: T; label: string }[]; selected: T; disabled: boolean; onChoose: (value: T) => void }) {
+function ChoiceGroup<T extends string>({ label, group, options, selected, disabled, note, onChoose }: { label: string; group: string; options: readonly { value: T; label: string }[]; selected: T; disabled: boolean; note?: string; onChoose: (value: T) => void }) {
   const { ui } = useUI();
-  return <View role="radiogroup" aria-label={label}>
+  return <View role="radiogroup" aria-label={label} aria-disabled={disabled || undefined}>
     <Text style={[ui.label, { paddingHorizontal: 16, paddingTop: 8 }]}>{label}</Text>
+    {!!note && <Text style={[ui.caption, { paddingHorizontal: 16 }]}>{note}</Text>}
     {options.map(option => <RadioChoice key={option.value} group={group} value={option.value} label={option.label} selected={selected === option.value} disabled={disabled} onPress={() => onChoose(option.value)} />)}
   </View>;
 }
@@ -19,7 +20,7 @@ export default function ProfileSettings({ name, vpa, busy, onSaveName, onSaveUPI
   name: string; vpa: string; busy: boolean; onSaveName: (name: string) => Promise<void>; onSaveUPI: (vpa: string) => Promise<void>; onAppearance: (value: AppearancePreference) => Promise<void>; onColorFamily: (value: ColorFamily) => Promise<void>;
 }) {
   const { ui, inputColors, appearance, colorFamily } = useUI();
-  const mode = modes.find(value => value.value === appearance)!.label, family = colorFamilies.find(value => value.value === colorFamily)!.label;
+  const mode = modes.find(value => value.value === appearance)!.label, family = colorFamilies.find(value => value.value === colorFamily)!.label, darkOnly = isDarkOnly(colorFamily);
   const [editing, setEditing] = useState<'name' | 'upi' | 'appearance' | null>(null), [draft, setDraft] = useState(''), [error, setError] = useState(''), [saving, setSaving] = useState(false);
   const nameRow = useRef<React.ComponentRef<typeof View>>(null), upiRow = useRef<React.ComponentRef<typeof View>>(null), appearanceRow = useRef<React.ComponentRef<typeof View>>(null), input = useRef<React.ComponentRef<typeof TextInput>>(null), inFlight = useRef(false);
   const initialChoiceFocused = useRef(false);
@@ -73,13 +74,13 @@ export default function ProfileSettings({ name, vpa, busy, onSaveName, onSaveUPI
   return <>
     <SettingsRow rowRef={nameRow} icon="edit" label="Name" value={name} disabled={busy} onPress={() => open('name')} />
     <SettingsRow rowRef={upiRow} icon="pay" label="UPI ID" value={vpa || 'Not set'} disabled={busy} onPress={() => open('upi')} />
-    <SettingsRow rowRef={appearanceRow} icon="appearance" label="Appearance" value={colorFamily === 'basic' ? mode : `${family} · ${mode}`} disabled={busy} onPress={() => open('appearance')} />
+    <SettingsRow rowRef={appearanceRow} icon="appearance" label="Appearance" value={darkOnly ? family : colorFamily === 'basic' ? mode : `${family} · ${mode}`} disabled={busy} onPress={() => open('appearance')} />
     <KeyboardDialog visible={!!editing} onDismiss={() => { if (!disabled) close(); }} dismissable={!disabled} maxHeight={isAppearance ? height : undefined}>
       <Dialog.Title aria-level={2}>{isAppearance ? 'Appearance' : isName ? 'Name' : 'UPI ID'}</Dialog.Title>
       {isAppearance ? <>
         <DialogScrollBody maxHeight={Platform.OS === 'web' ? Math.min(560, Math.max(0, height - 224)) : 440} gap={0} paddingVertical={0}><View ref={choices} onLayout={focusInitialChoice}>
           <ChoiceGroup label="Color" group="color" options={colorFamilies} selected={colorFamily} disabled={disabled} onChoose={value => void save(() => onColorFamily(value)).then(() => focusChoice('color'))} />
-          <ChoiceGroup label="Mode" group="mode" options={modes} selected={appearance} disabled={disabled} onChoose={value => void save(() => onAppearance(value)).then(() => focusChoice('mode'))} />
+          <ChoiceGroup label="Mode" group="mode" options={modes} selected={appearance} disabled={disabled || darkOnly} note={darkOnly ? 'Obsidian is always dark. Other colors use this mode.' : undefined} onChoose={value => void save(() => onAppearance(value)).then(() => focusChoice('mode'))} />
           {!!error && <ErrorText live>{error}</ErrorText>}
         </View></DialogScrollBody>
         <Dialog.Actions><View ref={doneArea}><Button title="Done" kind="text" disabled={disabled} onPress={close} /></View></Dialog.Actions>

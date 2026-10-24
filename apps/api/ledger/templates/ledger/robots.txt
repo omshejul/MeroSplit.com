@@ -1,0 +1,8 @@
+User-agent: *
+Disallow: /app/
+Disallow: /api/
+Disallow: /_allauth/
+Disallow: /oauth/
+Disallow: /invite/
+Disallow: /bill-email/
+Sitemap: https://merosplit.com/sitemap.xml

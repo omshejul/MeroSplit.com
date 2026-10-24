@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import ts from 'typescript';
-import { colorFamilies, isColorFamily } from '../src/theme.ts';
+import { colorFamilies, isColorFamily, isDarkOnly } from '../src/theme.ts';
 
 type Element = { type: any; props: Record<string, any>; children: any[] };
 const React = { Fragment: 'Fragment', createElement: (type: any, props: any, ...children: any[]): Element => ({ type, props: props ?? {}, children }) };
@@ -69,6 +69,9 @@ test('native and browser keep color separate from the saved System, Light or Dar
   const secure = new Map<string, string>([['splitdumb.appearance', 'dark']]);
   const native = storage('src/native.ts', ['COLOR_FAMILY_KEY', 'savedColorFamily', 'saveColorFamily'], { SecureStore: { getItemAsync: async (key: string) => secure.get(key) ?? null, setItemAsync: async (key: string, value: string) => { secure.set(key, value); } } });
   assert.equal(await native.savedColorFamily(), 'basic');
+  await native.saveColorFamily('obsidian'); assert.equal(await native.savedColorFamily(), 'obsidian'); assert.equal(secure.get('splitdumb.appearance'), 'dark');
+  secure.set('splitdumb.appearance', 'light'); await native.saveColorFamily('obsidian'); assert.equal(secure.get('splitdumb.appearance'), 'light', 'Obsidian never rewrites the saved mode');
+  secure.set('splitdumb.appearance', 'dark');
   await native.saveColorFamily('cove'); assert.equal(await native.savedColorFamily(), 'cove');
   assert.equal(secure.get('splitdumb.appearance'), 'dark'); assert.equal(secure.get('splitdumb.colorFamily'), 'cove');
   await assert.rejects(native.saveColorFamily('ember'), /Choose a color/); assert.equal(secure.get('splitdumb.colorFamily'), 'cove');
@@ -77,6 +80,7 @@ test('native and browser keep color separate from the saved System, Light or Dar
   let blocked = false;
   const web = storage('src/native.web.ts', ['COLOR_FAMILY_KEY', 'readPreference', 'writePreference', 'savedColorFamily', 'saveColorFamily'], { localStorage: { getItem: (key: string) => { if (blocked) throw new Error('blocked'); return local.get(key) ?? null; }, setItem: (key: string, value: string) => { if (blocked) throw new Error('blocked'); local.set(key, value); }, removeItem: (key: string) => local.delete(key) } });
   assert.equal(await web.savedColorFamily(), 'basic');
+  await web.saveColorFamily('obsidian'); assert.equal(await web.savedColorFamily(), 'obsidian'); assert.equal(local.get('merosplit.web.appearance'), 'light');
   await web.saveColorFamily('rose'); assert.equal(await web.savedColorFamily(), 'rose'); assert.equal(local.get('merosplit.web.appearance'), 'light');
   blocked = true; assert.equal(await web.savedColorFamily(), 'basic', 'blocked site storage still opens on Basic');
   await web.saveColorFamily('orchid');
@@ -86,7 +90,7 @@ test('Appearance dialog offers four colors and three modes, applies each at once
   const calls: string[] = [], focus: string[] = [];
   let states: any[] = [], cursor = 0;
   const env: Record<string, any> = { React, View: 'View', ScrollView: 'ScrollView', TextInput: 'TextInput', KeyboardDialog: 'KeyboardDialog', Dialog: { Title: 'Title', Content: 'Content', Actions: 'Actions' }, Text: 'Text', RadioChoice: 'RadioChoice', Button: 'Button', ErrorText: 'ErrorText', SettingsRow: 'SettingsRow', CancelDialogActions: 'CancelDialogActions', DialogScrollBody: 'DialogScrollBody',
-    colorFamilies, Platform: { OS: 'ios' }, Keyboard: { dismiss() {} }, requestAnimationFrame: (fn: () => void) => fn(), useWindowDimensions: () => ({ height: 400 }),
+    colorFamilies, isDarkOnly, Platform: { OS: 'ios' }, Keyboard: { dismiss() {} }, requestAnimationFrame: (fn: () => void) => fn(), useWindowDimensions: () => ({ height: 400 }),
     useUI: () => ({ ui: {}, inputColors: {}, appearance: 'system', colorFamily: 'cove' }),
     useState: (initial: any) => { const id = cursor++; if (!(id in states)) states[id] = initial; return [states[id], (value: any) => { states[id] = typeof value === 'function' ? value(states[id]) : value; }]; },
     useRef: (initial: any) => { const id = cursor++; return states[id] ??= { current: initial }; }, useEffect: () => {} };
@@ -101,13 +105,14 @@ test('Appearance dialog offers four colors and three modes, applies each at once
   tree = render();
   const dialog = nodes(tree).find(node => node.type === 'KeyboardDialog')!, body = nodes(tree).find(node => node.type === 'DialogScrollBody')!;
   assert.equal(dialog.props.maxHeight, 400, 'the card is bounded to the window, so the choices scroll on small or large-text screens');
-  assert.equal(body.props.maxHeight, 440); assert.equal(nodes(body).filter(node => node.type === 'RadioChoice').length, 7);
+  assert.equal(body.props.maxHeight, 440); assert.equal(nodes(body).filter(node => node.type === 'RadioChoice').length, 8);
   const actions = nodes(tree).find(node => node.type === 'Actions')!;
   assert.ok(!nodes(body).includes(actions) && nodes(actions).some(node => node.type === 'Button' && node.props.title === 'Done'), 'Done stays pinned outside the scroll body');
   const groups = nodes(tree).filter(node => node.props.role === 'radiogroup');
   assert.deepEqual(groups.map(node => node.props['aria-label']), ['Color', 'Mode']);
   const radios = nodes(tree).filter(node => node.type === 'RadioChoice');
-  assert.deepEqual(radios.map(node => node.props.label), ['Basic', 'Cove', 'Orchid', 'Rose', 'System', 'Light', 'Dark']);
+  assert.deepEqual(radios.map(node => node.props.label), ['Basic', 'Cove', 'Orchid', 'Rose', 'Obsidian', 'System', 'Light', 'Dark']);
+  assert.ok(radios.every(node => !node.props.disabled)); assert.ok(!nodes(tree).some(node => node.type === 'Text' && String(node.children).includes('always dark')));
   assert.deepEqual(radios.filter(node => node.props.selected).map(node => node.props.label), ['Cove', 'System']);
   assert.deepEqual([...new Set(radios.map(node => node.props.group))], ['color', 'mode']);
   radios.find(node => node.props.label === 'Rose')!.props.onPress(); await tick();
@@ -119,6 +124,19 @@ test('Appearance dialog offers four colors and three modes, applies each at once
   tree = render(); assert.equal(nodes(tree).find(node => node.type === 'KeyboardDialog')!.props.visible, false); assert.deepEqual(focus, ['row']);
   env.useUI = () => ({ ui: {}, inputColors: {}, appearance: 'light', colorFamily: 'basic' });
   assert.equal(nodes(render()).find(node => node.type === 'SettingsRow' && node.props.label === 'Appearance')!.props.value, 'Light', 'Basic keeps the released row text');
+
+  // Obsidian: honest dark-only look; the saved mode stays selected but cannot change.
+  calls.length = 0; env.useUI = () => ({ ui: {}, inputColors: {}, appearance: 'light', colorFamily: 'obsidian' });
+  tree = render(); const obsidianRow = nodes(tree).find(node => node.type === 'SettingsRow' && node.props.label === 'Appearance')!;
+  assert.equal(obsidianRow.props.value, 'Obsidian'); obsidianRow.props.onPress(); tree = render();
+  const modeRadios = nodes(tree).filter(node => node.type === 'RadioChoice' && node.props.group === 'mode');
+  assert.ok(modeRadios.every(node => node.props.disabled), 'Mode is unavailable while Obsidian is selected');
+  assert.deepEqual(modeRadios.filter(node => node.props.selected).map(node => node.props.label), ['Light'], 'saved mode is retained for the other colors');
+  assert.equal(nodes(tree).find(node => node.props.role === 'radiogroup' && node.props['aria-label'] === 'Mode')!.props['aria-disabled'], true);
+  assert.ok(nodes(tree).some(node => node.type === 'Text' && node.children.includes('Obsidian is always dark. Other colors use this mode.')));
+  assert.ok(nodes(tree).filter(node => node.type === 'RadioChoice' && node.props.group === 'color').every(node => !node.props.disabled));
+  nodes(tree).find(node => node.type === 'RadioChoice' && node.props.label === 'Basic')!.props.onPress(); await tick();
+  assert.deepEqual(calls, ['color basic'], 'leaving Obsidian writes only the color; the appearance key is untouched');
 });
 
 test('web Appearance starts on the selected color, keeps Tab inside Color, Mode and Done, and Escape restores the row', async () => {
@@ -128,7 +146,7 @@ test('web Appearance starts on the selected color, keeps Tab inside Color, Mode 
   const colorGroup = { contains: (value: any) => value?.name?.startsWith('color') }, modeGroup = { contains: (value: any) => value?.name?.startsWith('mode') };
   const color = element('color checked', colorGroup), otherColor = element('color other', colorGroup), mode = element('mode checked', modeGroup), done = element('done'), row = element('row');
   const env: Record<string, any> = { React, View: 'View', ScrollView: 'ScrollView', TextInput: 'TextInput', KeyboardDialog: 'KeyboardDialog', Dialog: { Title: 'Title', Content: 'Content', Actions: 'Actions' }, Text: 'Text', RadioChoice: 'RadioChoice', Button: 'Button', ErrorText: 'ErrorText', SettingsRow: 'SettingsRow', CancelDialogActions: 'CancelDialogActions', DialogScrollBody: 'DialogScrollBody',
-    colorFamilies, Platform: { OS: 'web' }, Keyboard: { dismiss() {} }, requestAnimationFrame: (fn: () => void) => { fn(); return 1; }, cancelAnimationFrame() {}, useWindowDimensions: () => ({ height: 900 }),
+    colorFamilies, isDarkOnly, Platform: { OS: 'web' }, Keyboard: { dismiss() {} }, requestAnimationFrame: (fn: () => void) => { fn(); return 1; }, cancelAnimationFrame() {}, useWindowDimensions: () => ({ height: 900 }),
     document: { get activeElement() { return active; }, addEventListener: (type: string, fn: any) => { (listeners[type] ??= []).push(fn); }, removeEventListener: (type: string, fn: any) => { listeners[type] = (listeners[type] ?? []).filter(value => value !== fn); } },
     useUI: () => ({ ui: {}, inputColors: {}, appearance: 'dark', colorFamily: 'orchid' }),
     useState: (initial: any) => { const id = cursor++; if (!(id in states)) states[id] = initial; return [states[id], (value: any) => { states[id] = typeof value === 'function' ? value(states[id]) : value; }]; },

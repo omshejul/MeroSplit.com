@@ -10,6 +10,7 @@ export async function loadBalanceSource(db: Database, session: Session, expected
   const owner = accountOwner(session), current = () => { if (!isCurrent()) throw new Error('This account changed. Reopen the group.'); };
   current();
   const cached = await readGroup(db, owner, expected.id);
+  current();
   const sameSnapshot = (value: Group) => value.id === expected.id && value.version === expected.version && value.read_mode !== 'summary';
   if (cached?.kind === 'local' && expected.version === 0 && sameSnapshot(cached.group)) { current(); return { group: cached.group, saved: true }; }
   let group: Group;

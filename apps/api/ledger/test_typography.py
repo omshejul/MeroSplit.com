@@ -1,6 +1,6 @@
 from hashlib import sha256
 
-from config.web import public_typography
+from config.web import public_asset
 from django.conf import settings
 from django.test import Client, RequestFactory
 
@@ -18,7 +18,7 @@ def test_public_font_is_offline_bundled_and_matches_the_native_asset():
     assert "SIL OPEN FONT LICENSE Version 1.1" in license_text
 
 
-def test_public_typography_has_only_local_urls_and_keeps_glyph_fallbacks():
+def test_public_asset_has_only_local_urls_and_keeps_glyph_fallbacks():
     response = Client().get("/assets/typography.css")
     css = b"".join(response.streaming_content).decode()
     assert response.status_code == 200 and response["Content-Type"].startswith("text/css")
@@ -27,5 +27,5 @@ def test_public_typography_has_only_local_urls_and_keeps_glyph_fallbacks():
     assert "http" not in css and "* {" not in css
     for template in (settings.BASE_DIR / "ledger/templates/ledger").glob("*.html"):
         assert 'href="/assets/typography.css"' in template.read_text(), template.name
-    assert public_typography(RequestFactory().get("/"), "../../config/settings.py").status_code == 404
+    assert public_asset(RequestFactory().get("/"), "../../config/settings.py").status_code == 404
     assert Client().get("/assets/fonts/OFL-StackSansText.txt").status_code == 404
