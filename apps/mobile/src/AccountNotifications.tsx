@@ -1,7 +1,7 @@
 import { DialogScrollBody } from './DialogParts';
 import KeyboardDialog from './KeyboardDialog';
 import React, { useEffect, useRef, useState } from 'react';
-import { AppState, Platform, View } from 'react-native';
+import { AppState, Platform, useWindowDimensions, View } from 'react-native';
 import { Dialog } from 'react-native-paper';
 import { request } from './api';
 import PushSettings, { type PushControls } from './PushSettings';
@@ -12,6 +12,7 @@ import BalanceStatements from './BalanceStatements';
 
 type Preferences = { expense_updates: boolean; email_reminders: boolean };
 export default function AccountNotifications({ session, push, busy, onBusyChange }: { session: Session; push: PushControls; busy: boolean; onBusyChange: (value: boolean) => void }) {
+  const { height } = useWindowDimensions();
   const [open, setOpen] = useState(false), [preferences, setPreferences] = useState<Preferences | null>(null), [error, setError] = useState(''), [working, setWorking] = useState(false);
   const row = useRef<React.ComponentRef<typeof View>>(null), mounted = useRef(true), inFlight = useRef(false), revision = useRef(0);
   async function load() {
@@ -45,7 +46,7 @@ export default function AccountNotifications({ session, push, busy, onBusyChange
   }, [open, busy, working]);
   return <><SettingsRow rowRef={row} icon="notifications" label="Notifications" value={value} disabled={busy} onPress={() => { setOpen(true); void load(); }} />
     <KeyboardDialog visible={open} dismissable={!busy && !working} onDismiss={() => { if (!busy && !working) close(); }}><Dialog.Title aria-level={2}>Notifications</Dialog.Title>
-      <DialogScrollBody maxHeight={440} gap={12}>
+      <DialogScrollBody maxHeight={Platform.OS === 'web' ? Math.min(560, Math.max(0, height - 224)) : 440} gap={12}>
         {preferences && <><NotificationSwitch icon="notifications" label="Notifications" checked={preferences.expense_updates} disabled={!!disabled} onChange={expense_updates => void update({ ...preferences, expense_updates })} />
           {preferences.expense_updates && <>
             <PushSettings push={push} busy={!!disabled} onBusyChange={onBusyChange} />

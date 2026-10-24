@@ -516,3 +516,14 @@ test('shared radio keeps Paper on native and a labelled standard input on web', 
   const native = harness('src/RadioChoice.tsx', 'RadioChoice', { RadioButton: { Item: 'RadioItem' } }).render(props);
   assert.equal(native.type, 'RadioItem'); assert.equal(native.props.status, 'checked'); assert.equal(native.props.value, props.value);
 });
+
+
+test('notification body uses spare desktop height while retaining compact phones and the native cap', () => {
+  for (const [os, height, expected] of [['web', 900, 560], ['web', 667, 443], ['web', 500, 276], ['native', 900, 440]] as const) {
+    const { app, props } = notificationPanel({ expense_updates: true, email_reminders: true });
+    app.env.Platform.OS = os; app.env.useWindowDimensions = () => ({ height });
+    const tree = app.render(props);
+    assert.equal(nodes(tree).find(node => node.type === 'DialogScrollBody')!.props.maxHeight, expected);
+    app.unmount();
+  }
+});
