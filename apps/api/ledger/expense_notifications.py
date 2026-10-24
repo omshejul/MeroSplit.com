@@ -50,8 +50,12 @@ def update_preferences(actor, expense_updates, email_reminders):
         row.updates_enabled_at = now
     if email_reminders and (not row.email_reminders or not row.expense_updates and expense_updates):
         row.email_enabled_at = now
+    channels_changed = (row.expense_updates, row.email_reminders) != (expense_updates, email_reminders)
     row.expense_updates, row.email_reminders = expense_updates, email_reminders
     row.save(update_fields=["expense_updates", "email_reminders", "email_enabled_at", "updates_enabled_at"])
+    if channels_changed:
+        from .balance_statements import reset_schedule
+        reset_schedule(row, now)
     from .models import BillChatDelivery, BillChatNotice
     chat = BillChatNotice.objects.filter(recipient=actor)
     if not expense_updates:

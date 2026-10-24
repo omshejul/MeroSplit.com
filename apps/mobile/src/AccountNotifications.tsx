@@ -8,6 +8,7 @@ import PushSettings, { type PushControls } from './PushSettings';
 import type { Session } from './types';
 import { Button, ErrorText, SettingsRow } from './ui';
 import NotificationSwitch from './NotificationSwitch';
+import BalanceStatements from './BalanceStatements';
 
 type Preferences = { expense_updates: boolean; email_reminders: boolean };
 export default function AccountNotifications({ session, push, busy, onBusyChange }: { session: Session; push: PushControls; busy: boolean; onBusyChange: (value: boolean) => void }) {
@@ -49,6 +50,7 @@ export default function AccountNotifications({ session, push, busy, onBusyChange
           {preferences.expense_updates && <>
             <PushSettings push={push} busy={!!disabled} onBusyChange={onBusyChange} />
             <NotificationSwitch icon="mail" label="Email notifications" checked={preferences.email_reminders} disabled={!!disabled} onChange={email_reminders => void update({ ...preferences, email_reminders })} />
+            {open && <BalanceStatements session={session} visible={open} emailEnabled={preferences.email_reminders} busy={!!disabled} onBusyChange={onBusyChange} />}
           </>}
         </>}
         {!!error && <><ErrorText>{error}</ErrorText>{!preferences && <Button title="Retry" disabled={busy || working} onPress={() => void load()} />}</>}

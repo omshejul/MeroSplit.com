@@ -14,7 +14,7 @@ const tick = async () => { for (let i = 0; i < 15; i++) await Promise.resolve();
 function harness(file: string, name: string, extra: Record<string, any> = {}) {
   let cursor = 0, states: any[] = [], effects: (() => void)[] = [], cleanups: Record<number, () => void> = {};
   const deps: Record<number, any[]> = {};
-  const env: Record<string, any> = { React, Dialog, View: 'View', ScrollView: 'ScrollView', KeyboardDialog: 'KeyboardDialog', Pressable: 'Pressable', Text: 'Text', NotificationSwitch: 'NotificationSwitch', PushSettings: 'PushSettings', DialogScrollBody: 'DialogScrollBody', Form: 'Form', SectionHeading: 'SectionHeading', Button: 'Button', Icon: 'Icon', SettingsRow: 'SettingsRow', BillPeople: 'BillPeople', DraftAttachment: 'DraftAttachment', LocalAttachment: 'LocalAttachment', AmountField: 'AmountField', TextField: 'TextField', DateField: 'DateField', ErrorText: 'ErrorText', Checkbox: { Item: 'Checkbox' }, RadioChoice: 'RadioChoice', Crypto: { randomUUID: () => 'bill-id' }, StyleSheet: { create: (value: any) => value }, Keyboard: { dismiss() {} }, useWindowDimensions: () => ({ height: 667 }), useSafeAreaInsets: () => ({ top: 20, bottom: 0 }), Platform: { OS: 'native' }, requestAnimationFrame: (fn: () => void) => fn(), useUI: () => ({ ui: {} }), formatMoney, integer, rupeesToPaise, validateExpense, ...extra,
+  const env: Record<string, any> = { React, Dialog, View: 'View', ScrollView: 'ScrollView', KeyboardDialog: 'KeyboardDialog', Pressable: 'Pressable', Text: 'Text', NotificationSwitch: 'NotificationSwitch', PushSettings: 'PushSettings', BalanceStatements: 'BalanceStatements', DialogScrollBody: 'DialogScrollBody', Form: 'Form', SectionHeading: 'SectionHeading', Button: 'Button', Icon: 'Icon', SettingsRow: 'SettingsRow', BillPeople: 'BillPeople', DraftAttachment: 'DraftAttachment', LocalAttachment: 'LocalAttachment', AmountField: 'AmountField', TextField: 'TextField', DateField: 'DateField', ErrorText: 'ErrorText', Checkbox: { Item: 'Checkbox' }, RadioChoice: 'RadioChoice', Crypto: { randomUUID: () => 'bill-id' }, StyleSheet: { create: (value: any) => value }, Keyboard: { dismiss() {} }, useWindowDimensions: () => ({ height: 667 }), useSafeAreaInsets: () => ({ top: 20, bottom: 0 }), Platform: { OS: 'native' }, requestAnimationFrame: (fn: () => void) => fn(), useUI: () => ({ ui: {} }), formatMoney, integer, rupeesToPaise, validateExpense, ...extra,
     useState: (initial: any) => { const id = cursor++; if (!(id in states)) states[id] = typeof initial === 'function' ? initial() : initial; return [states[id], (value: any) => { states[id] = typeof value === 'function' ? value(states[id]) : value; }]; },
     useRef: (initial: any) => { const id = cursor++; return states[id] ??= { current: initial }; },
     useEffect: (fn: () => any, values: any[]) => { const id = cursor++; if (!deps[id] || values.some((value, i) => value !== deps[id][i])) { effects.push(() => { cleanups[id]?.(); cleanups[id] = fn(); }); deps[id] = values; } },
@@ -426,4 +426,93 @@ test('Member email affordance excludes registered/self/removed/direct/nonorganiz
   for (const patch of [{ person: { ...props.person, user_id: 2 } }, { person: { ...props.person, removed: true } }, { person: { ...props.person, email: 'saved@example.invalid' } }, { selfId: props.person.id }, { group: { ...inviteGroup, is_direct: true } }, { group: { ...inviteGroup, archived: true } }, { organizer: false }]) {
     tree = app.render({ ...props, ...patch }); assert.ok(!nodes(tree).some(node => node.props.accessibilityLabel === 'Add email and invite Asha'));
   }
+});
+
+
+function statementPanel() {
+  let saved = { enabled: false, frequency: 'monthly', next_at: null, delivery: null } as any;
+  const writes: any[] = [], busy: boolean[] = [], timers = new Map<number, () => void>();
+  let reads = 0, nextTimer = 0;
+  let failSend = false;
+  const app = harness('src/BalanceStatements.tsx', 'BalanceStatements', {
+    setInterval: (fn: () => void) => { timers.set(++nextTimer, fn); return nextTimer; }, clearInterval(id: number) { timers.delete(id); },
+    AppState: { currentState: 'active' }, accountOwner: () => 'owner', getDatabase: async () => ({}),
+    sendStatementRequest: async (_db: any, _owner: string, createId: () => string, send: (id: string) => Promise<any>) => send(createId()),
+    request: async (_session: any, path: string, method = 'GET', value?: any) => {
+      if (method === 'GET') { reads++; return structuredClone(saved); }
+      writes.push({ path, method, value });
+      if (path.endsWith('/send')) {
+        if (failSend) throw new Error('Unknown response. Try again.');
+        saved.delivery = { id: 'statement', state: 'pending', error: '' }; return saved.delivery;
+      }
+      saved = { ...saved, ...value, next_at: value.enabled ? '2026-11-01T00:00:00Z' : null }; return saved;
+    },
+  });
+  const props = { session: { token: 'session' }, visible: true, emailEnabled: true, busy: false, onBusyChange: (value: boolean) => busy.push(value) };
+  return { app, props, writes, busy, timers, reads: () => reads, fail: (value: boolean) => { failSend = value; } };
+}
+
+test('statements default off, reveal existing radio controls only when on, and manual send never subscribes', async () => {
+  const panel = statementPanel(), { app, props } = panel;
+  app.render(props); app.commit(); await tick(); let tree = app.render(props);
+  assert.equal(notificationToggle(tree, 'Balance statements').props.checked, false);
+  assert.equal(nodes(tree).filter(node => node.type === 'RadioChoice').length, 0);
+  find(tree, 'title', 'Email statement now').props.onPress(); await tick(); tree = app.render(props);
+  assert.equal(notificationToggle(tree, 'Balance statements').props.checked, false);
+  assert.deepEqual(panel.writes[0].value, { command_id: 'bill-id' });
+  notificationToggle(tree, 'Balance statements').props.onChange(true); await tick(); tree = app.render(props);
+  assert.equal(nodes(tree).filter(node => node.type === 'RadioChoice').length, 2);
+  assert.equal(find(tree, 'label', 'Monthly').props.selected, true);
+  find(tree, 'label', 'Weekly').props.onPress(); await tick(); tree = app.render(props);
+  assert.equal(find(tree, 'label', 'Weekly').props.selected, true);
+  assert.deepEqual(panel.writes[2].value, { enabled: true, frequency: 'weekly' });
+  app.unmount();
+});
+
+test('uncertain statement send retries the same command and blocks double taps', async () => {
+  const panel = statementPanel(), { app, props } = panel;
+  app.render(props); app.commit(); await tick(); let tree = app.render(props);
+  panel.fail(true); const send = find(tree, 'title', 'Email statement now'); send.props.onPress(); send.props.onPress();
+  await tick(); assert.equal(panel.writes.length, 1); tree = app.render(props);
+  assert.ok(nodes(tree).some(node => node.type === 'ErrorText'));
+  panel.fail(false); find(tree, 'title', 'Email statement now').props.onPress(); await tick();
+  assert.equal(panel.writes.length, 2); assert.deepEqual(panel.writes[0], panel.writes[1]);
+  assert.deepEqual(panel.busy, [true, false, true, false]);
+  app.unmount();
+});
+
+test('statement feedback distinguishes queued, accepted, oversized and uncertain delivery', () => {
+  const app = harness('src/BalanceStatements.tsx', 'StatementDelivery');
+  const text = (tree: any): string => nodes(tree).flatMap(node => node.children).filter(child => typeof child === 'string').join(' ');
+  assert.match(text(app.render({ delivery: { state: 'pending', error: '' } })), /queued/);
+  assert.match(text(app.render({ delivery: { state: 'accepted', error: '' } })), /accepted for email delivery/);
+  assert.match(text(app.render({ delivery: { state: 'failed', error: 'too_big' } })), /too large/);
+  assert.match(text(app.render({ delivery: { state: 'held', error: 'delivery_unknown' } })), /Check your inbox/);
+});
+
+
+test('statement polling stops when hidden/unmounted and makes no native background requests', async () => {
+  const panel = statementPanel(), { app, props } = panel;
+  app.render(props); app.commit(); await tick(); let tree = app.render(props);
+  find(tree, 'title', 'Email statement now').props.onPress(); await tick(); tree = app.render(props); app.commit();
+  assert.equal(find(tree, 'title', 'Email statement now').props.disabled, true);
+  assert.equal(panel.timers.size, 1);
+  app.env.AppState.currentState = 'background'; const reads = panel.reads();
+  panel.timers.forEach(fn => fn()); await tick(); assert.equal(panel.reads(), reads);
+  app.env.AppState.currentState = 'active'; panel.timers.forEach(fn => fn()); await tick(); assert.ok(panel.reads() > reads);
+  app.env.Platform.OS = 'web'; app.env.document = { visibilityState: 'hidden' }; const webReads = panel.reads();
+  panel.timers.forEach(fn => fn()); await tick(); assert.equal(panel.reads(), webReads);
+  app.render({ ...props, visible: false }); app.commit(); assert.equal(panel.timers.size, 0);
+  app.unmount(); assert.equal(panel.timers.size, 0);
+});
+
+test('shared radio keeps Paper on native and a labelled standard input on web', () => {
+  let choices = 0;
+  const props = { label: 'Weekly', value: 'weekly', group: 'statement-frequency', selected: true, disabled: false, onPress: () => choices++ };
+  const web = harness('src/RadioChoice.web.tsx', 'RadioChoice', { useUI: () => ({ palette: {} }) }).render(props);
+  const input = nodes(web).find(node => node.type === 'input')!;
+  assert.equal(web.type, 'label'); assert.equal(input.props.type, 'radio'); assert.equal(input.props.checked, true); assert.equal(input.props.name, props.group);
+  input.props.onChange(); assert.equal(choices, 1);
+  const native = harness('src/RadioChoice.tsx', 'RadioChoice', { RadioButton: { Item: 'RadioItem' } }).render(props);
+  assert.equal(native.type, 'RadioItem'); assert.equal(native.props.status, 'checked'); assert.equal(native.props.value, props.value);
 });

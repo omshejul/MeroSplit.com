@@ -295,6 +295,9 @@ class NotificationPreference(models.Model):
     updates_enabled_at = models.DateTimeField(null=True)
     foreground_at = models.DateTimeField(null=True)
     last_digest_at = models.DateTimeField(null=True)
+    balance_statements = models.BooleanField(default=False)
+    statement_frequency = models.CharField(max_length=7, default="monthly")
+    statement_next_at = models.DateTimeField(null=True)
 
 
 class ExpenseDigest(models.Model):
@@ -400,3 +403,32 @@ from .mcp_models import (  # noqa: E402,F401
     McpOAuthPendingAuthorization,
     McpOAuthRefreshDigest,
 )
+
+
+class BalanceStatement(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    request_id = models.UUIDField(null=True)
+    period_key = models.CharField(max_length=40, blank=True)
+    state = models.CharField(max_length=9, default="pending")
+    due_at = models.DateTimeField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    first_attempt_at = models.DateTimeField(null=True)
+    accepted_at = models.DateTimeField(null=True)
+    cancelled_at = models.DateTimeField(null=True)
+    attempts = models.PositiveSmallIntegerField(default=0)
+    lease_id = models.UUIDField(null=True)
+    lease_until = models.DateTimeField(null=True)
+    recipient_email = models.EmailField(blank=True)
+    payload = models.JSONField(default=dict)
+    scope_hash = models.CharField(max_length=64, blank=True)
+    provider_id = models.CharField(max_length=200, blank=True)
+    last_error = models.CharField(max_length=40, blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["user", "request_id"], condition=Q(request_id__isnull=False), name="statement_manual_once"),
+            models.UniqueConstraint(fields=["user", "period_key"], condition=~Q(period_key=""), name="statement_period_once"),
+            models.CheckConstraint(condition=Q(state__in=["pending", "sending", "accepted", "cancelled", "held", "failed"]), name="balance_statement_state"),
+        ]
+        indexes = [models.Index(fields=["state", "due_at"], name="balance_statement_due")]

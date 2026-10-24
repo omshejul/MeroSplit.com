@@ -124,6 +124,11 @@ class DisplayNameIn(Input):
     only_if_unnamed: StrictBool = False
 
 
+class BalanceStatementPreferencesIn(Input):
+    enabled: StrictBool
+    frequency: Literal["weekly", "monthly"]
+
+
 class NotificationPreferencesIn(Input):
     expense_updates: StrictBool
     email_reminders: StrictBool

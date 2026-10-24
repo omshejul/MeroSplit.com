@@ -116,7 +116,7 @@ test('Disclosure body and expanded semantics change immediately while only its c
 });
 test('tab actions and selected/disabled semantics remain immediate and do not depend on animation completion', () => {
   const calls: string[] = [];
-  const TabButton = component('AppNavigation.tsx', 'TabButton', { React, Pressable: 'Pressable', View: 'View', Text: 'Text', Icon: 'Icon', Animated: { View: 'AnimatedView' }, styles: {}, StyleSheet: { absoluteFill: {} }, radii: {}, useUI: () => ({ palette: {}, motion: { enabled: true } }), useMotionValue: () => 'in-flight' });
+  const TabButton = component('AppNavigation.tsx', 'TabButton', { React, Platform: { OS: 'native' }, Pressable: 'Pressable', View: 'View', Text: 'Text', Icon: 'Icon', Animated: { View: 'AnimatedView' }, styles: {}, StyleSheet: { absoluteFill: {} }, radii: {}, useUI: () => ({ palette: {}, motion: { enabled: true } }), useMotionValue: () => 'in-flight' });
   const tree = TabButton({ item: { value: 'Account', label: 'Me', icon: 'me' }, selected: true, busy: false, onSelect: (value: string) => calls.push(value) });
   tree.props.onPress(); assert.deepEqual(calls, ['Account']); assert.deepEqual(tree.props.accessibilityState, { selected: true, disabled: false });
   const busy = TabButton({ item: { value: 'Groups' }, selected: false, busy: true, onSelect() {} }); assert.equal(busy.props.disabled, true);

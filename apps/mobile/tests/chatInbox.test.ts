@@ -8,7 +8,7 @@ const nodes = (value: any): Element[] => Array.isArray(value) ? value.flatMap(no
 const tick = async () => { for (let i = 0; i < 20; i++) await Promise.resolve(); };
 function inbox(send: any) {
   let cursor = 0; const states: any[] = [], deps: Record<number, any[]> = {}, cleanups: Record<number, any> = {}; let effects: any[] = [], timer: any;
-  const env = { React: { createElement: (type: any, props: any, ...children: any[]) => ({ type, props: props ?? {}, children }) }, Text: 'Text', View: 'View', SettingsRow: 'SettingsRow', Button: 'Button', request: send, useUI: () => ({ ui: {} }),
+  const env = { React: { createElement: (type: any, props: any, ...children: any[]) => ({ type, props: props ?? {}, children }) }, Text: 'Text', SectionHeading: 'SectionHeading', View: 'View', SettingsRow: 'SettingsRow', Button: 'Button', request: send, useUI: () => ({ ui: {} }),
     setTimeout: (fn: () => void) => { assert.equal(timer, undefined, 'one timer'); timer = fn; return 1; }, clearTimeout: () => { timer = undefined; },
     useState: (initial: any) => { const id = cursor++; if (!(id in states)) states[id] = initial; return [states[id], (value: any) => { states[id] = typeof value === 'function' ? value(states[id]) : value; }]; },
     useRef: (initial: any) => { const id = cursor++; return states[id] ??= { current: initial }; },

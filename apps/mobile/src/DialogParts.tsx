@@ -1,5 +1,5 @@
 import React from 'react';
-import { ScrollView } from 'react-native';
+import { Platform, ScrollView } from 'react-native';
 import { Dialog } from 'react-native-paper';
 import { Button } from './ui';
 
@@ -8,7 +8,7 @@ export function DialogScrollBody({ maxHeight, gap, paddingVertical = 12, childre
   maxHeight: number; gap: number; paddingVertical?: number; children: React.ReactNode;
 }) {
   return <Dialog.ScrollArea style={{ maxHeight }}>
-    <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingVertical, gap }}>{children}</ScrollView>
+    <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingVertical, gap, paddingRight: Platform.OS === 'web' ? 16 : 0 }}>{children}</ScrollView>
   </Dialog.ScrollArea>;
 }
 

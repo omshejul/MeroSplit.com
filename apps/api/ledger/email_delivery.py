@@ -125,6 +125,17 @@ def send_email(recipient: str, subject: str, text: str, delivery_id: str, *, htm
         raise EmailDeliveryUnavailable() from None
 
 
+def cloudflare_payload(payload: dict, delivery_id: str) -> dict:
+    sender_name, sender = parseaddr(payload.get("from", ""))
+    body = {**payload, "from": {"address": sender, "name": sender_name},
+            "headers": {**payload.get("headers", {}), "X-MeroSplit-Delivery-ID": delivery_id}}
+    if "attachments" in body:
+        body["attachments"] = [{"filename": item["filename"], "content": item["content"], "type": item["content_type"],
+                                "disposition": "inline" if item.get("content_id") else "attachment",
+                                **({"content_id": item["content_id"]} if item.get("content_id") else {})} for item in body["attachments"]]
+    return body
+
+
 @sensitive_variables()
 def send_cloudflare(recipient: str, delivery_id: str, payload: dict) -> str:
     from .models import CloudflareEmailDispatch
@@ -134,12 +145,7 @@ def send_cloudflare(recipient: str, delivery_id: str, payload: dict) -> str:
     if (not re.fullmatch(r"[a-fA-F0-9]{32}", account) or not token or sender != "mail@merosplit.com"
             or payload.get("to") != [recipient] or payload.get("cc") or payload.get("bcc") or not delivery_id or len(delivery_id) > 200):
         raise EmailDeliveryUnavailable()
-    body = {**payload, "from": {"address": sender, "name": sender_name},
-            "headers": {**payload.get("headers", {}), "X-MeroSplit-Delivery-ID": delivery_id}}
-    if "attachments" in body:
-        body["attachments"] = [{"filename": item["filename"], "content": item["content"], "type": item["content_type"],
-                                "disposition": "inline" if item.get("content_id") else "attachment",
-                                **({"content_id": item["content_id"]} if item.get("content_id") else {})} for item in body["attachments"]]
+    body = cloudflare_payload(payload, delivery_id)
     encoded = json.dumps(body, sort_keys=True).encode()
     if len(encoded) > 5 * 1024 * 1024:
         raise EmailDeliveryUnavailable()

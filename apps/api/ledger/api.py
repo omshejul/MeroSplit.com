@@ -12,7 +12,7 @@ from ninja.errors import HttpError, ValidationError
 from ninja.files import UploadedFile as RequestFile
 from ninja.security import django_auth
 
-from . import bill_chat
+from . import balance_statements, bill_chat
 from .accounting import AccountingError
 from .collaboration import (
     acknowledge_opening,
@@ -54,6 +54,7 @@ from .schemas import (
     AccountDeleteIn,
     ArchiveIn,
     AttemptIn,
+    BalanceStatementPreferencesIn,
     ChatBlockIn,
     ChatMessageIn,
     ChatPolicyIn,
@@ -279,6 +280,30 @@ def notification_preferences(request):
 @api.put("/me/notifications/preferences")
 def notification_preferences_update(request, body: NotificationPreferencesIn):
     return update_preferences(request.auth, body.expense_updates, body.email_reminders)
+
+
+@api.get("/me/balance-statements/preferences")
+def statement_preferences(request):
+    return balance_statements.preferences(request.auth)
+
+
+@api.put("/me/balance-statements/preferences")
+def statement_preferences_update(request, body: BalanceStatementPreferencesIn):
+    return balance_statements.update_preferences(request.auth, body.enabled, body.frequency)
+
+
+@api.post("/me/balance-statements/send")
+def statement_send(request, body: Command):
+    return balance_statements.request_statement(request.auth, body.command_id)
+
+
+@api.get("/me/balance-statements/{statement_id}")
+def statement_status(request, statement_id: UUID):
+    from .models import BalanceStatement
+    row = BalanceStatement.objects.filter(pk=statement_id, user=request.auth).first()
+    if row is None:
+        raise HttpError(404, "Statement not found")
+    return balance_statements.delivery_status(row)
 
 
 @api.get("/me/notifications")

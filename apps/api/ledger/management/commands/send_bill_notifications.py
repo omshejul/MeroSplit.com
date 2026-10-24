@@ -5,6 +5,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import close_old_connections
 from django.utils import timezone
 
+from ledger.balance_statements import send_balance_statements
 from ledger.bill_email import send_pending_bill_emails
 from ledger.chat_notifications import send_chat_notifications
 from ledger.expense_notifications import send_pending_digests
@@ -44,8 +45,9 @@ class Command(BaseCommand):
                 digests = send_pending_digests(limit=options["limit"])
                 mailbox_notices = send_pending_bill_emails(limit=options["limit"])
                 chat = send_chat_notifications(limit=options['limit'])
-                if count or receipts or digests or mailbox_notices or chat or not options["loop"]:
-                    self.stdout.write(f"Processed {count} bill notifications, {receipts} receipts and {digests} unread digests and {mailbox_notices} mailbox notices and {chat} chat deliveries")
+                statements = send_balance_statements(limit=options['limit'])
+                if count or receipts or digests or mailbox_notices or chat or statements or not options["loop"]:
+                    self.stdout.write(f"Processed {count} bill notifications, {receipts} receipts and {digests} unread digests and {mailbox_notices} mailbox notices and {chat} chat deliveries and {statements} balance statements")
                 if not options["loop"]:
                     return
                 time.sleep(options["interval"])
