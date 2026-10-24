@@ -66,9 +66,11 @@ function MemberRow({ group, person, selfId, organizer, disabled, working, feedba
   return <View style={ui.row}>
     <Avatar name={person.name} />
     <View style={ui.rowBody}>
-      <Pressable accessibilityRole={canAddEmail ? 'button' : undefined} accessibilityLabel={canAddEmail ? `Add email and invite ${person.name}` : undefined} disabled={disabled || !canAddEmail} onPress={onAddEmail} style={canAddEmail ? { minHeight: 44, justifyContent: 'center' } : undefined}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><Text numberOfLines={1} ellipsizeMode="tail" accessibilityLabel={displayName} style={[ui.rowTitle, { flex: 1 }]}>{displayName}</Text>{canAddEmail && <View aria-hidden><Icon name="mail" /></View>}</View>
-        {!!(reason || status) && <Text style={ui.rowSub} accessibilityLabel={[status, reason].filter(Boolean).join('. ')}>{[status, reason].filter(Boolean).join(' · ')}</Text>}
+      <Pressable accessibilityRole={canAddEmail ? 'button' : undefined} accessibilityLabel={canAddEmail ? `Add email and invite ${person.name}` : undefined} disabled={disabled || !canAddEmail} onPress={onAddEmail} style={{ minHeight: canAddEmail ? 44 : undefined, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <View style={ui.rowBody}><Text numberOfLines={1} ellipsizeMode="tail" accessibilityLabel={displayName} style={ui.rowTitle}>{displayName}</Text>
+          {!!(reason || status) && <Text style={ui.rowSub} accessibilityLabel={[status, reason].filter(Boolean).join('. ')}>{[status, reason].filter(Boolean).join(' · ')}</Text>}
+        </View>
+        {canAddEmail && <View aria-hidden style={{ width: 44, height: 44, flexShrink: 0, alignItems: 'center', justifyContent: 'center' }}><Icon name="mail" size={22} /></View>}
       </Pressable>
       {canInvite && <>
         <Text numberOfLines={1} accessibilityLabel={person.email} style={ui.rowSub}>{person.email}</Text>

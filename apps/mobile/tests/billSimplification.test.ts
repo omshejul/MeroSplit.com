@@ -527,3 +527,17 @@ test('notification body uses spare desktop height while retaining compact phones
     app.unmount();
   }
 });
+
+
+test('member mail slot centers against the complete name/status block and matches the remove action size', () => {
+  const app = harness('src/MembersScreen.tsx', 'MemberRow', { currentEmailInvite: () => null, Avatar: 'Avatar', IconAction: 'IconAction' });
+  const person = { id: 'other', name: 'Asha' };
+  const props = { group: { ...group, owner_id: 1, balances: { other: '-103400' } }, person, selfId: 'self', organizer: true, disabled: false, working: false, cooldown: 0, contactChanged: false, onAddEmail() {}, onSend() {}, onRemove() {} };
+  const tree = app.render(props), name = find(tree, 'accessibilityLabel', 'Add email and invite Asha');
+  assert.equal(name.props.style.flexDirection, 'row'); assert.equal(name.props.style.alignItems, 'center'); assert.equal(name.props.style.minHeight, 44);
+  const slot = nodes(name).find(node => node.type === 'View' && node.props['aria-hidden'] === true)!;
+  assert.equal(slot.props.style.width, 44); assert.equal(slot.props.style.height, 44); assert.equal(slot.props.style.flexShrink, 0);
+  const icon = nodes(slot).find(node => node.type === 'Icon')!; assert.equal(icon.props.name, 'mail'); assert.equal(icon.props.size, 22);
+  assert.equal(find(tree, 'label', 'Remove Asha').props.disabled, true);
+  assert.ok(nodes(name).some(node => node.props.accessibilityLabel === 'Settle ₹1,034.00 first'));
+});

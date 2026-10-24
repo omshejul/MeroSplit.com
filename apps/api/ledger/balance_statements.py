@@ -18,7 +18,7 @@ from . import email_delivery
 from .expense_notifications import _locked_preference
 from .models import BalanceStatement, CloudflareEmailDispatch, Group, NotificationPreference
 from .otp import EmailCodeLimited, consume_limits
-from .statement_csv import StatementTooLarge, financial_csv
+from .statement_csv import StatementTooLarge, financial_statement
 from .store_review import groups_for_actor, review_ids
 
 LEASE = timedelta(minutes=2)
@@ -180,14 +180,15 @@ def _prepare(job_id):
             return None
         if not row.payload:
             try:
-                attachment = financial_csv(groups)
+                attachments, summary = financial_statement(groups, actor.pk)
                 payload = email_delivery.message_payload(recipient, "Your MeroSplit balance statement",
-                    "Your balance statement is attached as an Excel-compatible CSV. Amounts are in Indian rupees with two decimal places. "
-                    "Reversed records retain their original amounts and have no current balance effect. "
-                    "These are shared ledger records, not bank verification. Open MeroSplit: https://merosplit.com/app/")
+                    f"Your balances as of {now.strftime('%d %b %Y')}\n\n{summary}\n\n"
+                    "Balances.csv shows who owes or is owed in each group. Transactions.csv lists bills, payments and agreed starting balances. "
+                    "All amounts are in Indian rupees. Reversed records keep their original amounts; the amount counted in balances is zero. "
+                    "Payments are shared records, not bank verification.\n\nOpen MeroSplit: https://merosplit.com/app/")
                 payload["_email_provider"] = "cloudflare"
-                payload["attachments"] = [{"filename": f"MeroSplit-statement-{now.date().isoformat()}.csv",
-                    "content_type": "text/csv; charset=utf-8", "content": base64.b64encode(attachment).decode("ascii")}]
+                payload["attachments"] = [{"filename": filename, "content_type": "text/csv; charset=utf-8", "content": base64.b64encode(data).decode("ascii")}
+                    for filename, data in attachments.items()]
                 wire = email_delivery.cloudflare_payload({key: value for key, value in payload.items() if key != "_email_provider"}, f"balance-statement:{row.id}")
                 if len(json.dumps(wire, sort_keys=True).encode()) > MAX_WIRE_BYTES:
                     raise StatementTooLarge()

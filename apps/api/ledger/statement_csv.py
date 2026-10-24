@@ -2,7 +2,6 @@
 
 import csv
 import io
-from datetime import timezone as dt_timezone
 from decimal import Decimal
 
 from django.views.decorators.debug import sensitive_variables
@@ -10,9 +9,9 @@ from django.views.decorators.debug import sensitive_variables
 from .models import Expense, OpeningBalance, Participant, Settlement
 
 MAX_CSV_BYTES = 3 * 1024 * 1024
-COLUMNS = ["record_type", "group_id", "group_name", "record_id", "date", "recorded_at_utc",
-           "description", "participant_id", "participant_name", "currency", "original_amount_inr",
-           "paid_inr", "share_inr", "net_inr", "current_balance_inr", "status"]
+BALANCE_COLUMNS = ["Group", "Person", "Balance", "Amount (INR)"]
+TRANSACTION_COLUMNS = ["Date", "Group", "Transaction", "Description", "Paid by", "Paid to", "Amount (INR)",
+                       "Counted in balances (INR)", "Split between", "Status"]
 
 
 class StatementTooLarge(Exception):
@@ -25,14 +24,30 @@ def _cell(value):
     return value
 
 
+def _money(paise):
+    return Decimal(int(paise)).scaleb(-2)
+
+
+def _date(value):
+    return value.strftime("%d %b %Y") if value else "Not recorded"
+
+
+def _position(balance):
+    return "Is owed" if balance > 0 else "Owes" if balance < 0 else "Settled"
+
+
+def _amounts(amounts, names):
+    return "; ".join(f"{names[person]}: INR {_money(amounts[person])}" for person in sorted(amounts, key=lambda person: names[person].casefold()))
+
+
 @sensitive_variables()
-def financial_csv(groups):
-    """Caller holds group locks. Exact paise integers, retained reversed originals."""
-    chunks, size = [b"\xef\xbb\xbf"], 3
+def financial_statement(groups, user_id):
+    """Caller holds group locks. Human reports from the financial allowlist only."""
+    chunks, size, summary = [[b"\xef\xbb\xbf"], [b"\xef\xbb\xbf"]], 6, []
     buffer = io.StringIO(newline="")
     writer = csv.writer(buffer)
 
-    def row(values):
+    def row(table, values):
         nonlocal size
         buffer.seek(0)
         buffer.truncate(0)
@@ -41,41 +56,40 @@ def financial_csv(groups):
         size += len(encoded)
         if size > MAX_CSV_BYTES:
             raise StatementTooLarge()
-        chunks.append(encoded)
+        chunks[table].append(encoded)
 
-    row(COLUMNS)
-    for group in groups:
-        people = list(Participant.objects.filter(group=group).order_by("id").values("id", "name", "user__first_name"))
-        names = {str(person["id"]): person["user__first_name"] or person["name"] for person in people}
+    row(0, BALANCE_COLUMNS)
+    row(1, TRANSACTION_COLUMNS)
+    for group in sorted(groups, key=lambda group: group.name.casefold()):
+        people = list(Participant.objects.filter(group=group).order_by("id").values("id", "name", "user_id", "user__first_name"))
+        names = {str(person["id"]): (person["user__first_name"] or person["name"]) + (" (you)" if person["user_id"] == user_id else "") for person in people}
         balances = dict.fromkeys(names, 0)
 
-        def record(kind, person, **values):
-            values.update(record_type=kind, group_id=str(group.id), group_name=group.name,
-                          participant_id=person, participant_name=names[person], currency="INR")
-            row([Decimal(values[key]).scaleb(-2) if key.endswith("_inr") and key in values else values.get(key, "") for key in COLUMNS])
-
-        for bill in Expense.objects.filter(group=group).order_by("date", "id").values("id", "date", "description", "total", "paid", "shares", "deleted").iterator():
+        for bill in Expense.objects.filter(group=group).order_by("date", "id").values("date", "description", "total", "paid", "shares", "deleted").iterator():
             for person in sorted(set(bill["paid"]) | set(bill["shares"])):
                 paid, share = int(bill["paid"].get(person, 0)), int(bill["shares"].get(person, 0))
                 net = 0 if bill["deleted"] else paid - share
                 balances[person] += net
-                record("bill", person, record_id=str(bill["id"]), date=bill["date"].isoformat(), description=bill["description"],
-                       original_amount_inr=bill["total"], paid_inr=paid, share_inr=share, net_inr=net,
-                       status="reversed" if bill["deleted"] else "accepted")
-        for payment in Settlement.objects.filter(group=group).order_by("created_at", "id").values("id", "sender_id", "recipient_id", "amount", "date", "created_at", "reversed").iterator():
+            row(1, [_date(bill["date"]), group.name, "Bill", bill["description"], _amounts(bill["paid"], names), "",
+                    _money(bill["total"]), _money(0 if bill["deleted"] else bill["total"]), _amounts(bill["shares"], names), "Reversed" if bill["deleted"] else "Recorded"])
+        for payment in Settlement.objects.filter(group=group).order_by("created_at", "id").values("sender_id", "recipient_id", "amount", "date", "reversed").iterator():
             for person, direction in [(str(payment["sender_id"]), 1), (str(payment["recipient_id"]), -1)]:
                 net = 0 if payment["reversed"] else direction * payment["amount"]
                 balances[person] += net
-                record("payment", person, record_id=str(payment["id"]), date=payment["date"].isoformat() if payment["date"] else "",
-                       recorded_at_utc=payment["created_at"].astimezone(dt_timezone.utc).isoformat(), original_amount_inr=payment["amount"], net_inr=net,
-                       status="reversed" if payment["reversed"] else "accepted")
-        opening = OpeningBalance.objects.filter(group=group, accepted=True).values("id", "cutoff", "balances").first()
+            sender, recipient = names[str(payment["sender_id"])], names[str(payment["recipient_id"])]
+            row(1, [_date(payment["date"]), group.name, "Payment", f"{sender} paid {recipient}", sender, recipient,
+                    _money(payment["amount"]), _money(0 if payment["reversed"] else payment["amount"]), "", "Reversed" if payment["reversed"] else "Recorded"])
+        opening = OpeningBalance.objects.filter(group=group, accepted=True).values("cutoff", "balances").first()
         if opening:
             for person, amount in sorted(opening["balances"].items()):
                 amount = int(amount)
                 balances[person] += amount
-                record("opening_balance", person, record_id=str(opening["id"]), date=opening["cutoff"].isoformat(),
-                       original_amount_inr=amount, net_inr=amount, status="accepted")
-        for person, balance in balances.items():
-            record("balance", person, current_balance_inr=balance, status="current")
-    return b"".join(chunks)
+                row(1, [_date(opening["cutoff"]), group.name, "Starting balance", f"{names[person]}: {_position(amount).lower()} INR {_money(abs(amount))}", "", "",
+                        _money(amount), _money(amount), "", "Agreed"])
+        for person in sorted(people, key=lambda person: (person["user_id"] != user_id, names[str(person["id"])].casefold())):
+            balance = balances[str(person["id"])]
+            row(0, [group.name, names[str(person["id"])], _position(balance), _money(abs(balance))])
+            if person["user_id"] == user_id:
+                position = f"You are owed INR {_money(balance)}" if balance > 0 else f"You owe INR {_money(-balance)}" if balance < 0 else "You are settled up"
+                summary.append(f"{group.name}: {position}")
+    return {"Balances.csv": b"".join(chunks[0]), "Transactions.csv": b"".join(chunks[1])}, "\n".join(summary) or "No shared balances yet."

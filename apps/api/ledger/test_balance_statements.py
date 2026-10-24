@@ -152,22 +152,30 @@ def test_financial_csv_all_records_exact_balances_reversals_bom_and_no_private_c
     assert job.state == "accepted" and job.accepted_at and not job.payload and not job.recipient_email
     assert Group.objects.get(pk=group_id).version == version
     body = json.loads(calls[0])
-    data = base64.b64decode(body["attachments"][0]["content"])
-    assert data.startswith(b"\xef\xbb\xbf")
-    text = data.decode("utf-8-sig")
+    attachments = {item["filename"]: base64.b64decode(item["content"]) for item in body["attachments"]}
+    assert set(attachments) == {"Balances.csv", "Transactions.csv"}
+    assert all(data.startswith(b"\xef\xbb\xbf") for data in attachments.values())
+    text = "\n".join(data.decode("utf-8-sig") for data in attachments.values())
     assert "'=unsafe group" in text and "' +unsafe name" in text and "'@unsafe bill" in text
-    for private in ["excluded", client.actor.email, "contact_email", "chat", "invite", "upi", "local_uri"]:
+    for private in ["excluded", client.actor.email, "contact_email", "chat", "invite", "upi", "local_uri", "record_type", "group_id", "record_id", "participant_id", "recorded_at_utc", group_id, *people, bill["id"], reverse["id"]]:
         assert private not in text
-    rows = list(csv.DictReader(io.StringIO(text)))
-    reversed_rows = [row for row in rows if row["status"] == "reversed"]
-    assert {Decimal(row["original_amount_inr"]) for row in reversed_rows} == {Decimal("0.31"), Decimal("7.77")}
-    assert all(row["net_inr"] == "0.00" for row in reversed_rows)
-    balances = {row["participant_id"]: int(Decimal(row["current_balance_inr"]) * 100) for row in rows if row["record_type"] == "balance"}
+    balances = list(csv.DictReader(io.StringIO(attachments["Balances.csv"].decode("utf-8-sig"))))
+    records = list(csv.DictReader(io.StringIO(attachments["Transactions.csv"].decode("utf-8-sig"))))
+    assert set(balances[0]) == {"Group", "Person", "Balance", "Amount (INR)"}
+    reversed_rows = [row for row in records if row["Status"] == "Reversed"]
+    assert len(reversed_rows) == 2  # Each bill/payment appears once, not once per participant.
+    assert {Decimal(row["Amount (INR)"]) for row in reversed_rows} == {Decimal("0.31"), Decimal("7.77")}
+    assert all(row["Counted in balances (INR)"] == "0.00" for row in reversed_rows)
     shares = Expense.objects.get(pk=bill["id"]).shares
     assert sorted(map(int, shares.values())) == [3333, 3334, 3334]
-    assert balances == {people[0]: 10001 - int(shares[people[0]]) - 334 + 200, people[1]: -int(shares[people[1]]) + 334 - 200, people[2]: -int(shares[people[2]])}
-    assert sum(balances.values()) == 0
-    assert all(re.fullmatch(r"-?\d+\.\d{2}", value) for row in rows for key, value in row.items() if key.endswith("_inr") and value)
+    amounts = {row["Person"]: int(Decimal(row["Amount (INR)"]) * 100) * (-1 if row["Balance"] == "Owes" else 1) for row in balances}
+    assert amounts == {"A (you)": 10001 - int(shares[people[0]]) - 334 + 200, "' +unsafe name": -int(shares[people[1]]) + 334 - 200, "C": -int(shares[people[2]])}
+    assert sum(amounts.values()) == 0
+    assert "You are owed INR" in body["text"] and group_id not in body["text"]
+    assert all(re.fullmatch(r"-?\d+\.\d{2}", value) for row in [*balances, *records] for key, value in row.items() if key.endswith("(INR)") and value)
+    assert any(row["Date"] == "Not recorded" and row["Transaction"] == "Payment" for row in records)
+    assert any(row["Date"] == "01 Jan 2026" and row["Transaction"] == "Starting balance" for row in records)
+    assert any("A (you): INR 100.01" in row["Paid by"] and "C: INR " in row["Split between"] for row in records)
     statements.send_balance_statements()
     assert len(calls) == 1
 
@@ -388,3 +396,19 @@ def test_unverified_statement_error_is_actionable_and_never_posts(client, monkey
         assert response.status_code == 409
         assert "signing in with its email code" in response.json()["detail"]
     assert not calls and not BalanceStatement.objects.exists()
+
+
+def test_existing_frozen_recipe_is_sent_unchanged_after_report_format_changes(client, group, monkeypatch):
+    calls = provider(monkeypatch, client)
+    job = manual(client)
+    frozen = statements._prepare(job.id)
+    legacy_csv = b"\xef\xbb\xbfgroup_id,original_amount_inr\r\nlegacy-group,12.00\r\n"
+    legacy = {**frozen.payload, "text": "Previously frozen statement", "attachments": [{"filename": "Old statement.csv", "content_type": "text/csv; charset=utf-8", "content": base64.b64encode(legacy_csv).decode()}]}
+    BalanceStatement.objects.filter(pk=job.id).update(payload=legacy, lease_until=timezone.now() - timedelta(seconds=1))
+    monkeypatch.setattr(statements, "financial_statement", lambda *args: pytest.fail("Must not rerender a frozen recipe"))
+    statements.send_balance_statements()
+    body = json.loads(calls[0])
+    assert body["text"] == legacy["text"]
+    assert base64.b64decode(body["attachments"][0]["content"]) == legacy_csv
+    job.refresh_from_db()
+    assert job.state == "accepted" and len(calls) == 1
