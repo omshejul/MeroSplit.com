@@ -53,7 +53,7 @@ def test_crawler_gets_real_homepage_and_head_without_javascript_or_an_app_export
     assert "table" not in page.tags
     assert len(" ".join(page.text).split()) <= 150
     assert "/app/" in page.links and {"/privacy", "/support"}.issubset(page.links)
-    assert [script.get("src") for script in page.scripts if script.get("type") != "application/ld+json"] == ["/assets/install.js"]
+    assert [script.get("src") for script in page.scripts if script.get("type") != "application/ld+json"] == []
     assert "<div id=\"root\"" not in response.content.decode()
     assert page.meta["canonical"] == ["https://merosplit.com/"]
     assert page.meta["og:url"] == "https://merosplit.com/"
@@ -116,7 +116,9 @@ def test_homepage_does_not_take_over_existing_app_legal_association_or_invitatio
     assert browser.get("/api/v1/groups").status_code == 401
 
 
-def test_install_intent_is_manual_safe_and_android_group_precedes_play():
+def test_install_intent_is_manual_safe_and_android_group_precedes_play(monkeypatch):
+    from django.urls import resolve
+    monkeypatch.setitem(resolve("/").func.view_initkwargs["extra_context"], "testing_links_ready", True)
     browser = Client()
     for ua in ["Googlebot", "iPhone", "Android", "Macintosh"]:
         response = browser.get("/?install=1", HTTP_USER_AGENT=ua)
@@ -145,3 +147,15 @@ def test_home_header_is_logo_only_with_help_links_in_footer():
         assert response.status_code == 200
         help_header = response.content.decode().split("<header", 1)[1].split("</header>", 1)[0]
         assert '<nav aria-label="Help">' in help_header and 'href="/support"' in help_header
+
+
+def test_pending_testing_links_never_emit_native_links_or_handoff_script():
+    browser = Client()
+    for url in ["/", "/?install=1", "/?install=1#install"]:
+        for ua in ["Googlebot", "iPhone", "Android", "Macintosh"]:
+            response = browser.get(url, HTTP_USER_AGENT=ua)
+            assert response.status_code == 200 and "Location" not in response
+            html = response.content.decode()
+            assert 'href="/app/"' in html and 'src="/assets/install-qr.svg"' in html
+            for withheld in ["testflight.apple.com", "play.google.com/apps/testing", "groups.google.com", '/assets/install.js', 'class="badges"', 'id="android-help"']:
+                assert withheld not in html

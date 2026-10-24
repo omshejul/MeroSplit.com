@@ -24,7 +24,7 @@
   <meta name="twitter:card" content="summary">
   <link rel="stylesheet" href="/assets/typography.css">
   <link rel="stylesheet" href="/assets/home.css">
-  <script src="/assets/install.js" defer></script>
+  {% if testing_links_ready %}<script src="/assets/install.js" defer></script>{% endif %}
   <script type="application/ld+json">{"@context": "https://schema.org", "@type": "WebSite", "name": "MeroSplit", "url": "https://merosplit.com/"}</script>
 </head>
 <body>
@@ -37,7 +37,7 @@
       <h1 id="title">Shared bills.<br>Clear balances.</h1>
       <p class="lede">For flatmates, friends and trips. Add what you paid, see who owes whom, and settle up your way.</p>
       <div class="install" id="install" tabindex="-1" aria-label="Try MeroSplit">
-        <div class="badges">
+        {% if testing_links_ready %}<div class="badges">
           <a id="iphone-install" href="https://testflight.apple.com/join/7HrHqqnB"><img src="/assets/try-on-iphone.svg" alt="Try on iPhone with TestFlight" height="52"></a>
           <a id="android-badge" href="#android-install" aria-describedby="android-prerequisite"><img src="/assets/try-on-android.svg" alt="Try on Android: see testing steps" height="52"></a>
         </div>
@@ -51,7 +51,7 @@
           </ol>
           <p>Use the same Google account for both steps. This page cannot verify group membership.</p>
           </div>
-        </details>
+        </details>{% endif %}
         <a class="web-choice" href="/app/">Continue on web</a>
         <figure class="install-qr"><img src="/assets/install-qr.svg" width="112" height="112" alt="QR code to open MeroSplit testing options on your phone"><figcaption>Scan to try on your phone.</figcaption></figure>
       </div>
