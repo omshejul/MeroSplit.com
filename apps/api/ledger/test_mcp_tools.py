@@ -299,7 +299,7 @@ def test_group_creation_is_idempotent_silent_and_does_not_link_contacts(ledger):
     payload = {"id": group_id, "command_id": str(uuid4()), "name": "New MCP group", "self_participant_id": self_id,
                "participants": [{"id": self_id, "name": "Me"}, {"id": other_id, "name": peer.first_name}], "is_direct": True}
     result = create_group(actor, payload)
-    assert create_group(actor, payload) == result == {"id": group_id, "version": 1}
+    assert create_group(actor, payload) == result == {"id": group_id, "version": 1, "linked_participant_ids": []}
     assert Participant.objects.get(pk=other_id).user_id is None
     assert Participant.objects.get(pk=other_id).contact_email == ""
     assert not Invite.objects.filter(participant__group_id=group_id).exists()

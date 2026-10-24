@@ -86,6 +86,7 @@ from .schemas import (
     SplitwiseImportResult,
     SplitwisePreviewIn,
     WriteResult,
+    LinkedWriteResult,
 )
 from .services import (
     create_group,
@@ -178,7 +179,7 @@ def groups(request):
     }
 
 
-@api.post("/groups", response=WriteResult)
+@api.post("/groups", response=LinkedWriteResult)
 def group_create(request, body: GroupIn):
     return create_group(request.auth, body.model_dump(mode="json"))
 
@@ -542,12 +543,12 @@ def account_delete(request, body: AccountDeleteIn):
         return delete_account(actor)
 
 
-@api.post("/groups/{group_id}/participants", response=WriteResult)
+@api.post("/groups/{group_id}/participants", response=LinkedWriteResult)
 def participant_add(request, group_id: UUID, body: ParticipantIn):
     return add_participant(request.auth, group_id, body.model_dump(mode="json"))
 
 
-@api.post("/groups/{group_id}/participants/{participant_id}/contact", response=WriteResult)
+@api.post("/groups/{group_id}/participants/{participant_id}/contact", response=LinkedWriteResult)
 def participant_contact(request, group_id: UUID, participant_id: UUID, body: ContactIn):
     return update_contact(request.auth, group_id, participant_id, body.model_dump(mode="json"))
 

@@ -207,7 +207,7 @@ def test_separate_worker_instances_reconnect_permissions_revocation_and_command_
                 arguments = {"id": group_id, "command_id": str(uuid4()), "name": "Cross-worker synthetic",
                              "self_participant_id": self_id, "participants": [{"id": self_id, "name": "Self"}]}
                 result = await a.call_tool("create_group", arguments)
-                assert not result.is_error and result.structured_content == {"id": group_id, "version": 1}
+                assert not result.is_error and result.structured_content == {"id": group_id, "version": 1, "linked_participant_ids": []}
                 bill_payload = {"id": str(uuid4()), "command_id": str(uuid4()), "description": "One SDK bill", "total": "101",
                                 "paid": {str(ledger[4].id): "101"}, "split": {"mode": "equal", "values": {str(ledger[4].id): "1", str(ledger[5].id): "1"}},
                                 "date": "2026-10-18"}

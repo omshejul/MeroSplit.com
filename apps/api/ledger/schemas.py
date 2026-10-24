@@ -155,6 +155,9 @@ class ArchiveIn(Command):
 class WriteResult(Schema):
     id: str
     version: int
+
+
+class LinkedWriteResult(WriteResult):
     linked_participant_ids: list[str] = []
 
 
