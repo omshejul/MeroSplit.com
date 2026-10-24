@@ -40,8 +40,8 @@ test('Expired, unsupported-currency, disabled and malformed quotes cannot produc
 test('iOS reference routes are probed separately; Android retains its resolver and browsers never claim detection', async () => {
   const probes: string[] = [];
   const probe = async (url: string) => { probes.push(url); return true; };
-  assert.deepEqual((await availableUPIApps('ios', probe)).map(app => app.id), ['phonepe', 'google-pay', 'paytm', 'cred', 'bhim', 'amazon-pay', 'upi']);
-  assert.deepEqual(probes, ['phonepe://upi/pay', 'gpay://upi/pay', 'paytmmp://upi/pay', 'credpay://upi/pay', 'bhim://upi/pay', 'amazonpay://upi/pay', 'upi://pay']); probes.length = 0;
+  assert.deepEqual((await availableUPIApps('ios', probe)).map(app => app.id), ['phonepe', 'google-pay', 'paytm', 'bhim', 'cred', 'amazon-pay', 'upi']);
+  assert.deepEqual(probes, ['phonepe://upi/pay', 'gpay://upi/pay', 'paytmmp://upi/pay', 'bhim://upi/pay', 'credpay://upi/pay', 'amazonpay://upi/pay', 'upi://pay']); probes.length = 0;
   assert.deepEqual((await availableUPIApps('android', probe)).map(app => app.id), ['upi']); assert.deepEqual(probes, ['upi://pay']); probes.length = 0;
   assert.deepEqual(await availableUPIApps('web', probe), []); assert.deepEqual(probes, []);
   assert.deepEqual(await availableUPIApps('ios', async () => { throw new Error('No supported handler'); }), []);

@@ -16,9 +16,9 @@ test('UPI discovery uses official HTTPS links and never a payment URI or other p
 });
 
 
-test('directory follows verified NPCI app-volume order then alphabetical unranked apps', () => {
-  assert.deepEqual(upiDirectory.slice(0, 7).map(app => app.name), ['PhonePe', 'Google Pay', 'Paytm', 'Navi', 'super.money', 'CRED', 'FamApp by Trio']);
-  const unranked = upiDirectory.slice(7).map(app => app.name);
+test('directory follows dated published payer-app-volume order then alphabetical unranked apps', () => {
+  assert.deepEqual(upiDirectory.slice(0, 10).map(app => app.name), ['PhonePe', 'Google Pay', 'Paytm', 'Navi', 'super.money', 'BHIM', 'FamApp by Trio', 'CRED', 'Amazon Pay', 'MobiKwik']);
+  const unranked = upiDirectory.slice(10).map(app => app.name);
   assert.deepEqual(unranked, [...unranked].sort((a, b) => a.toLowerCase() < b.toLowerCase() ? -1 : 1));
   assert.equal(upiDirectory.length, 23);
 });
