@@ -13,7 +13,7 @@ export default function SendInviteDialog({ visible, email, busy, error, onSend, 
     <DialogFocus active={visible} busy={busy} onEscape={onCancel}>
       <Dialog.Title aria-level={2}>Send invite?</Dialog.Title>
       <DialogScrollBody maxHeight={280} gap={8}>
-        <Text style={ui.body}>{email} isn't on MeroSplit yet. Send them an invite?</Text>
+        <Text style={ui.body}>Send an invite to {email}?</Text>
         {!!error && <ErrorText live>{error}</ErrorText>}
       </DialogScrollBody>
       <CancelDialogActions disabled={busy} onCancel={onCancel}>

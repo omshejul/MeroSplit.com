@@ -129,7 +129,7 @@ test('Reusable invitation dialog wraps the full email and keeps Send, Cancel, er
     const tree = app.render('SendInviteDialog', props); await app.commit();
     assert.equal(component(tree, 'KeyboardDialog').props.dismissable, true);
     const body = nodes(tree).find(node => node.type === 'Text')!;
-    assert.equal(body.children.join(''), `${props.email} isn't on MeroSplit yet. Send them an invite?`);
+    assert.equal(body.children.join(''), `Send an invite to ${props.email}?`);
     assert.equal(body.props.numberOfLines, undefined, 'long email must wrap');
     assert.equal(component(tree, 'ErrorText').children[0], props.error);
     button(tree, 'Send').props.onPress(); component(tree, 'CancelDialogActions').props.onCancel(); assert.equal(sends, 1); assert.equal(cancels, 1);
