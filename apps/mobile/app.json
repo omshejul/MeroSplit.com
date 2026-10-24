@@ -12,6 +12,7 @@
       "bundleIdentifier": "com.omshejul.splitdumb",
       "buildNumber": "18",
       "associatedDomains": [
+        "applinks:merosplit.com",
         "applinks:merosplit.omshejul.com"
       ],
       "infoPlist": {
@@ -36,12 +37,51 @@
         {
           "action": "VIEW",
           "autoVerify": true,
-          "category": ["BROWSABLE", "DEFAULT"],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ],
           "data": [
-            {"scheme": "https", "host": "merosplit.omshejul.com", "pathPrefix": "/app/sign-in/"},
-            {"scheme": "https", "host": "merosplit.omshejul.com", "pathPrefix": "/app/groups/"},
-            {"scheme": "https", "host": "merosplit.omshejul.com", "pathPrefix": "/app/invite/"},
-            {"scheme": "https", "host": "merosplit.omshejul.com", "pathPrefix": "/invite/"}
+            {
+              "scheme": "https",
+              "host": "merosplit.com",
+              "pathPrefix": "/app/sign-in/"
+            },
+            {
+              "scheme": "https",
+              "host": "merosplit.com",
+              "pathPrefix": "/app/groups/"
+            },
+            {
+              "scheme": "https",
+              "host": "merosplit.com",
+              "pathPrefix": "/app/invite/"
+            },
+            {
+              "scheme": "https",
+              "host": "merosplit.com",
+              "pathPrefix": "/invite/"
+            },
+            {
+              "scheme": "https",
+              "host": "merosplit.omshejul.com",
+              "pathPrefix": "/app/sign-in/"
+            },
+            {
+              "scheme": "https",
+              "host": "merosplit.omshejul.com",
+              "pathPrefix": "/app/groups/"
+            },
+            {
+              "scheme": "https",
+              "host": "merosplit.omshejul.com",
+              "pathPrefix": "/app/invite/"
+            },
+            {
+              "scheme": "https",
+              "host": "merosplit.omshejul.com",
+              "pathPrefix": "/invite/"
+            }
           ]
         }
       ],

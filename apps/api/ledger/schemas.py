@@ -12,8 +12,17 @@ class Input(Schema):
     model_config = ConfigDict(extra="forbid")
 
 
+class AccountDeleteIn(Input):
+    confirmation: Literal["delete"]
+    email: Annotated[StrictStr, Field(min_length=1, max_length=254)]
+
+
 class Command(Input):
     command_id: UUID
+
+
+class GroupLeaveIn(Command):
+    remove_membership: StrictBool = False
 
 
 class ChatMessageIn(Input):

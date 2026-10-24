@@ -51,6 +51,7 @@ from .payments import change_payment, launch_details, prepare_payment, profile_f
 from .portability import accepted_export, account_export, csv_export, delete_account
 from .profiles import display_name, update_display_name
 from .schemas import (
+    AccountDeleteIn,
     ArchiveIn,
     AttemptIn,
     ChatBlockIn,
@@ -63,6 +64,7 @@ from .schemas import (
     DisplayNameIn,
     ExpenseIn,
     GroupIn,
+    GroupLeaveIn,
     InviteIn,
     NotificationPreferencesIn,
     OpeningIn,
@@ -489,8 +491,17 @@ def export_account(request):
 
 
 @api.delete("/account")
-def account_delete(request):
-    return delete_account(request.auth)
+def account_delete(request, body: AccountDeleteIn):
+    # Validate the current email under the same user lock as deletion, before
+    # touching files, devices, notices, sessions or shared ledger history.
+    with transaction.atomic():
+        from django.contrib.auth import get_user_model
+        actor = get_user_model().objects.select_for_update(no_key=True).filter(pk=request.auth.pk, is_active=True).first()
+        if actor is None:
+            raise HttpError(401, "Sign in again")
+        if body.confirmation != "delete" or body.email.strip().casefold() != actor.email.strip().casefold():
+            raise HttpError(422, "Type delete and enter your current account email")
+        return delete_account(actor)
 
 
 @api.post("/groups/{group_id}/participants", response=WriteResult)
@@ -556,9 +567,9 @@ def bill_email_entry(request):
 
 
 @api.post("/groups/{group_id}/leave")
-def personal_group_leave(request, group_id: UUID, body: Command):
+def personal_group_leave(request, group_id: UUID, body: GroupLeaveIn):
     from .group_membership import leave_group
-    return leave_group(request.auth, group_id, body.model_dump(mode="json"))
+    return leave_group(request.auth, group_id, body.model_dump(mode="json", exclude_unset=True))
 
 
 @api.post("/groups/{group_id}/restore")

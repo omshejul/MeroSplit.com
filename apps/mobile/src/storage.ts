@@ -96,7 +96,9 @@ export async function reconcileGroupCache(db: Database, owner: string, authorize
       const action = receipt.disposition === 'restored' ? 'restore' : 'leave';
       const group = authorized.find(row => row.id === receipt.id);
       if (!command || command.state !== 'pending' || command.method !== 'POST' || command.group_id !== receipt.id
-        || command.path !== `/groups/${receipt.id}/${action}` || command.body.command_id !== commandId || Object.keys(command.body).length !== 1
+        || command.path !== `/groups/${receipt.id}/${action}` || command.body.command_id !== commandId
+        || !(Object.keys(command.body).length === 1 || action === 'leave' && Object.keys(command.body).length === 2 && command.body.remove_membership === true)
+        || command.body.remove_membership === true && receipt.disposition !== 'left'
         || !Number.isSafeInteger(receipt.version) || receipt.version < 0 || !['left', 'hidden', 'restored'].includes(receipt.disposition)
         || (receipt.disposition === 'left' ? !!group : !group || group.version < receipt.version || !!group.hidden !== (receipt.disposition === 'hidden'))) {
         throw new Error('The membership update could not be confirmed. Try again.');

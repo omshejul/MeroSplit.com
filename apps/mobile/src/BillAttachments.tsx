@@ -3,9 +3,10 @@ import { Platform, Pressable, Text, View } from 'react-native';
 import { Alert } from './alerts';
 import * as Crypto from 'expo-crypto';
 import { accountOwner, request } from './api';
-import { clearMediaPreview, clearPickedMedia, clearStagedMedia, mediaSize, openPrivateMedia, pendingMediaUpload, pickMedia, retryMediaUpload, saveMediaUpload, stageMediaUpload } from './media';
+import { clearMediaPreview, clearPickedMedia, clearStagedMedia, mediaSize, openPrivateMedia, pendingMediaUpload, pickMedia, retryMediaUpload, removePendingMediaUpload, saveMediaUpload, stageMediaUpload } from './media';
 import type { MediaList, MediaMetadata, PendingMediaUpload, PickedMedia } from './media';
 import { getDatabase } from './native';
+import LocalAttachment from './LocalAttachment';
 import PrivateMediaImage from './PrivateMediaImage';
 import RemoveMediaMenu from './RemoveMediaMenu';
 import type { Session } from './types';
@@ -111,8 +112,8 @@ export default function BillAttachments({ session, groupId, expenseId, revision,
       {items.map(item => <AttachmentRow key={item.id} session={session} item={item} disabled={disabled}
         onOpen={() => void run(() => openPrivateMedia(session, item))} options={editable && <RemoveMediaMenu open={optionsId === item.id} disabled={disabled || !!pending} label={`Options for ${item.name}`} removeLabel="Remove attachment"
           onOpen={() => setOptionsId(item.id)} onClose={() => setOptionsId(null)} onRemove={() => remove(item)} />} />)}
-      {pending && <><Text style={[ui.notice, ui.warning]}>Upload not confirmed: {pending.file.name}.</Text><Button title="Retry upload" disabled={disabled || readOnly} onPress={() => void run(finishUpload)} /></>}
-      {editable && !pending && items.length < 10 && <SettingsRow label="Add photo or PDF" icon="add" chevron={false} disabled={disabled} onPress={() => Platform.OS === 'web' ? void run(() => add(false)) : Alert.alert('Add photo or PDF', undefined, [
+      {pending && <><LocalAttachment file={pending.file} disabled={disabled} onError={setError} /><Text style={[ui.notice, ui.warning]}>Upload not confirmed: {pending.file.name}.</Text><Button title="Retry upload" icon="refresh" disabled={disabled || readOnly} onPress={() => void run(finishUpload)} /><Button title="Remove file" icon="remove" kind="text" disabled={disabled || readOnly} onPress={() => void run(async () => { await removePendingMediaUpload(await getDatabase(), session, path); if (current()) setPending(null); await load(); await onChanged?.(); })} /></>}
+      {editable && !pending && items.length < 10 && <SettingsRow label="Add photo or PDF" icon="attachment" chevron={false} disabled={disabled} onPress={() => Platform.OS === 'web' ? void run(() => add(false)) : Alert.alert('Add photo or PDF', undefined, [
         { text: 'Cancel', style: 'cancel' }, { text: 'Photo', onPress: () => void run(() => add(true)) }, { text: 'Files', onPress: () => void run(() => add(false)) },
       ])} />}
       {!loading && readOnly && <Text style={ui.caption}>Read-only while archived or waiting to sync.</Text>}

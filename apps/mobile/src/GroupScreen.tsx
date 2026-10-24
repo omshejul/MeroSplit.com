@@ -221,10 +221,10 @@ export function ExpenseDetail({ noticeVisibility, expense, group, selfId, busy, 
       : <Button title="Edit bill" icon="bill" kind="primary" disabled={busy || !canEdit} onPress={onEdit} />}
     {chat}
     {attachments}
-    <BillPeople title="Who paid?" summary={`${payers.length} people`} inline={payers.length <= 1} disabled={busy}>
+    <BillPeople icon="pay" title="Who paid?" summary={`${payers.length} people`} inline={payers.length <= 1} disabled={busy}>
       {payers.map(person => <ParticipantAmountRow key={person.id} name={person.name} amount={expense.paid[person.id] ?? '0'} />)}
     </BillPeople>
-    <BillPeople title="Split between" summary={`${sharing.length} people`} inline={sharing.length <= 1} disabled={busy}>
+    <BillPeople icon="people" title="Split between" summary={`${sharing.length} people`} inline={sharing.length <= 1} disabled={busy}>
       <Text style={ui.caption}>{expense.split.mode === 'equal' ? 'Shared equally' : expense.split.mode === 'exact' ? 'Exact amounts' : expense.split.mode === 'percent' ? 'By percentage' : 'By shares'}</Text>
       {sharing.map(person => <ParticipantAmountRow key={person.id} name={person.name} amount={expense.shares[person.id] ?? '0'} />)}
     </BillPeople>

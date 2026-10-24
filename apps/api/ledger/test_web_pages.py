@@ -41,7 +41,7 @@ def test_public_pages_match_account_sync_and_preserve_deletion_disclosures(path)
         assert obsolete not in text
     if path == "/support":
         assert "Groups and People" in text and "sync automatically" in text
-        assert "four-digit code sent to your email" in text and "Me has import, export and account controls" in text
+        assert "four-digit code sent to your email" in text and "Me has import, Export data and account controls" in text
     else:
         assert "five minutes" in text
         assert "provider" in text

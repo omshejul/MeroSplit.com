@@ -100,3 +100,13 @@ export async function clearMediaPreviews(cacheFiles: () => Promise<{ name: strin
 
 export async function readMediaBytes(uri: string): Promise<Uint8Array> { const { File } = await import('expo-file-system'); return new File(uri).bytes(); }
 export async function mediaFilePart(file: PickedMedia, readBytes: (uri: string) => Promise<Uint8Array>): Promise<Blob> { return { name: file.name, type: file.type, bytes: () => readBytes(file.uri) } as unknown as Blob; }
+
+export async function localMediaUrl(file: PickedMedia): Promise<string> { return file.uri; }
+export function clearLocalMediaUrl(_uri: string): void {}
+export async function openLocalMedia(file: PickedMedia, _uri: string): Promise<void> {
+  const { File } = await import('expo-file-system');
+  const saved = new File(file.uri);
+  if (!await saved.canPreview({ mimeType: file.type })) throw new Error('No file viewer is available.');
+  await saved.preview({ title: file.name, mimeType: file.type });
+}
+export async function mediaBase64(file: PickedMedia): Promise<string> { const { File } = await import('expo-file-system'); return new File(file.uri).base64(); }

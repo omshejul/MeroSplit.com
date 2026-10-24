@@ -14,7 +14,7 @@ from jsonschema import Draft202012Validator
 REPO = Path(__file__).resolve().parents[1]
 PACKAGE = REPO / "plugins" / "merosplit"
 SCHEMAS = Path(__file__).resolve().parent / "plugin-schemas"
-ENDPOINT = "https://merosplit.omshejul.com/mcp"
+ENDPOINT = "https://merosplit.com/mcp"
 FILES = (
     ".claude-plugin/plugin.json",
     ".mcp.json",
@@ -59,7 +59,7 @@ def validate(package=PACKAGE):
     require(all(isinstance(interface[key], str) and interface[key] for key in interface if key not in {"capabilities", "defaultPrompt"}), "Presentation text must be nonempty")
     require(interface["capabilities"] == ["Read", "Write"], "Unexpected capabilities")
     require(isinstance(interface["defaultPrompt"], list) and all(isinstance(item, str) and item for item in interface["defaultPrompt"]), "Invalid default prompts")
-    require(interface["websiteURL"] == "https://merosplit.omshejul.com" and interface["privacyPolicyURL"] == "https://merosplit.omshejul.com/privacy", "Unexpected public URLs")
+    require(interface["websiteURL"] == "https://merosplit.com" and interface["privacyPolicyURL"] == "https://merosplit.com/privacy", "Unexpected public URLs")
     require(set(mcp.get("mcpServers", {})) == {"merosplit"}, "One remote MCP server is required")
     server = mcp["mcpServers"]["merosplit"]
     require(server == {"type": "streamable-http", "url": ENDPOINT, "extensions": {"com.openai": {"auth": AUTH}}}, "Expected documented DCR auth only; no headers, credentials or processes")

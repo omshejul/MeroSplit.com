@@ -3,7 +3,7 @@
   "mcpServers": {
     "merosplit": {
       "type": "streamable-http",
-      "url": "https://merosplit.omshejul.com/mcp",
+      "url": "https://merosplit.com/mcp",
       "extensions": {
         "com.openai": {
           "auth": {

@@ -5,9 +5,9 @@
   "description": "View shared expenses and record bills or external payments with your existing MeroSplit permissions.",
   "author": {
     "name": "Om Shejul",
-    "url": "https://merosplit.omshejul.com"
+    "url": "https://merosplit.com"
   },
-  "homepage": "https://merosplit.omshejul.com/mcp/setup",
+  "homepage": "https://merosplit.com/mcp/setup",
   "extensions": {
     "com.openai": {
       "interface": {
@@ -19,8 +19,8 @@
           "Read",
           "Write"
         ],
-        "websiteURL": "https://merosplit.omshejul.com",
-        "privacyPolicyURL": "https://merosplit.omshejul.com/privacy",
+        "websiteURL": "https://merosplit.com",
+        "privacyPolicyURL": "https://merosplit.com/privacy",
         "defaultPrompt": [
           "Show what I owe in MeroSplit.",
           "Add a shared bill to my MeroSplit group."

@@ -35,12 +35,12 @@ export function SavedChanges({ commands, groups, busy, expired, onOpen, onDiscar
 
 export type LegacyRecoveryProps = {
   groups: Group[]; email: string; selected: Record<string, string>; busy: boolean;
-  onSelect: (groupId: string, personId: string) => void; onRecover: (group: Group) => void; onExport: (group: Group) => void;
+  onSelect: (groupId: string, personId: string) => void; onRecover: (group: Group) => void;
 };
 
-export function LegacyGroupRecovery({ group, selected, busy, onSelect, onRecover, onExport }: {
+export function LegacyGroupRecovery({ group, selected, busy, onSelect, onRecover }: {
   group: Group; selected?: string; busy: boolean;
-  onSelect: (personId: string) => void; onRecover: () => void; onExport: () => void;
+  onSelect: (personId: string) => void; onRecover: () => void;
 }) {
   const { ui } = useUI();
   return <Disclosure title={group.name}>
@@ -48,17 +48,16 @@ export function LegacyGroupRecovery({ group, selected, busy, onSelect, onRecover
     {group.participants.map(person => <RadioChoice key={person.id} value={person.id} label={person.name}
       selected={selected === person.id} onPress={() => onSelect(person.id)} />)}
     <Button title="Recover these records" disabled={busy || !selected} onPress={onRecover} />
-    <Button title="Export original records" kind="text" disabled={busy} onPress={onExport} />
   </Disclosure>;
 }
 
-export function LegacyRecovery({ groups, email, selected, busy, onSelect, onRecover, onExport }: LegacyRecoveryProps) {
+export function LegacyRecovery({ groups, email, selected, busy, onSelect, onRecover }: LegacyRecoveryProps) {
   const { ui } = useUI();
   if (!groups.length) return null;
   return <Disclosure title="Earlier phone records">
     <Text style={ui.caption}>Choose only records that belong to you. Recovery links them to {email}. No invitations are sent.</Text>
     {groups.map(group => <LegacyGroupRecovery key={group.id} group={group} selected={selected[group.id]} busy={busy}
-      onSelect={personId => onSelect(group.id, personId)} onRecover={() => onRecover(group)} onExport={() => onExport(group)} />)}
+      onSelect={personId => onSelect(group.id, personId)} onRecover={() => onRecover(group)} />)}
   </Disclosure>;
 }
 

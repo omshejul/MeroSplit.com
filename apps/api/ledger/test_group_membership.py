@@ -27,7 +27,7 @@ pytestmark = pytest.mark.django_db
 
 
 def leave(client, group_id, command=None):
-    return leave_group(client.actor, group_id, {"command_id": command or uid()})
+    return leave_group(client.actor, group_id, {"command_id": command or uid(), "remove_membership": True})
 
 
 def restore(client, group_id, command=None):
@@ -94,23 +94,27 @@ def test_missing_candidate_chronology_fails_closed_atomically(client, group):
     assert not Participant.objects.get(pk=ids[0]).hidden
 
 
-def test_only_owner_hides_and_restores_privately_without_shared_revision(client, group):
+def test_last_owner_departure_revokes_access_and_retains_ledger(client, group):
     gid, ids, _ = group
-    Group.objects.filter(pk=gid).update(archived=True, import_source_hash="b" * 64)
+    # A fully self-paid/self-shared bill preserves zero balance and real history.
+    assert send(client, "post", f"/groups/{gid}/expenses", expense(ids, payer=0, beneficiaries=[0], total="12345")).status_code == 200
+    Group.objects.filter(pk=gid).update(archived=True)
     before = snapshot(Group.objects.get(pk=gid))
     command = uid()
     result = leave(client, gid, command)
-    assert result == {"id": gid, "version": before["version"], "disposition": "hidden"}
+    assert result["disposition"] == "left" and result["version"] == before["version"] + 1
     assert leave(client, gid, command) == result
-    assert Participant.objects.get(pk=ids[0]).hidden
-    assert snapshot(Group.objects.get(pk=gid)) == before  # Private flag is absent from shared participant/history DTO.
-    restore_command = uid()
-    restored = restore(client, gid, restore_command)
-    assert restored["disposition"] == "restored" and restored["version"] == before["version"]
-    assert restore(client, gid, restore_command) == restored
-    assert not Participant.objects.get(pk=ids[0]).hidden
-    row = Group.objects.get(pk=gid)
-    assert row.owner_id == client.actor.pk and row.archived and row.import_source_hash == "b" * 64
+    person = Participant.objects.get(pk=ids[0])
+    assert person.removed and not person.hidden
+    after = snapshot(Group.objects.get(pk=gid))
+    assert after["expenses"] == before["expenses"] and after["balances"] == before["balances"]
+    assert Group.objects.get(pk=gid).owner_id == client.actor.pk  # Historical FK grants no authority.
+    for suffix in ["", "/summary", "/export", "/history/bills", "/activity"]:
+        assert send(client, "get", f"/groups/{gid}{suffix}").status_code == 404
+    assert send(client, "post", f"/groups/{gid}/archive", {"command_id": uid(), "archived": False}).status_code == 404
+    assert send(client, "post", f"/groups/{gid}/participants", {"command_id": uid(), "id": uid(), "name": "Denied"}).status_code == 404
+    assert send(client, "get", "/groups").json()["groups"] == []
+    fails(404, lambda: restore(client, gid))
 
 
 @pytest.mark.parametrize("linked", [False, True])
@@ -142,7 +146,7 @@ def test_reported_and_opening_guards_include_owner_hide(client, group):
     assert "opening" in fails(409, lambda: leave(client, gid))
     opening.balances = {ids[0]: "0", ids[1]: "100", ids[2]: "-100"}
     opening.save()
-    assert leave(client, gid)["disposition"] == "hidden"
+    assert leave(client, gid)["disposition"] == "left"
 
 
 def test_departure_cancels_only_own_quotes_and_notices(client, group):
@@ -229,14 +233,14 @@ def test_import_creator_and_email_claim_produce_succession_evidence(client, monk
     assert after["balances"] == before["balances"] and after["expenses"] == before["expenses"]
 
 
-def test_inactive_and_removed_candidates_do_not_prevent_private_hide(client, group):
+def test_inactive_and_removed_candidates_do_not_prevent_departure(client, group):
     gid, ids, _ = group
     inactive, removed = account(), account()
     Participant.objects.filter(pk=ids[1]).update(user=inactive.actor)
     inactive.actor.is_active = False
     inactive.actor.save(update_fields=["is_active"])
     Participant.objects.filter(pk=ids[2]).update(user=removed.actor, removed=True)
-    assert leave(client, gid)["disposition"] == "hidden"
+    assert leave(client, gid)["disposition"] == "left"
     assert Group.objects.get(pk=gid).owner_id == client.actor.pk
 
 
@@ -295,10 +299,11 @@ def test_reclaimed_deleted_identity_uses_new_join_order(client, group):
 def test_http_hidden_index_is_complete_and_private_then_actual_leave_receipt_remains_replayable(client, group):
     from django.test import Client
     gid, ids, _ = group
-    command = uid()
     assert send(Client(), "post", f"/groups/{gid}/leave", {"command_id": uid()}).status_code == 401
-    hidden = send(client, "post", f"/groups/{gid}/leave", {"command_id": command})
+    legacy_body = {"command_id": uid()}
+    hidden = send(client, "post", f"/groups/{gid}/leave", legacy_body)
     assert hidden.status_code == 200 and hidden.json()["disposition"] == "hidden"
+    assert send(client, "post", f"/groups/{gid}/leave", legacy_body).json() == hidden.json()
     index = send(client, "get", "/groups").json()["groups"]
     assert len(index) == 1 and index[0]["id"] == gid and index[0]["hidden"] is True
     assert send(client, "get", f"/groups/{gid}").json()["hidden"] is True
@@ -320,3 +325,18 @@ def test_http_hidden_index_is_complete_and_private_then_actual_leave_receipt_rem
     assert send(client, "get", "/groups").json()["groups"] == []
     assert send(client, "post", f"/groups/{gid}/leave", leave_body).json() == departed.json()
     assert send(client, "post", f"/groups/{gid}/leave", {"command_id": uid()}).status_code == 404
+
+
+def test_explicit_delete_intent_removes_last_owner_but_legacy_hide_restores(client, group):
+    gid, ids, _ = group
+    old = {"command_id": uid()}
+    assert send(client, "post", f"/groups/{gid}/leave", old).json()["disposition"] == "hidden"
+    assert not Participant.objects.get(pk=ids[0]).removed
+    assert send(client, "post", f"/groups/{gid}/restore", {"command_id": uid()}).json()["disposition"] == "restored"
+    new = {"command_id": uid(), "remove_membership": True}
+    result = send(client, "post", f"/groups/{gid}/leave", new)
+    assert result.status_code == 200 and result.json()["disposition"] == "left"
+    assert send(client, "post", f"/groups/{gid}/leave", new).json() == result.json()
+    assert Participant.objects.get(pk=ids[0]).removed and Group.objects.filter(pk=gid).exists()
+    assert send(client, "get", f"/groups/{gid}").status_code == 404
+    assert send(client, "post", f"/groups/{gid}/restore", {"command_id": uid()}).status_code == 404

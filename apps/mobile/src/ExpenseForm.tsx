@@ -7,13 +7,15 @@ import type { Amounts, Split } from './accounting';
 import type { Expense, Group } from './types';
 import { Button, DateField, ErrorText, useUI } from './ui';
 import { AmountField, RadioChoice, TextField } from './FormFields';
+import DraftAttachment from './DraftAttachment';
+import type { PendingMediaUpload } from './media';
 import BillPeople from './BillPeople';
 
 export type ExpenseFormDraft = {
   schemaVersion: 1; groupId: string; expenseId: string | null; id: string; expenseVersion: number;
   description: string; amount: string; date: string; notes: string;
   payerIds: string[]; payerAmounts: Record<string, string>; mode: Split['mode'];
-  participantIds: string[]; splitValues: Record<string, string>;
+  attachment?: PendingMediaUpload; participantIds: string[]; splitValues: Record<string, string>;
 };
 export type LegacyExpenseDraft = {
   description: string; amount: string; paid: string; mode: Split['mode']; values: string;
@@ -21,9 +23,9 @@ export type LegacyExpenseDraft = {
 };
 type Props = {
   group: Group; expense?: Expense; selfId: string; busy: boolean;
-  onSave: (expense: Expense) => Promise<void>; onCancel: () => void;
+  onSave: (expense: Expense, attachment?: PendingMediaUpload) => Promise<void>; onCancel: () => void;
   initialDraft?: ExpenseFormDraft | LegacyExpenseDraft | null;
-  onDraftChange?: (draft: ExpenseFormDraft) => void;
+  onDraftChange?: (draft: ExpenseFormDraft) => void | Promise<void>;
 };
 
 const today = () => { const date = new Date(); return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`; };
@@ -113,16 +115,22 @@ export default function ExpenseForm({ group, expense, selfId, busy, onSave, init
   const { ui } = useUI();
   const [restored] = useState(() => startingDraft(group, expense, selfId, initialDraft));
   const [draft, setDraft] = useState(restored.draft), [error, setError] = useState(restored.warning), [saving, setSaving] = useState(false);
-  const lock = useRef(false), disabled = busy || saving;
+  const [fileBusy, setFileBusy] = useState(false);
+  const draftRef = useRef(draft);
+  const lock = useRef(false), disabled = busy || saving || fileBusy;
   const acceptedExpense = group.expenses.find(value => value.id === draft.id);
   const label = (id: string) => {
     const person = group.participants.find(value => value.id === id)!;
     const matching = group.participants.filter(value => value.name === person.name);
     return `${person.name}${person.removed ? ' (removed)' : ''}${matching.length > 1 ? ` (${matching.findIndex(value => value.id === id) + 1})` : ''}${id === selfId && person.name.trim().toLowerCase() !== 'you' ? ' (you)' : ''}`;
   };
-  function change(patch: Partial<ExpenseFormDraft>) {
-    const next = { ...draft, ...patch }; setDraft(next); setError(''); onDraftChange?.(next);
+  async function persistChange(patch: Partial<ExpenseFormDraft>) {
+    const previous = draftRef.current, next = { ...previous, ...patch };
+    draftRef.current = next; setDraft(next); setError('');
+    try { await onDraftChange?.(next); }
+    catch (error) { if ('attachment' in patch) { draftRef.current = previous; setDraft(previous); } throw error; }
   }
+  function change(patch: Partial<ExpenseFormDraft>) { void persistChange(patch).catch(error => setError(error.message)); }
   function togglePayer(id: string) {
     const payerIds = draft.payerIds.includes(id) ? draft.payerIds.filter(value => value !== id) : [...draft.payerIds, id];
     const payerAmounts = { ...draft.payerAmounts };
@@ -130,7 +138,7 @@ export default function ExpenseForm({ group, expense, selfId, busy, onSave, init
     change({ payerIds, payerAmounts });
   }
   async function save() {
-    if (lock.current || busy || group.archived) return;
+    if (lock.current || busy || fileBusy || group.archived) return;
     setError('');
     try {
       if (!draft.description.trim() || draft.description.trim().length > 200) throw new Error('Enter a description of up to 200 characters.');
@@ -150,8 +158,9 @@ export default function ExpenseForm({ group, expense, selfId, busy, onSave, init
         throw new Error('Keep removed people’s paid amounts and shares unchanged.');
       }
       lock.current = true; setSaving(true);
+      await onDraftChange?.(draft);
       await onSave({ id: draft.id, version: draft.expenseVersion, description: draft.description.trim(), total, ...vectors, split,
-        date: draft.date, notes: draft.notes, category: expense?.category ?? 'general', deleted: false });
+        date: draft.date, notes: draft.notes, category: expense?.category ?? 'general', deleted: false }, draft.attachment);
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : 'Could not save the expense. Try again.';
       setError(message);
@@ -181,18 +190,18 @@ export default function ExpenseForm({ group, expense, selfId, busy, onSave, init
     {expense && expense.version !== draft.expenseVersion && <Text style={ui.notice}>A newer edit exists. Review it before saving this older draft.</Text>}
     <AmountField autoCorrect={false} label="Amount (₹)" value={draft.amount} onChangeText={amount => change({ amount })} placeholder="0" editable={!disabled} />
     <TextField autoCorrect={false} label="Description" value={draft.description} onChangeText={description => change({ description })} placeholder="What was it for?" maxLength={200} editable={!disabled} />
-    <BillPeople title="Who paid?" summary={draft.payerIds.length === 1 ? label(draft.payerIds[0]) : draft.payerIds.length ? `${draft.payerIds.length} people` : 'Choose who paid'}
+    <BillPeople icon="pay" title="Who paid?" summary={draft.payerIds.length === 1 ? label(draft.payerIds[0]) : draft.payerIds.length ? `${draft.payerIds.length} people` : 'Choose who paid'}
       inline={group.participants.filter(person => !person.removed || draft.payerIds.includes(person.id)).length === 1} disabled={disabled}>
       <PayerFields participants={group.participants} draft={draft} disabled={disabled} preserveRemoved={!!acceptedExpense}
         label={label} onChange={change} status={payerStatus} onToggle={togglePayer} />
     </BillPeople>
-    <BillPeople title="Split between" summary={between} inline={group.participants.filter(person => !person.removed || draft.participantIds.includes(person.id)).length === 1} disabled={disabled}>
+    <BillPeople icon="people" title="Split between" summary={between} inline={group.participants.filter(person => !person.removed || draft.participantIds.includes(person.id)).length === 1} disabled={disabled}>
       <SplitFields participants={group.participants} draft={draft} disabled={disabled} preserveRemoved={!!acceptedExpense}
         label={label} onChange={change} status={splitStatus} />
     </BillPeople>
     <DateField label="Date" value={draft.date} onChange={date => change({ date })} disabled={disabled} />
     <TextField autoCorrect={false} label="Notes (optional)" value={draft.notes} onChangeText={notes => change({ notes })} multiline style={styles.notes} maxLength={2000} editable={!disabled} />
-    {!expense && <Text style={ui.caption}>Save the bill to add a photo or PDF.</Text>}
+    {!expense && <DraftAttachment value={draft.attachment} path={`/groups/${group.id}/expenses/${draft.id}/attachments`} disabled={disabled || !!group.archived} onChange={attachment => persistChange({ attachment })} onBusy={setFileBusy} onError={setError} />}
     {!!error && <ErrorText live>{error}</ErrorText>}
     <Button title={saving ? 'Saving…' : 'Save bill'} onPress={() => void save()} disabled={disabled || group.archived} kind="primary" icon="check" />
   </View>;

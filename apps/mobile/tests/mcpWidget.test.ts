@@ -152,7 +152,7 @@ test('bridge emits no bearer/contact/full-ledger payload and only opens the fixe
   w.elements.get('open')!.click();
   assert.deepEqual(w.sent.map(entry => entry.message.method), ['ui/initialize', 'ui/notifications/initialized', 'tools/call', 'ui/open-link']);
   assert.deepEqual(w.sent.at(-1), { origin: hostOrigin, message: { jsonrpc: '2.0', id: 3, method: 'ui/open-link',
-    params: { url: 'https://merosplit.omshejul.com/app/' } } });
+    params: { url: 'https://merosplit.com/app/' } } });
   const outgoing = JSON.stringify(w.sent);
   for (const text of ['synthetic-do-not-echo-token', 'do-not-echo-ledger', 'private@example.invalid', 'attacker.invalid', 'balances', 'Lunch']) {
     assert.ok(!outgoing.includes(text));

@@ -162,3 +162,32 @@ def test_deletion_redacts_cross_author_bill_reversal_without_erasing_financial_h
     retained = json.dumps(after) + json.dumps(list(Change.objects.filter(group_id=group_id).values("data")))
     for private_text in (body["description"], body["notes"], body["category"]):
         assert private_text not in retained
+
+
+@pytest.mark.parametrize("body", [
+    {}, {"confirmation": "Delete", "email": "CURRENT"}, {"confirmation": "delete ", "email": "CURRENT"},
+    {"confirmation": "delete", "email": "other@example.invalid"}, {"confirmation": "delete"},
+    {"confirmation": "delete", "email": 123}, {"confirmation": True, "email": "CURRENT"},
+])
+def test_deletion_confirmation_rejects_before_any_destructive_service(client, group, monkeypatch, body):
+    from . import api
+    before = state(client, group[0])
+    calls = []
+    monkeypatch.setattr(api, "delete_account", lambda actor: calls.append(actor.pk))
+    body = {key: client.actor.email if value == "CURRENT" else value for key, value in body.items()}
+    response = client.delete("/api/v1/account", data=json.dumps(body), content_type="application/json")
+    assert response.status_code == 422 and calls == []
+    assert get_user_model().objects.filter(pk=client.actor.pk, is_active=True).exists()
+    assert state(client, group[0]) == before
+    assert send(client, "get", "/me").status_code == 200
+
+
+def test_deletion_uses_fresh_current_email_and_normalizes_email_case(client, monkeypatch):
+    from . import api
+    get_user_model().objects.filter(pk=client.actor.pk).update(email="current@example.invalid")
+    calls = []
+    monkeypatch.setattr(api, "delete_account", lambda actor: calls.append(actor.email) or {"deleted": True})
+    assert send(client, "delete", "/account", {"confirmation": "delete", "email": client.actor.email}).status_code == 422
+    assert calls == []
+    assert send(client, "delete", "/account", {"confirmation": "delete", "email": "  CURRENT@example.invalid  "}).status_code == 200
+    assert calls == ["current@example.invalid"]
