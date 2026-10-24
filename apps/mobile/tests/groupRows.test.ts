@@ -13,7 +13,7 @@ function production(name: string) {
   const helpers = source.statements.filter(node => ts.isVariableStatement(node) && node.declarationList.declarations.some(d => ['billImpact', 'participantName', 'displayDate', 's'].includes(d.name.getText(source)))).map(node => node.getText(source)).join('\n');
   const node = source.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === name); assert.ok(node);
   const code = ts.transpile(`${helpers}\n${node.getText(source).replace(/^export (?:default )?/, '')}\nreturn ${name};`, { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React });
-  return new Function('env', `with(env) { ${code} }`)({ React, expenseBalanceChange, formatMoney, paymentPresentation, personalSettlements, personalTransfers, useState: (initial: unknown) => [initial, () => {}], Text: 'Text', View: 'View', Pressable: 'Pressable', Icon: 'Icon', Button: 'Button', RecordSummary: 'RecordSummary', ParticipantAmountRow: 'ParticipantAmountRow', TransactionRow: 'TransactionRow', VisibleExpense: 'VisibleExpense', HistoryPages: 'HistoryPages', BillSearch: 'BillSearch', PaymentRow: 'PaymentRow', BillTimelineRow: 'BillTimelineRow', Disclosure: 'Disclosure', BillPeople: 'BillPeople', RecordAttribution: 'RecordAttribution', PersonalTransferRow: 'PersonalTransferRow', PendingChangeRow: 'PendingChangeRow', StyleSheet: { create: (styles: unknown) => styles }, radii: { surface: 16 }, balanceColor: (amount: string) => BigInt(amount) < 0n ? 'negative' : 'positive', useUI: () => ({ ui: { numeric: { fontSize: 32, fontWeight: '600' }, caption: { fontSize: 14 } }, palette: {} }) });
+  return new Function('env', `with(env) { ${code} }`)({ React, expenseBalanceChange, formatMoney, paymentPresentation, personalSettlements, personalTransfers, useState: (initial: unknown) => [initial, () => {}], Text: 'Text', SectionHeading: 'SectionHeading', View: 'View', Pressable: 'Pressable', Icon: 'Icon', Button: 'Button', RecordSummary: 'RecordSummary', ParticipantAmountRow: 'ParticipantAmountRow', TransactionRow: 'TransactionRow', VisibleExpense: 'VisibleExpense', HistoryPages: 'HistoryPages', BillSearch: 'BillSearch', PaymentRow: 'PaymentRow', BillTimelineRow: 'BillTimelineRow', Disclosure: 'Disclosure', BillPeople: 'BillPeople', RecordAttribution: 'RecordAttribution', PersonalTransferRow: 'PersonalTransferRow', PendingChangeRow: 'PendingChangeRow', StyleSheet: { create: (styles: unknown) => styles }, radii: { surface: 16 }, balanceColor: (amount: string) => BigInt(amount) < 0n ? 'negative' : 'positive', useUI: () => ({ ui: { numeric: { fontSize: 32, fontWeight: '600' }, caption: { fontSize: 14 } }, palette: {} }) });
 }
 function elements(tree: unknown): Element[] {
   if (Array.isArray(tree)) return tree.flatMap(elements);
@@ -50,7 +50,7 @@ test('accepted payment is a compact, wrapping sentence with an unboxed icon and 
   assert.equal(render({ ...base, accepted: { settlements: [] } }), null);
   const tree = render({ ...base, accepted: { settlements: [payment] } });
   assert.equal(tree.type, 'Pressable'); assert.equal(tree.props.accessibilityRole, 'button');
-  assert.equal(tree.props.accessibilityLabel, `Payment, You paid Noor, ${formatMoney('334')}, Receipt unconfirmed, Date unavailable`);
+  assert.equal(tree.props.accessibilityLabel, `Payment, You paid Noor, ${formatMoney('334')}, Date unavailable`);
   const nodes = elements(tree), sentence = nodes.find(node => node.type === 'Text')!;
   assert.ok(text(sentence).startsWith(`You paid Noor ${formatMoney('334')}`));
   assert.ok(!text(sentence).includes('Receipt unconfirmed')); assert.ok(text(sentence).includes('Date unavailable'));
@@ -67,7 +67,7 @@ test('accepted payment is a compact, wrapping sentence with an unboxed icon and 
 test('compact payments retain exact confirmation and reversal truth in text and their accessible label', () => {
   const render = production('PaymentRow');
   for (const [method, reversed, status] of [
-    ['manual_record', false, 'Receipt unconfirmed'],
+    ['manual_record', false, ''],
     ['recipient_confirmed', false, 'Recipient confirmed'],
     ['manual_then_confirmed', false, 'Recipient confirmed'],
     ['recipient_confirmed', true, 'Record reversed · No bank refund'],
@@ -75,7 +75,8 @@ test('compact payments retain exact confirmation and reversal truth in text and 
     const payment = { id: 'record', sender: 'other', recipient: 'self', amount: '334', method, reversed, date: '2026-10-18' };
     const tree = render({ group, selfId: 'self', busy: false, payment, accepted: { settlements: [], transactions: [{ kind: 'payment', payment }] } });
     assert.ok(text(tree).includes(`Noor paid you ${formatMoney('334')}`));
-    assert.equal(text(tree).includes(status), status !== 'Receipt unconfirmed'); assert.ok(tree.props.accessibilityLabel.includes(status));
+    if (status) { assert.ok(text(tree).includes(status)); assert.ok(tree.props.accessibilityLabel.includes(status)); }
+    assert.ok(!`${text(tree)} ${tree.props.accessibilityLabel}`.includes('Receipt unconfirmed'));
     assert.ok(tree.props.accessibilityLabel.includes('18 Oct 2026'));
     assert.ok(elements(tree).some(node => node.type === 'Icon' && node.props.name === (reversed ? 'refresh' : 'payment')));
     assert.ok(!elements(tree).some(node => node.type === 'RecordAttribution'));
@@ -105,11 +106,13 @@ test('timeline and fallback rows share contiguous list parents, preserve order a
   const props = { group: value, accepted: value, selfId: 'self', pending: [], busy: true, onPayment() {}, onExpense() {} };
   const children = (node: Element) => node.children.flat(Infinity).filter((child): child is Element => !!child && typeof child === 'object' && 'type' in child);
   const rowParent = (tree: Element) => elements(tree).find(node => node.type === 'View' && children(node).some(child => ['PaymentRow', 'BillTimelineRow'].includes(String(child.type))));
-  const tree = render(props), list = rowParent(tree)!;
+  const tree = render(props), list = elements(tree).find(node => node.props.role === 'list' && node.props.accessibilityLabel === 'Bills and payments')!;
+  const rows = children(list).flatMap(children);
+  assert.ok(children(list).every(node => node.props.role === 'listitem'));
   assert.ok(list); assert.equal(list.props.style, undefined);
-  assert.deepEqual(children(list).map(node => node.props.expense?.id ?? node.props.payment.id), ['bill', 'first', 'second']);
-  assert.ok(children(list).every(node => node.props.busy === true));
-  assert.ok(children(list).filter(node => node.type === 'PaymentRow').every(node => node.props.accepted === value && node.props.onPayment === props.onPayment));
+  assert.deepEqual(rows.map(node => node.props.expense?.id ?? node.props.payment.id), ['bill', 'first', 'second']);
+  assert.ok(rows.every(node => node.props.busy === true));
+  assert.ok(rows.filter(node => node.type === 'PaymentRow').every(node => node.props.accepted === value && node.props.onPayment === props.onPayment));
   assert.ok(!elements(list).some(node => node.type === 'HistoryPages'));
   const fallback = { ...value, transactions: undefined };
   const history = render({ ...props, group: fallback, accepted: fallback });
@@ -173,4 +176,11 @@ test('detail attribution is short, truthful about missing actors and absent from
   const bill = { id: 'b', description: 'Lunch', total: '100', paid: { self: '100' }, shares: { self: '100' }, split: { mode: 'equal', values: { self: '1' } }, deleted: true, added_by: 'Actual creator', reversal: { actor_name: 'Another reverser' } };
   const detail = production('ExpenseDetail')({ expense: bill, group: { ...group, expenses: [bill] }, selfId: 'self', busy: false, canEdit: true });
   assert.deepEqual(elements(detail).filter(node => node.type === 'RecordAttribution').map(node => [node.props.action, node.props.name]), [['Added', 'Actual creator'], ['Reversed', 'Another reverser']]);
+});
+
+test('manual payment details omit an unconfirmed label and dangling separator', () => {
+  const payment = { id: 'record', sender: 'self', recipient: 'other', amount: '334', method: 'manual_record', date: null };
+  const tree = production('PaymentDetail')({ payment, group: { ...group, name: 'Trip' }, selfId: 'self', busy: false, canReverse: true });
+  const caption = elements(tree).find(node => node.type === 'Text')!;
+  assert.equal(text(caption), 'Trip · Date unavailable');
 });

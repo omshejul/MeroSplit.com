@@ -13,7 +13,7 @@ const event = (kind: ActivityItem['kind'] = 'payment_recorded'): ActivityItem =>
 test('actual payment directions use signed-in participant identity, including third-party neutrality', () => {
   const name = (id: string) => id === 'self' ? 'You' : id;
   const payment = { id: 'record', sender: 'self', recipient: 'Asha', amount: '334' };
-  assert.deepEqual(paymentPresentation(payment, 'self', name), { title: 'You paid Asha', cashflow: '-334', status: 'Receipt unconfirmed' });
+  assert.deepEqual(paymentPresentation(payment, 'self', name), { title: 'You paid Asha', cashflow: '-334', status: '' });
   assert.equal(paymentPresentation({ ...payment, sender: 'Asha', recipient: 'self', method: 'recipient_confirmed' }, 'self', name).cashflow, '334');
   assert.equal(paymentPresentation({ ...payment, sender: 'Other' }, 'self', name).cashflow, '0');
   assert.equal(paymentPresentation({ ...payment, reversed: true }, 'self', name).cashflow, '0');

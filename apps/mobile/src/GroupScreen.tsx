@@ -93,10 +93,10 @@ function PaymentRow({ payment, accepted, group, selfId, busy, onPayment }: Pick<
   if (!isAccepted) return null;
   const presentation = paymentPresentation(payment, selfId, id => participantName(group.participants, selfId, id));
   const status = payment.reversed ? `${presentation.status} · No bank refund` : presentation.status;
-  return <Pressable accessibilityRole="button" accessibilityLabel={`Payment, ${presentation.title}, ${formatMoney(payment.amount)}, ${status}, ${displayDate(payment.date)}`}
+  return <Pressable accessibilityRole="button" accessibilityLabel={`Payment, ${presentation.title}, ${formatMoney(payment.amount)}${status ? `, ${status}` : ''}, ${displayDate(payment.date)}`}
     disabled={busy} style={({ pressed }) => [ui.row, s.paymentRow, pressed && s.pressed]} onPress={() => onPayment(payment)}>
     <Icon name={payment.reversed ? 'refresh' : 'payment'} size={18} color={colors.muted} />
-    <Text style={[ui.rowSub, s.paymentSentence, { color: colors.text }]}>{presentation.title} {formatMoney(payment.amount)}<Text style={ui.rowSub}>{presentation.status !== 'Receipt unconfirmed' && ` · ${status}`} · {displayDate(payment.date)}</Text></Text>
+    <Text style={[ui.rowSub, s.paymentSentence, { color: colors.text }]}>{presentation.title} {formatMoney(payment.amount)}<Text style={ui.rowSub}>{!!status && ` · ${status}`} · {displayDate(payment.date)}</Text></Text>
   </Pressable>;
 }
 
@@ -195,7 +195,7 @@ export function PaymentDetail({ payment, group, selfId, busy, canReverse, onReve
   const involved = payment.sender === selfId || payment.recipient === selfId;
   return <View role="region" accessibilityLabel={group.name} style={s.content}>
     <RecordSummary title={row.title} amount={payment.amount} amountColor={row.cashflow === '0' ? colors.text : balanceColor(row.cashflow, colors)}>
-      <Text style={ui.caption}>{group.name} · {displayDate(payment.date)} · {row.status}</Text>
+      <Text style={ui.caption}>{group.name} · {displayDate(payment.date)}{row.status ? ` · ${row.status}` : ''}</Text>
       <RecordAttribution action="Marked paid" name={payment.recorded_by_name} />
       {payment.reversed && <RecordAttribution action="Reversed" name={payment.reversal?.actor_name} />}
     </RecordSummary>

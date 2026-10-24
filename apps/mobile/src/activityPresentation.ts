@@ -7,7 +7,7 @@ export function paymentPresentation(payment: Settlement, selfId: string, name: (
     : payment.recipient === selfId ? `${name(payment.sender)} paid you`
       : `${name(payment.sender)} paid ${name(payment.recipient)}`;
   return { title, cashflow: settlementCashflow(payment, selfId), status: payment.reversed ? 'Record reversed'
-    : ['recipient_confirmed', 'manual_then_confirmed'].includes(payment.method ?? '') ? 'Recipient confirmed' : 'Receipt unconfirmed' };
+    : ['recipient_confirmed', 'manual_then_confirmed'].includes(payment.method ?? '') ? 'Recipient confirmed' : '' };
 }
 
 export function activityPresentation(item: ActivityItem) {
