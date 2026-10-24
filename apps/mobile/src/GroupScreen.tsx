@@ -11,7 +11,7 @@ import { paymentPresentation } from './activityPresentation';
 import { VisibleExpense } from './useExpenseNotices';
 import type { NoticeVisibility } from './useExpenseNotices';
 import type { BillRow, Command, Expense, Group, GroupTransaction, Participant, Settlement, HistoryResource, HistoryWindow } from './types';
-import { SectionHeading, AmountText, Avatar, balanceColor, Button, Disclosure, Icon, IconBadge, radii, useUI } from './ui';
+import { SectionHeading, AmountText, Avatar, balanceColor, Button, Disclosure, Icon, radii, useUI } from './ui';
 
 type Transfer = { sender: string; recipient: string; amount: string };
 type ReceiptAttempt = NonNullable<Group['payment_attempts']>[number];
@@ -80,17 +80,23 @@ function PersonalTransferRow({ transfer, group, selfId, disabled, onSettle, onEx
   </View>;
 }
 
-function TransactionRow({ icon, title, amount, cashflow, label, busy, onPress, children }: {
-  icon: 'bill' | 'payment'; title: string; amount: string; cashflow?: string; label: string; busy: boolean; onPress: () => void; children: React.ReactNode;
-}) {
-  const { palette: colors, ui } = useUI();
+// Month over day, plus the year only when it is not this year. The row's label carries the full date.
+function LogDate({ date }: { date?: string | null }) {
+  const { ui } = useUI();
+  const parsed = date ? new Date(`${date}T12:00:00`) : null, value = parsed && !Number.isNaN(parsed.getTime()) ? parsed : null;
+  return <View aria-hidden accessible={false} importantForAccessibility="no-hide-descendants" style={s.date}>
+    {value ? <><Text style={ui.rowSub}>{value.toLocaleDateString('en-IN', { month: 'short' })}</Text><Text style={ui.rowTitle}>{value.getDate()}</Text>
+      {value.getFullYear() !== new Date().getFullYear() && <Text style={ui.rowSub}>{value.getFullYear()}</Text>}</> : <Text style={ui.rowSub}>–</Text>}
+  </View>;
+}
+
+// One compact log row for bills and payments: date, what happened, and (for bills) your balance effect.
+function LogRow({ date, label, busy, onPress, trailing, children }: { date?: string | null; label: string; busy: boolean; onPress: () => void; trailing?: React.ReactNode; children: React.ReactNode }) {
+  const { ui } = useUI();
   return <Pressable accessibilityRole="button" accessibilityLabel={label} disabled={busy} style={({ pressed }) => [ui.row, pressed && s.pressed]} onPress={onPress}>
-    <IconBadge name={icon} />
-    <View style={ui.rowBody}>
-      <Text numberOfLines={1} ellipsizeMode="tail" style={ui.rowTitle}>{title}</Text>
-      {children}
-    </View>
-    <View style={s.trailing}><AmountText amount={amount} style={{ color: cashflow === undefined || cashflow === '0' ? colors.text : balanceColor(cashflow, colors) }} /><Icon name="next" size={18} color={colors.muted} /></View>
+    <LogDate date={date} />
+    <View style={ui.rowBody}>{children}</View>
+    {trailing}
   </Pressable>;
 }
 
@@ -100,25 +106,38 @@ function PaymentRow({ payment, accepted, group, selfId, busy, onPayment }: Pick<
   if (!isAccepted) return null;
   const presentation = paymentPresentation(payment, selfId, id => participantName(group.participants, selfId, id));
   const status = payment.reversed ? `${presentation.status} · No bank refund` : presentation.status;
-  return <Pressable accessibilityRole="button" accessibilityLabel={`Payment, ${presentation.title}, ${formatMoney(payment.amount)}${status ? `, ${status}` : ''}, ${displayDate(payment.date)}`}
-    disabled={busy} style={({ pressed }) => [ui.row, s.paymentRow, pressed && s.pressed]} onPress={() => onPayment(payment)}>
-    <Icon name={payment.reversed ? 'refresh' : 'payment'} size={18} color={colors.muted} />
-    <Text style={[ui.rowSub, s.paymentSentence, { color: colors.text }]}>{presentation.title} {formatMoney(payment.amount)}<Text style={ui.rowSub}>{!!status && ` · ${status}`} · {displayDate(payment.date)}</Text></Text>
-  </Pressable>;
+  return <LogRow date={payment.date} busy={busy} onPress={() => onPayment(payment)} label={`Payment, ${presentation.title}, ${formatMoney(payment.amount)}${status ? `, ${status}` : ''}, ${displayDate(payment.date)}`}>
+    <View style={s.paymentLine}>
+      <Icon name={payment.reversed ? 'refresh' : 'payment'} size={18} color={colors.muted} />
+      <Text style={[ui.rowSub, s.paymentSentence, { color: colors.text }]}>{presentation.title} {formatMoney(payment.amount)}{!!status && <Text style={ui.rowSub}> · {status}</Text>}</Text>
+    </View>
+  </LogRow>;
+}
+
+// Gross total stays "X paid ₹total"; the right side is only your balance effect from this bill.
+function BillEffect({ change, involved, reversed }: { change: string; involved: boolean; reversed: boolean }) {
+  const { palette: colors, ui } = useUI();
+  const value = BigInt(change), color = value === 0n ? colors.muted : balanceColor(change, colors);
+  const label = reversed ? 'Reversed' : value > 0n ? 'You lent' : value < 0n ? 'You borrowed' : involved ? 'No balance change' : 'Not involved';
+  return <View style={s.trailing}>
+    <Text style={[ui.rowSub, { color, textAlign: 'right' }]}>{label}</Text>
+    {value !== 0n && <AmountText amount={(value < 0n ? -value : value).toString()} style={[s.effect, { color }]} />}
+  </View>;
 }
 
 function BillTimelineRow({ expense, group, selfId, busy, onExpense, noticeVisibility }: Pick<Props, 'group' | 'selfId' | 'busy' | 'onExpense' | 'noticeVisibility'> & { expense: BillRow }) {
-  const { palette: colors, ui } = useUI();
-  const change = expenseBalanceChange(expense, selfId);
-  const ownShare = formatMoney(expense.shares[selfId] ?? '0');
-  const payers = Object.entries(expense.paid).filter(([, amount]) => BigInt(amount) > 0n).map(([id, amount]) => `${participantName(group.participants, selfId, id)} paid ${formatMoney(amount)}`).join(', ');
+  const { ui } = useUI();
+  const change = expenseBalanceChange(expense, selfId), name = (id: string) => participantName(group.participants, selfId, id);
+  const paidBy = Object.entries(expense.paid).filter(([, amount]) => BigInt(amount) > 0n);
+  const involved = BigInt(expense.shares[selfId] ?? '0') > 0n || BigInt(expense.paid[selfId] ?? '0') > 0n;
+  const who = paidBy.length === 1 ? name(paidBy[0][0]) : paidBy.length === 2 ? `${name(paidBy[0][0])} and ${name(paidBy[1][0])}` : `${paidBy.length} people`;
+  const payers = paidBy.map(([id, amount]) => `${name(id)} paid ${formatMoney(amount)}`).join(', ');
   return <VisibleExpense groupId={group.id} expense={expense} visibility={noticeVisibility}>
-    <TransactionRow icon="bill" title={`${expense.description}${expense.deleted ? ' · Reversed' : ''}`} amount={expense.total} busy={busy} onPress={() => onExpense(expense)}
-      label={`Bill, ${expense.description}, total ${formatMoney(expense.total)}, ${billImpact(change)}, ${payers}, Your share ${ownShare}, ${displayDate(expense.date)}${expense.deleted ? ', reversed' : ''}`}>
-      <Text style={ui.rowSub}>Bill · {payers}</Text>
-      <Text style={ui.rowSub}>Your share {ownShare} · {displayDate(expense.date)}</Text>
-      <Text style={[ui.rowSub, { color: balanceColor(change, colors) }]}>{billImpact(change)}</Text>
-    </TransactionRow>
+    <LogRow date={expense.date} busy={busy} onPress={() => onExpense(expense)} trailing={<BillEffect change={change} involved={involved} reversed={!!expense.deleted} />}
+      label={`Bill, ${expense.description}, total ${formatMoney(expense.total)}, ${expense.deleted ? 'reversed, no balance impact' : billImpact(change)}, ${payers || 'no payer recorded'}, Your share ${formatMoney(expense.shares[selfId] ?? '0')}, ${displayDate(expense.date)}`}>
+      <Text numberOfLines={2} ellipsizeMode="tail" style={ui.rowTitle}>{expense.description}</Text>
+      <Text style={ui.rowSub}>{paidBy.length ? `${who} paid ${formatMoney(expense.total)}` : `Total ${formatMoney(expense.total)}`}</Text>
+    </LogRow>
   </VisibleExpense>;
 }
 
@@ -138,10 +157,10 @@ function ParticipantAmountRow({ name, amount }: { name: string; amount: string }
   </View>;
 }
 
-function BillSearch({ value, onChange, onSearch, showSubmit, busy }: { value: string; onChange: (value: string) => void; onSearch: () => void; showSubmit: boolean; busy: boolean }) {
+function BillSearch({ value, onChange, onSearch, showSubmit, busy, autoFocus }: { value: string; onChange: (value: string) => void; onSearch: () => void; showSubmit: boolean; busy: boolean; autoFocus: boolean }) {
   const { palette: colors, ui, inputColors } = useUI();
   return <View style={s.search}>
-    <TextInput {...inputColors} accessibilityLabel="Search bills" placeholder="Find a bill by name or note" placeholderTextColor={colors.muted} value={value} onChangeText={onChange} onSubmitEditing={onSearch} returnKeyType="search" style={[ui.input, s.flex]} />
+    <TextInput {...inputColors} autoFocus={autoFocus} accessibilityLabel="Search bills" placeholder="Find a bill by name or note" placeholderTextColor={colors.muted} value={value} onChangeText={onChange} onSubmitEditing={onSearch} returnKeyType="search" style={[ui.input, s.flex]} />
     {showSubmit && <Button title="Search" disabled={busy} onPress={onSearch} />}
   </View>;
 }
@@ -150,7 +169,8 @@ export default function GroupScreen({ noticeVisibility, group, accepted, pending
   const { ui } = useUI();
   const [explanation, setExplanation] = useState<BalanceSelection | null>(null);
   const historyResource = group.transactions ? 'transactions' : 'bills';
-  const [search, setSearch] = useState(group.history?.[historyResource]?.query ?? '');
+  const [search, setSearch] = useState(group.history?.[historyResource]?.query ?? ''), [searching, setSearching] = useState(false);
+  const historyWindow = group.history?.[historyResource];
   const expenses = group.read_mode === 'summary' ? group.expenses : group.expenses.filter(expense => group.expenses.length < 5 || `${expense.description} ${expense.notes}`.toLowerCase().includes(search.trim().toLowerCase()));
   const needsAttention = pending.some(command => command.state !== 'pending' || !!command.error);
   const receipts = (group.payment_attempts ?? []).filter(attempt =>
@@ -161,6 +181,8 @@ export default function GroupScreen({ noticeVisibility, group, accepted, pending
   const celebrateSettled = pending.length === 0 && accepted.balances?.[selfId] === '0';
   const rows: GroupTransaction[] = group.transactions ?? (group.read_mode === 'summary' ? expenses : [...expenses].reverse()).map(bill => ({ kind: 'bill', date: bill.date, bill }));
   const payments = personalSettlements(group, selfId);
+  const searchable = rows.length >= 5 || !!(historyWindow?.next_cursor || historyWindow?.previous?.length || historyWindow?.query);
+  const showSearch = searching || !!historyWindow?.query || !!search;
   return <View role="region" accessibilityLabel={group.name} style={s.content}>
     {group.archived && <Text style={ui.notice}>Archived. Reopen in settings to make changes.{receipts.length > 0 ? ' You can still confirm money received.' : ''}</Text>}
     {pending.length > 0 && <View style={s.section}>
@@ -174,8 +196,12 @@ export default function GroupScreen({ noticeVisibility, group, accepted, pending
     <HistoryPages history={group.history?.attempts} resource="attempts" busy={busy} onPage={onHistoryPage} />
     {!transfers.length && <Text style={celebrateSettled ? ui.numeric : ui.caption}>{celebrateSettled ? '🎉 All settled' : 'All settled'}</Text>}
     {transfers.map(transfer => <PersonalTransferRow key={`${transfer.sender}:${transfer.recipient}`} transfer={transfer} group={group} selfId={selfId} disabled={busy || !!group.archived || pending.length > 0} onSettle={onSettle} onExplain={(transfer, restoreFocus) => setExplanation({ group, accepted, commands: pending, selfId, transfer, restoreFocus, load: onLoadBalanceGroup })} />)}
-    <SectionHeading style={ui.caption}>Bills and payments</SectionHeading>
-      {(rows.length >= 5 || !!(group.history?.[historyResource]?.next_cursor || group.history?.[historyResource]?.previous?.length || group.history?.[historyResource]?.query)) && <BillSearch value={search} onChange={setSearch} onSearch={() => onHistoryPage?.(historyResource, 'search', search.trim())} showSubmit={group.read_mode === 'summary'} busy={busy} />}
+    {/* Search opens from the heading line; an active query or typed text keeps it open. */}
+    <View style={s.logHeading}>
+      <SectionHeading style={[ui.caption, s.flex]}>Bills and payments</SectionHeading>
+      {searchable && !showSearch && <Button title="Search" kind="text" accessibilityLabel="Search bills" onPress={() => setSearching(true)} />}
+    </View>
+      {showSearch && <BillSearch value={search} onChange={setSearch} onSearch={() => onHistoryPage?.(historyResource, 'search', search.trim())} showSubmit={group.read_mode === 'summary'} busy={busy} autoFocus={searching} />}
       {!rows.length && <View style={s.empty}>
         <Icon name="bill" size={32} />
         <Text style={ui.section}>{group.history?.[historyResource]?.query || (group.read_mode !== 'summary' && search.trim()) ? 'No matching bills' : 'No bills or payments yet'}</Text>
@@ -251,9 +277,12 @@ const s = StyleSheet.create({
   summary: { gap: 4, paddingVertical: 8 },
   section: { gap: 10, paddingVertical: 4 },
   receipt: { gap: 12, padding: 12, borderRadius: radii.surface },
-  trailing: { flexShrink: 0, gap: 4, alignItems: 'flex-end' },
-  paymentRow: { minHeight: 44, paddingVertical: 8 },
+  trailing: { flexShrink: 1, maxWidth: '45%', alignItems: 'flex-end' },
+  effect: { flexShrink: 1, fontSize: 16, lineHeight: 22 },
+  date: { minWidth: 40, flexShrink: 0, alignItems: 'center' },
+  paymentLine: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   paymentSentence: { flex: 1, minWidth: 0, fontWeight: '400' },
+  logHeading: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 44 },
   empty: { gap: 10, alignItems: 'center', paddingVertical: 20 },
   pressed: { opacity: 0.65 },
   search: { flexDirection: 'row', alignItems: 'center', gap: 8 },
