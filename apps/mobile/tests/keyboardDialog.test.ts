@@ -6,7 +6,8 @@ import ts from 'typescript';
 type Element = { type: unknown; props: Record<string, any>; children: unknown[] };
 const React = { createElement: (type: unknown, props: Record<string, any> | null, ...children: unknown[]): Element => ({ type, props: props ?? {}, children }) };
 const Dialog = Object.assign(() => {}, { Title: 'Title', Content: 'Content', ScrollArea: 'ScrollArea', Actions: 'Actions' });
-const env = { Platform: { OS: 'native' }, DialogScrollBody: undefined as any, CancelDialogActions: undefined as any, React, Dialog, Portal: 'Portal', KeyboardAvoidingView: 'KeyboardAvoidingView', KeyboardDialog: 'KeyboardDialog', ScrollView: 'ScrollView', Button: 'Button', Field: 'Field', FeedbackNote: 'FeedbackNote', Text: 'Text', s: { field: {} }, useUI: () => ({ ui: {} }) };
+let windowWidth = 375;
+const env = { useWindowDimensions: () => ({ width: windowWidth }), Platform: { OS: 'native' }, DialogScrollBody: undefined as any, CancelDialogActions: undefined as any, React, Dialog, Portal: 'Portal', KeyboardAvoidingView: 'KeyboardAvoidingView', KeyboardDialog: 'KeyboardDialog', ScrollView: 'ScrollView', Button: 'Button', Field: 'Field', FeedbackNote: 'FeedbackNote', Text: 'Text', s: { field: {} }, useUI: () => ({ ui: {} }) };
 function production(file: string, name: string) {
   const source = ts.createSourceFile(file, readFileSync(new URL(`../src/${file}`, import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   const declaration = source.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === name);
@@ -105,4 +106,20 @@ test('UPI chooser inherits the persistent boundary, dispatches the exact selecte
   cancel.props.onPress(); assert.equal(dismissed, 1); assert.equal(chosen.length, 1);
   const busy = render({ ...props, apps: [app], disabled: true });
   assert.ok(elements(busy).filter(node => node.type === 'Button').every(node => node.props.disabled));
+});
+
+
+test('shared web dialog is centered and compact on desktop while retaining phone margins and native geometry', () => {
+  const render = production('KeyboardDialog.tsx', 'KeyboardDialog');
+  const props = { visible: true, onDismiss() {}, children: 'unchanged fields' };
+  try {
+    env.Platform.OS = 'web';
+    for (const [width, expected] of [[1440, 520], [2000, 520], [540, 488], [375, 323]]) {
+      windowWidth = width; const dialog = one(render(props), Dialog);
+      assert.equal(dialog.props.style.width, expected); assert.equal(dialog.props.style.alignSelf, 'center');
+      assert.equal(dialog.children[0], props.children);
+    }
+    env.Platform.OS = 'native'; const dialog = one(render(props), Dialog);
+    assert.equal(dialog.props.style.width, undefined); assert.equal(dialog.props.style.alignSelf, undefined);
+  } finally { env.Platform.OS = 'native'; windowWidth = 375; }
 });

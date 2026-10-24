@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from datetime import timezone as dt_timezone
 from uuid import uuid4
 
+from allauth.account.models import EmailAddress
 from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
@@ -14,14 +15,29 @@ from django.views.decorators.debug import sensitive_variables
 from ninja.errors import HttpError
 
 from . import email_delivery
-from .expense_notifications import _locked_preference, verified_recipient
+from .expense_notifications import _locked_preference
 from .models import BalanceStatement, CloudflareEmailDispatch, Group, NotificationPreference
 from .otp import EmailCodeLimited, consume_limits
 from .statement_csv import StatementTooLarge, financial_csv
-from .store_review import groups_for_actor
+from .store_review import groups_for_actor, review_ids
 
 LEASE = timedelta(minutes=2)
 MAX_WIRE_BYTES = 4 * 1024 * 1024  # Below the ordinary 5 MiB message limit, leaving MIME headroom.
+
+
+def statement_recipient(actor):
+    """Statements have explicit consent separate from bill-notice mailbox opt-outs."""
+    if not actor.is_active:
+        raise HttpError(401, "Sign in again to request a statement")
+    if actor.pk in review_ids():
+        raise HttpError(403, "Statements are unavailable for demo accounts")
+    email = actor.email.strip().lower()
+    domain = email.rpartition("@")[2]
+    if not domain or domain == "invalid" or domain.endswith(".invalid"):
+        raise HttpError(409, "Add a valid account email before requesting a statement")
+    if not EmailAddress.objects.filter(user=actor, email__iexact=email, verified=True).exists():
+        raise HttpError(409, "Verify your current account email by signing in with its email code, then try again")
+    return email
 
 
 def next_boundary(frequency, now):
@@ -59,8 +75,8 @@ def reset_schedule(row, now):
 def update_preferences(actor, enabled, frequency):
     row = _locked_preference(actor)
     actor.refresh_from_db(fields=["email", "is_active"])
-    if enabled and not verified_recipient(actor):
-        raise HttpError(409, "A verified, eligible account email is required")
+    if enabled:
+        statement_recipient(actor)
     if (row.balance_statements, row.statement_frequency) != (enabled, frequency):
         row.balance_statements, row.statement_frequency = enabled, frequency
         row.save(update_fields=["balance_statements", "statement_frequency"])
@@ -75,8 +91,7 @@ def request_statement(actor, command_id):
     existing = BalanceStatement.objects.filter(user=actor, request_id=command_id).first()
     if existing:
         return delivery_status(existing)
-    if not verified_recipient(actor):
-        raise HttpError(409, "A verified, eligible account email is required")
+    statement_recipient(actor)
     try:
         consume_limits([("balance_statement", str(actor.pk), 600, 1), ("balance_statement", str(actor.pk), 86400, 5)])
     except EmailCodeLimited:
@@ -151,8 +166,12 @@ def _prepare(job_id):
         if fence and fence.state != "retryable":
             _finish(row, "held", "delivery_unknown")
             return None
-        recipient = verified_recipient(actor)
-        if row.cancelled_at or not recipient or row.period_key and not (pref.balance_statements and pref.expense_updates and pref.email_reminders):
+        try:
+            recipient = statement_recipient(actor)
+        except HttpError:
+            _finish(row, "cancelled", "no_longer_eligible")
+            return None
+        if row.cancelled_at or row.period_key and not (pref.balance_statements and pref.expense_updates and pref.email_reminders):
             _finish(row, "cancelled", "no_longer_eligible")
             return None
         groups, scope = _scope(actor, recipient)

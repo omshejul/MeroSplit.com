@@ -172,7 +172,7 @@ def test_financial_csv_all_records_exact_balances_reversals_bom_and_no_private_c
     assert len(calls) == 1
 
 
-@pytest.mark.parametrize("change", ["membership", "email", "verification", "suppression", "inactive"])
+@pytest.mark.parametrize("change", ["membership", "email", "verification", "inactive"])
 def test_dispatch_revalidates_current_account_and_group_scope(client, group, monkeypatch, change):
     calls = provider(monkeypatch, client)
     job = manual(client)
@@ -186,10 +186,6 @@ def test_dispatch_revalidates_current_account_and_group_scope(client, group, mon
         client.actor.save(update_fields=["email"])
     elif change == "verification":
         EmailAddress.objects.filter(user=client.actor).update(verified=False)
-    elif change == "suppression":
-        from .bill_email import mailbox_digest
-        from .models import BillEmailPreference
-        BillEmailPreference.objects.create(email_digest=mailbox_digest(client.actor.email), suppressed=True)
     else:
         get_user_model().objects.filter(pk=client.actor.pk).update(is_active=False)
     statements.send_balance_statements()
@@ -355,3 +351,40 @@ def test_scope_recheck_never_includes_a_new_group_without_its_lock(client, group
         locked, _ = statements._scope(client.actor, client.actor.email)
     assert [str(row.id) for row in locked] == [group[0]]
     assert visible(client.actor).count() == 2
+
+
+def test_explicit_statement_consent_preserves_an_unrelated_bill_mailbox_optout(client, monkeypatch):
+    from .bill_email import mailbox_digest
+    from .expense_notifications import verified_recipient
+    from .models import BillEmailPreference
+    suppression = BillEmailPreference.objects.create(email_digest=mailbox_digest(client.actor.email), suppressed=True)
+    assert verified_recipient(client.actor) is None
+    calls = provider(monkeypatch, client)
+    job = manual(client)
+    statements.send_balance_statements()
+    statements.send_balance_statements()
+    job.refresh_from_db()
+    assert job.state == "accepted" and len(calls) == 1
+    assert config(client).json()["next_at"] is None  # Scheduling still requires Email ON.
+    statements.send_balance_statements()
+    assert len(calls) == 1
+    channels(client)
+    pref = NotificationPreference.objects.get(user=client.actor)
+    assert pref.balance_statements and pref.statement_next_at > timezone.now()
+    NotificationPreference.objects.filter(user=client.actor).update(statement_next_at=timezone.now())
+    statements.send_balance_statements()
+    assert len(calls) == 2
+    channels(client, master=False)
+    pref.refresh_from_db()
+    assert pref.balance_statements and pref.statement_next_at is None
+    suppression.refresh_from_db()
+    assert suppression.suppressed and verified_recipient(client.actor) is None
+
+
+def test_unverified_statement_error_is_actionable_and_never_posts(client, monkeypatch):
+    calls = provider(monkeypatch, client)
+    EmailAddress.objects.filter(user=client.actor).update(verified=False)
+    for response in [send(client, "post", "/me/balance-statements/send", {"command_id": uid()}), config(client)]:
+        assert response.status_code == 409
+        assert "signing in with its email code" in response.json()["detail"]
+    assert not calls and not BalanceStatement.objects.exists()
