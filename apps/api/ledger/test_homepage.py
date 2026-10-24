@@ -130,3 +130,18 @@ def test_install_intent_is_manual_safe_and_android_group_precedes_play():
         response = browser.get("/assets/" + name)
         assert response.status_code == 200
         assert sha256(b"".join(response.streaming_content)).hexdigest() == digest
+
+
+def test_home_header_is_logo_only_with_help_links_in_footer():
+    browser = Client()
+    html = browser.get("/").content.decode()
+    header = html.split("<header", 1)[1].split("</header>", 1)[0]
+    footer = html.split("<footer", 1)[1].split("</footer>", 1)[0]
+    assert '<a class="brand" href="/"' in header and "<nav" not in header
+    for url in ["/support", "/privacy", "/chat-policy", "/delete-account"]:
+        assert f'href="{url}"' in footer
+    for url in ["/support", "/privacy", "/chat-policy", "/delete-account"]:
+        response = browser.get(url)
+        assert response.status_code == 200
+        help_header = response.content.decode().split("<header", 1)[1].split("</header>", 1)[0]
+        assert '<nav aria-label="Help">' in help_header and 'href="/support"' in help_header

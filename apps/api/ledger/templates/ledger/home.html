@@ -30,7 +30,7 @@
 <body>
   <!-- Icons: Heroicons v2.1.5, 24 outline (https://heroicons.com). MIT License, Copyright (c) Tailwind Labs, Inc. -->
   <a class="skip" href="#main">Skip to content</a>
-  {% include "ledger/components/public_header.html" %}
+  {% include "ledger/components/public_header.html" with hide_nav=True %}
 
   <main id="main" class="wrap landing">
     <section class="pitch" aria-labelledby="title">
@@ -67,6 +67,6 @@
     </figure>
   </main>
 
-  {% include "ledger/components/public_footer.html" %}
+  {% include "ledger/components/public_footer.html" with show_support=True %}
 </body>
 </html>
