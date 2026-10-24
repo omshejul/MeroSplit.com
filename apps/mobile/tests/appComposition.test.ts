@@ -34,7 +34,7 @@ test('Me mounts Connect MCP on native and web, with current account key, session
     myName: 'One', vpa: '', push: {}, unavailable: [], commands: [], groups: [], expired: false,
     legacy: [], legacySelf: {}, recoveries: [], ui: {}, saveName() {},
     AccountHeader: 'AccountHeader', View: 'View', ProfileSettings: 'ProfileSettings', AccountNotifications: 'AccountNotifications',
-    ExportData: 'ExportData', SettingsRow: 'SettingsRow', Disclosure: 'Disclosure', Button: 'Button', Text: 'Text', SavedChanges: 'SavedChanges', LegacyRecords: 'LegacyRecords' };
+    DeleteAccount: 'DeleteAccount', ExportData: 'ExportData', SettingsRow: 'SettingsRow', Disclosure: 'Disclosure', Button: 'Button', Text: 'Text', SavedChanges: 'SavedChanges', LegacyRecords: 'LegacyRecords' };
   const busyChanges: boolean[] = [];
   env.setBusy = (value: boolean) => busyChanges.push(value);
   for (const os of ['ios', 'android', 'web']) {

@@ -13,7 +13,7 @@ const tick = async () => { for (let i = 0; i < 15; i++) await Promise.resolve();
 function harness(file: string, name: string, extra: Record<string, any> = {}) {
   let cursor = 0, states: any[] = [], effects: (() => void)[] = [], cleanups: Record<number, () => void> = {};
   const deps: Record<number, any[]> = {};
-  const env: Record<string, any> = { React, Dialog, View: 'View', ScrollView: 'ScrollView', KeyboardDialog: 'KeyboardDialog', Pressable: 'Pressable', Text: 'Text', Button: 'Button', Icon: 'Icon', SettingsRow: 'SettingsRow', BillPeople: 'BillPeople', AmountField: 'AmountField', TextField: 'TextField', DateField: 'DateField', ErrorText: 'ErrorText', Checkbox: { Item: 'Checkbox' }, RadioChoice: 'RadioChoice', Crypto: { randomUUID: () => 'bill-id' }, StyleSheet: { create: (value: any) => value }, Keyboard: { dismiss() {} }, useWindowDimensions: () => ({ height: 667 }), useSafeAreaInsets: () => ({ top: 20, bottom: 0 }), Platform: { OS: 'native' }, requestAnimationFrame: (fn: () => void) => fn(), useUI: () => ({ ui: {} }), formatMoney, integer, rupeesToPaise, validateExpense, ...extra,
+  const env: Record<string, any> = { React, Dialog, View: 'View', ScrollView: 'ScrollView', KeyboardDialog: 'KeyboardDialog', Pressable: 'Pressable', Text: 'Text', Button: 'Button', Icon: 'Icon', SettingsRow: 'SettingsRow', BillPeople: 'BillPeople', DraftAttachment: 'DraftAttachment', LocalAttachment: 'LocalAttachment', AmountField: 'AmountField', TextField: 'TextField', DateField: 'DateField', ErrorText: 'ErrorText', Checkbox: { Item: 'Checkbox' }, RadioChoice: 'RadioChoice', Crypto: { randomUUID: () => 'bill-id' }, StyleSheet: { create: (value: any) => value }, Keyboard: { dismiss() {} }, useWindowDimensions: () => ({ height: 667 }), useSafeAreaInsets: () => ({ top: 20, bottom: 0 }), Platform: { OS: 'native' }, requestAnimationFrame: (fn: () => void) => fn(), useUI: () => ({ ui: {} }), formatMoney, integer, rupeesToPaise, validateExpense, ...extra,
     useState: (initial: any) => { const id = cursor++; if (!(id in states)) states[id] = typeof initial === 'function' ? initial() : initial; return [states[id], (value: any) => { states[id] = typeof value === 'function' ? value(states[id]) : value; }]; },
     useRef: (initial: any) => { const id = cursor++; return states[id] ??= { current: initial }; },
     useEffect: (fn: () => any, values: any[]) => { const id = cursor++; if (!deps[id] || values.some((value, i) => value !== deps[id][i])) { effects.push(() => { cleanups[id]?.(); cleanups[id] = fn(); }); deps[id] = values; } },
@@ -25,35 +25,16 @@ function harness(file: string, name: string, extra: Record<string, any> = {}) {
   return { render: (props: any) => { cursor = 0; return render(props); }, commit: () => { const pending = effects; effects = []; pending.forEach(fn => fn()); }, unmount: () => Object.values(cleanups).forEach(fn => fn?.()), env };
 }
 
-test('Export data opens/closes without an export; a choice removes its Portal before one callback', async () => {
-  const calls: string[] = [], app = harness('src/ExportData.tsx', 'ExportData');
-  const props = { busy: false, onAccount: async () => { calls.push('account'); }, onSaved: async () => { calls.push('saved'); } };
-  for (const choice of ['Account data', 'Saved work']) {
-    let tree = app.render(props); app.commit();
-    find(tree, 'label', 'Export data').props.onPress(); tree = app.render(props); app.commit();
-    assert.equal(nodes(tree).find(node => node.type === 'KeyboardDialog')!.props.visible, true);
-    find(tree, 'title', 'Done').props.onPress(); tree = app.render(props); app.commit();
-    assert.equal(nodes(tree).find(node => node.type === 'KeyboardDialog')!.props.visible, false); assert.deepEqual(calls, []);
-    find(tree, 'label', 'Export data').props.onPress(); tree = app.render(props); app.commit();
-    find(tree, 'label', choice).props.onPress(); find(tree, 'label', choice).props.onPress();
-    tree = app.render(props);
-    assert.ok(!nodes(tree).some(node => node.type === 'KeyboardDialog')); assert.deepEqual(calls, []);
-    app.commit(); await tick(); assert.deepEqual(calls, [choice === 'Account data' ? 'account' : 'saved']);
-    calls.length = 0;
-  }
-  const busy = app.render({ ...props, busy: true }); app.commit();
-  find(busy, 'label', 'Export data').props.onPress();
-  assert.equal(nodes(app.render({ ...props, busy: true })).find(node => node.type === 'KeyboardDialog')!.props.visible, false);
-});
-
-test('Unmounting the account/screen chooser before its deferred callback cancels the action', async () => {
-  let calls = 0; const app = harness('src/ExportData.tsx', 'ExportData');
-  const props = { busy: false, onAccount: async () => calls++, onSaved: async () => calls++ };
-  let tree = app.render(props); app.commit(); find(tree, 'label', 'Export data').props.onPress();
-  tree = app.render(props); app.commit(); find(tree, 'label', 'Saved work').props.onPress();
-  app.render(props); app.commit(); app.unmount(); await tick(); assert.equal(calls, 0);
-  const replacement = harness('src/ExportData.tsx', 'ExportData').render(props);
-  assert.equal(nodes(replacement).find(node => node.type === 'KeyboardDialog')!.props.visible, false);
+test('One Export data action invokes once, has no chooser and blocks repeats until sharing finishes', async () => {
+  let calls = 0, finish!: () => void;
+  const app = harness('src/ExportData.tsx', 'ExportData');
+  const props = { busy: false, onExport: () => { calls++; return new Promise<void>(resolve => { finish = resolve; }); } };
+  let tree = app.render(props);
+  assert.ok(!nodes(tree).some(node => node.type === 'KeyboardDialog'));
+  find(tree, 'label', 'Export data').props.onPress(); find(tree, 'label', 'Export data').props.onPress();
+  assert.equal(calls, 1); finish(); await tick();
+  tree = app.render({ ...props, busy: true }); find(tree, 'label', 'Export data').props.onPress(); assert.equal(calls, 1);
+  tree = app.render(props); find(tree, 'label', 'Export data').props.onPress(); assert.equal(calls, 2); finish(); await tick();
 });
 
 function appAction(name: string, env: Record<string, any>) {
@@ -63,22 +44,15 @@ function appAction(name: string, env: Record<string, any>) {
   return new Function('env', `with(env){${ts.transpile(fn.getText(source), { target: ts.ScriptTarget.ES2022 })};return ${name};}`)(env);
 }
 
-test('actual export callbacks retain distinct payloads, offline owner-only drafts and stale-owner sharing guards', async () => {
-  const calls: any[] = [], ownerRef = { current: 'owner-a' }, session = { token: 'session-a' };
-  const groups = [{ id: 'g' }], unavailable = [{ id: 'unavailable' }], commands = [{ id: 'unsent' }], account = { account: { name: 'Example' }, groups: [] };
-  const env: Record<string, any> = { owner: 'owner-a', ownerRef, session, activeSessionRef: { current: session }, groups, unavailable, commands,
-    getDatabase: async () => ({ getAllAsync: async (sql: string, owner: string) => { assert.equal(sql, 'SELECT group_id,body FROM drafts WHERE owner=?'); assert.equal(owner, 'owner-a'); return [{ group_id: 'g', body: '{"notes":"draft"}' }]; } }),
-    request: async () => { throw Error('Offline'); }, shareJson: async (...args: any[]) => calls.push(args) };
-  await appAction('exportSaved', env)();
-  assert.deepEqual(calls, [['merosplit-saved-changes', { groups, unavailable_groups: unavailable, pending_commands: commands, drafts: [{ id: 'g', data: { notes: 'draft' } }] }]]);
-  env.request = async (...args: any[]) => { assert.deepEqual(args, [session, '/account/export']); return account as any; };
-  await appAction('exportAccount', env)(); assert.deepEqual(calls[1], ['merosplit-account', account]);
-  env.request = async () => { ownerRef.current = 'owner-b'; return account as any; };
-  await appAction('exportAccount', env)(); assert.equal(calls.length, 2);
-  await appAction('exportSaved', env)(); assert.equal(calls.length, 2);
-  const source = readFileSync(new URL('../App.tsx', import.meta.url), 'utf8');
-  assert.ok(source.includes('<ExportData key={owner}')); assert.ok(!source.includes('Export saved changes and recovery records'));
-  assert.equal((source.match(/<BillAttachments\s/g) ?? []).length, 1);
+test('combined export flushes saved work and never shares a stale account result', async () => {
+  const calls: any[] = [], notices: any[] = [], ownerRef = { current: 'owner-a' }, session = { token: 'session-a' };
+  const data = { account_data_status: 'unavailable_offline' };
+  const env: Record<string, any> = { owner: 'owner-a', ownerRef, session, activeSessionRef: { current: session },
+    draftWrites: { current: Promise.resolve() }, flushChatWrites: async () => {}, getDatabase: async () => ({}), isOnline: () => false,
+    portableExport: async () => data, setNotice: (...args: any[]) => notices.push(args), shareJson: async (...args: any[]) => calls.push(args) };
+  await appAction('exportData', env)(); assert.deepEqual(calls, [['merosplit-data', data]]); assert.equal(notices.length, 1);
+  env.portableExport = async () => { ownerRef.current = 'owner-b'; return data; };
+  await appAction('exportData', env)(); assert.equal(calls.length, 1);
 });
 
 const group = { id: 'g', name: 'Example', expenses: [], participants: [{ id: 'self', name: 'Example' }, { id: 'other', name: 'Jordan' }] };
@@ -131,30 +105,19 @@ test('people dialog opens/closes/reopens without changing its existing inputs an
   }
 });
 
-test('export and people callers cap to changing window/safe-area height while first Done dismisses the keyboard', () => {
-  const viewport = { height: 667 }, safe = { top: 20, bottom: 0 }; let dismisses = 0, exports = 0;
-  const env = { useWindowDimensions: () => viewport, useSafeAreaInsets: () => safe, Keyboard: { dismiss: () => dismisses++ } };
-  const choices = harness('src/ExportData.tsx', 'ExportData', env), people = harness('src/BillPeople.tsx', 'BillPeople', env);
-  const exportProps = { busy: false, onAccount: async () => exports++, onSaved: async () => exports++ };
-  const child = React.createElement('Input', { value: '700.00', label: 'Long name preserved' });
-  const peopleProps = { title: 'Who paid?', summary: '2 people', inline: false, disabled: false, children: child };
+test('people dialog adapts to short viewports and Done dismisses the keyboard while retaining inputs', () => {
+  const viewport = { height: 667 }, safe = { top: 20, bottom: 0 }; let dismisses = 0;
+  const people = harness('src/BillPeople.tsx', 'BillPeople', { useWindowDimensions: () => viewport, useSafeAreaInsets: () => safe, Keyboard: { dismiss: () => dismisses++ } });
+  const child = React.createElement('Input', { value: '700.00' });
+  const props = { title: 'Who paid?', icon: 'pay', summary: '2 people', inline: false, disabled: false, children: child };
   for (const [height, top, bottom] of [[667, 20, 0], [844, 47, 34], [375, 0, 21]]) {
     Object.assign(viewport, { height }); Object.assign(safe, { top, bottom });
-    for (const [app, props] of [[choices, exportProps], [people, peopleProps]] as const) {
-      const dialog = nodes(app.render(props)).find(node => node.type === 'KeyboardDialog')!;
-      assert.equal(dialog.props.maxHeight, height - top - bottom);
-    }
+    assert.equal(nodes(people.render(props)).find(node => node.type === 'KeyboardDialog')!.props.maxHeight, height - top - bottom);
   }
-  let tree = people.render(peopleProps); people.commit(); nodes(tree).find(node => node.type === 'Pressable')!.props.onPress();
-  tree = people.render(peopleProps); people.commit(); find(tree, 'title', 'Done').props.onPress();
-  assert.equal(dismisses, 1); assert.equal(nodes(people.render(peopleProps)).find(node => node.type === 'KeyboardDialog')!.props.visible, false);
-  assert.equal(nodes(people.render(peopleProps)).find(node => node.type === 'Input'), child);
-  tree = choices.render(exportProps); choices.commit(); find(tree, 'label', 'Export data').props.onPress();
-  tree = choices.render(exportProps); choices.commit(); find(tree, 'title', 'Done').props.onPress();
-  assert.equal(dismisses, 2); assert.equal(nodes(choices.render(exportProps)).find(node => node.type === 'KeyboardDialog')!.props.visible, false);
-  assert.equal(exports, 0);
+  let tree = people.render(props); people.commit(); nodes(tree).find(node => node.type === 'Pressable')!.props.onPress();
+  tree = people.render(props); people.commit(); find(tree, 'title', 'Done').props.onPress();
+  assert.equal(dismisses, 1); assert.equal(nodes(people.render(props)).find(node => node.type === 'Input'), child);
 });
-
 
 test('accepted attachment action reuses one load/picker path and preserves permission/limit/pending guards', async () => {
   let reads = 0, picks = 0, uploads = 0;
@@ -246,4 +209,32 @@ test('opening a cached bill/payment fetches actor detail once, merges it into th
   assert.equal(await withPayment(active, payment, 'payment'), payment); assert.equal(calls.length, 2);
   env.isOnline = () => false;
   assert.equal(await withBill(active, legacy, 'bill'), legacy); assert.equal(await withPayment(active, legacy, 'payment'), legacy); assert.equal(calls.length, 2);
+});
+
+
+test('pre-save file picker stages privately before the durable draft, previews and persists removal before cleanup', async () => {
+  const events: string[] = [], picked = { uri: 'file:///cache/photo.png', name: 'Photo.png', type: 'image/png', size: 3 }, staged = { ...picked, uri: 'file:///documents/saved.png' };
+  const app = harness('src/DraftAttachment.tsx', 'DraftAttachment', { Platform: { OS: 'web' },
+    pickMedia: async () => { events.push('pick'); return picked; }, stageMediaUpload: async () => { events.push('stage'); return staged; },
+    clearPickedMedia: async () => events.push('clear picker'), clearStagedMedia: async () => events.push('clear staged') });
+  let value: any, error = '';
+  const props = { path: '/groups/g/expenses/e/attachments', disabled: false, onBusy() {}, onError: (message: string) => { error = message; }, onChange: async (next: any) => { events.push(next ? 'persist file' : 'persist removal'); value = next; } };
+  find(app.render(props), 'label', 'Add photo or PDF').props.onPress(); await tick();
+  assert.deepEqual(events, ['pick', 'stage', 'persist file', 'clear picker']); assert.equal(value.file.uri, staged.uri);
+  const tree = app.render({ ...props, value }); assert.equal(nodes(tree).find(node => node.type === 'LocalAttachment')!.props.file, staged);
+  find(tree, 'title', 'Remove file').props.onPress(); await tick();
+  assert.equal(value, undefined); assert.deepEqual(events.slice(-2), ['persist removal', 'clear staged']); assert.equal(error, '');
+});
+
+test('bill save preserves both draft and file if enqueue fails, then reuses the same bill/file IDs on retry', async () => {
+  const file = { id: 'file-id', path: '/groups/g/expenses/bill-id/attachments', file: { uri: 'file:///staged.png' } };
+  const events: string[] = [], expense = { id: 'bill-id' }; let fail = true;
+  const env: Record<string, any> = { selected: { group: {} }, session: {}, owner: 'owner', groupId: 'g', expenseId: null, reviewCommand: null,
+    perform: (action: any) => action(), draftWrites: { current: Promise.resolve() }, getDatabase: async () => ({}),
+    expensePayload: (value: any) => value, command: (_method: string, _path: string, body: any) => body,
+    queue: async (body: any, _replacing: unknown, attachment: unknown) => { assert.equal(body.id, 'bill-id'); assert.equal(attachment, file); events.push('queue bill and file'); if (fail) throw Error('Disk full'); },
+    saveDraft: async () => { events.push('clear bill draft'); }, setDraft() {}, setReviewCommand() {}, setReviewInput() {}, navigate() {}, isOnline: () => false };
+  const save = appAction('saveExpense', env);
+  await assert.rejects(save(expense, file), /Disk full/); assert.deepEqual(events, ['queue bill and file']);
+  fail = false; await save(expense, file); assert.deepEqual(events, ['queue bill and file', 'queue bill and file']);
 });

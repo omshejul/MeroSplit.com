@@ -10,7 +10,7 @@ import { readAppLink, subscribeAppLinks, writeAppLink, type AppLink } from './sr
 import { validateUPIPayment, type UPILaunchQuote } from './src/upi';
 import { formatMoney } from './src/accounting';
 import { emptyGroup, previewPending } from './src/ledger';
-import { getDatabase, savedSession, saveSession, retireSyncPause, shareJson, shareText, storageIsDurable, isOnline } from './src/native';
+import { getDatabase, savedSession, saveSession, retireSyncPause, shareJson, storageIsDurable, isOnline } from './src/native';
 import { discardCommand, discardUnsentGroup, enqueue, listGroups, pendingCommands, createPendingGroup, listLegacyGroups, listLegacyRecoveries, listUnavailableGroups, readDraft, replaceCommand, saveDraft, saveGroup, readVisibleGroup, wipeAccount } from './src/storage';
 import GroupScreen, { ExpenseDetail, PaymentDetail } from './src/GroupScreen';
 import ExpenseForm from './src/ExpenseForm';
@@ -33,7 +33,7 @@ import { EmailSignIn, CodeSignIn } from './src/SignInForms';
 import { captureEmailLink, forgetEmailProof, subscribeEmailLinks, type EmailLink, type EmailTarget } from './src/emailLink';
 import { resolveEmailLink, renewEmailLink, requestEmailLink } from './src/emailLinkApi';
 import { resolveNativeEmailLink, renewNativeEmailLink } from './src/nativeEmailLinkApi';
-import { startNativeLinks } from './src/appLinks';
+import { APP_ORIGIN, startNativeLinks } from './src/appLinks';
 import { pauseAccountRequests, resumeAccountRequests } from './src/accountRequests';
 import { readBrowserSession, updateBrowserSessionMetadata } from './src/browserAuth';
 import { EmailLinkScreen, EmailLinkStatus, EmailLinkSent, NameOnlyForm } from './src/EmailLinkScreens';
@@ -50,8 +50,11 @@ import type { PushTarget } from './src/notifications';
 import BillAttachments from './src/BillAttachments';
 import BillChatScreen, { BillChatEntry } from './src/BillChatScreen';
 import { flushChatWrites } from './src/billChat';
+import DeleteAccount from './src/DeleteAccount';
+import { portableExport } from './src/portableExport';
+import { accountDeletionInput } from './src/accountDeletion';
 import ExportData from './src/ExportData';
-import { clearAccountMediaUploads, clearMediaPreviews } from './src/media';
+import { clearAccountMediaUploads, clearMediaPreviews, enqueueExpenseWithMedia, retryAccountMediaUploads, type PendingMediaUpload } from './src/media';
 import type { CachedGroup, Command, Expense, Group, LegacyRecovery, Session, Settlement, HistoryResource, ActivityPage, ActivityTarget, BillRow } from './src/types';
 import { Button, Disclosure, IconAction, SettingsRow, UIProvider, useUI, type Palette } from './src/ui';
 import { visiblePeopleSummary } from './src/personalBalances';
@@ -59,7 +62,7 @@ import { useExpenseNotices } from './src/useExpenseNotices';
 import type { WindowFrame } from './src/expenseNotices';
 import { Text } from 'react-native-paper';
 
-const API_URL = process.env.EXPO_PUBLIC_API_URL ?? (Platform.OS === 'web' ? window.location.origin : Platform.OS === 'android' ? 'http://10.0.2.2:8000' : 'http://localhost:8000');
+const API_URL = process.env.EXPO_PUBLIC_API_URL ?? (Platform.OS === 'web' ? window.location.origin : APP_ORIGIN);
 const uuid = () => Crypto.randomUUID();
 type Screen = 'home' | 'create' | 'group' | 'expense' | 'expenseDetail' | 'billChat' | 'settle' | 'members' | 'login' | 'review' | 'paymentDetail' | 'import';
 type Transfer = { sender: string; recipient: string; amount: string };
@@ -196,6 +199,7 @@ function AppContent() {
     try { const entry = await request<{ needs_invitation: boolean }>(active, '/me/bill-email-entry'); if (activeSessionRef.current?.token === active.token) setNeedsInvitation(entry.needs_invitation); } catch { /* The ledger remains usable if this optional entry hint is unavailable. */ }
     let writeError: unknown;
     try { await syncOutbox(db, active, 'summary'); } catch (error) { if (error instanceof ApiError && error.status === 401) throw error; writeError = error; }
+    if (!writeError && await retryAccountMediaUploads(db, active)) setNotice('Some files are waiting to upload. Your saved files are kept.', 'warning');
     const removed = await refreshGroups(db, active, 'summary');
     await load(scope);
     if (ownerRef.current !== scope) return;
@@ -481,9 +485,12 @@ function AppContent() {
   function requireConnectionForTemporaryStorage() {
     if (!storageIsDurable() && !isOnline()) throw new Error('This temporary browser tab needs an internet connection to save changes. Keep the tab open and reconnect.');
   }
-  async function queue(value: Command, replacing?: string) {
+  async function queue(value: Command, replacing?: string, attachment?: PendingMediaUpload) {
     requireConnectionForTemporaryStorage();
-    if (replacing) await replaceCommand(await getDatabase(), owner, replacing, value);
+    if (attachment) {
+      if (!session) throw new Error('Sign in to save the file.');
+      await enqueueExpenseWithMedia(await getDatabase(), session, value, attachment, replacing);
+    } else if (replacing) await replaceCommand(await getDatabase(), owner, replacing, value);
     else await enqueue(await getDatabase(), owner, value);
     if (session) {
       try { await syncOutbox(await getDatabase(), session, 'summary'); return; }
@@ -497,12 +504,18 @@ function AppContent() {
     setDraft(await readDraft<ExpenseFormDraft>(await getDatabase(), owner, groupId!));
     setExpenseId(value?.id ?? null); navigate('expense');
   }
-  async function saveExpense(value: Expense) {
+  async function saveExpense(value: Expense, attachment?: PendingMediaUpload) {
     await perform(async () => {
       if (!selected) throw new Error('Open a group first.');
       if (selected.group.archived) throw new Error('Reopen this group in settings before making changes.');
-      await queue(command(expenseId ? 'PUT' : 'POST', `/groups/${groupId}/expenses${expenseId ? `/${value.id}` : ''}`, expensePayload(value, !!expenseId)), reviewCommand?.command_id);
-      await draftWrites.current; await saveDraft(await getDatabase(), owner, groupId!, null); setDraft(null); setReviewCommand(null); setReviewInput(undefined); navigate('group');
+      await draftWrites.current;
+      await queue(command(expenseId ? 'PUT' : 'POST', `/groups/${groupId}/expenses${expenseId ? `/${value.id}` : ''}`, expensePayload(value, !!expenseId)), reviewCommand?.command_id, attachment);
+      await draftWrites.current; if (!attachment) await saveDraft(await getDatabase(), owner, groupId!, null); setDraft(null); setReviewCommand(null); setReviewInput(undefined); navigate('group');
+      if (session && isOnline()) {
+        const waiting = await retryAccountMediaUploads(await getDatabase(), session);
+        try { await refreshGroups(await getDatabase(), session, 'summary'); } catch { /* A saved bill never needs to be created again after a file retry. */ }
+        if (waiting) setNotice('Bill saved. Its file is waiting to upload.', 'warning');
+      }
     });
   }
   async function reverseExpense(value: Expense) {
@@ -539,15 +552,13 @@ function AppContent() {
     await queue(command('POST', `/groups/${groupId}/settlements/${value.id}/reverse`, {}));
   }
   async function changeMembership(action: 'leave' | 'restore') {
-    await perform(async () => {
-      if (!session || !groupId) throw new Error('Open a group to continue.');
-      const scope = owner, currentGroup = groupId;
-      const result = await changeGroupMembership(await getDatabase(), session, currentGroup, action, { isOnline, flushDrafts: () => draftWrites.current, uuid });
-      await load(scope);
-      if (ownerRef.current !== scope) return;
-      setGroupId(null); setShowArchived(false); setShowHidden(false); navigate('home');
-      setNotice(result.disposition === 'left' ? 'You left the group. Its shared history remains.' : result.disposition === 'hidden' ? 'Removed from your list. You remain the organizer.' : 'Restored to your list.', 'success');
-    });
+    if (!session || !groupId) throw new Error('Open a group to continue.');
+    const scope = owner, currentGroup = groupId;
+    const result = await changeGroupMembership(await getDatabase(), session, currentGroup, action, { isOnline, flushDrafts: () => draftWrites.current, uuid });
+    await load(scope);
+    if (ownerRef.current !== scope) return;
+    setGroupId(null); setShowArchived(false); setShowHidden(false); navigate('home');
+    setNotice(result.disposition === 'left' ? 'You left the group. Its shared history remains.' : result.disposition === 'hidden' ? 'Removed from your list. You remain the organizer.' : 'Restored to your list.', 'success');
   }
   async function groupAction(suffix: string, body: Record<string, unknown>): Promise<Record<string, unknown>> {
     return perform(async () => {
@@ -647,24 +658,25 @@ function AppContent() {
     catch (error) { if (error instanceof ApiError && error.status === 401) setExpired(true); setNotice(storageIsDurable() ? 'Saved. Reconnect to finish syncing.' : 'Not confirmed by the server. Keep this tab open and reconnect to retry.', 'warning'); }
     setGroupId(group.id); setExpenseId(null); setDraft(null); setScreen('group');
   }
-  async function exportGroup(format: 'json' | 'csv') {
-    await perform(async () => {
-      if (!selected || !session) return;
-      if (format === 'csv') await shareText('merosplit-group.csv', await request<string>(session, `/groups/${groupId}/export?format=csv`, 'GET', undefined, 'text'), 'text/csv');
-      else await shareJson('merosplit-group', await request(session, `/groups/${groupId}/export?format=json`));
-    });
-  }
-  async function exportSaved() {
-    const db = await getDatabase();
-    if (ownerRef.current !== owner) return;
-    const drafts = await db.getAllAsync<{ group_id: string; body: string }>('SELECT group_id,body FROM drafts WHERE owner=?', owner);
-    if (ownerRef.current !== owner) return;
-    await shareJson('merosplit-saved-changes', { groups, unavailable_groups: unavailable, pending_commands: commands, drafts: drafts.map(row => ({ id: row.group_id, data: JSON.parse(row.body) })) });
-  }
-  async function exportAccount() {
+  async function exportData() {
     if (!session || ownerRef.current !== owner) return;
-    const data = await request(session, '/account/export');
-    if (ownerRef.current === owner && activeSessionRef.current?.token === session.token) await shareJson('merosplit-account', data);
+    const active = session;
+    await draftWrites.current; await flushChatWrites();
+    const data = await portableExport(await getDatabase(), active, isOnline());
+    if (ownerRef.current !== owner || activeSessionRef.current?.token !== active.token) return;
+    if (data.account_data_status !== 'included') setNotice('Export includes saved work on this device. Server history was unavailable.', 'warning');
+    await shareJson('merosplit-data', data);
+  }
+  async function deleteAccount(body: { confirmation: 'delete'; email: string }) {
+    if (!session) throw new Error('Sign in to continue.');
+    const active = session, scope = owner;
+    // Keep validation ahead of every destructive client or server side effect.
+    const checked = accountDeletionInput(body.confirmation, body.email, active.email);
+    await draftWrites.current; await flushChatWrites();
+    await request(active, '/account', 'DELETE', checked);
+    await push.clear(); setPushTarget(null);
+    const db = await getDatabase(); await clearAccountMediaUploads(db, active); await wipeAccount(db, scope);
+    await clearMediaPreviews(); await saveSession(null); changeScope(null);
   }
   function beginEmailLink(link: EmailLink) {
     const previous = emailProof.current;
@@ -823,11 +835,11 @@ function AppContent() {
         !expense.deleted && (!(selected.group.expenses.some(value => value.id === expense.id) || selected.group.focused_expense?.id === expense.id) ? <Text style={ui.caption}>Pending sync</Text> : <BillAttachments key={`${owner}|${groupId}|${expense.id}`} session={session} groupId={selected.group.id} expenseId={expense.id} revision={selected.group.version} readOnly={selected.group.archived || !!pending.length} busy={busy}
           onBusyChange={value => { lock.current = value; setBusy(value); }} onChanged={async () => { if (!session) return; const scope = accountOwner(session); const updated = await fetchGroup(session, selected.group.id); await saveGroup(await getDatabase(), scope, updated, 'shared'); await load(scope); }} />)} />
       </>}
-      {screen === 'expense' && selected && <ExpenseForm key={`${owner}|${groupId}|${expenseId ?? 'new'}`} group={expense && !selected.group.expenses.some(value => value.id === expense.id) ? { ...selected.group, expenses: [...selected.group.expenses, expense] } : selected.group} expense={reviewInput ?? expense} selfId={selfId} busy={busy} initialDraft={draft ?? undefined} onDraftChange={value => { setHasDrafts(true); const scope = owner, id = groupId!; draftWrites.current = draftWrites.current.then(async () => saveDraft(await getDatabase(), scope, id, value)).catch(error => setNotice(`Could not save draft: ${error.message}`, 'error')); }} onSave={saveExpense} onCancel={back} />}
+      {screen === 'expense' && selected && <ExpenseForm key={`${owner}|${groupId}|${expenseId ?? 'new'}`} group={expense && !selected.group.expenses.some(value => value.id === expense.id) ? { ...selected.group, expenses: [...selected.group.expenses, expense] } : selected.group} expense={reviewInput ?? expense} selfId={selfId} busy={busy} initialDraft={draft ?? undefined} onDraftChange={value => { setHasDrafts(true); const scope = owner, id = groupId!; const write = draftWrites.current.catch(() => {}).then(async () => saveDraft(await getDatabase(), scope, id, value)); draftWrites.current = write; void write.catch(error => setNotice(`Could not save draft: ${error.message}`, 'error')); return write; }} onSave={saveExpense} onCancel={back} />}
       {screen === 'review' && selected && reviewCommand && <SavedChangeScreen command={reviewCommand} group={selected.group} busy={busy} onDiscard={() => confirm('Discard this unsent change?', 'Accepted records remain. Your saved change will be removed from this phone.', async () => { await discardCommand(await getDatabase(), owner, reviewCommand.command_id); setReviewCommand(null); navigate('group'); })} onEditSaved={value => { setReviewInput(value); setDraft(null); setExpenseId(reviewCommand.method === 'PUT' ? value.id : null); navigate('expense'); }} />}
       {screen === 'settle' && selected && preview && <SettleForm key={`${owner}|${groupId}`} group={preview} initial={transfer} busy={busy} selfId={selfId} onReviewAttempt={reviewPaymentAttempt} onPrepareUPI={prepareUPI} onCancelUPI={async id => { await groupAction(`/payment-attempts/${id}/cancel`, {}); await clearPaymentReturn(await getDatabase(), owner, id); await load(); }} returnPayment={returnPayment} onArmReturn={armPaymentReturn} onReturnPaymentChange={persistPaymentReturn} onResolveReturn={finishPaymentReturn} onSave={savePayment} onCancel={() => { setReturnAttemptId(null); back(); }} />}
       {screen === 'paymentDetail' && selected && settlement && <PaymentDetail payment={settlement} group={selected.group} selfId={selfId} busy={busy} canReverse={!pending.length && !selected.group.archived} onReverse={() => confirm('Reverse payment record?', 'Balances will change. No bank transfer is reversed.', () => reversePayment(settlement))} />}
-      {screen === 'members' && selected && <MembersScreen key={`${owner}|${groupId}`} group={selected.group} selfId={selfId} busy={busy} onAction={groupAction} onExport={exportGroup} onMembership={action => { if (action === 'restore') launch(() => changeMembership(action)); else confirm('Leave or remove this group?', 'Shared bills and balances stay with the group. If you are the organizer, the next eligible joined member takes over. With no eligible member, this only removes the group from your list and you remain its organizer. Your saved drafts are kept.', () => changeMembership(action)); }} addPersonRequest={addPersonRequest} />}
+      {screen === 'members' && selected && <MembersScreen key={`${owner}|${groupId}`} group={selected.group} selfId={selfId} busy={busy} onAction={groupAction} onMembership={action => { if (action === 'restore') launch(() => changeMembership(action)); else confirm('Delete group?', 'Leave this group and remove it from your list. Shared balances and history stay. Your saved drafts are kept.', () => changeMembership(action)); }} addPersonRequest={addPersonRequest} />}
       {screen === 'home' && tab === 'Activity' && session && <ChatInbox key={owner} session={session} active={foreground && !authHeld && !expired && online} busy={busy} onEmptyChange={empty => chatInboxEmptyChanged(session, empty)} onOpen={(groupId, expenseId) => { void openActivityTarget({ kind: 'bill', groupId, expenseId }, true).catch(() => {}); }} />}
       {screen === 'home' && tab === 'Activity' && session && <ActivityScreen emptyVerified={activityEmptyVerified} showEmpty={activityEmptyVerified} items={activity?.items ?? []} busy={busy} error={activityError} hasMore={!!activity?.next_cursor} onRefresh={() => { void refreshActivity().catch(() => {}); }} onLoadMore={() => { void refreshActivity(true).catch(() => {}); }} onOpen={target => { void openActivityTarget(target).catch(() => {}); }} />}
       {screen === 'login' && <>
@@ -836,7 +848,7 @@ function AppContent() {
             {Platform.OS === 'web' && <Button title="Use a code instead" kind="text" disabled={busy} onPress={() => launch(sendSignInCode)} />}
           </EmailSignIn>
           : <CodeSignIn email={email} code={code} busy={busy} resendSeconds={Math.max(0, Math.ceil((retryAt - clock) / 1000))} onCode={setCode} onConfirm={() => launch(finishSignIn)} onResend={() => launch(sendSignInCode)} onChangeEmail={() => { setChallenge(null); setCode(''); }} />}
-        <Button title="Help" kind="text" onPress={() => launch(() => Linking.openURL(`${API_URL}/support`))} />
+        <Button title="Help" kind="text" onPress={() => launch(() => Linking.openURL(`${APP_ORIGIN}/support`))} />
       </>}
       {screen === 'import' && session && <SplitwiseImportScreen key={owner} session={session} busy={busy}
         onBusyChange={value => { lock.current = value; setBusy(value); }} onCancel={back}
@@ -847,7 +859,7 @@ function AppContent() {
           <AccountNotifications key={owner} session={session} push={push} busy={busy} onBusyChange={value => { lock.current = value; setBusy(value); }} />
           <MCPSettings key={owner} session={session} busy={busy} onBusyChange={value => { lock.current = value; setBusy(value); }} />
         <View><SettingsRow label="Import from Splitwise" icon="import" disabled={busy} onPress={() => navigate('import')} />
-          <ExportData key={owner} busy={busy} onAccount={() => perform(exportAccount).catch(() => {})} onSaved={() => perform(exportSaved).catch(() => {})} /></View>
+          <ExportData key={owner} busy={busy} onExport={() => perform(exportData)} /></View>
         {!!unavailable.length && <Text style={[ui.notice, ui.warning]}>Access to {unavailable.length === 1 ? 'a group has' : 'some groups have'} ended. Saved work is kept for export.</Text>}
         <SavedChanges commands={commands} groups={groups} busy={busy} expired={expired} onOpen={row => launch(() => openGroup(row))} onDiscard={value => confirm('Discard saved change?', 'Export first if needed. This removes only your unsent change. A request already accepted by the server is kept there.', async () => { await discardCommand(await getDatabase(), owner, value.command_id); })} onRetry={() => launch(sync)} />
         <LegacyRecords groups={legacy} email={session.email} selected={legacySelf} busy={busy} onSelect={(id, person) => setLegacySelf(value => ({ ...value, [id]: person }))}
@@ -857,13 +869,13 @@ function AppContent() {
             if (result.status === 'conflict') { setNotice('These records need review. Their original copy is saved for export; server balances were not changed.', 'warning'); return; }
             await syncAccount(session); setGroupId(group.id); setScreen('group'); setNotice('Records recovered.', 'success');
           })}
-          onExport={group => launch(async () => { const db = await getDatabase(); await shareJson('merosplit-earlier-records', { group, draft: await readDraft(db, 'local', group.id), pending_commands: (await pendingCommands(db, 'local')).filter(value => value.group_id === group.id) }); })} />
-        {recoveries.some(value => value.status === 'conflict') && <Text style={[ui.notice, ui.warning]}>Some earlier records could not be safely combined. Export recovery records to review them.</Text>}
-        <View><SettingsRow label="Privacy" icon="privacy" disabled={busy} onPress={() => launch(() => Linking.openURL(`${API_URL}/privacy`))} /><SettingsRow label="Help and support" icon="help" disabled={busy} onPress={() => launch(() => Linking.openURL(`${API_URL}/support`))} /></View>
+          />
+        {recoveries.some(value => value.status === 'conflict') && <Text style={[ui.notice, ui.warning]}>Some earlier records could not be safely combined. Use Export data to review their saved originals.</Text>}
+        <View><SettingsRow label="Privacy" icon="privacy" disabled={busy} onPress={() => launch(() => Linking.openURL(`${APP_ORIGIN}/privacy`))} /><SettingsRow label="Help and support" icon="help" disabled={busy} onPress={() => launch(() => Linking.openURL(`${APP_ORIGIN}/support`))} /></View>
         <View>
 
           <SettingsRow label="Sign out" icon="back" chevron={false} disabled={busy} onPress={() => confirm('Sign out?', storageIsDurable() ? 'Saved changes stay on this device for your next sign-in to this account.' : 'Export any temporary unsent changes before leaving. They will end when this tab closes.', async () => { await draftWrites.current; await flushChatWrites(); await endPushSession(session); await clearMediaPreviews(); await saveSession(null); changeScope(null); })} />
-          <SettingsRow label="Delete account" icon="remove" danger chevron={false} disabled={busy} onPress={() => confirm('Delete account?', 'Export first. Your account, uploads and text you added will be removed. Other members keep anonymous amounts and payment history. Unsent changes for this account will be deleted from this phone.', async () => { await push.disable().catch(() => {}); await request(session, '/account', 'DELETE'); await push.clear(); setPushTarget(null); await draftWrites.current; await flushChatWrites(); const db = await getDatabase(); await clearAccountMediaUploads(db, session); await wipeAccount(db, owner); await clearMediaPreviews(); await saveSession(null); changeScope(null); })} />
+          <DeleteAccount email={session.email} busy={busy} onDelete={body => perform(() => deleteAccount(body))} />
         </View></View>
       </>}
     </ScrollView>}

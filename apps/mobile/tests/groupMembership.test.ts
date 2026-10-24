@@ -149,3 +149,26 @@ test('retry stops after its accepted membership command, preserving later queued
     assert.equal((await readGroup(db, owner, 'g'))?.kind, 'unavailable');
   } finally { globalThis.fetch = original; raw.close(); }
 });
+
+
+test('new Delete group finishes a legacy hide receipt then requests explicit departure with a fresh immutable command', async () => {
+  const raw = new DatabaseSync(':memory:'), db = sqliteAdapter(raw), original = globalThis.fetch;
+  const bodies: Record<string, unknown>[] = []; let departed = false;
+  globalThis.fetch = async (url, init) => {
+    if (init?.method === 'POST') {
+      const body = JSON.parse(String(init.body)); bodies.push(body);
+      departed = body.remove_membership === true;
+      return Response.json({ id: 'g', version: departed ? 3 : 2, disposition: departed ? 'left' : 'hidden' });
+    }
+    if (String(url).endsWith('/summary')) return Response.json({ ...group, hidden: true, read_mode: 'summary', history: {}, totals: { spending: '0', paid: {}, shares: {} } });
+    return Response.json({ groups: departed ? [] : [{ id: 'g', version: 2, hidden: true }] });
+  };
+  try {
+    await migrate(db); await saveGroup(db, owner, group, 'shared'); await saveDraft(db, owner, 'g', { notes: 'Retain saved work' }); await enqueue(db, owner, leave);
+    const result = await changeGroupMembership(db, session, 'g', 'leave', { ...options, uuid: () => 'explicit-delete' });
+    assert.equal(result.disposition, 'left');
+    assert.deepEqual(bodies, [{ command_id: 'leave-id' }, { command_id: 'explicit-delete', remove_membership: true }]);
+    assert.equal((await pendingCommands(db, owner)).length, 0);
+    assert.equal((await readGroup(db, owner, 'g'))?.kind, 'unavailable');
+  } finally { globalThis.fetch = original; raw.close(); }
+});

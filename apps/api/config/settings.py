@@ -74,7 +74,7 @@ EMAIL_BACKEND = "django.core.mail.backends.dummy.EmailBackend"
 RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
 DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "MeroSplit <mail@merosplit.com>")
 EMAIL_REPLY_TO = os.environ.get("EMAIL_REPLY_TO", "mail@merosplit.com")
-PUBLIC_WEB_URL = os.environ.get("PUBLIC_WEB_URL", "https://api-production-fb6ac.up.railway.app")
+PUBLIC_WEB_URL = os.environ.get("PUBLIC_WEB_URL", "https://merosplit.com")
 EMAIL_CLIENT_IP_SOURCE = os.environ.get("EMAIL_CLIENT_IP_SOURCE", "remote_addr")
 EMAIL_RAILWAY_PUBLIC_HOSTS = {
     host.strip().lower().rstrip(".") for host in os.environ.get("EMAIL_RAILWAY_PUBLIC_HOSTS", "").split(",") if host.strip()
@@ -148,6 +148,6 @@ PUSH_PROVIDER = os.environ.get("PUSH_PROVIDER", "")
 EXPO_ACCESS_TOKEN = os.environ.get("EXPO_ACCESS_TOKEN", "")
 
 # One canonical OAuth issuer/resource, independent of request Host headers.
-MCP_SERVER_URL = os.environ.get("MCP_SERVER_URL", "https://merosplit.omshejul.com/mcp")
+MCP_SERVER_URL = os.environ.get("MCP_SERVER_URL", "https://merosplit.com/mcp")
 MCP_ALLOWED_HOSTS = list(dict.fromkeys([_urlsplit(MCP_SERVER_URL).netloc, *ALLOWED_HOSTS]))
 MCP_ALLOWED_ORIGINS = list(dict.fromkeys([f"https://{_urlsplit(MCP_SERVER_URL).netloc}", PUBLIC_WEB_URL.rstrip("/")]))

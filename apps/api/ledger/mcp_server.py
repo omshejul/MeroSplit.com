@@ -99,7 +99,7 @@ def authenticate_request(raw, network):
         return None
     actor, grant = identity
     return AccessToken(token=raw, client_id=str(grant.client_id), subject=str(actor.pk),
-                       scopes=[grant.scope], resource=grant.resource,
+                       scopes=[grant.scope], resource=resource_url(),  # Exact legacy grant is the same trusted resource.
                        expires_at=int(grant.access_expires_at.timestamp()), claims={"iss": issuer_url()})
 
 

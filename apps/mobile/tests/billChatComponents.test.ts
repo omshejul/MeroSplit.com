@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import ts from 'typescript';
 import { accountOwner, ApiError, request } from '../src/api.ts';
+import { APP_ORIGIN } from '../src/appLinks.ts';
 import * as chat from '../src/billChat.ts';
 import { migrate } from '../src/storage.ts';
 import { sqliteAdapter } from './sqlite.ts';
@@ -23,7 +24,7 @@ function component(db: any, send: typeof request, extra: Record<string, any> = {
   let cursor = 0, states: any[] = [], effects: (() => void)[] = [], cleanups: Record<number, any> = {}, deps: Record<number, any[]> = {};
   let receive!: (value: ChatPage, older: boolean) => void, fail!: (error: unknown) => void;
   let starts = 0, stops = 0;
-  const env: Record<string, any> = { ...chat, React: { createElement: (type: any, props: any, ...children: any[]) => ({ type, props: props ?? {}, children }) },
+  const env: Record<string, any> = { APP_ORIGIN, ...chat, React: { createElement: (type: any, props: any, ...children: any[]) => ({ type, props: props ?? {}, children }) },
     Platform: { OS: 'native' }, storageIsDurable: () => true, View: 'View', Text: 'Text', FlatList: 'FlatList', ScrollView: 'ScrollView', Button: 'Button', TextField: 'TextField', IconAction: 'IconAction', SettingsRow: 'SettingsRow', ChatControls: 'ChatControls', ChatMenu: 'ChatMenu', KeyboardDialog: 'KeyboardDialog', Dialog: Object.assign(() => {}, { Title: 'Title', Content: 'Content', Actions: 'Actions' }),
     Crypto: { randomUUID: () => 'synthetic-client-uuid' }, ApiError, accountOwner, request: send, getDatabase: async () => db, useUI: () => ({ ui: {}, palette: {} }), useWindowDimensions: () => ({ height: 720 }), Linking: { openURL: async () => {} },
     sendChatMessage: (...args: any[]) => chat.sendChatMessage(args[0], args[1], args[2], args[3], send),

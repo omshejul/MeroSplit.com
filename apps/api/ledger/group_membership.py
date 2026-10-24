@@ -66,12 +66,18 @@ def leave_group(actor, group_id, payload):
     person = group.participants.get(user=actor, removed=False)
     attempts = _can_leave(group, person)
     successor = _next_organizer(group, person) if group.owner_id == actor.pk else None
-    if group.owner_id == actor.pk and successor is None:
+    if group.owner_id == actor.pk and successor is None and not payload.get("remove_membership", False):
+        # Installed clients called this Remove from my list and promised restore.
         person.hidden = True
         person.save(update_fields=["hidden"])
         result = {"id": str(group.id), "version": group.version, "disposition": "hidden"}
         CommandReceipt.objects.create(actor=actor, command_id=payload["command_id"], fingerprint=fingerprint, result=result)
         return result
+    if group.owner_id == actor.pk and successor is None:
+        # No active organizer remains to manage a later guest claim.
+        Invite.objects.filter(participant__group=group, approved=False).update(revoked=True)
+    # A historical owner FK may remain when no active successor exists. It grants
+    # no access: all ledger/organizer entrypoints require an active participant.
     if successor:
         group.owner_id = successor.user_id
         group.import_source_hash = ""

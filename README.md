@@ -1,6 +1,6 @@
 # MeroSplit
 
-Shared-expense app for iOS, Android and web, built with Expo React Native and a Django/PostgreSQL backend. [Railway API](https://api-production-fb6ac.up.railway.app/api/v1/ready) · [Private source repository](https://github.com/omshejul/SplitDumb).
+Shared-expense app for iOS, Android and web, built with Expo React Native and a Django/PostgreSQL backend. [MeroSplit](https://merosplit.com) · [Private source repository](https://github.com/omshejul/SplitDumb).
 
 The current 0.3.5 source, native build 13, uses Groups, People, Activity and Me with React Native Paper controls, native pickers and Hugeicons. Accounts sync automatically. PostgreSQL owns accepted records; the phone keeps an account-scoped cache, drafts and an idempotent offline queue. Sign-out preserves unsent work for that account. Earlier unowned phone records require explicit account and participant confirmation before recovery. Original history remains available in recovery export.
 
@@ -10,7 +10,7 @@ Earlier compact app, full web and local acceptance are recorded in [the current 
 
 See the [original verification and artifacts](.dev/VERIFICATION.md), [development instructions](.dev/DEV.md), [implementation phases](PLAN.md), and [API contract](API_CONTRACT.md). Current source includes email-link/code sign-in, explicit participant invitations, guarded UPI handoff, private media and the same screens on the web. Linked-account unread emails become eligible after 10 minutes. New unclaimed-participant bill emails are generic notifications, never automatic invitations or membership claims. Live inbox flows, physical-device payments, public store release and maximum-capacity claims require separate release evidence. Historical test reports below do not establish those newer flows.
 
-Current source adds OAuth MCP on the same backend at `https://merosplit.omshejul.com/mcp`; [the portable plugin](plugins/merosplit/README.md) shares that endpoint with its Claude Code adapter. Its tools read authorized ledgers and record bookkeeping only. ASGI uses the existing service with two workers; the existing notification worker remains separate. New runtime deployment, native geometry and real host OAuth/read-write acceptance remain publisher gates. Package/schema checks do not establish them.
+Current source adds OAuth MCP on the same backend at `https://merosplit.com/mcp`; [the portable plugin](plugins/merosplit/README.md) shares that endpoint with its Claude Code adapter. Its tools read authorized ledgers and record bookkeeping only. ASGI uses the existing service with two workers; the existing notification worker remains separate. New runtime deployment, native geometry and real host OAuth/read-write acceptance remain publisher gates. Package/schema checks do not establish them.
 
 Start with the [PRD](PRD.md). It specifies the controlled pilot, later public beta, bill-splitting calculations, ledger rules, UPI states, guest participation, migration, architecture, acceptance criteria and delivery sequence.
 

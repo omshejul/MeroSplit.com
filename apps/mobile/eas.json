@@ -9,7 +9,7 @@
       "credentialsSource": "remote",
       "environment": "production",
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://api-production-fb6ac.up.railway.app"
+        "EXPO_PUBLIC_API_URL": "https://merosplit.com"
       },
       "android": {
         "buildType": "app-bundle"

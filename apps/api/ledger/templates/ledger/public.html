@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
+  <link rel="canonical" href="https://merosplit.com{% if page == 'privacy' %}/privacy{% elif page == 'delete' %}/delete-account{% elif page == 'chat' %}/chat-policy{% else %}/support{% endif %}">
   <title>MeroSplit · {% if page == 'privacy' %}Privacy{% elif page == 'delete' %}Delete your account{% elif page == 'chat' %}Chat policy{% else %}Support{% endif %}</title>
   <style>
     :root { font-family: system-ui, sans-serif; color-scheme: light dark; line-height: 1.6; }
@@ -19,7 +20,7 @@
   </style>
 </head>
 <body>
-  <header><strong>MeroSplit</strong><nav aria-label="Help pages"><a href="/support">Support</a><a href="/privacy">Privacy</a><a href="/chat-policy">Chat policy</a><a href="/delete-account">Delete account</a></nav></header>
+  <header><strong>MeroSplit</strong><nav aria-label="Help pages"><a href="https://merosplit.com/support">Support</a><a href="https://merosplit.com/privacy">Privacy</a><a href="https://merosplit.com/chat-policy">Chat policy</a><a href="https://merosplit.com/delete-account">Delete account</a></nav></header>
   <main>
   {% if page == 'privacy' %}
     <h1>Privacy policy</h1>
@@ -44,7 +45,7 @@
     <h2>Retention and deletion</h2>
     <p>Account and group records remain while needed for your use of MeroSplit. You can export your account or group records and delete your account from Me. Deletion removes your user account, sign-in sessions, email, UPI address and device registrations. Your uploads, including shared bill attachments, are removed from visible records and marked for physical deletion. New download links are blocked immediately. Previously issued links expire within five minutes; successful physical deletion removes the file earlier. Bill descriptions, notes and other text attributable to you are removed or replaced with neutral placeholders in current records and change history. Groups you own without another active linked member are removed.</p>
     <p>Other members retain anonymous participant identifiers, numeric bill amounts, splits, dates and payment history so their balances remain correct. Content entered by other members remains theirs; contact us if it contains personal information about you that you want removed. A storage-provider failure can delay physical file deletion; we keep deletion markers so cleanup can be retried. Previously downloaded copies cannot be recalled. Deletion from the active service does not remove copies other people previously exported or downloaded. This beta currently has no configured scheduled database backups or point-in-time recovery.</p>
-    <p><a href="/delete-account">Request account or personal-data deletion</a>, including if you no longer have the app. Requests may require confirmation of account ownership. Deleting an account also clears its cached records and queued changes from the phone where you confirm deletion. Older phone records that you have not added to an account remain separate and can be removed by clearing the app's local data.</p>
+    <p><a href="https://merosplit.com/delete-account">Request account or personal-data deletion</a>, including if you no longer have the app. Requests may require confirmation of account ownership. Deleting an account also clears its cached records and queued changes from the phone where you confirm deletion. Older phone records that you have not added to an account remain separate and can be removed by clearing the app's local data.</p>
     <h2>Browser storage</h2>
     <p>Regular supported browsers retain downloaded records, drafts and pending changes in site storage. Clearing site data removes those local copies. When a browser cannot open persistent storage, including some private windows, MeroSplit uses a temporary online-only tab. Unsent changes and drafts end when that tab closes; the app warns before leaving with unsent changes. Accepted server records remain available after signing in again.</p>
     <h2>Your choices</h2>
@@ -53,13 +54,13 @@
   {% elif page == 'delete' %}
     <h1>Delete your MeroSplit account</h1>
     <h2>In the app</h2>
-    <ol><li>Open Me.</li><li>Choose Delete account.</li><li>Read what will be removed, export anything you need, then confirm.</li></ol>
+    <ol><li>Open Me.</li><li>Choose Delete account.</li><li>Read what will be removed and export anything you need. Type delete exactly, enter your current account email, then choose Delete account.</li></ol>
     <p>You need an internet connection. This deletes your user account, sign-in sessions, email, UPI address and notification registration. Your uploads, including bill attachments, are removed from visible records and marked for physical deletion. New download links are blocked immediately; previously issued links expire within five minutes unless physical deletion removes the file earlier. Authored bill text is removed or replaced with neutral placeholders, including in change history. Cached account records and queued changes are removed from this phone. Older phone records that you have not added to an account remain separate.</p>
     <h2>If you cannot use the app</h2>
     <p>Email <a href="mailto:mail@merosplit.com?subject=MeroSplit%20account%20deletion">mail@merosplit.com with the subject “MeroSplit account deletion”</a>. Send from the account's email address where possible and say that you want your MeroSplit account deleted. We may ask you to confirm ownership. Do not send your password, UPI PIN, bank credentials or full payment-card details.</p>
     <h2>What can remain</h2>
     <p>Groups you own without another active linked member are removed. In groups with other members, your participant becomes “Deleted participant”; anonymous bill amounts, splits, dates and payment records remain so other members keep correct balances. Your authored text and uploaded attachments are removed from visible group records. If content added by someone else contains personal information you want removed, include that request in your email. Physical file deletion can remain pending if the storage provider is unavailable; new download links are blocked, existing links expire within five minutes, and physical deletion can be retried. Previously exported or downloaded copies held by other members are outside MeroSplit's control. This beta currently has no configured scheduled database backups or point-in-time recovery.</p>
-    <p>For a request to remove specific personal data without closing your account, email the same address and identify the data. <a href="/privacy">Read the privacy policy</a>.</p>
+    <p>For a request to remove specific personal data without closing your account, email the same address and identify the data. <a href="https://merosplit.com/privacy">Read the privacy policy</a>.</p>
   {% else %}
     {% if page == 'chat' %}
     <h1>Chat policy</h1>
@@ -73,14 +74,14 @@
     <h2>How balances work</h2>
     <p>Add what was paid and who shared it. MeroSplit works out what each person should pay or receive. “You are owed” means money is due to you. “You owe” means you need to pay someone back. The simpler repayment plan preserves each person's total while reducing payments within that group.</p>
     <h2>Groups and connected agents</h2>
-    <p>Archived groups are under Archived groups. Leaving requires a settled balance and no unresolved reported payment or opening proposal. Shared records remain. An organizer passes responsibility to the next eligible joined member. With no eligible successor, Remove from my list keeps your membership and ownership; open Removed from my list to restore it. Your saved drafts remain available for export. Connect an agent under Me → Connect MCP; setup instructions and Disconnect are available there.</p>
+    <p>Archived groups are under Archived groups. Leaving requires a settled balance and no unresolved reported payment or opening proposal. Shared records remain. An organizer passes responsibility to the next eligible joined member. Delete group removes your membership and the group from your list, including when there is no eligible successor. Shared financial history remains. Previously hidden groups can still be restored. Your saved drafts remain available for export. Connect an agent under Me → Connect MCP; setup instructions and Disconnect are available there.</p>
     <h2>Sync and notifications</h2>
     <p>Groups and People use the records saved in your account. Cached records remain available offline, and queued changes sync automatically when connected. If a change needs review, open it and compare your saved change with the latest record before retrying. Keep the app's data until your changes are accepted. New bill notices appear in your account immediately. Optional email follows after 10 minutes if the current bill is still unseen, even without the mobile app. Turn off bill alerts in Me → Notifications; phone notification settings can also block push. An unclaimed supplied email may receive an immediate generic notice with a Stop bill emails link. Contact save alone sends nothing.</p>
     <h2>Payment records</h2>
     <p>MeroSplit records money paid outside the app. Check the recipient and their UPI details in your payment app before paying. A recipient's acknowledgment is a record, not bank verification. Reversing a record updates balances; it does not reverse a bank transfer.</p>
     <h2>Your account and data</h2>
-    <p>Sign in with the four-digit code sent to your email. Request a new code if it expires. Me has import, export and account controls. For account access help, contact support. Older records saved only on a phone require your confirmation before they are added to an account. You can <a href="/delete-account">request account or personal-data deletion</a> even if the app has been uninstalled.</p>
-    <p><a href="/privacy">Privacy policy</a> · <a href="/chat-policy">Chat policy</a></p>
+    <p>Sign in with the four-digit code sent to your email. Request a new code if it expires. Me has import, Export data and account controls. Export data downloads synced account history and work saved on this device together. Offline exports clearly indicate that server history is unavailable. Pending local file bytes are included up to 40 MB in total; synced files are represented by metadata. For account access help, contact support. Older records saved only on a phone require your confirmation before they are added to an account. You can <a href="https://merosplit.com/delete-account">request account or personal-data deletion</a> even if the app has been uninstalled.</p>
+    <p><a href="https://merosplit.com/privacy">Privacy policy</a> · <a href="https://merosplit.com/chat-policy">Chat policy</a></p>
     {% endif %}
   {% endif %}
   </main>

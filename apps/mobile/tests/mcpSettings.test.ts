@@ -36,6 +36,7 @@ function harness(os = 'ios') {
     'react-native-safe-area-context': { useSafeAreaInsets: () => insets },
     'react-native': { useWindowDimensions: () => viewport, View: 'View', Platform: { OS: os }, Linking: { openURL: async (value: string) => { urls.push(value); } }, Share: { share: async (value: unknown) => { shares.push(value); } } },
     'react-native-paper': { Text: 'Text', Dialog: { Title: 'Title', Actions: 'Actions' } },
+    './appLinks': { APP_ORIGIN: 'https://merosplit.com' },
     './api': { request: (active: unknown, path: string, method = 'GET') => { calls.push({ session: active, path, method }); return request(active, path, method); } },
     './DialogParts': { DialogScrollBody: 'ScrollBody' }, './KeyboardDialog': { __esModule: true, default: 'KeyboardDialog' },
     './ui': { Button: 'Button', ErrorText: 'ErrorText', SettingsRow: 'SettingsRow', useUI: () => ({ ui: {} }) },
@@ -73,8 +74,8 @@ test('Me has one settings row, opens a persistent scrolling dialog and keeps Don
   const text = elements(tree).filter(node => node.type === 'Text').flatMap(node => node.children).join(' ');
   assert.doesNotMatch(text, /https:\/\/|get_account_context|Connect MeroSplit to this client/);
   button(tree, 'Setup instructions').props.onPress(); button(tree, 'Share setup prompt').props.onPress(); await turn();
-  assert.deepEqual(app.urls, ['https://example.invalid/mcp/setup']);
-  assert.deepEqual(app.shares, [{ message: 'Connect MeroSplit to this client using the instructions at https://example.invalid/mcp/setup, then verify with get_account_context.' }]);
+  assert.deepEqual(app.urls, ['https://merosplit.com/mcp/setup']);
+  assert.deepEqual(app.shares, [{ message: 'Connect MeroSplit to this client using the instructions at https://merosplit.com/mcp/setup, then verify with get_account_context.' }]);
   button(tree, 'Done').props.onPress(); assert.equal(one(app.render(), 'KeyboardDialog').props.visible, false);
   assert.equal(app.focusCount(), 1); app.unmount();
 });

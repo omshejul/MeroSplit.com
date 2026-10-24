@@ -1,7 +1,7 @@
 import { accountOwner, ApiError, request } from './api.ts';
-import { readDraft, saveDraft } from './storage.ts';
+import { readDraft, saveDraft, enqueue, discardCommand } from './storage.ts';
 import type { Database } from './storage.ts';
-import type { Session } from './types.ts';
+import type { Session, Command } from './types.ts';
 import { clearStagedMedia, mediaFilePart, readMediaBytes } from './mediaPlatform.ts';
 import { sessionRequest } from './transport.ts';
 export { validateMedia, pickMedia, clearPickedMedia, stageMediaUpload, clearStagedMedia, openPrivateMedia, clearMediaPreview, clearMediaPreviews } from './mediaPlatform.ts';
@@ -39,10 +39,11 @@ export async function uploadMedia<T>(session: Session, path: string, file: Picke
 // Call before wiping the deleting account's drafts. Sign-out must retain these
 // bytes so that a later sign-in can retry the same immutable upload.
 export async function clearAccountMediaUploads(db: Database, session: Session, cleanup: (file: PickedMedia) => Promise<void> = clearStagedMedia): Promise<void> {
-  const rows = await db.getAllAsync<{ body: string }>("SELECT body FROM drafts WHERE owner=? AND group_id LIKE 'media-upload:%'", accountOwner(session));
+  const rows = await db.getAllAsync<{ body: string }>("SELECT body FROM drafts WHERE owner=?", accountOwner(session));
   for (const row of rows) {
     try {
-      const upload = JSON.parse(row.body) as PendingMediaUpload | null;
+      const saved = JSON.parse(row.body);
+      const upload = saved?.attachment ?? saved as PendingMediaUpload | null;
       if (upload?.file?.uri && pendingFilename.test(upload.file.uri.split('/').at(-1) ?? '')) await cleanup(upload.file);
     } catch { /* One failed file cleanup must not affect another account's data. */ }
   }
@@ -52,13 +53,37 @@ export function pendingMediaUpload(db: Database, session: Session, path: string)
   return readDraft<PendingMediaUpload>(db, accountOwner(session), uploadDraftKey(path));
 }
 
+async function writeMediaUpload(tx: Database, session: Session, snapshot: PendingMediaUpload): Promise<void> {
+  const existing = await pendingMediaUpload(tx, session, snapshot.path);
+  if (existing && JSON.stringify(existing) !== JSON.stringify(snapshot)) throw new Error('Finish the saved upload before choosing another file.');
+  await saveDraft(tx, accountOwner(session), uploadDraftKey(snapshot.path), snapshot);
+}
+
 export async function saveMediaUpload(db: Database, session: Session, upload: PendingMediaUpload): Promise<void> {
   const snapshot = JSON.parse(JSON.stringify(upload)) as PendingMediaUpload;
+  await db.withExclusiveTransactionAsync(tx => writeMediaUpload(tx, session, snapshot));
+}
+
+export async function enqueueExpenseWithMedia(db: Database, session: Session, command: Command, upload: PendingMediaUpload, replacing?: string): Promise<void> {
+  const snapshot = JSON.parse(JSON.stringify(upload)) as PendingMediaUpload;
+  if (command.method !== 'POST' || command.path !== `/groups/${command.group_id}/expenses` || snapshot.path !== `${command.path}/${command.body.id}/attachments`) throw new Error('This saved file belongs to a different bill.');
   await db.withExclusiveTransactionAsync(async tx => {
-    const existing = await pendingMediaUpload(tx, session, snapshot.path);
-    if (existing && JSON.stringify(existing) !== JSON.stringify(snapshot)) throw new Error('Finish the saved upload before choosing another file.');
-    await saveDraft(tx, accountOwner(session), uploadDraftKey(snapshot.path), snapshot);
+    await writeMediaUpload(tx, session, snapshot);
+    if (replacing) await discardCommand(tx, accountOwner(session), replacing);
+    await enqueue(tx, accountOwner(session), command);
+    await saveDraft(tx, accountOwner(session), command.group_id, null);
   });
+}
+
+export async function removePendingMediaUpload(db: Database, session: Session, path: string, send: typeof request = request, cleanup = clearStagedMedia): Promise<void> {
+  const pending = await pendingMediaUpload(db, session, path);
+  if (!pending) return;
+  // Resolve an uncertain POST before removing its local retry. If it arrived,
+  // the explicit remove action also removes that exact accepted attachment.
+  const accepted = (await send<MediaList>(session, path)).attachments.find(item => item.id === pending.id);
+  if (accepted) await send(session, `${path}/${encodeURIComponent(pending.id)}`, 'DELETE');
+  await db.runAsync('DELETE FROM drafts WHERE owner=? AND group_id=? AND body=?', accountOwner(session), uploadDraftKey(path), JSON.stringify(pending));
+  await cleanup(pending.file);
 }
 
 export async function retryMediaUpload(db: Database, session: Session, path: string, send: typeof request = request, post: typeof uploadMedia = uploadMedia, cleanup: (file: PickedMedia) => Promise<void> = clearStagedMedia): Promise<MediaMetadata> {
@@ -73,7 +98,8 @@ export async function retryMediaUpload(db: Database, session: Session, path: str
   if (!accepted) {
     try { accepted = (await post<AttachmentResult>(session, path, pending.file, pending.id)).attachment; }
     catch (cause) {
-      if (cause instanceof ApiError && [400, 413, 415, 422].includes(cause.status)) { await clear(); throw cause; }
+      // Even a rejected file stays available for preview, export and recovery.
+      if (cause instanceof ApiError && [400, 413, 415, 422].includes(cause.status)) throw cause;
       try { accepted = (await send<MediaList>(session, path)).attachments.find(item => item.id === pending.id); }
       catch { /* Preserve both request and staged bytes while the outcome is unknown. */ }
       if (!accepted) throw cause;
@@ -112,3 +138,17 @@ export async function readPrivateMedia<T>(session: Session, id: string, read: (u
 
 
 export function mediaSize(bytes: number): string { return bytes < 1_048_576 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / 1_048_576).toFixed(1)} MB`; }
+
+// Upload only after the bill exists. GET/reconciliation in retryMediaUpload also
+// makes a lost bill response or upload response safe to retry with the same IDs.
+export async function retryAccountMediaUploads(db: Database, session: Session, retry = retryMediaUpload): Promise<number> {
+  const rows = await db.getAllAsync<{ body: string }>("SELECT body FROM drafts WHERE owner=? AND group_id LIKE 'media-upload:%'", accountOwner(session));
+  let failed = 0;
+  for (const row of rows) {
+    const upload = JSON.parse(row.body) as PendingMediaUpload | null;
+    if (!upload || !/^\/groups\/[^/]+\/expenses\/[^/]+\/attachments$/.test(upload.path)) continue;
+    try { await retry(db, session, upload.path); }
+    catch (error) { if (error instanceof ApiError && error.status === 401) throw error; failed++; }
+  }
+  return failed;
+}

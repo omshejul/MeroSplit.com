@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { accountOwner, ApiError, request } from '../src/api.ts';
-import { clearAccountMediaUploads, clearMediaPreviews, pendingMediaUpload, retryMediaUpload, saveMediaUpload, uploadMedia } from '../src/media.ts';
+import { clearAccountMediaUploads, clearMediaPreviews, pendingMediaUpload, retryMediaUpload, enqueueExpenseWithMedia, removePendingMediaUpload, saveMediaUpload, uploadMedia } from '../src/media.ts';
 import type { MediaMetadata, PendingMediaUpload, PickedMedia } from '../src/media.ts';
 import { migrate, readDraft, saveDraft, wipeAccount } from '../src/storage.ts';
 import { sqliteAdapter } from './sqlite.ts';
@@ -92,14 +92,14 @@ test('Uncertain and revoked upload outcomes retain the original request and stag
   }
 });
 
-test('Deterministic input rejection releases the draft and staged bytes for choosing a corrected file', async () => {
+test('Deterministic input rejection retains the draft and staged bytes for preview and export', async () => {
   for (const status of [400, 413, 415, 422]) {
     const raw = new DatabaseSync(':memory:'), db = sqliteAdapter(raw); let cleanup = 0;
     try {
       await migrate(db); await saveMediaUpload(db, session, pending);
       const post: typeof uploadMedia = async <T>(): Promise<T> => { throw new ApiError(status, 'Invalid input'); };
       await assert.rejects(retryMediaUpload(db, session, path, emptyList, post, async () => { cleanup++; }), error => error instanceof ApiError && error.status === status);
-      assert.equal(await pendingMediaUpload(db, session, path), null); assert.equal(cleanup, 1);
+      assert.deepEqual(await pendingMediaUpload(db, session, path), pending); assert.equal(cleanup, 0);
     } finally { raw.close(); }
   }
 });
@@ -136,5 +136,47 @@ test('A failed initial reconciliation cannot send bytes, and SQLite clear failur
     assert.deepEqual(await retryMediaUpload(db, session, path, accepted, post, async () => { cleanup++; }), metadata);
     assert.equal(posts, 1); assert.equal(cleanup, 1);
     assert.equal(await readDraft(db, accountOwner(session), `media-upload:${path}`), null);
+  } finally { raw.close(); }
+});
+
+
+test('bill/file queue transfer is atomic: failed enqueue keeps the original draft and success has one immutable file intent', async () => {
+  const raw = new DatabaseSync(':memory:'), db = sqliteAdapter(raw);
+  const bill = { command_id: 'bill-command', group_id: 'g', method: 'POST' as const, path: '/groups/g/expenses', body: { id: 'e' }, state: 'pending' as const, error: null };
+  const attachment = { ...pending, path: '/groups/g/expenses/e/attachments' };
+  const draft = { id: 'e', description: 'Dinner', attachment };
+  try {
+    await migrate(db); await saveDraft(db, accountOwner(session), 'g', draft);
+    raw.exec("CREATE TRIGGER fail_bill_queue BEFORE INSERT ON outbox BEGIN SELECT RAISE(ABORT, 'disk full'); END;");
+    await assert.rejects(enqueueExpenseWithMedia(db, session, bill, attachment), /disk full/);
+    assert.deepEqual(await readDraft(db, accountOwner(session), 'g'), draft);
+    assert.equal(await pendingMediaUpload(db, session, attachment.path), null);
+    assert.equal(raw.prepare('SELECT count(*) AS n FROM outbox').get()!.n, 0);
+    raw.exec('DROP TRIGGER fail_bill_queue');
+    await enqueueExpenseWithMedia(db, session, bill, attachment);
+    await enqueueExpenseWithMedia(db, session, bill, attachment);
+    assert.equal(await readDraft(db, accountOwner(session), 'g'), null);
+    assert.deepEqual(await pendingMediaUpload(db, session, attachment.path), attachment);
+    assert.equal(raw.prepare('SELECT count(*) AS n FROM outbox').get()!.n, 1);
+    let posts = 0;
+    await assert.rejects(retryMediaUpload(db, session, attachment.path, async () => { throw new ApiError(404, 'Bill not committed'); }, async () => { posts++; throw Error('Must not send'); }), /Bill not committed/);
+    assert.equal(posts, 0); assert.ok(await pendingMediaUpload(db, session, attachment.path));
+  } finally { raw.close(); }
+});
+
+test('removing an uncertain upload reconciles and deletes only that exact accepted file; offline retains its bytes', async () => {
+  const raw = new DatabaseSync(':memory:'), db = sqliteAdapter(raw); let cleaned = 0;
+  const calls: string[] = [];
+  try {
+    await migrate(db); await saveMediaUpload(db, session, pending);
+    await assert.rejects(removePendingMediaUpload(db, session, path, async () => { throw Error('Offline'); }, async () => { cleaned++; }), /Offline/);
+    assert.ok(await pendingMediaUpload(db, session, path)); assert.equal(cleaned, 0);
+    const send: typeof request = async <T>(_session: Session, endpoint: string, method = 'GET'): Promise<T> => {
+      calls.push(`${method} ${endpoint}`);
+      return (method === 'GET' ? { attachments: [metadata], can_modify: true } : { removed: true }) as T;
+    };
+    await removePendingMediaUpload(db, session, path, send, async () => { cleaned++; });
+    assert.deepEqual(calls, [`GET ${path}`, `DELETE ${path}/${pending.id}`]);
+    assert.equal(cleaned, 1); assert.equal(await pendingMediaUpload(db, session, path), null);
   } finally { raw.close(); }
 });

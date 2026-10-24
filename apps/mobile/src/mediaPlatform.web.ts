@@ -1,3 +1,4 @@
+import { publicAppUrl } from './appLinks';
 import type { MediaMetadata, PickedMedia } from './media';
 import type { Session } from './types';
 import { chooseBrowserFile, stagedBlob, storeStagedBlob } from './webFiles';
@@ -28,9 +29,17 @@ export async function stageMediaUpload(file: PickedMedia, id: string): Promise<P
 export async function clearStagedMedia(file: PickedMedia): Promise<void> { const id = stagedId(file.uri); if (id) await storeStagedBlob(id, null); }
 export function browserMediaUrl(session: Session, id: string): string { return `${session.baseUrl}/app/media/${encodeURIComponent(id)}`; }
 export async function openPrivateMedia(session: Session, media: MediaMetadata): Promise<void> {
-  const opened = window.open(browserMediaUrl(session, media.id), '_blank', 'noopener,noreferrer');
+  const opened = window.open(publicAppUrl(browserMediaUrl(session, media.id)), '_blank', 'noopener,noreferrer');
   // Some browsers return null for noopener windows even when presentation succeeds.
   if (opened) opened.opener = null;
 }
 export async function clearMediaPreview(_media: MediaMetadata): Promise<void> {}
 export async function clearMediaPreviews(): Promise<void> {}
+
+export async function localMediaUrl(file: PickedMedia): Promise<string> { return URL.createObjectURL(await blob(file)); }
+export function clearLocalMediaUrl(uri: string): void { if (uri.startsWith('blob:')) URL.revokeObjectURL(uri); }
+export async function openLocalMedia(_file: PickedMedia, uri: string): Promise<void> { window.open(uri, '_blank', 'noopener,noreferrer'); }
+export async function mediaBase64(file: PickedMedia): Promise<string> {
+  const data = await blob(file);
+  return new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result).split(',')[1]); reader.onerror = () => reject(new Error('Could not read a saved file.')); reader.readAsDataURL(data); });
+}

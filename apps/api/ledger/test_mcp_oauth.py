@@ -497,3 +497,34 @@ def test_refresh_reuse_error_response_revocation_is_committed_for_another_reques
     connections.close_all()
     assert McpOAuthGrant.objects.get().revoked_at
     assert not oauth.authenticate_access_token(current["access_token"])
+
+
+def test_new_domain_keeps_exact_legacy_grant_rotation_sdk_resource_and_revocation(settings):
+    actor, row, tokens = granted()
+    settings.MCP_SERVER_URL = "https://merosplit.com/mcp"
+    from .mcp_server import authenticate_request
+    assert oauth.resource_url() == "https://merosplit.com/mcp"
+    assert oauth.authenticate_access_token(tokens["access_token"])[0].pk == actor.pk
+    assert authenticate_request(tokens["access_token"], NETWORK).resource == oauth.resource_url()
+    rotated = refreshed(row, tokens)
+    grant = McpOAuthGrant.objects.get(user=actor)
+    assert grant.resource == RESOURCE  # Preserve persisted identity; no replacement grant.
+    assert McpOAuthGrant.objects.filter(user=actor).count() == 1
+    assert oauth.authenticate_access_token(rotated["access_token"])
+    with pytest.raises(oauth.OAuthError):
+        refreshed(row, tokens)  # Existing refresh-replay revocation still applies.
+    assert oauth.authenticate_access_token(rotated["access_token"]) is None
+    with pytest.raises(oauth.OAuthError):
+        oauth._scope_resource({"resource": "https://merosplit.com.evil.invalid/mcp"})
+
+
+def test_pending_legacy_authorization_survives_domain_change_without_accepting_other_hosts(settings):
+    actor = user()
+    row = pending()
+    settings.MCP_SERVER_URL = "https://merosplit.com/mcp"
+    url = oauth.decide_authorization(actor, row.id, approved=True, expected_user_id=actor.pk, network=NETWORK)
+    code = parse_qs(urlsplit(url).query)["code"][0]
+    tokens = oauth.exchange_code(code_data(row, code), NETWORK)
+    assert oauth.authenticate_access_token(tokens["access_token"])[0].pk == actor.pk
+    settings.MCP_SERVER_URL = "https://unrelated.example.invalid/mcp"
+    assert oauth.authenticate_access_token(tokens["access_token"]) is None

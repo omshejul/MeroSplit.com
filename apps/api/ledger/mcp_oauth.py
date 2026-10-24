@@ -43,6 +43,12 @@ def resource_url():
     return value
 
 
+def trusted_resources():
+    canonical = resource_url()
+    # Exact former production resource only; never trust Host or a supplied URL.
+    return (canonical, "https://merosplit.omshejul.com/mcp") if canonical == "https://merosplit.com/mcp" else (canonical,)
+
+
 def issuer_url():
     parsed = urlsplit(resource_url())
     return f"{parsed.scheme}://{parsed.netloc}"
@@ -136,7 +142,7 @@ def _client(value):
 def _scope_resource(data):
     if data.get("scope", MCP_SCOPE) != MCP_SCOPE:
         raise OAuthError("invalid_scope")
-    if data.get("resource", resource_url()) != resource_url():
+    if data.get("resource", resource_url()) not in trusted_resources():
         raise OAuthError("invalid_target")
 
 
@@ -189,7 +195,7 @@ def decide_authorization(actor, request_id, *, approved, expected_user_id, netwo
         except (ValueError, TypeError, McpOAuthPendingAuthorization.DoesNotExist):
             raise OAuthError() from None
         now = timezone.now()
-        if row.approved_at or row.denied_at or row.expires_at <= now or row.resource != resource_url():
+        if row.approved_at or row.denied_at or row.expires_at <= now or row.resource not in trusted_resources():
             raise OAuthError()
         if not approved:
             row.denied_at = now
@@ -227,7 +233,7 @@ def exchange_code(data, network):
         now = timezone.now()
         challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).decode().rstrip("=")
         if (not user or not row or row.user_id != user.pk or row.consumed_at or row.denied_at or not row.approved_at
-                or not row.code_expires_at or row.code_expires_at <= now or row.resource != resource_url()
+                or not row.code_expires_at or row.code_expires_at <= now or row.resource not in trusted_resources()
                 or data.get("redirect_uri") != row.redirect_uri or not secrets.compare_digest(row.code_challenge, challenge)):
             raise OAuthError("invalid_grant")
         if McpOAuthGrant.objects.filter(user=user, revoked_at__isnull=True, refresh_expires_at__gt=now).count() >= 50:
@@ -256,7 +262,7 @@ def exchange_refresh(data, network):
         user = get_user_model().objects.select_for_update(no_key=True).filter(pk=user_id, is_active=True).first()
         grant = McpOAuthGrant.objects.select_for_update().filter(pk=grant_id, client=client).first()
         now = timezone.now()
-        if user and grant and grant.user_id == user.pk and grant.resource == resource_url() and not grant.revoked_at and grant.refresh_expires_at > now:
+        if user and grant and grant.user_id == user.pk and grant.resource in trusted_resources() and not grant.revoked_at and grant.refresh_expires_at > now:
             if not secrets.compare_digest(grant.refresh_token_digest, digest):
                 # Commit revocation before returning invalid_grant, including races.
                 if McpOAuthRefreshDigest.objects.filter(pk=digest, grant=grant).exists():
@@ -281,7 +287,7 @@ def authenticate_access_token(raw, *, network=None, enforce_limits=True):
     now = timezone.now()
     grant = McpOAuthGrant.objects.select_related("user", "client").filter(access_token_digest=_digest(raw),
         revoked_at__isnull=True, access_expires_at__gt=now, refresh_expires_at__gt=now,
-        scope=MCP_SCOPE, resource=resource_url(), user__is_active=True).first()
+        scope=MCP_SCOPE, resource__in=trusted_resources(), user__is_active=True).first()
     if grant is None:
         return None
     # SDK ingress supplies its trusted network when available; account/grant

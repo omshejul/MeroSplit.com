@@ -19,10 +19,10 @@ test('canonical email, group, bill and both existing invitation routes stay dist
 
 test('untrusted hosts, normalized escapes, private/public pages and malformed destinations do nothing', () => {
   const rejected = [null, '', emailURL.replace('https:', 'http:'), emailURL.replace('merosplit.', 'preview.merosplit.'),
-    emailURL.replace('merosplit.omshejul.com', 'merosplit.omshejul.com.evil.test'),
-    emailURL.replace('merosplit.omshejul.com', 'merosplit.omshejul.com@evil.test'),
-    emailURL.replace('merosplit.omshejul.com', 'user@merosplit.omshejul.com'),
-    emailURL.replace('merosplit.omshejul.com', 'merosplit.omshejul.com:443'),
+    emailURL.replace('merosplit.com', 'merosplit.com.evil.test'),
+    emailURL.replace('merosplit.com', 'merosplit.com@evil.test'),
+    emailURL.replace('merosplit.com', 'user@merosplit.com'),
+    emailURL.replace('merosplit.com', 'merosplit.com:443'),
     emailURL.replace('/app/', '/support/../app/'), emailURL.replace('/app/', '/%2e%2e/app/'),
     emailURL.replace('/app/', '/APP/'), `${emailURL}&next=other`, `${emailURL}?extra`, `${emailURL}/junk`, `${emailURL}\n`,
     `${APP_ORIGIN}/app/sign-in/bad#proof=${proof}`, `${APP_ORIGIN}/app/sign-in/${group}?next=/support#proof=${proof}`,
@@ -113,8 +113,8 @@ test('unsubscribe drops queued proofs and ignores delayed cold resolution', asyn
 
 test('Expo associations stay on exact canonical HTTPS routes, preserving custom and seven UPI schemes', () => {
   const { expo } = JSON.parse(readFileSync(new URL('../app.json', import.meta.url), 'utf8'));
-  assert.deepEqual(expo.ios.associatedDomains, ['applinks:merosplit.omshejul.com']);
-  assert.deepEqual(expo.android.intentFilters, [{ action: 'VIEW', autoVerify: true, category: ['BROWSABLE', 'DEFAULT'], data: ['/app/sign-in/', '/app/groups/', '/app/invite/', '/invite/'].map(pathPrefix => ({ scheme: 'https', host: 'merosplit.omshejul.com', pathPrefix })) }]);
+  assert.deepEqual(expo.ios.associatedDomains, ['applinks:merosplit.com', 'applinks:merosplit.omshejul.com']);
+  assert.deepEqual(expo.android.intentFilters, [{ action: 'VIEW', autoVerify: true, category: ['BROWSABLE', 'DEFAULT'], data: ['merosplit.com', 'merosplit.omshejul.com'].flatMap(host => ['/app/sign-in/', '/app/groups/', '/app/invite/', '/invite/'].map(pathPrefix => ({ scheme: 'https', host, pathPrefix }))) }]);
   assert.equal(expo.scheme, 'splitdumb'); assert.equal(expo.version, '0.3.10'); assert.equal(expo.ios.buildNumber, '18'); assert.equal(expo.android.versionCode, 18);
   assert.deepEqual(expo.ios.infoPlist.LSApplicationQueriesSchemes, ['upi', 'gpay', 'phonepe', 'paytmmp', 'credpay', 'bhim', 'amazonpay']);
 });

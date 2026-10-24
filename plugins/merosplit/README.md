@@ -2,9 +2,9 @@
 
 One remote MCP service and one shared skill for ChatGPT/Codex and Claude Code. The portable entry is `plugin.json` with `mcp.json`; the Claude adapter uses `.claude-plugin/plugin.json` and `.mcp.json`. Both discover `skills/merosplit/SKILL.md` at the same root. There are no hooks, local processes, static headers or bundled credentials.
 
-The endpoint is `https://merosplit.omshejul.com/mcp`. It uses Streamable HTTP and per-account browser OAuth with dynamic client registration. The `merosplit:mcp` scope allows reads and writes subject to existing account/group permissions. Payment tools record external payments; they never transfer money. The package works without an embedded UI.
+The endpoint is `https://merosplit.com/mcp`. It uses Streamable HTTP and per-account browser OAuth with dynamic client registration. The `merosplit:mcp` scope allows reads and writes subject to existing account/group permissions. Payment tools record external payments; they never transfer money. The package works without an embedded UI.
 
-The canonical [setup page](https://merosplit.omshejul.com/mcp/setup) covers client-specific connection. Claude chat/desktop uses a remote connector; the `.claude-plugin` adapter is for Claude Code. Installing the source package or validating its manifest does not authenticate a connection or publish a directory listing.
+The canonical [setup page](https://merosplit.com/mcp/setup) covers client-specific connection. Claude chat/desktop uses a remote connector; the `.claude-plugin` adapter is for Claude Code. Installing the source package or validating its manifest does not authenticate a connection or publish a directory listing.
 
 ## Validation and packaging
 

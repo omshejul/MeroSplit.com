@@ -1,18 +1,19 @@
+import { publicAppUrl } from './appLinks';
 import { DialogScrollBody, CancelDialogActions } from './DialogParts';
 import KeyboardDialog from './KeyboardDialog';
 import { GroupMembershipActions } from './GroupMembershipActions';
 import React, { useEffect, useRef, useState } from 'react';
 import { Keyboard, Platform, Share, StyleSheet, View } from 'react-native';
 import type { TextInputProps } from 'react-native';
-import { Dialog, SegmentedButtons, Text } from 'react-native-paper';
+import { Dialog, Text } from 'react-native-paper';
 import * as Crypto from 'expo-crypto';
 import { Alert } from './alerts';
-import { formatMoney, integer } from './accounting';
+import { formatMoney } from './accounting';
 import type { Group, Participant } from './types';
 import { addPerson, currentEmailInvite, emailInvitationRequest, personRequest, sendInvitation } from './members';
 import type { AddPersonRequest, EmailInviteRequest } from './members';
 import { TextField } from './FormFields';
-import { Avatar, Button, DateField, Disclosure, IconAction, useUI } from './ui';
+import { Avatar, Button, Disclosure, IconAction, useUI } from './ui';
 
 type Props = {
   group: Group;
@@ -21,7 +22,6 @@ type Props = {
   addPersonRequest?: number;
   onMembership: (action: 'leave' | 'restore') => void;
   onAction: (suffix: string, body: Record<string, unknown>) => Promise<Record<string, unknown>>;
-  onExport: (format: 'json' | 'csv') => Promise<void>;
 };
 type Feedback = { section: string; text: string; error: boolean } | null;
 type Invite = NonNullable<Group['invites']>[number];
@@ -130,45 +130,17 @@ function PreviousBalanceRow({ person, selfId, balance, agreed }: { person: Parti
   </View>;
 }
 
-function PreviousBalanceField({ name, balance, disabled, onAmount, onDirection }: { name: string; balance: string; disabled: boolean; onAmount: (value: string) => void; onDirection: (value: string) => void }) {
-  const owes = balance.startsWith('-');
-  return <View style={s.section}>
-    <Field label={`${name} balance (₹)`} value={balance.replace(/^-/, '')} disabled={disabled} maxLength={39} keyboardType="decimal-pad" placeholder="0" onChange={onAmount} />
-    <SegmentedButtons value={owes ? 'owes' : 'owed'} onValueChange={onDirection}
-      buttons={[{ value: 'owes', label: 'Owes', accessibilityLabel: `${name} owes money`, disabled }, { value: 'owed', label: 'Is owed', accessibilityLabel: `${name} is owed money`, disabled }]} />
-  </View>;
-}
-
-function signedPaise(input: string): string {
-  const text = input.trim();
-  if (text.length > 40 || !/^-?(0|[1-9][0-9]*)(\.[0-9]{1,2})?$/.test(text)) {
-    throw new Error('Enter an amount with up to two decimal places, such as 120.50. Choose Owes or Is owed for its direction.');
-  }
-  const [whole, fraction = ''] = text.replace(/^-/, '').split('.');
-  const absolute = BigInt(whole) * 100n + BigInt(fraction.padEnd(2, '0'));
-  const amount = (text.startsWith('-') ? -absolute : absolute).toString();
-  integer(amount, true);
-  return amount;
-}
-
 export default function MembersScreen(props: Props) {
   return <MemberSettings key={`${props.group.id}|${props.selfId}`} {...props} />;
 }
 
-function MemberSettings({ group, selfId, busy, addPersonRequest = 0, onAction, onExport, onMembership }: Props) {
+function MemberSettings({ group, selfId, busy, addPersonRequest = 0, onAction, onMembership }: Props) {
   const { ui } = useUI();
   const [newName, setNewName] = useState(''), [newEmail, setNewEmail] = useState(''), [addingPerson, setAddingPerson] = useState(false);
   const pendingPerson = useRef<AddPersonRequest | null>(null), lastAddRequest = useRef(addPersonRequest);
   const addTrigger = useRef<HTMLElement | null>(null);
   function closeAddPerson() { Keyboard.dismiss(); setAddingPerson(false); requestAnimationFrame(() => addTrigger.current?.focus()); }
   const [inviteLink, setInviteLink] = useState<InviteLink | null>(null);
-  const [showOpening, setShowOpening] = useState(false);
-  const [previous, setPrevious] = useState<Record<string, string>>({});
-  const [source, setSource] = useState('');
-  const [cutoff, setCutoff] = useState(() => {
-    const date = new Date();
-    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-  });
   const [working, setWorking] = useState(false);
   const [feedback, setFeedback] = useState<Feedback>(null);
   const [contactEmail, setContactEmail] = useState<string | null>(null);
@@ -257,31 +229,6 @@ function MemberSettings({ group, selfId, busy, addPersonRequest = 0, onAction, o
     });
   }
 
-  function proposeOpening() {
-    try {
-      const balances = Object.fromEntries(group.participants.map(person => {
-        const value = previous[person.id] ?? '';
-        return [person.id, signedPaise(value === '' || value === '-' ? '0' : value)];
-      }));
-      const total = Object.values(balances).reduce((sum, amount) => sum + BigInt(amount), 0n);
-      if (total !== 0n) throw new Error(`Previous balances must add up to zero. The difference is ${formatMoney(total.toString())}.`);
-      if (Object.values(balances).every(amount => amount === '0')) throw new Error('Enter at least one previous balance.');
-      if (!source.trim()) throw new Error('Describe where these previous balances came from.');
-      const date = new Date(`${cutoff}T00:00:00Z`);
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(cutoff) || cutoff.startsWith('0000') || Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== cutoff) {
-        throw new Error('Enter a valid date as YYYY-MM-DD.');
-      }
-      const summary = group.participants.map(person => `${person.name}: ${balanceDescription(balances[person.id])}`).join('\n');
-      confirm('Add these previous balances?', `${summary}\n\nFrom: ${source.trim()}\nAs of: ${cutoff}\nEveryone with a nonzero balance must agree before these amounts affect the group.`,
-        () => void perform('opening', async () => {
-          await onAction('/opening-balances', { id: Crypto.randomUUID(), balances, source: source.trim(), cutoff });
-          setShowOpening(false);
-        }, 'Previous balances proposed. Waiting for the required members to agree.'), 'Propose');
-    } catch (error) {
-      setFeedback({ section: 'opening', text: error instanceof Error ? error.message : 'Check the previous balances.', error: true });
-    }
-  }
-
   return <View style={s.content}>
     <View>
       {group.participants.map(person => <MemberRow key={person.id} group={group} person={person} selfId={selfId} organizer={organizer} disabled={disabled} working={working} feedback={feedback}
@@ -306,17 +253,17 @@ function MemberSettings({ group, selfId, busy, addPersonRequest = 0, onAction, o
       onName={setNewName} onEmail={setNewEmail} onClose={closeAddPerson} onSave={savePerson} feedback={feedback} />
     <FeedbackNote section="members" feedback={feedback} />
 
-    {organizer && hasInvites && <Disclosure title="Invites">
+    {organizer && hasInvites && <Disclosure title="Invite people">
       {group.participants.filter(person => !person.removed && person.user_id == null && !person.email).map(person => <ManualInviteRow key={person.id} name={person.name} disabled={disabled || !!group.archived} onInvite={() => void perform('invites', async () => {
           const result = await onAction('/invites', { participant_id: person.id });
           if (typeof result.url !== 'string' || !/^https?:\/\//.test(result.url)) throw new Error('The link is not available yet. Sync and try again.');
           const link = { participantId: person.id, name: person.name, url: result.url };
           setInviteLink(link);
-          const shared = await Share.share({ message: `Join ${group.name} as ${link.name}: ${link.url}` });
+          const shared = await Share.share({ message: `Join ${group.name} as ${link.name}: ${publicAppUrl(link.url)}` });
           if (shared.action === Share.sharedAction) setInviteLink(null);
         })} />)}
       {inviteLink && <ShareInviteRow link={inviteLink} disabled={disabled || !!group.archived} onShare={() => void perform('invites', async () => {
-          const shared = await Share.share({ message: `Join ${group.name} as ${inviteLink.name}: ${inviteLink.url}` });
+          const shared = await Share.share({ message: `Join ${group.name} as ${inviteLink.name}: ${publicAppUrl(inviteLink.url)}` });
           if (shared.action === Share.sharedAction) setInviteLink(null);
         })} />}
       {(group.invites ?? []).filter(invite => !invite.revoked).map(invite => <InviteRow key={invite.id} invite={invite} name={name(invite.participant_id)} disabled={disabled || !!group.archived}
@@ -332,8 +279,7 @@ function MemberSettings({ group, selfId, busy, addPersonRequest = 0, onAction, o
       <FeedbackNote section="invites" feedback={feedback} />
     </Disclosure>}
 
-    {(opening || organizer) && <Disclosure title="Previous balances" initialOpen={needsOpeningAgreement}>
-      {opening ? <>
+    {opening && <Disclosure title="Previous balances" initialOpen={needsOpeningAgreement}>
         <Text style={[ui.notice, opening.accepted ? ui.success : ui.warning]}>{opening.accepted ? 'Agreed and included in balances.' : 'Waiting for agreement. Not included in balances yet.'}</Text>
         <Text style={ui.body}>From {opening.source}</Text><Text style={ui.caption}>As of {opening.cutoff}</Text>
         {group.participants.map(person => <PreviousBalanceRow key={person.id} person={person} selfId={selfId} balance={opening.balances[person.id] ?? '0'} agreed={Object.hasOwn(opening.acknowledgments, person.id)} />)}
@@ -343,40 +289,19 @@ function MemberSettings({ group, selfId, busy, addPersonRequest = 0, onAction, o
             () => void perform('opening', async () => { await onAction(`/opening-balances/${opening.id}/acknowledge`, {}); }, 'Your agreement was saved.'), 'Agree')} />
           {group.archived && <Text style={ui.caption}>Reopen the group before agreeing to previous balances.</Text>}
         </>}
-      </> : <>
-        <Text style={ui.caption}>No previous balances added.</Text>
-        {organizer && !group.archived && <Button title={showOpening ? 'Cancel previous balances' : 'Add previous balances'} disabled={disabled} onPress={() => { setShowOpening(value => !value); setFeedback(null); }} />}
-        {organizer && showOpening && !group.archived && <View style={s.field}>
-          <Text style={ui.body}>Total owed and owing must match.</Text>
-          {group.participants.filter(person => !person.removed).map(person => {
-            const balance = previous[person.id] ?? '', owes = balance.startsWith('-');
-            return <PreviousBalanceField key={person.id} name={person.name} balance={balance} disabled={disabled}
-              onAmount={value => setPrevious(current => ({ ...current, [person.id]: `${owes ? '-' : ''}${value.replace(/^-/, '')}` }))}
-              onDirection={value => setPrevious(current => ({ ...current, [person.id]: `${value === 'owes' ? '-' : ''}${(current[person.id] ?? '').replace(/^-/, '')}` }))} />;
-          })}
-          <Field label="Where are these balances from?" value={source} onChange={setSource} disabled={disabled} maxLength={300} />
-          <DateField label="As of date" value={cutoff} onChange={setCutoff} disabled={disabled} />
-          <Button title="Review previous balances" kind="primary" disabled={disabled} onPress={proposeOpening} />
-        </View>}
-      </>}
+
       <FeedbackNote section="opening" feedback={feedback} />
     </Disclosure>}
 
-    <GroupMembershipActions hidden={!!group.hidden} busy={disabled} canLeave={BigInt(group.balances[selfId] ?? '0') === 0n}
-      actionTitle={organizer && !group.participants.some(person => !person.removed && person.user_id != null && person.id !== selfId) ? 'Remove from my list' : 'Leave group'}
-      blockedReason={BigInt(group.balances[selfId] ?? '0') !== 0n ? 'Settle your balance before leaving or removing this group.' : undefined}
-      onLeave={() => onMembership('leave')} onRestore={() => onMembership('restore')} />
-    <Disclosure title={organizer ? 'Export and archive' : 'Export'}>
-      <Button title="Export spreadsheet" disabled={disabled} onPress={() => void perform('export', () => onExport('csv'))} />
-      <Button title="Export data file" disabled={disabled} onPress={() => void perform('export', () => onExport('json'))} />
-      <FeedbackNote section="export" feedback={feedback} />
       {organizer && <>
-        <Button title={group.archived ? 'Reopen group' : 'Archive group'} kind="text" disabled={disabled} onPress={() => confirm(
+        <Button icon="archive" title={group.archived ? 'Reopen group' : 'Archive group'} kind="text" disabled={disabled} onPress={() => confirm(
           group.archived ? 'Reopen this group?' : 'Archive this group?', group.archived ? 'Members can add expenses again.' : 'Existing records stay available. Reopen the group to add expenses again.',
           () => void perform('archive', async () => { await onAction('/archive', { archived: !group.archived }); }, group.archived ? 'Group reopened.' : 'Group archived.'), group.archived ? 'Reopen' : 'Archive')} />
         <FeedbackNote section="archive" feedback={feedback} />
       </>}
-    </Disclosure>
+    <GroupMembershipActions hidden={!!group.hidden} busy={disabled} canLeave={BigInt(group.balances[selfId] ?? '0') === 0n}
+      blockedReason={BigInt(group.balances[selfId] ?? '0') !== 0n ? 'Settle your balance before deleting this group.' : undefined}
+      onLeave={() => onMembership('leave')} onRestore={() => onMembership('restore')} />
   </View>;
 }
 

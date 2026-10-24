@@ -19,6 +19,13 @@ def uid():
 
 
 def send(client, method, path, data=None):
+    # Existing deletion scenarios exercise a confirmed user action. Negative
+    # confirmation tests pass explicit bodies, including {} for missing fields.
+    if method == "delete" and path == "/account" and data is None:
+        from django.contrib.sessions.models import Session
+        actor = getattr(client, "actor", None) or get_user_model().objects.get(
+            pk=Session.objects.get(session_key=client.defaults["HTTP_X_SESSION_TOKEN"]).get_decoded()["_auth_user_id"])
+        data = {"confirmation": "delete", "email": actor.email}
     return getattr(client, method)(
         f"/api/v1{path}", data=json.dumps(data) if data is not None else None, content_type="application/json"
     )

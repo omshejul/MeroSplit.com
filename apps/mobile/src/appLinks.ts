@@ -1,7 +1,15 @@
 import type { AppLink } from './browserLinks.ts';
 import type { EmailLink } from './emailLink.ts';
 
-export const APP_ORIGIN = 'https://merosplit.omshejul.com';
+export const APP_ORIGIN = 'https://merosplit.com';
+const LEGACY_ORIGIN = 'https://merosplit.omshejul.com';
+
+// Canonicalize links for sharing without changing transport or stored account keys.
+export function publicAppUrl(value: string): string {
+  const url = new URL(value, APP_ORIGIN);
+  if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) throw new Error('Invalid app link.');
+  return `${APP_ORIGIN}${url.pathname}${url.search}${url.hash}`;
+}
 export type NativeLink = { kind: 'email'; link: EmailLink } | { kind: 'app'; target: AppLink };
 export type NativeLinkSource = {
   getInitialURL(): Promise<string | null | undefined>;
@@ -12,10 +20,12 @@ const emailPath = new RegExp(`^/app/sign-in/(${uuid})/?$`);
 const groupPath = new RegExp(`^/app/groups/(${uuid})(?:/bills/(${uuid})(/chat)?)?/?$`);
 
 export function parseNativeLink(value: string | null | undefined): NativeLink | null {
-  if (!value || value.length > 2048 || !value.startsWith(`${APP_ORIGIN}/`) || /[\s\\?]/.test(value)) return null;
+  if (!value || value.length > 2048 || /[\s\\?]/.test(value)) return null;
+  const origin = [APP_ORIGIN, LEGACY_ORIGIN].find(host => value.startsWith(`${host}/`));
+  if (!origin) return null;
   try {
     // RN's URL.hash truncates at '/'. Validate the original fragment instead.
-    const pathAndHash = value.slice(APP_ORIGIN.length), hashAt = pathAndHash.indexOf('#');
+    const pathAndHash = value.slice(origin.length), hashAt = pathAndHash.indexOf('#');
     const path = hashAt < 0 ? pathAndHash : pathAndHash.slice(0, hashAt), hash = hashAt < 0 ? '' : pathAndHash.slice(hashAt);
     if (path.split('/').some(segment => ['.', '..'].includes(decodeURIComponent(segment)))) return null;
     const email = path.match(emailPath);
