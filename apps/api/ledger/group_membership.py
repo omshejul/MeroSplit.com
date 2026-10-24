@@ -73,6 +73,9 @@ def leave_group(actor, group_id, payload):
         result = {"id": str(group.id), "version": group.version, "disposition": "hidden"}
         CommandReceipt.objects.create(actor=actor, command_id=payload["command_id"], fingerprint=fingerprint, result=result)
         return result
+    if group.owner_id == actor.pk and successor is None:
+        # No active organizer remains to manage a later guest claim.
+        Invite.objects.filter(participant__group=group, approved=False).update(revoked=True)
     # A historical owner FK may remain when no active successor exists. It grants
     # no access: all ledger/organizer entrypoints require an active participant.
     if successor:

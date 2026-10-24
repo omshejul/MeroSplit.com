@@ -22,6 +22,7 @@ from .test_api import client as client
 from .test_api import expense, send, uid
 from .test_api import group as group
 from .test_collaboration import account, link, state
+from .test_email_codes import mailbox as mailbox
 
 pytestmark = pytest.mark.django_db
 
@@ -340,3 +341,47 @@ def test_explicit_delete_intent_removes_last_owner_but_legacy_hide_restores(clie
     assert Participant.objects.get(pk=ids[0]).removed and Group.objects.filter(pk=gid).exists()
     assert send(client, "get", f"/groups/{gid}").status_code == 404
     assert send(client, "post", f"/groups/{gid}/restore", {"command_id": uid()}).status_code == 404
+
+
+@pytest.mark.parametrize("kind", ["manual", "email"])
+@pytest.mark.parametrize("departure", ["delete_last", "legacy_hide", "successor"])
+def test_outstanding_guest_invites_revoke_only_when_explicit_last_owner_leaves(client, group, mailbox, kind, departure):
+    from .collaboration import invite_token
+    from .test_email_invites import send_invite, verified_person
+
+    gid, ids, _ = group
+    successor = account() if departure == "successor" else None
+    if successor:
+        link(client, successor, gid, ids[2])
+    assert send(client, "post", f"/groups/{gid}/expenses", expense(ids, payer=0, beneficiaries=[0], total="900")).status_code == 200
+    command = uid()
+    recipient = verified_person() if kind == "email" else account()
+    if kind == "email":
+        assert send(client, "post", f"/groups/{gid}/participants/{ids[1]}/contact", {"command_id": uid(), "email": recipient.actor.email}).status_code == 200
+        assert send_invite(client, group, command)[1].json()["invite"]["state"] == "sent"
+    else:
+        assert send(client, "post", f"/groups/{gid}/invites", {"command_id": command, "participant_id": ids[1]}).status_code == 200
+    token = invite_token(command)
+    before = snapshot(Group.objects.get(pk=gid))
+    body = {"command_id": uid(), **({"remove_membership": True} if departure != "legacy_hide" else {})}
+    result = send(client, "post", f"/groups/{gid}/leave", body)
+    assert result.status_code == 200
+    assert result.json()["disposition"] == ("hidden" if departure == "legacy_hide" else "left")
+    assert send(client, "post", f"/groups/{gid}/leave", body).json() == result.json()
+    after = snapshot(Group.objects.get(pk=gid))
+    assert after["expenses"] == before["expenses"] and after["balances"] == before["balances"]
+    assert Group.objects.filter(pk=gid).exists()
+    invitation = Invite.objects.get(pk=command)
+    claimed = send(recipient, "post", f"/invites/{token}/claim", {"command_id": uid()})
+    if departure == "delete_last":
+        assert invitation.revoked and claimed.status_code == 404
+        assert Participant.objects.get(pk=ids[1]).user_id is None
+        assert send(client, "get", f"/groups/{gid}").status_code == 404
+    else:
+        assert not invitation.revoked and claimed.status_code == 200
+        if departure == "legacy_hide":
+            assert send(client, "post", f"/groups/{gid}/restore", {"command_id": uid()}).json()["disposition"] == "restored"
+        if kind == "manual":
+            organizer = successor or client
+            assert send(organizer, "post", f"/groups/{gid}/invites/{command}/approve", {"command_id": uid()}).status_code == 200
+        assert Participant.objects.get(pk=ids[1]).user_id == recipient.actor.pk
