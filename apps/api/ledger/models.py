@@ -369,6 +369,21 @@ class EmailLoginGrant(models.Model):
         constraints = [models.CheckConstraint(condition=Q(purpose__in=["login", "invite", "digest", "notice"]), name="email_login_purpose")]
 
 
+class CloudflareEmailDispatch(models.Model):
+    """Content-free fence/receipt for a provider without documented deduplication."""
+    delivery_id = models.CharField(max_length=200, primary_key=True)
+    account_id = models.CharField(max_length=32)
+    payload_hash = models.CharField(max_length=64)
+    state = models.CharField(max_length=10, default="sending")
+    provider_id = models.CharField(max_length=200, blank=True)
+    http_status = models.PositiveSmallIntegerField(null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [models.CheckConstraint(condition=Q(state__in=["sending", "accepted", "held", "retryable"]), name="cloudflare_email_dispatch_state")]
+
+
 # Domain models are imported here for Django migration discovery.
 from .bill_chat_models import (  # noqa: E402,F401
     BillChatAcceptance,

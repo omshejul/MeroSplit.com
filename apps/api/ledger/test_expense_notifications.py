@@ -599,3 +599,23 @@ def test_seeded_due_queue_feed_and_claim_use_bounded_indexed_queries(client, gro
             "email_ms": json.loads(plans["email"])[0]["Execution Time"]}))
         print("notification fanout benchmark:", json.dumps({"batch": 100, "queries": len(fanout_queries), "seconds": fanout_seconds,
               "oldest_due_age_seconds": (clock[0] - oldest_due).total_seconds()}))
+
+
+def test_cloudflare_uncertain_account_digest_holds_immediately(client, group, recipient, clock, monkeypatch, settings):
+    settings.EMAIL_PROVIDER = "cloudflare"
+    enable(recipient)
+    add_bill(client, group)
+    calls = []
+    def held(*args, **kwargs):
+        calls.append(1)
+        raise email_delivery.EmailDeliveryHeld()
+    monkeypatch.setattr(email_delivery, "send_email", held)
+    clock[0] += timedelta(hours=24)
+    assert notifications.send_pending_digests() == 1
+    row = ExpenseDigest.objects.get()
+    assert row.state == "held" and row.payload["_email_provider"] == "cloudflare"
+    frozen = row.payload
+    clock[0] += timedelta(minutes=5)
+    assert notifications.send_pending_digests() == 0
+    row.refresh_from_db()
+    assert calls == [1] and row.payload == frozen and row.attempts == 1

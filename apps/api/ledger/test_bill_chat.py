@@ -590,3 +590,22 @@ def test_chat_inbox_pages_are_bounded_signed_account_scoped_and_do_not_ack(setup
     assert send(owner, 'get', '/me/chat-conversations?before=' + first['next_cursor']).status_code == 422
     assert send(recipient, 'get', '/me/chat-conversations?limit=21').status_code == 422
     assert not BillChatNotice.objects.filter(seen_at__isnull=False).exists()
+
+
+def test_cloudflare_uncertain_chat_delivery_holds_immediately_without_another_send(setup, clock, providers, monkeypatch, settings):
+    settings.EMAIL_PROVIDER = 'cloudflare'
+    post(setup)
+    clock[0] += timedelta(minutes=11)
+    calls = []
+    def held(*args, **kwargs):
+        calls.append(1)
+        raise notices.email_delivery.EmailDeliveryHeld()
+    monkeypatch.setattr(notices.email_delivery, 'send_email', held)
+    notices.send_chat_notifications(limit=1)
+    row = BillChatDelivery.objects.get(channel='email')
+    assert row.state == 'held' and row.payload['_email_provider'] == 'cloudflare'
+    frozen = row.payload
+    clock[0] += timedelta(minutes=5)
+    notices.send_chat_notifications(limit=1)
+    row.refresh_from_db()
+    assert calls == [1] and row.payload == frozen and row.attempts == 1

@@ -41,6 +41,8 @@ def test_public_pages_match_account_sync_and_preserve_deletion_disclosures(path)
     assert b"mail@merosplit.com" not in response.content and b"mail@merosplit.com" not in response.content
     for obsolete in ["without an account", "Phone-only groups", "Sync settings", "pause automatic", "shared account copy", "Your data", "Me → Data", "Me → Account", "uses email and password"]:
         assert obsolete not in text
+    if path == "/privacy":
+        assert "Cloudflare Email Service" in text and "already-frozen legacy sends" in text
     if path == "/support":
         assert "Groups and People" in text and "sync automatically" in text
         assert "four-digit code sent to your email" in text and "Me has import, Export data and account controls" in text

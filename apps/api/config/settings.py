@@ -72,6 +72,11 @@ HEADLESS_ONLY = True
 HEADLESS_CLIENTS = ("app", "browser")
 EMAIL_BACKEND = "django.core.mail.backends.dummy.EmailBackend"
 RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
+EMAIL_PROVIDER = os.environ.get("EMAIL_PROVIDER", "resend")
+if EMAIL_PROVIDER not in {"resend", "cloudflare"}:
+    raise RuntimeError("Choose resend or cloudflare for EMAIL_PROVIDER")
+CLOUDFLARE_EMAIL_ACCOUNT_ID = os.environ.get("CLOUDFLARE_EMAIL_ACCOUNT_ID", "")
+CLOUDFLARE_EMAIL_API_TOKEN = os.environ.get("CLOUDFLARE_EMAIL_API_TOKEN", "")
 DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "MeroSplit <mail@merosplit.com>")
 EMAIL_REPLY_TO = os.environ.get("EMAIL_REPLY_TO", "mail@merosplit.com")
 PUBLIC_WEB_URL = os.environ.get("PUBLIC_WEB_URL", "https://merosplit.com")

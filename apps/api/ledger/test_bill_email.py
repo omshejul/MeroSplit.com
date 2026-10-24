@@ -664,3 +664,21 @@ def test_first_account_off_cycle_cancels_already_prepared_unknown_batch(ledger, 
     bill_email.send_pending_bill_emails()
     expense_notifications.send_pending_digests()
     assert not provider
+
+
+def test_cloudflare_uncertain_bill_mail_holds_immediately(ledger, provider, clock, monkeypatch, settings):
+    settings.EMAIL_PROVIDER = "cloudflare"
+    add(ledger)
+    calls = []
+    def held(*args, **kwargs):
+        calls.append(1)
+        raise email_delivery.EmailDeliveryHeld()
+    monkeypatch.setattr(email_delivery, "send_email", held)
+    bill_email.send_pending_bill_emails()
+    row = BillEmailNotice.objects.get()
+    assert row.state == "held" and row.payload["_email_provider"] == "cloudflare"
+    frozen = row.payload
+    clock[0] += timedelta(minutes=5)
+    bill_email.send_pending_bill_emails()
+    row.refresh_from_db()
+    assert calls == [1] and row.payload == frozen and row.attempts == 1

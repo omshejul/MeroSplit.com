@@ -2,7 +2,9 @@
 
 import base64
 import json
+import re
 from datetime import timezone
+from email.utils import parseaddr
 from html import escape
 from pathlib import Path
 from urllib.error import HTTPError, URLError
@@ -10,12 +12,19 @@ from urllib.request import Request, urlopen
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
+from django.db import DatabaseError, transaction
 from django.template import Context, engines
+from django.utils import timezone as django_timezone
+from django.utils.crypto import salted_hmac
 from django.views.decorators.debug import sensitive_variables
 
 
 class EmailDeliveryUnavailable(Exception):
     pass
+
+
+class EmailDeliveryHeld(EmailDeliveryUnavailable):
+    """A durable attempt must be reconciled, not automatically sent again."""
 
 
 @sensitive_variables()
@@ -69,6 +78,8 @@ def message_payload(recipient: str, subject: str, text: str, html: str | None = 
         "from": settings.DEFAULT_FROM_EMAIL, "to": [recipient], "subject": subject, "text": text,
         "reply_to": settings.EMAIL_REPLY_TO,
     }
+    if settings.EMAIL_PROVIDER == "cloudflare":
+        payload["_email_provider"] = "cloudflare"
     if html is not None:
         payload["html"] = html
         logo = Path(__file__).with_name("email_assets").joinpath("merosplit-logo-144.png").read_bytes()
@@ -81,11 +92,18 @@ def message_payload(recipient: str, subject: str, text: str, html: str | None = 
 
 @sensitive_variables()
 def send_email(recipient: str, subject: str, text: str, delivery_id: str, *, html=None, payload=None) -> str:
+    frozen = payload if payload is not None else message_payload(recipient, subject, text, html)
+    # Missing marker means an existing Resend recipe, even after runtime cutover.
+    provider = frozen.get("_email_provider", "resend")
+    resolved = {key: value for key, value in materialize_payload(frozen, recipient=recipient).items() if key != "_email_provider"}
+    if provider == "cloudflare":
+        return send_cloudflare(recipient, delivery_id, resolved)
+    if provider != "resend":
+        raise EmailDeliveryUnavailable()
     key = getattr(settings, "RESEND_API_KEY", "")
-    sender = getattr(settings, "DEFAULT_FROM_EMAIL", "")
+    sender = resolved.get("from", "")
     if not key or not sender:
         raise EmailDeliveryUnavailable()
-    resolved = materialize_payload(payload if payload is not None else message_payload(recipient, subject, text, html), recipient=recipient)
     request = Request(
         "https://api.resend.com/emails",
         data=json.dumps(resolved, sort_keys=True).encode(),
@@ -105,3 +123,80 @@ def send_email(recipient: str, subject: str, text: str, delivery_id: str, *, htm
     except (HTTPError, URLError, TimeoutError, ValueError, OSError):
         # Never include the provider response, recipient, code or authorization header.
         raise EmailDeliveryUnavailable() from None
+
+
+@sensitive_variables()
+def send_cloudflare(recipient: str, delivery_id: str, payload: dict) -> str:
+    from .models import CloudflareEmailDispatch
+
+    account, token = settings.CLOUDFLARE_EMAIL_ACCOUNT_ID, settings.CLOUDFLARE_EMAIL_API_TOKEN
+    sender_name, sender = parseaddr(payload.get("from", ""))
+    if (not re.fullmatch(r"[a-fA-F0-9]{32}", account) or not token or sender != "mail@merosplit.com"
+            or payload.get("to") != [recipient] or payload.get("cc") or payload.get("bcc") or not delivery_id or len(delivery_id) > 200):
+        raise EmailDeliveryUnavailable()
+    body = {**payload, "from": {"address": sender, "name": sender_name},
+            "headers": {**payload.get("headers", {}), "X-MeroSplit-Delivery-ID": delivery_id}}
+    if "attachments" in body:
+        body["attachments"] = [{"filename": item["filename"], "content": item["content"], "type": item["content_type"],
+                                "disposition": "inline" if item.get("content_id") else "attachment",
+                                **({"content_id": item["content_id"]} if item.get("content_id") else {})} for item in body["attachments"]]
+    encoded = json.dumps(body, sort_keys=True).encode()
+    if len(encoded) > 5 * 1024 * 1024:
+        raise EmailDeliveryUnavailable()
+    fingerprint = salted_hmac("cloudflare-email-dispatch", encoded, algorithm="sha256").hexdigest()
+    try:
+        # This commit is the send-once fence. Never put HTTP inside its transaction.
+        with transaction.atomic(durable=True):
+            row, created = CloudflareEmailDispatch.objects.select_for_update().get_or_create(delivery_id=delivery_id,
+                defaults={"account_id": account, "payload_hash": fingerprint})
+            if row.account_id != account or row.payload_hash != fingerprint:
+                raise EmailDeliveryHeld()
+            if row.state == "accepted":
+                return row.provider_id
+            if not created and row.state != "retryable":
+                raise EmailDeliveryHeld()
+            if not created:
+                row.state = "sending"
+                row.http_status = None
+                row.save(update_fields=["state", "http_status", "updated_at"])
+    except (DatabaseError, RuntimeError):
+        raise EmailDeliveryUnavailable() from None
+
+    request = Request(f"https://api.cloudflare.com/client/v4/accounts/{account}/email/sending/send", data=encoded,
+        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json", "User-Agent": "MeroSplit (transactional email)"}, method="POST")
+    state, provider_id, status = "held", "", None
+    try:
+        with urlopen(request, timeout=10) as response:
+            status = response.status
+            data = json.loads(response.read(65536))
+            result = data.get("result") if isinstance(data, dict) else None
+            if status == 200 and isinstance(data, dict) and data.get("success") is True and not data.get("errors") and isinstance(result, dict):
+                identifier = result.get("message_id")
+                delivered, queued = result.get("delivered", []), result.get("queued", [])
+                accepted = delivered + queued if isinstance(delivered, list) and isinstance(queued, list) else []
+                if (isinstance(identifier, str) and 0 < len(identifier) <= 200 and not re.search(r"[\s\x00-\x1f]", identifier)
+                        and accepted and all(isinstance(value, str) for value in accepted) and set(accepted) == {recipient}
+                        and result.get("permanent_bounces", []) == [] and result.get("suppressed_recipients", []) == []):
+                    state, provider_id = "accepted", identifier
+    except HTTPError as error:
+        status = error.code
+        try:
+            rejected = json.loads(error.read(65536))
+            codes = {400: {10001, 10200, 10201, 10202}, 401: {10101, 10103}, 403: {10102, 10105, 10203}, 404: {10000}, 429: {10004}}
+            errors = rejected.get("errors") if isinstance(rejected, dict) else None
+            if (status in codes and isinstance(rejected, dict) and rejected.get("success") is False and rejected.get("result") is None
+                    and isinstance(errors, list) and errors and all(isinstance(item, dict) and isinstance(item.get("code"), int) and item.get("code") in codes[status]
+                    and isinstance(item.get("message"), str) for item in errors)):
+                state = "retryable"  # Explicit pre-accept rejection only; never a transport timeout.
+        except (ValueError, OSError):
+            pass
+    except (URLError, TimeoutError, ValueError, OSError, TypeError):
+        pass
+    try:
+        CloudflareEmailDispatch.objects.filter(pk=delivery_id, state="sending").update(
+            state=state, provider_id=provider_id, http_status=status, updated_at=django_timezone.now())
+    except DatabaseError:
+        raise EmailDeliveryHeld() from None  # The committed sending fence still prevents a second POST.
+    if state == "accepted":
+        return provider_id
+    raise EmailDeliveryUnavailable() if state == "retryable" else EmailDeliveryHeld()

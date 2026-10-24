@@ -259,7 +259,7 @@ def send_chat_notifications(*, limit=100):
             if invalid:
                 PushDevice.objects.filter(pk=job.device_id, revision=job.device_revision).delete()
             else:
-                current.update(state='held' if isinstance(error, push_provider.PushFailure) and error.permanent else 'queued' if job.provider_id else 'pending',
+                current.update(state='held' if isinstance(error, email_delivery.EmailDeliveryHeld) or isinstance(error, push_provider.PushFailure) and error.permanent else 'queued' if job.provider_id else 'pending',
                     due_at=timezone.now() + timedelta(seconds=min(3600, 30 * 2 ** job.attempts)), lease_until=None, last_error='delivery_uncertain')
         else:
             BillChatDelivery.objects.filter(pk=job.id).update(provider_id=provider_id, state='queued' if job.channel == 'push' and not job.provider_id else 'sent',

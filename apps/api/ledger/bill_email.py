@@ -246,8 +246,8 @@ def send_pending_bill_emails(*, limit=100):
             continue
         try:
             provider_id = email_delivery.send_email(row.recipient_email, row.payload['subject'], row.payload['text'], f'bill-notice/{row.id}', payload=row.payload)
-        except email_delivery.EmailDeliveryUnavailable:
-            current.update(state='pending', due_at=timezone.now() + timedelta(minutes=min(60, 2 ** row.attempts)), lease_id=None, lease_until=None, last_error='delivery_uncertain')
+        except email_delivery.EmailDeliveryUnavailable as error:
+            current.update(state='held' if isinstance(error, email_delivery.EmailDeliveryHeld) else 'pending', due_at=timezone.now() + timedelta(minutes=min(60, 2 ** row.attempts)), lease_id=None, lease_until=None, last_error='delivery_uncertain')
         else:
             BillEmailNotice.objects.filter(Q(pk=row_id) | Q(delivery_id=row_id)).update(state='accepted', accepted_at=timezone.now(), provider_id=provider_id,
                                                             lease_id=None, lease_until=None, last_error='')
