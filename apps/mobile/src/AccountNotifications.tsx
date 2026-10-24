@@ -2,22 +2,15 @@ import { DialogScrollBody } from './DialogParts';
 import KeyboardDialog from './KeyboardDialog';
 import React, { useEffect, useRef, useState } from 'react';
 import { AppState, Platform, View } from 'react-native';
-import { Dialog, Switch, Text } from 'react-native-paper';
+import { Dialog } from 'react-native-paper';
 import { request } from './api';
 import PushSettings, { type PushControls } from './PushSettings';
 import type { Session } from './types';
-import { Button, ErrorText, SettingsRow, useUI } from './ui';
+import { Button, ErrorText, SettingsRow } from './ui';
+import NotificationSwitch from './NotificationSwitch';
 
 type Preferences = { expense_updates: boolean; email_reminders: boolean };
-function NotificationSwitch({ label, checked, disabled, onChange }: { label: string; checked: boolean; disabled: boolean; onChange: (value: boolean) => void }) {
-  const { ui, palette } = useUI();
-  return <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: 48, gap: 12 }}>
-    <Text style={[ui.body, { flex: 1 }]}>{label}</Text>
-    <Switch accessibilityLabel={label} value={checked} disabled={disabled} trackColor={{ false: palette.outline, true: disabled ? palette.outline : '#007AFF' }} thumbColor="#FFFFFF" ios_backgroundColor={palette.outline} onValueChange={onChange} />
-  </View>;
-}
 export default function AccountNotifications({ session, push, busy, onBusyChange }: { session: Session; push: PushControls; busy: boolean; onBusyChange: (value: boolean) => void }) {
-  const { ui } = useUI();
   const [open, setOpen] = useState(false), [preferences, setPreferences] = useState<Preferences | null>(null), [error, setError] = useState(''), [working, setWorking] = useState(false);
   const row = useRef<React.ComponentRef<typeof View>>(null), mounted = useRef(true), inFlight = useRef(false), revision = useRef(0);
   async function load() {
@@ -52,10 +45,12 @@ export default function AccountNotifications({ session, push, busy, onBusyChange
   return <><SettingsRow rowRef={row} icon="notifications" label="Notifications" value={value} disabled={busy} onPress={() => { setOpen(true); void load(); }} />
     <KeyboardDialog visible={open} dismissable={!busy && !working} onDismiss={() => { if (!busy && !working) close(); }}><Dialog.Title aria-level={2}>Notifications</Dialog.Title>
       <DialogScrollBody maxHeight={440} gap={12}>
-        {preferences && <><NotificationSwitch label="Bill updates" checked={preferences.expense_updates} disabled={!!disabled} onChange={expense_updates => void update({ ...preferences, expense_updates })} />
-          <NotificationSwitch label="Unread bill emails" checked={preferences.email_reminders} disabled={!!disabled || !preferences.expense_updates} onChange={email_reminders => void update({ ...preferences, email_reminders })} />
-          <Text style={ui.caption}>Email arrives if you haven’t seen a new bill after 10 minutes. Bill updates off stops push and email.</Text></>}
-        <PushSettings push={push} busy={busy} onBusyChange={onBusyChange} />
+        {preferences && <><NotificationSwitch icon="notifications" label="Notifications" checked={preferences.expense_updates} disabled={!!disabled} onChange={expense_updates => void update({ ...preferences, expense_updates })} />
+          {preferences.expense_updates && <>
+            <PushSettings push={push} busy={!!disabled} onBusyChange={onBusyChange} />
+            <NotificationSwitch icon="mail" label="Email notifications" checked={preferences.email_reminders} disabled={!!disabled} onChange={email_reminders => void update({ ...preferences, email_reminders })} />
+          </>}
+        </>}
         {!!error && <><ErrorText>{error}</ErrorText>{!preferences && <Button title="Retry" disabled={busy || working} onPress={() => void load()} />}</>}
       </DialogScrollBody><Dialog.Actions><Button title="Done" kind="text" disabled={busy || working} onPress={close} /></Dialog.Actions></KeyboardDialog>
   </>;

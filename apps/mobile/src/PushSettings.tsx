@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { AppState, Linking, Platform, Text, View } from 'react-native';
-import { Switch } from 'react-native-paper';
+import NotificationSwitch from './NotificationSwitch';
 import * as Crypto from 'expo-crypto';
 import * as SecureStore from 'expo-secure-store';
 import Constants from 'expo-constants';
@@ -130,11 +130,11 @@ export function usePushNotifications(session: Session | null, callbacks: Callbac
 }
 export type PushControls = ReturnType<typeof usePushNotifications>;
 export default function PushSettings({ push, busy, onBusyChange }: { push: PushControls; busy: boolean; onBusyChange: (busy: boolean) => void }) {
-  const { ui, palette } = useUI(), { state } = push;
+  const { ui } = useUI(), { state } = push;
   const disabled = busy || state.working || !state.ready || state.permission === 'denied';
   async function act(action: () => Promise<void>) { if (busy || state.working) return; onBusyChange(true); try { await action(); } catch { /* The hook keeps the actionable error visible. */ } finally { onBusyChange(false); } }
   return <View style={{ gap: 8 }}>
-    <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: 48, gap: 12 }}><Text style={[ui.body, { flex: 1 }]}>Push on this device</Text><Switch accessibilityLabel="Push on this device" value={state.enabled} disabled={disabled} trackColor={{ false: palette.outline, true: disabled ? palette.outline : '#007AFF' }} thumbColor="#FFFFFF" ios_backgroundColor={palette.outline} onValueChange={value => void act(value ? push.enable : push.disable)} /></View>
+    <NotificationSwitch icon="phone" label="Push notifications" checked={state.enabled} disabled={disabled} onChange={value => void act(value ? push.enable : push.disable)} />
     {(state.working || state.permission === 'denied' || state.pendingOff) && <Text style={ui.caption}>{state.working ? 'Updating…' : state.permission === 'denied' ? 'Blocked in phone settings.' : 'Waiting to turn off. Retry when connected.'}</Text>}
     {state.permission === 'denied' && <Button title="Open phone settings" kind="text" disabled={busy || state.working} onPress={() => void Linking.openSettings().catch(() => {})} />}
     {!!state.error && <><Text accessibilityRole="alert" style={ui.error}>{state.error}</Text><Button title="Retry notifications" disabled={busy || state.working} onPress={() => void act(push.refresh)} /></>}

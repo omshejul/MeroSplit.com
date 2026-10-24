@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import ts from 'typescript';
+import * as members from '../src/members.ts';
 import { formatMoney, integer, rupeesToPaise, validateExpense } from '../src/accounting.ts';
 
 type Element = { type: any; props: Record<string, any>; children: any[] };
@@ -13,7 +14,7 @@ const tick = async () => { for (let i = 0; i < 15; i++) await Promise.resolve();
 function harness(file: string, name: string, extra: Record<string, any> = {}) {
   let cursor = 0, states: any[] = [], effects: (() => void)[] = [], cleanups: Record<number, () => void> = {};
   const deps: Record<number, any[]> = {};
-  const env: Record<string, any> = { React, Dialog, View: 'View', ScrollView: 'ScrollView', KeyboardDialog: 'KeyboardDialog', Pressable: 'Pressable', Text: 'Text', Form: 'Form', SectionHeading: 'SectionHeading', Button: 'Button', Icon: 'Icon', SettingsRow: 'SettingsRow', BillPeople: 'BillPeople', DraftAttachment: 'DraftAttachment', LocalAttachment: 'LocalAttachment', AmountField: 'AmountField', TextField: 'TextField', DateField: 'DateField', ErrorText: 'ErrorText', Checkbox: { Item: 'Checkbox' }, RadioChoice: 'RadioChoice', Crypto: { randomUUID: () => 'bill-id' }, StyleSheet: { create: (value: any) => value }, Keyboard: { dismiss() {} }, useWindowDimensions: () => ({ height: 667 }), useSafeAreaInsets: () => ({ top: 20, bottom: 0 }), Platform: { OS: 'native' }, requestAnimationFrame: (fn: () => void) => fn(), useUI: () => ({ ui: {} }), formatMoney, integer, rupeesToPaise, validateExpense, ...extra,
+  const env: Record<string, any> = { React, Dialog, View: 'View', ScrollView: 'ScrollView', KeyboardDialog: 'KeyboardDialog', Pressable: 'Pressable', Text: 'Text', NotificationSwitch: 'NotificationSwitch', PushSettings: 'PushSettings', DialogScrollBody: 'DialogScrollBody', Form: 'Form', SectionHeading: 'SectionHeading', Button: 'Button', Icon: 'Icon', SettingsRow: 'SettingsRow', BillPeople: 'BillPeople', DraftAttachment: 'DraftAttachment', LocalAttachment: 'LocalAttachment', AmountField: 'AmountField', TextField: 'TextField', DateField: 'DateField', ErrorText: 'ErrorText', Checkbox: { Item: 'Checkbox' }, RadioChoice: 'RadioChoice', Crypto: { randomUUID: () => 'bill-id' }, StyleSheet: { create: (value: any) => value }, Keyboard: { dismiss() {} }, useWindowDimensions: () => ({ height: 667 }), useSafeAreaInsets: () => ({ top: 20, bottom: 0 }), Platform: { OS: 'native' }, requestAnimationFrame: (fn: () => void) => fn(), useUI: () => ({ ui: {} }), formatMoney, integer, rupeesToPaise, validateExpense, ...extra,
     useState: (initial: any) => { const id = cursor++; if (!(id in states)) states[id] = typeof initial === 'function' ? initial() : initial; return [states[id], (value: any) => { states[id] = typeof value === 'function' ? value(states[id]) : value; }]; },
     useRef: (initial: any) => { const id = cursor++; return states[id] ??= { current: initial }; },
     useEffect: (fn: () => any, values: any[]) => { const id = cursor++; if (!deps[id] || values.some((value, i) => value !== deps[id][i])) { effects.push(() => { cleanups[id]?.(); cleanups[id] = fn(); }); deps[id] = values; } },
@@ -31,6 +32,7 @@ test('One Export data action invokes once, has no chooser and blocks repeats unt
   const props = { busy: false, onExport: () => { calls++; return new Promise<void>(resolve => { finish = resolve; }); } };
   let tree = app.render(props);
   assert.ok(!nodes(tree).some(node => node.type === 'KeyboardDialog'));
+  assert.ok(!nodes(tree).some(node => node.type === 'Text'), 'Export stays a single action without routine caption');
   find(tree, 'label', 'Export data').props.onPress(); find(tree, 'label', 'Export data').props.onPress();
   assert.equal(calls, 1); finish(); await tick();
   tree = app.render({ ...props, busy: true }); find(tree, 'label', 'Export data').props.onPress(); assert.equal(calls, 1);
@@ -256,4 +258,172 @@ test('bill save preserves both draft and file if enqueue fails, then reuses the 
   const save = appAction('saveExpense', env);
   await assert.rejects(save(expense, file), /Disk full/); assert.deepEqual(events, ['queue bill and file']);
   fail = false; await save(expense, file); assert.deepEqual(events, ['queue bill and file', 'queue bill and file']);
+});
+
+const notificationToggle = (tree: any, label: string) => nodes(tree).find(node => node.type === 'NotificationSwitch' && node.props.label === label)!;
+
+function notificationPanel(initial: { expense_updates: boolean; email_reminders: boolean } | null) {
+  let preferences = initial, loads = 0, pushCalls = 0;
+  const changes: boolean[] = [], pending: { value: any; resolve: (value: any) => void; reject: (error: Error) => void }[] = [];
+  const push = { state: { enabled: true, optedIn: true, ready: true, working: false, permission: 'granted', error: '' }, enable: () => { pushCalls++; }, disable: () => { pushCalls++; } };
+  const app = harness('src/AccountNotifications.tsx', 'AccountNotifications', { AppState: { addEventListener: () => ({ remove() {} }) },
+    request: async (_session: unknown, _path: string, method = 'GET', value?: any) => {
+      if (method === 'GET') { loads++; if (!preferences) throw Error('offline'); return { ...preferences }; }
+      return new Promise((resolve, reject) => pending.push({ value, resolve, reject }));
+    } });
+  const props = { session: { token: 'synthetic' }, push, busy: false, onBusyChange: (value: boolean) => changes.push(value) };
+  return { app, props, pending, changes, get loads() { return loads; }, get pushCalls() { return pushCalls; },
+    saved: (at: number) => { preferences = pending[at].value; pending[at].resolve({ ...preferences }); }, restore: () => { preferences = { expense_updates: false, email_reminders: true }; } };
+}
+
+test('Notifications master alone hides/reveals saved channels without requesting push permission or rewriting channel choices', async () => {
+  const panel = notificationPanel({ expense_updates: false, email_reminders: true }), { app, props } = panel;
+  app.render(props); app.commit(); await tick(); let tree = app.render(props);
+  assert.equal(notificationToggle(tree, 'Notifications').props.checked, false);
+  assert.ok(!nodes(tree).some(node => node.type === 'PushSettings' || node.props.label === 'Email notifications'));
+  notificationToggle(tree, 'Notifications').props.onChange(true); tree = app.render(props);
+  assert.equal(notificationToggle(tree, 'Notifications').props.disabled, true);
+  assert.deepEqual(panel.pending[0].value, { expense_updates: true, email_reminders: true });
+  assert.equal(panel.pushCalls, 0); assert.equal(props.push.state.optedIn, true);
+  panel.saved(0); await tick(); tree = app.render(props);
+  assert.equal(notificationToggle(tree, 'Email notifications').props.checked, true);
+  assert.equal(nodes(tree).filter(node => node.type === 'PushSettings').length, 1);
+  notificationToggle(tree, 'Email notifications').props.onChange(false); panel.saved(1); await tick(); tree = app.render(props);
+  notificationToggle(tree, 'Notifications').props.onChange(false); panel.saved(2); await tick(); tree = app.render(props);
+  assert.ok(!nodes(tree).some(node => node.type === 'PushSettings' || node.props.label === 'Email notifications'));
+  notificationToggle(tree, 'Notifications').props.onChange(true); panel.saved(3); await tick(); tree = app.render(props);
+  assert.equal(notificationToggle(tree, 'Email notifications').props.checked, false);
+  assert.equal(props.push.state.optedIn, true); assert.equal(panel.pushCalls, 0);
+  assert.deepEqual(panel.changes, [true, false, true, false, true, false, true, false]);
+  app.unmount();
+});
+
+test('Notifications keeps confirmed state on failed save, locks duplicate writes and subcontrols, then permits retry', async () => {
+  const panel = notificationPanel({ expense_updates: true, email_reminders: true }), { app, props } = panel;
+  app.render(props); app.commit(); await tick(); let tree = app.render(props);
+  const change = notificationToggle(tree, 'Notifications').props.onChange;
+  change(false); change(false); assert.equal(panel.pending.length, 1); tree = app.render(props);
+  assert.equal(notificationToggle(tree, 'Email notifications').props.disabled, true);
+  assert.equal(nodes(tree).find(node => node.type === 'PushSettings')!.props.busy, true);
+  panel.pending[0].reject(Error('offline')); await tick(); tree = app.render(props);
+  assert.equal(notificationToggle(tree, 'Notifications').props.checked, true);
+  assert.equal(notificationToggle(tree, 'Email notifications').props.checked, true);
+  assert.ok(nodes(tree).some(node => node.type === 'ErrorText' && node.children.includes('Could not save notifications. Try again.')));
+  tree = app.render({ ...props, busy: true }); notificationToggle(tree, 'Notifications').props.onChange(false); assert.equal(panel.pending.length, 1);
+  tree = app.render(props); notificationToggle(tree, 'Notifications').props.onChange(false); panel.saved(1); await tick();
+  assert.equal(notificationToggle(app.render(props), 'Notifications').props.checked, false);
+  assert.equal(panel.pushCalls, 0); assert.equal(panel.changes.at(-1), false); app.unmount();
+});
+
+test('Unavailable notification preferences show error and Retry without inventing OFF state', async () => {
+  const panel = notificationPanel(null), { app, props } = panel;
+  app.render(props); app.commit(); await tick(); let tree = app.render(props);
+  assert.ok(!nodes(tree).some(node => node.type === 'NotificationSwitch' || node.type === 'PushSettings'));
+  assert.ok(nodes(tree).some(node => node.type === 'ErrorText'));
+  panel.restore(); find(tree, 'title', 'Retry').props.onPress(); await tick(); tree = app.render(props);
+  assert.equal(notificationToggle(tree, 'Notifications').props.checked, false);
+  assert.equal(panel.loads, 2); app.unmount();
+});
+
+test('Push UI retains permission denial, native enable action and parent/working locks; browser has no switch', async () => {
+  let enabled = 0, settings = 0; const busyChanges: boolean[] = [];
+  const push = { state: { enabled: false, working: false, ready: true, permission: 'ask', pendingOff: false, error: '' }, enable: async () => { enabled++; }, disable: async () => {}, refresh: async () => {} };
+  const app = harness('src/PushSettings.tsx', 'PushSettings', { Notifications: { setNotificationHandler() {} }, Linking: { openSettings: async () => { settings++; } } });
+  const props = { push, busy: false, onBusyChange: (value: boolean) => busyChanges.push(value) };
+  notificationToggle(app.render(props), 'Push notifications').props.onChange(true); await tick();
+  assert.equal(enabled, 1); assert.deepEqual(busyChanges, [true, false]);
+  for (const held of [{ ...props, busy: true }, { ...props, push: { ...push, state: { ...push.state, working: true } } }]) {
+    const row = notificationToggle(app.render(held), 'Push notifications'); assert.equal(row.props.disabled, true); row.props.onChange(true); await tick(); assert.equal(enabled, 1);
+  }
+  const denied = { ...props, push: { ...push, state: { ...push.state, permission: 'denied' } } };
+  const tree = app.render(denied); assert.equal(notificationToggle(tree, 'Push notifications').props.disabled, true);
+  find(tree, 'title', 'Open phone settings').props.onPress(); await tick(); assert.equal(settings, 1);
+  const web = harness('src/PushSettings.web.tsx', 'PushSettings').render(props);
+  assert.ok(!nodes(web).some(node => node.type === 'NotificationSwitch' || node.type === 'Switch'));
+  assert.ok(nodes(web).some(node => node.type === 'Text' && node.children.some((text: any) => typeof text === 'string' && text.includes('Available in the mobile app. This browser refreshes while open.'))));
+});
+
+test('Delete group removes routine caption but retains blocked reason, busy/canLeave and restore controls', () => {
+  const app = harness('src/GroupMembershipActions.tsx', 'GroupMembershipActions'); let leaves = 0, restores = 0;
+  const props = { hidden: false, busy: false, canLeave: true, onLeave: () => leaves++, onRestore: () => restores++ };
+  let tree = app.render(props); assert.ok(!nodes(tree).some(node => node.type === 'Text'));
+  find(tree, 'title', 'Delete group').props.onPress(); assert.equal(leaves, 1);
+  tree = app.render({ ...props, canLeave: false, blockedReason: 'Settle your balance before deleting this group.' });
+  assert.equal(find(tree, 'title', 'Delete group').props.disabled, true);
+  assert.ok(nodes(tree).some(node => node.type === 'Text' && node.children.includes('Settle your balance before deleting this group.')));
+  assert.equal(find(app.render({ ...props, busy: true }), 'title', 'Delete group').props.disabled, true);
+  tree = app.render({ ...props, hidden: true }); find(tree, 'title', 'Restore to my list').props.onPress(); assert.equal(restores, 1);
+});
+
+const inviteGroup = { id: 'imported-group', name: 'Imported trip', owner_id: 1, version: 1, participants: [{ id: 'owner', name: 'Om', user_id: 1 }, { id: 'imported-person', name: 'Asha' }], balances: { owner: '500', 'imported-person': '-500' }, expenses: [{ id: 'existing-bill' }], settlements: [], invites: [] };
+function memberPanel(onAction: (path: string, body: any) => Promise<any>, group: any = inviteGroup) {
+  let ids = 0;
+  const app = harness('src/MembersScreen.tsx', 'MemberSettings', { ...members, Avatar: 'Avatar', IconAction: 'IconAction', Disclosure: 'Disclosure', GroupMembershipActions: 'GroupMembershipActions', EmailField: 'EmailField',
+    Crypto: { randomUUID: () => `command-${++ids}` }, setTimeout: () => 0, clearTimeout() {} });
+  const props = { group, selfId: 'owner', busy: false, onAction, onMembership() {} };
+  const row = (tree: any) => nodes(tree).find(node => node.props.person?.id === 'imported-person' && node.props.onAddEmail)!;
+  const dialog = (tree: any) => nodes(tree).find(node => node.props.onEmail && node.props.onSave && 'person' in node.props)!;
+  app.render(props); app.commit();
+  return { app, props, row, dialog, open(email: string) { row(app.render(props)).props.onAddEmail(); dialog(app.render(props)).props.onEmail(email); return dialog(app.render(props)); } };
+}
+
+test('Existing imported person email saves before invitation, uses the refreshed callback and preserves ID/history with stale original group props', async () => {
+  const calls: any[] = []; let finish!: (value: any) => void;
+  const panel = memberPanel(async (path, body) => { calls.push({ path, body }); return new Promise(resolve => { finish = resolve; }); });
+  panel.open(' ASHA@Example.invalid ').props.onSave(); await tick();
+  assert.equal(calls.length, 1); assert.equal(calls[0].path, '/participants/imported-person/contact');
+  assert.deepEqual(calls[0].body, { command_id: 'command-1', email: 'asha@example.invalid' });
+  const freshAction = async (path: string, body: any) => { calls.push({ path, body, fresh: true }); return { id: inviteGroup.id, version: 3, invite: { id: body.command_id, state: 'sent', retry_after: 60 } }; };
+  const before = JSON.stringify(inviteGroup); panel.app.render({ ...panel.props, onAction: freshAction });
+  finish({ id: inviteGroup.id, version: 2 }); await tick();
+  assert.equal(calls.length, 2); assert.equal(calls[1].path, '/participants/imported-person/email-invite'); assert.equal(calls[1].fresh, true);
+  assert.equal(JSON.stringify(inviteGroup), before);
+  const tree = panel.app.render(panel.props); assert.equal(panel.dialog(tree).props.person, undefined);
+  assert.match(panel.row(tree).props.feedback.text, /Contact saved. Invitation sent to asha@example.invalid/); panel.app.unmount();
+});
+
+test('Unknown contact save retries the same command and never sends before accepted contact acknowledgment', async () => {
+  const calls: any[] = []; const panel = memberPanel(async (path, body) => { calls.push({ path, body }); if (calls.length === 1) throw Error('Response lost'); return path.endsWith('/contact') ? { id: inviteGroup.id, version: 2 } : { id: inviteGroup.id, version: 3, invite: { id: body.command_id, state: 'sending', retry_after: 60 } }; });
+  panel.open('bad address').props.onSave(); await tick(); assert.equal(calls.length, 0);
+  panel.dialog(panel.app.render(panel.props)).props.onEmail('asha@example.invalid'); panel.dialog(panel.app.render(panel.props)).props.onSave(); await tick();
+  assert.equal(calls.length, 1); assert.ok(panel.dialog(panel.app.render(panel.props)).props.person);
+  panel.dialog(panel.app.render(panel.props)).props.onSave(); await tick(); assert.deepEqual(calls[1], calls[0]);
+  assert.equal(calls.length, 3); const feedback = panel.row(panel.app.render(panel.props)).props.feedback;
+  assert.match(feedback.text, /Contact saved.*still being sent/); assert.doesNotMatch(feedback.text, /Invitation sent to/); panel.app.unmount();
+});
+
+test('Contact saved but invitation failed exposes original retry identity, and a reloaded pending invitation reuses the same UUID', async () => {
+  const calls: any[] = []; let fail = true;
+  const action = async (path: string, body: any) => { calls.push({ path, body }); return path.endsWith('/contact') ? { id: inviteGroup.id, version: 2 } : { id: inviteGroup.id, version: 3, invite: { id: body.command_id, state: fail ? 'failed' : 'sent', retry_after: 0 } }; };
+  const panel = memberPanel(action); panel.open('asha@example.invalid').props.onSave(); await tick();
+  const invitationId = calls[1].body.command_id;
+  const savedGroup = { ...inviteGroup, participants: [inviteGroup.participants[0], { ...inviteGroup.participants[1], email: 'asha@example.invalid' }], invites: [{ id: invitationId, participant_id: 'imported-person', intended_email: 'asha@example.invalid', send_state: 'failed', revoked: false, approved: false }] };
+  let tree = panel.app.render({ ...panel.props, group: savedGroup }); assert.match(panel.row(tree).props.feedback.text, /Contact saved.*could not be sent/);
+  assert.equal(panel.row(tree).props.feedback.error, true); fail = false; panel.row(tree).props.onSend(); await tick();
+  assert.equal(calls.length, 3); assert.deepEqual(calls[2], calls[1]); panel.app.unmount();
+  const reload = memberPanel(action, { ...savedGroup, invites: [{ ...savedGroup.invites[0], send_state: 'sending' }] });
+  reload.row(reload.app.render(reload.props)).props.onSend(); await tick();
+  assert.equal(calls.at(-1).body.command_id, invitationId); assert.ok(calls.every(call => call.path.includes('imported-person'))); reload.app.unmount();
+});
+
+test('Invitation never follows unaccepted contact, unmounted account or newly archived/claimed/removed group person', async () => {
+  for (const change of ['unaccepted', 'unmounted', 'archived', 'claimed', 'removed', 'owner', 'email']) {
+    const calls: string[] = []; let finish!: (value: any) => void;
+    const panel = memberPanel(async path => { calls.push(path); return new Promise(resolve => { finish = resolve; }); });
+    panel.open('asha@example.invalid').props.onSave(); await tick();
+    if (change === 'unmounted') panel.app.unmount();
+    else if (change !== 'unaccepted') panel.app.render({ ...panel.props, group: { ...inviteGroup, archived: change === 'archived', owner_id: change === 'owner' ? 2 : 1, participants: [inviteGroup.participants[0], { ...inviteGroup.participants[1], user_id: change === 'claimed' ? 2 : null, removed: change === 'removed', email: change === 'email' ? 'other@example.invalid' : '' }] } });
+    finish({ id: change === 'unaccepted' ? 'wrong-group' : inviteGroup.id, version: 2 }); await tick();
+    assert.equal(calls.length, 1, change); panel.app.unmount();
+  }
+});
+
+test('Member email affordance excludes registered/self/removed/direct/nonorganizer/archive, preserving nonzero removal guard', () => {
+  const app = harness('src/MembersScreen.tsx', 'MemberRow', { ...members, Avatar: 'Avatar', IconAction: 'IconAction' });
+  const props = { group: inviteGroup, person: inviteGroup.participants[1], selfId: 'owner', organizer: true, disabled: false, working: false, feedback: null, cooldown: 0, contactChanged: false, onAddEmail() {}, onSend() {}, onRemove() {} };
+  let tree = app.render(props); assert.equal(find(tree, 'accessibilityLabel', 'Add email and invite Asha').props.accessibilityRole, 'button');
+  assert.equal(find(tree, 'label', 'Remove Asha').props.disabled, true);
+  for (const patch of [{ person: { ...props.person, user_id: 2 } }, { person: { ...props.person, removed: true } }, { person: { ...props.person, email: 'saved@example.invalid' } }, { selfId: props.person.id }, { group: { ...inviteGroup, is_direct: true } }, { group: { ...inviteGroup, archived: true } }, { organizer: false }]) {
+    tree = app.render({ ...props, ...patch }); assert.ok(!nodes(tree).some(node => node.props.accessibilityLabel === 'Add email and invite Asha'));
+  }
 });

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { addPerson, currentEmailInvite, emailInvitationRequest, personRequest, sendInvitation } from '../src/members.ts';
+import { addPerson, currentEmailInvite, emailInvitationRequest, personRequest, saveContact, sendInvitation } from '../src/members.ts';
 import type { Group } from '../src/types.ts';
 const group: Group = { id: 'group', name: 'Trip', version: 1, participants: [], expenses: [], settlements: [], balances: {}, transfers: [], activity: [] };
 
@@ -51,4 +51,11 @@ test('Explicit sending reports only the matching accepted provider state', async
   }
   assert.deepEqual(calls, Array(3).fill({ path: '/participants/asha/email-invite', body: { command_id: 'email-command' } }));
   for (const result of [{}, { id: group.id, version: 3 }, { id: group.id, version: 3, invite: { id: 'other-command', state: 'sent' } }, { id: group.id, version: 3, invite: { id: request.id, state: 'success' } }]) await assert.rejects(sendInvitation(group.id, request, async () => result), /Sync and check/);
+});
+
+test('Saving an existing contact addresses only that participant and requires a matching accepted group receipt', async () => {
+  const calls: unknown[] = [], body = { command_id: 'contact-command', email: 'asha@example.invalid' };
+  await saveContact(group.id, 'existing-person', body, async (path, payload) => { calls.push({ path, payload }); return { id: group.id, version: 2 }; });
+  assert.deepEqual(calls, [{ path: '/participants/existing-person/contact', payload: body }]);
+  for (const result of [{}, { id: 'other', version: 2 }, { id: group.id, version: 0 }]) await assert.rejects(saveContact(group.id, 'existing-person', body, async () => result), /Sync and check/);
 });

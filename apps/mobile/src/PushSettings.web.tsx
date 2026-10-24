@@ -1,6 +1,6 @@
 import React from 'react';
 import { Text, View } from 'react-native';
-import { useUI } from './ui';
+import { Icon, useUI } from './ui';
 import type { Session } from './types';
 import type { PushTarget } from './notifications';
 export function usePushNotifications(_session: Session | null, _callbacks: { onOpen: (target: PushTarget | null) => Promise<void>; onForeground: () => Promise<void>; shouldSuppress?: (data: unknown) => boolean }) {
@@ -10,5 +10,5 @@ export function usePushNotifications(_session: Session | null, _callbacks: { onO
 export type PushControls = ReturnType<typeof usePushNotifications>;
 export default function PushSettings(_props: { push: PushControls; busy: boolean; onBusyChange: (busy: boolean) => void }) {
   const { ui } = useUI();
-  return <View><Text style={ui.caption}>Push notifications are available in the mobile app. This browser refreshes while open.</Text></View>;
+  return <View style={{ flexDirection: 'row', gap: 12, minHeight: 48 }}><View aria-hidden><Icon name="phone" /></View><View style={{ flex: 1, gap: 4 }}><Text style={ui.body}>Push notifications</Text><Text style={ui.caption}>Available in the mobile app. This browser refreshes while open.</Text></View></View>;
 }

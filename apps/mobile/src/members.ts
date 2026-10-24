@@ -23,6 +23,10 @@ export async function addPerson(groupId: string, request: AddPersonRequest, onAc
   acceptedGroup(await onAction('/participants', request), groupId);
 }
 
+export async function saveContact(groupId: string, personId: string, body: { command_id: string; email: string }, onAction: Action) {
+  acceptedGroup(await onAction(`/participants/${personId}/contact`, body), groupId);
+}
+
 export function currentEmailInvite(group: Group, personId: string, email: string) {
   return group.invites?.filter(invite => invite.participant_id === personId && !invite.revoked && !invite.approved
     && invite.intended_email === email && (!invite.expires_at || Date.parse(invite.expires_at) > Date.now()))
