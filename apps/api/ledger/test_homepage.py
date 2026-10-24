@@ -3,6 +3,7 @@
 from html.parser import HTMLParser
 from xml.etree import ElementTree
 
+import pytest
 from config.associations import ANDROID_ASSOCIATION, APPLE_ASSOCIATION
 from config.web import public_asset
 from django.conf import settings
@@ -82,15 +83,17 @@ def test_public_crawl_hints_list_canonical_pages_and_exclude_private_app_routes(
 
 def test_brand_assets_are_exact_existing_images_and_unknown_paths_are_not_served():
     browser = Client()
-    for public, native in [("merosplit-icon.png", "icon.png")]:
+    for public, native in [("merosplit-icon.png", "icon.png"), ("favicon.png", "favicon.png"), ("apple-touch-icon.png", None), ("merosplit-logo.svg", "brand/merosplit-logo.svg")]:
         response = browser.get(f"/assets/{public}")
-        assert response.status_code == 200 and response["Content-Type"] == "image/png"
+        assert response.status_code == 200 and response["Content-Type"] == ("image/svg+xml" if public.endswith(".svg") else "image/png")
         assert response["X-Content-Type-Options"] == "nosniff"
-        assert b"".join(response.streaming_content) == (settings.BASE_DIR.parent / "mobile/assets" / native).read_bytes()
+        expected = settings.BASE_DIR.parent / "mobile/assets" / native if native else settings.BASE_DIR / "ledger/assets" / public
+        assert b"".join(response.streaming_content) == expected.read_bytes()
     assert public_asset(RequestFactory().get("/"), "../config/settings.py").status_code == 404
     assert browser.get("/assets/missing.js").status_code == 404
 
 
+@pytest.mark.django_db
 def test_homepage_does_not_take_over_existing_app_legal_association_or_invitation_routes(tmp_path, monkeypatch):
     root = tmp_path / "web-dist"
     root.mkdir()

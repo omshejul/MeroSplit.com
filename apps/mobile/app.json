@@ -28,7 +28,8 @@
         "NSAppTransportSecurity": {
           "NSAllowsLocalNetworking": true
         }
-      }
+      },
+      "icon": "./assets/brand/merosplit.icon"
     },
     "android": {
       "package": "com.omshejul.splitdumb",

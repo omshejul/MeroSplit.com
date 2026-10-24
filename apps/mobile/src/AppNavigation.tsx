@@ -1,5 +1,5 @@
 import React from 'react';
-import { ActivityIndicator, Animated, KeyboardAvoidingView, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Animated, Image, KeyboardAvoidingView, Platform, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { FAB, Text, useTheme } from 'react-native-paper';
@@ -18,10 +18,11 @@ export function AppFrame({ children, onTouchStart }: { children: React.ReactNode
 const pageWidthStyle = Platform.OS === 'web' ? { width: '100%' as const, maxWidth: 760, alignSelf: 'center' as const } : {};
 export const pageContentStyle = { padding: 16, gap: 12, paddingBottom: 24, ...pageWidthStyle };
 
-export function ScreenHeader({ title, busy, onBack, onFeedback, children }: { title: string; busy: boolean; onFeedback?: () => void; onBack?: () => void; children?: React.ReactNode }) {
+export function ScreenHeader({ title, busy, onBack, onFeedback, brand = false, children }: { brand?: boolean; title: string; busy: boolean; onFeedback?: () => void; onBack?: () => void; children?: React.ReactNode }) {
   const { palette } = useUI();
   // The working indicator floats over the title's trailing edge, so actions never shift.
   return <View role="banner" style={styles.header}>
+    {brand && <Image source={require('../assets/brand/mark.png')} accessible={false} accessibilityIgnoresInvertColors style={{ width: 32, height: 32 }} />}
     {onBack && <IconAction name="back" label="Back" disabled={busy} onPress={onBack} />}
     <View style={styles.titleArea}>
       <Text style={[styles.title, { color: palette.text }]} accessibilityRole="header" aria-level={1} numberOfLines={1} ellipsizeMode="tail" accessibilityLabel={title}>{title}</Text>

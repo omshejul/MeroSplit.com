@@ -10,7 +10,7 @@ import { AppFrame, pageContentStyle, ScreenHeader } from './AppNavigation';
 
 export function EmailLinkScreen({ title, busy, children }: { title: string; busy: boolean; children: React.ReactNode }) {
   return <AppFrame>
-    <ScreenHeader title={title} busy={busy} />
+    <ScreenHeader title={title} brand busy={busy} />
     <ScrollView role="main" contentContainerStyle={pageContentStyle} keyboardShouldPersistTaps="handled">{children}</ScrollView>
   </AppFrame>;
 }

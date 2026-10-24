@@ -1,3 +1,9 @@
+# Current MeroSplit mark
+
+The human-supplied amber/coral SVG and layered `merosplit.icon` supersede the earlier Blender mark below. Originals and export limits are recorded in `SOURCE.json`. Do not run the historical Blender exporter for current assets. The layered iOS icon is configured for a future native build; it is not activated by a JavaScript-only update or uncompiled resource copy.
+
+## Historical selection
+
 # MeroSplit linked friends mark
 
 Om selected option3 on17October2026. Two linked matte coral and peach rings, white opaque background, no floor or cast shadow. This Blender scene is the approved master. Preserve its geometry, materials, camera and lighting.
