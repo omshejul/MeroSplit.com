@@ -4,42 +4,84 @@
     "bundle_id": "com.phonepe.PhonePeApp",
     "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/60/75/ff/6075ff86-8cf3-7315-3184-b01f6c7f7ed7/AppIcon-0-0-1x_U007emarketing-0-6-0-85-220.png/512x512bb.jpg",
     "store": "https://apps.apple.com/in/app/phonepe-upi-payment-recharge/id1170055821?uo=4",
-    "sha256": "20e946430c2c97c717b29809fffd8b552a0f608960343a4ba91653cc3ae213e2"
+    "sha256": "20e946430c2c97c717b29809fffd8b552a0f608960343a4ba91653cc3ae213e2",
+    "verified_store_id": 1170055821,
+    "verified_at": "2026-10-19",
+    "rendered_sha256": {
+      "1": "0bfd729537262cdd16e6258b0a7a8bbae2ecdaa0332396417dd30040bd7a8461",
+      "2": "636951ccc0eea81d4d186f0f7d37e9383e7dd280b0eea7f320f90259ee5068f0",
+      "3": "ffb35d4c153368c49ebf6adabbe55d8508cfa7c187aff22a4141e6e69977ed18"
+    }
   },
   "google-pay": {
     "name": "Google Pay: UPI, Cards, Loans",
     "bundle_id": "com.google.paisa",
     "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/b6/52/33/b65233f3-2e8f-d937-76fe-1ef8e131c3ea/GPayAppIcon-0-0-1x_U007ephone-0-0-0-1-0-0-0-85-220.png/512x512bb.jpg",
     "store": "https://apps.apple.com/in/app/google-pay-upi-cards-loans/id1193357041?uo=4",
-    "sha256": "2da6529e9f908ef6e7dcfd96a32dd8d07de85f576d3f0d394d040fc31198b1a8"
+    "sha256": "2da6529e9f908ef6e7dcfd96a32dd8d07de85f576d3f0d394d040fc31198b1a8",
+    "verified_store_id": 1193357041,
+    "verified_at": "2026-10-19",
+    "rendered_sha256": {
+      "1": "1343a405d3e0f6038d830b7a561756902cc472ec6750c062a219f18eb0a22515",
+      "2": "86566362b347ed0624255262d21374720c3d8ba1fcb5a11f138de77352e2969d",
+      "3": "c2dde46725174d18a1a4b9e6615cfd81f45047a6e3b57e669f5aeaeacf1ae2c6"
+    }
   },
   "paytm": {
     "name": "Paytm: Secure UPI Payments",
     "bundle_id": "com.one97.paytm",
     "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/3a/42/d7/3a42d722-cdbb-ba50-d09f-ee68f77e36ec/AppIcon-0-0-1x_U007ephone-0-1-0-85-220.png/512x512bb.jpg",
     "store": "https://apps.apple.com/in/app/paytm-secure-upi-payments/id473941634?uo=4",
-    "sha256": "7d98a5507986e62dd538b37321b21702a25d84cb52450d58e433a126b7bd083f"
+    "sha256": "7d98a5507986e62dd538b37321b21702a25d84cb52450d58e433a126b7bd083f",
+    "verified_store_id": 473941634,
+    "verified_at": "2026-10-19",
+    "rendered_sha256": {
+      "1": "ae9350fdf7b336432117f2e03e805ae0bb28449ea88a4a8b0e426a82bcf4e742",
+      "2": "fd1b27620e29ae48d496b10a169b271ef79c32f7d4d4ef9e8d383c4f8d41b89a",
+      "3": "7db213daf31414186509927614f45d0387ac664136428db47acde54eee037015"
+    }
   },
   "cred": {
     "name": "CRED: Credit Cards, Bills, UPI",
     "bundle_id": "com.dreamplug.cred",
     "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/0f/e3/6e/0fe36e23-46ed-27b7-aceb-9d34616a9903/AppIcon-0-0-1x_U007emarketing-0-11-0-sRGB-85-220.png/512x512bb.jpg",
     "store": "https://apps.apple.com/in/app/cred-credit-cards-bills-upi/id1428580080?uo=4",
-    "sha256": "d205827f9d28fcbdd52bb66b6f81db7042fe8f4fd2d6daf5eff841b1b4d829e7"
+    "sha256": "d205827f9d28fcbdd52bb66b6f81db7042fe8f4fd2d6daf5eff841b1b4d829e7",
+    "verified_store_id": 1428580080,
+    "verified_at": "2026-10-19",
+    "rendered_sha256": {
+      "1": "90977f683c718c1dc2ae1db157ba522c0bbfa913d3225b7f9493db29bb399d53",
+      "2": "621d66a9a7a98baa126045b7b7ed5b5e99994ac8ba207b316dd8ccd1f2a85d7b",
+      "3": "09b092c2f842b35568e518eafa4afa4e11b2dde9b3e23d4e2e4a3ad006ec4f19"
+    }
   },
   "bhim": {
     "name": "BHIM Bharat's Own Payments App",
     "bundle_id": "in.org.npci.ios.upiapp",
     "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/db/d4/7b/dbd47b12-94b4-075e-572c-94f508107493/AppIcon-0-0-1x_U007emarketing-0-11-0-85-220.png/512x512bb.jpg",
     "store": "https://apps.apple.com/in/app/bhim-bharats-own-payments-app/id1200315258?uo=4",
-    "sha256": "b024836dbf6f50e8132358dcbe9975273c81d84a1771fb1a63ed57e1accf61cd"
+    "sha256": "b024836dbf6f50e8132358dcbe9975273c81d84a1771fb1a63ed57e1accf61cd",
+    "verified_store_id": 1200315258,
+    "verified_at": "2026-10-19",
+    "rendered_sha256": {
+      "1": "53316bfeb73efee5219353557b18e5a9daa8f90a1b8045f680603c2b107c7955",
+      "2": "4aeb43d9b592b008327f8b8ffd0017da03584bf9c924d2666e7ce71cdae22a04",
+      "3": "264721ba673aa9404716176427681d92ba0beadb65d164a273c4b7dead303d6d"
+    }
   },
   "amazon-pay": {
     "name": "Amazon India Shop, Pay, miniTV",
     "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/e5/14/a4/e514a49a-69ec-4d42-5676-8abbdf314cf6/AppIcon-0-0-1x_U007epad-0-1-0-0-85-220.png/512x512bb.jpg",
     "store": "https://apps.apple.com/in/app/amazon-india-shop-pay-minitv/id1478350915?uo=4",
     "bundle_id": "com.amazon.AmazonIN",
-    "note": "Amazon Pay UPI is in the Amazon India app; use its actual app icon rather than a squeezed wide wordmark."
+    "note": "Amazon Pay UPI is in the Amazon India app; use its actual app icon rather than a squeezed wide wordmark.",
+    "verified_store_id": 1478350915,
+    "verified_at": "2026-10-19",
+    "rendered_sha256": {
+      "1": "f952c1e7579c01ffe6aedaa26779cabb64b6d3b7b63c739b98091e9da598168c",
+      "2": "16f1b303e77c3b325be5ff07f2605b685d0ea55c8773a5486faa7107363a2f39",
+      "3": "9b07007f33cf6e909a43c4c536c4fbea8e7b06b89481c9fb1b5a583d8753b84c"
+    }
   },
   "rendering": {
     "logical_size": 24,
@@ -48,7 +90,246 @@
       48,
       72
     ],
-    "method": "Pillow LANCZOS, original colors, no crop or stretch",
-    "accessed": "2026-10-19"
+    "method": "Pillow LANCZOS, original colors, square app artwork without crop or stretch; 24pt with 1x/2x/3x variants",
+    "accessed": "2026-10-19",
+    "providers": 23
+  },
+  "navi": {
+    "name": "Navi: UPI, Payments, Insurance",
+    "bundle_id": "com.gonavi.app",
+    "store": "https://apps.apple.com/in/app/navi-upi-payments-insurance/id1541152485?uo=4",
+    "verified_store_id": 1541152485,
+    "verified_at": "2026-10-19",
+    "rendered_sha256": {
+      "1": "6e5e6f8718d5311b7e153fdac3ad78aaeca05c34d86b9c8624966172b82a2b37",
+      "2": "a8ae022fd2a935f0e0435e3599902b848d0932bc02e9c9d54e31138fb3879161",
+      "3": "bb3a931634ed489167e0dbb6b14cbe0352f6dfce1af368bd905b0e8cdbb6581e"
+    },
+    "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/54/12/80/54128003-2156-376b-b2ad-263d22faf206/AppIcon-0-0-1x_U007ephone-0-1-0-85-220.png/512x512bb.jpg",
+    "sha256": "a6254dfb70bf29d5624ac1523838373fad41215d13400e6931463dacd1c7e65c"
+  },
+  "super-money": {
+    "name": "super.money",
+    "bundle_id": "money.super.payments",
+    "store": "https://apps.apple.com/in/app/super-money/id6502597504?uo=4",
+    "verified_store_id": 6502597504,
+    "verified_at": "2026-10-19",
+    "rendered_sha256": {
+      "1": "dfe7e9525ffd3a179e1062350be3c14a5a919ce8e70b73961803b2d56bd277ef",
+      "2": "9d628d47e93f5ca23baf39978ccded1a15868dd42fd6c1888c0f26e10d487298",
+      "3": "ea421c758a798f7618971d570cabddc68c6c6c2c2ce86064653e6884a931c8d7"
+    },
+    "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/9e/c4/fa/9ec4fa33-b2e5-62d6-3b0e-5d67aa0470b4/AppIcon-0-0-1x_U007ephone-0-1-0-85-220.png/512x512bb.jpg",
+    "sha256": "20c9dfc8aece381cb2449efde5f6c8a52e6e7b3e00fe5e1584be6de4a2a55a71"
+  },
+  "famapp": {
+    "name": "FamApp by Trio: UPI & Card",
+    "bundle_id": "in.fampay.app",
+    "store": "https://apps.apple.com/in/app/famapp-by-trio-upi-card/id1499806454?uo=4",
+    "verified_store_id": 1499806454,
+    "verified_at": "2026-10-19",
+    "rendered_sha256": {
+      "1": "3baed7d870ab9bed717ca57b8edcfab10bad9fbbfd2d11eca723541f9e27d29c",
+      "2": "cb78a1285e05d1af9b6f03143b7d52e2677aeab3dee1168854c633bdd1c0055c",
+      "3": "9fa6b5e6a0cc82cbfaa8d9fe2f0c315cbd47bb59ff7a3ba1de60eaabe93ed809"
+    },
+    "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/c0/61/db/c061db10-bea4-e3ff-8e91-f137aabebe93/AppIcon-0-0-1x_U007emarketing-0-9-0-sRGB-85-220.png/512x512bb.jpg",
+    "sha256": "64379fd1ff657efffef183db17a23555b8bbb84819036c99d1d3e97a8ae04f20"
+  },
+  "mobikwik": {
+    "name": "MobiKwik: Loans, UPI & Wallet",
+    "bundle_id": "com.mobikwik",
+    "store": "https://apps.apple.com/in/app/mobikwik-loans-upi-wallet/id600002523?uo=4",
+    "verified_store_id": 600002523,
+    "verified_at": "2026-10-19",
+    "rendered_sha256": {
+      "1": "77efb35c81a6338e77c7e3612562a356362aa8e36daa22675baffdba6fce415a",
+      "2": "6753373adfbbabae059a63cd01c8dfe7347cf362b84ce92577f97026827bcf9d",
+      "3": "b6c2de83250ed1594e94176e8cbaf97841ff8f8f714dc2dbaa8c0eaa0ed8f6f4"
+    },
+    "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/35/22/61/352261cb-06e5-66d4-0095-b1070056f193/AppIcon-0-0-1x_U007epad-0-1-0-sRGB-85-220.png/512x512bb.jpg",
+    "sha256": "3c74ac2594e917f64fa7316d858633622d58d52410dfdf7cfb15fb5ec83ebb0b"
+  },
+  "airtel-thanks": {
+    "name": "Airtel App: Recharge & Bank",
+    "bundle_id": "com.BhartiMobile.myairtel",
+    "store": "https://apps.apple.com/in/app/airtel-app-recharge-bank/id543184334?uo=4",
+    "verified_store_id": 543184334,
+    "verified_at": "2026-10-19",
+    "rendered_sha256": {
+      "1": "8f0b69879e39fdf62444b27ef0b8c657306a79cee521ab4fe13b8b5828d1a072",
+      "2": "568ccd196c18968b903ab8cfab5be9878b4eb94caffad2dc0fdcc0bd6fc84687",
+      "3": "8b84333ae88520c911c11ca558c2f34507aaaad2f88c09772309a77f4f4ce7d5"
+    },
+    "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/45/f1/df/45f1df18-39c6-6864-cd18-b05bb0836ec8/AppIcon-0-0-1x_U007ephone-0-1-0-85-220.png/512x512bb.jpg",
+    "sha256": "7bb5619970123de8123b603878f7a72734bd72126be535bcbd19960130d6517e"
+  },
+  "bajaj-pay": {
+    "name": "Bajaj Finance: Loans, UPI & FD",
+    "bundle_id": "com.Bajaj.bajajexperia",
+    "store": "https://apps.apple.com/in/app/bajaj-finance-loans-upi-fd/id505454145?uo=4",
+    "verified_store_id": 505454145,
+    "verified_at": "2026-10-19",
+    "rendered_sha256": {
+      "1": "a98c805eaa0413c0bc3a873c7abe3e1e4b4b76252bd63a01f315da685b355170",
+      "2": "b39bf1a45110254b579e3bf60428e16a286c78441d93fb15e8e4af8ffdc9e725",
+      "3": "03b5db399c4cc7b280cd3792d8288224bfa1425a76db13dabc4701c2b6d6cab7"
+    },
+    "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/12/ce/7c/12ce7cd5-0c86-c334-1dfb-e35a7210dbe3/AppIcon-0-1x_U007emarketing-0-11-0-85-220-0.png/512x512bb.jpg",
+    "sha256": "2cb481af265048750be3385070bc98f20c3c26d999c8dc7ed1090c8fb34fbe0e"
+  },
+  "flipkart": {
+    "name": "Flipkart - Online Shopping App",
+    "bundle_id": "com.appflipkart.flipkart",
+    "store": "https://apps.apple.com/in/app/flipkart-online-shopping-app/id742044692?uo=4",
+    "verified_store_id": 742044692,
+    "verified_at": "2026-10-19",
+    "rendered_sha256": {
+      "1": "cf696e48fcd7e531053174876048866c7eb18487d6fcfdf9263514c08cbc1c40",
+      "2": "44354d5697c5209cd593e691dc37ecfb6a1277e820b7627f2282268fdb657e5b",
+      "3": "3d907155a9bcb0d94e59533bb1db109dffdeaa731dc39cf0bea61c7c9e1d48e7"
+    },
+    "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/ff/21/f3/ff21f3d2-6cb6-7c22-6ca7-0922aafb51e8/AppIcon-fk-0-0-1x_U007epad-0-1-0-85-220.png/512x512bb.jpg",
+    "sha256": "69426e4fcf27e856b51e1cfcfdbefd53d6d84eefca1936b0bcf42a0d4a25aed5"
+  },
+  "freecharge": {
+    "name": "Freecharge UPI & Bill Payments",
+    "bundle_id": "com.freecharge.ios",
+    "store": "https://apps.apple.com/in/app/freecharge-upi-bill-payments/id877495926?uo=4",
+    "verified_store_id": 877495926,
+    "verified_at": "2026-10-19",
+    "rendered_sha256": {
+      "1": "9f980c175adbdf4c3f809939ab3f6fe50835baaa2f3722d6d45ec57ee621b460",
+      "2": "abef638eeb2f0c3081d717a7071341dafd2627c091934acf24c1c9175f577bee",
+      "3": "82a579504ab9458f74679af24f7d8f17fb86ecb67f3a6c2f7ddd067337663da0"
+    },
+    "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/ad/1e/c1/ad1ec125-4d72-b95e-7f37-a2d229677045/app_icon-0-0-1x_U007emarketing-0-8-0-sRGB-85-220.png/512x512bb.jpg",
+    "sha256": "37182c0e1f97d8070acc95e0f042375b5d170aa4965390915e846af9fb8c7d50"
+  },
+  "idfc-first": {
+    "name": "IDFC FIRST Bank: MobileBanking",
+    "bundle_id": "com.idfcfirstbank.optimus",
+    "store": "https://apps.apple.com/in/app/idfc-first-bank-mobilebanking/id1521443352?uo=4",
+    "verified_store_id": 1521443352,
+    "verified_at": "2026-10-19",
+    "rendered_sha256": {
+      "1": "18d5854b924d4024e31cedc2e56de3518a24c611642d42815bbbaa76963d8570",
+      "2": "dab3b5067419e1c43a6e239911cc7766b24e8c5ed37f5cdc179b51e977d07230",
+      "3": "dcd5e155185219f2035befcd047701e6ac2d4bac9766ecb3aa37f800a2d5c8df"
+    },
+    "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/f5/eb/c7/f5ebc751-e2a0-229a-aae7-0fe7d090441f/AppIcon-1x_U007emarketing-0-8-0-85-220-0.png/512x512bb.jpg",
+    "sha256": "b74f535195ede1340aef34b302ffe806d2ac97b9e74a8ff7aa0db04da2f76075"
+  },
+  "imobile": {
+    "name": "iMobile: Loan, Cards & Banking",
+    "bundle_id": "com.icicibank.imobile",
+    "store": "https://apps.apple.com/in/app/imobile-loan-cards-banking/id375276006?uo=4",
+    "verified_store_id": 375276006,
+    "verified_at": "2026-10-19",
+    "rendered_sha256": {
+      "1": "26f050d2db7bc2da9c0341f29ad92d7bd3868cb0d64d980f7a25fb476096971d",
+      "2": "32fe83c64444f2c745904d573bf149a3b9992577caed0dc78df553bc53f55ed7",
+      "3": "6eadda6bb827ed395d319a42c37ae6f80e794b522793b2ae5ebf1d771d34a08d"
+    },
+    "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/24/45/d7/2445d73b-be3a-e122-f92d-735e2d12e5ea/AppIcon-0-0-1x_U007ephone-0-1-0-85-220.png/512x512bb.jpg",
+    "sha256": "6480ea52046f46429cc90fccf5cd652c78250d0749ca2399aa3d7c1c3f4418ae"
+  },
+  "kiwi": {
+    "name": "Kiwi: Rupay Credit Card on UPI",
+    "bundle_id": "in.kiwi.kiwitpap",
+    "store": "https://apps.apple.com/in/app/kiwi-rupay-credit-card-on-upi/id6449386307?uo=4",
+    "verified_store_id": 6449386307,
+    "verified_at": "2026-10-19",
+    "rendered_sha256": {
+      "1": "f9c158936d93d10c693c5e49de9697b86b849e9bb9d08a2a832920d7d634aaeb",
+      "2": "a4663173acf127e783657d564cef81a40bf9828aef07c23e8a5fd176bcbd142d",
+      "3": "7dd2821f6dbb60ccf8c4fd13504e16492beadf82748d05d7d0b654ac27417e9d"
+    },
+    "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/ff/e0/36/ffe03667-2d18-f954-dcf2-2f46a5efd9f6/AppIcon-0-0-1x_U007ephone-0-1-0-sRGB-85-220.png/512x512bb.jpg",
+    "sha256": "82d43d15f85e2cfa673a51ae3c6f2544367d3f7c215673974b1b1156d0358edd"
+  },
+  "kotak": {
+    "name": "Kotak Bank (New)",
+    "bundle_id": "com.kotak.bank.mobile",
+    "store": "https://apps.apple.com/in/app/kotak-bank-new/id6471392908?uo=4",
+    "verified_store_id": 6471392908,
+    "verified_at": "2026-10-19",
+    "rendered_sha256": {
+      "1": "6906d37a3be9feda1b77954114f2f08c09ed2dea9f7783f9f5af46563b4fc5f6",
+      "2": "f54f3bc7dd1afdc268c2b27e1024255cf917f8b9bac9993ef28c12a2820762a0",
+      "3": "a03734855da885e37dc26625839bf00ba4086f3194366329998a418aafa7ba7e"
+    },
+    "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/93/ef/a6/93efa656-ec22-135d-a7ca-5bce6f72eff2/AppIcon-0-0-1x_U007ephone-0-11-0-85-220.png/512x512bb.jpg",
+    "sha256": "1cdacfdd3df1179bbe00475b575df8df6cacd21f8d08cf2a7b1f305236f48b3f"
+  },
+  "axis": {
+    "name": "Axis Bank Mobile Banking",
+    "bundle_id": "com.axisbank.axismobile",
+    "store": "https://apps.apple.com/in/app/axis-bank-mobile-banking/id699582556?uo=4",
+    "verified_store_id": 699582556,
+    "verified_at": "2026-10-19",
+    "rendered_sha256": {
+      "1": "215a248bc09e930ebccd3af02456316e85985d0c367f3e86ea15b6475a41b7b2",
+      "2": "a08b97720b68f4d4d33a853c71ad6ac7ba43c871932d61ca6a86055ea383d9e8",
+      "3": "f4045ae19a3e360cc253c5ef46c09591d057f687c038006d866d7a22a5254b79"
+    },
+    "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/07/2d/94/072d94a2-f3f0-1217-3d02-e42f09d19ca0/AppIcon-0-0-1x_U007emarketing-0-7-0-85-220.png/512x512bb.jpg",
+    "sha256": "4ee2fe102066c3f4c23e17317a28590cdda89eacf758978d8b28213495a23c11"
+  },
+  "payzapp": {
+    "name": "PayZapp UPI, Pixel Credit Card",
+    "bundle_id": "com.hdfcbank.payzapp",
+    "store": "https://apps.apple.com/in/app/payzapp-upi-pixel-credit-card/id6443480917?uo=4",
+    "verified_store_id": 6443480917,
+    "verified_at": "2026-10-19",
+    "rendered_sha256": {
+      "1": "7891cdc4ad0e156de3ec7e12bd54b5f75e5bb92cb678dd67571c4f03fb8e9df5",
+      "2": "fa4d5cfc74c49bef2961b78f68cd43c887861194fb3cc6dc9cc7230dfa31c5f1",
+      "3": "63e1af86250593329238c7266874e8b11e040a455b0e1a60b0c0d2bd4d20b9c3"
+    },
+    "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/fa/2a/d9/fa2ad9ed-57e8-1b35-318c-bded282a3fbc/AppIcon-prod-0-0-1x_U007emarketing-0-6-0-85-220.png/512x512bb.jpg",
+    "sha256": "f3743ceb4a75eabefef80a95e7cd3ac41c2966435f59928f627a9887aee9c0cb"
+  },
+  "pop": {
+    "name": "POP: Pay, Earn & Shop",
+    "bundle_id": "com.popclub.popclubapp",
+    "store": "https://apps.apple.com/in/app/pop-pay-earn-shop/id6443502397?uo=4",
+    "verified_store_id": 6443502397,
+    "verified_at": "2026-10-19",
+    "rendered_sha256": {
+      "1": "57f929252c335f2085e066b91b621c27092388da1abf2a908b19f2eee363a697",
+      "2": "83616c34a82352ce6312cba37b6ab87a2cd14445908b503af9f7a27891b559cf",
+      "3": "e98915fa62e057758a8fe39e81ddc06556dd78174bf952b6429bea984764fa63"
+    },
+    "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/50/d1/d7/50d1d7d2-9717-bcb3-7740-8ebe16ef3cd4/AppIcon-0-0-1x_U007ephone-0-1-0-85-220.jpeg/512x512bb.jpg",
+    "sha256": "a5f94f98ecb8de58b966743ead89949b9a1a16ce4040bd8a303913b4a23108ce"
+  },
+  "slice": {
+    "name": "slice: UPI credit card & bank",
+    "bundle_id": "com.tstudents.iOSApp",
+    "store": "https://apps.apple.com/in/app/slice-upi-credit-card-bank/id1123372237?uo=4",
+    "verified_store_id": 1123372237,
+    "verified_at": "2026-10-19",
+    "rendered_sha256": {
+      "1": "7943d4362b028a1d50cf4458a1893df34607a2e5a3fba98d20f0139ee97610cf",
+      "2": "4eb70c0f80dbb4fe4a1a15c56cb67da6febc2e4f1d2112f7da42d7493ca9c08b",
+      "3": "342d63c93ba4eae6ea4b5ec526593694407338ba3b66ad954bf3f70ae2232cf5"
+    },
+    "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/36/de/75/36de75b7-707d-8396-f7ee-a2ae64e98542/AppIcon-0-0-1x_U007emarketing-0-7-0-85-220.png/512x512bb.jpg",
+    "sha256": "9999a2a910552b520b6f0dcf67a0c943852019a2b69c7e197d8bb2d14a7fe286"
+  },
+  "yono-sbi": {
+    "name": "YONO SBI: Banking, UPI & Pay",
+    "bundle_id": "com.sbi.lotusintouch",
+    "store": "https://apps.apple.com/in/app/yono-sbi-banking-upi-pay/id1231393474?uo=4",
+    "verified_store_id": 1231393474,
+    "verified_at": "2026-10-19",
+    "rendered_sha256": {
+      "1": "4928dcb87d155ca482d1a695dd41efe6d4708a194f3d79b5c8d311028c55cf27",
+      "2": "c95897a4410de7319c034e6a5e8f49689eafd1cbde985e65065ff5691ba39ba7",
+      "3": "ef0f79faf39d846b809c39c6d3251b7495da8103e6a012242dce375c3b66ba75"
+    },
+    "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/01/d7/00/01d700e0-33d8-1c3f-c082-7433685a899c/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/512x512bb.jpg",
+    "sha256": "944c06984d3ada094ac423d9bd2154630da6f4d7ea0f846a98fcf28d624b099d"
   }
 }
