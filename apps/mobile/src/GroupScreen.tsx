@@ -85,8 +85,8 @@ function LogDate({ date }: { date?: string | null }) {
   const { ui } = useUI();
   const parsed = date ? new Date(`${date}T12:00:00`) : null, value = parsed && !Number.isNaN(parsed.getTime()) ? parsed : null;
   return <View aria-hidden accessible={false} importantForAccessibility="no-hide-descendants" style={s.date}>
-    {value ? <><Text style={ui.rowSub}>{value.toLocaleDateString('en-IN', { month: 'short' })}</Text><Text style={ui.rowTitle}>{value.getDate()}</Text>
-      {value.getFullYear() !== new Date().getFullYear() && <Text style={ui.rowSub}>{value.getFullYear()}</Text>}</> : <Text style={ui.rowSub}>–</Text>}
+    {value ? <><Text style={[ui.rowSub, s.dateMonth]}>{value.toLocaleDateString('en-IN', { month: 'short' })}</Text><Text style={[ui.rowTitle, s.dateDay]}>{value.getDate()}</Text>
+      {value.getFullYear() !== new Date().getFullYear() && <Text style={[ui.rowSub, s.dateMonth]}>{value.getFullYear()}</Text>}</> : <Text style={[ui.rowSub, s.dateDay]}>–</Text>}
   </View>;
 }
 
@@ -280,6 +280,8 @@ const s = StyleSheet.create({
   trailing: { flexShrink: 1, maxWidth: '45%', alignItems: 'flex-end' },
   effect: { flexShrink: 1, fontSize: 16, lineHeight: 22 },
   date: { minWidth: 40, flexShrink: 0, alignItems: 'center' },
+  dateMonth: { fontSize: 11, lineHeight: 14 },
+  dateDay: { fontSize: 14, lineHeight: 18 },
   paymentLine: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   paymentSentence: { flex: 1, minWidth: 0, fontWeight: '400' },
   logHeading: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 44 },
