@@ -74,8 +74,7 @@ export default function AccountNotifications({ session, push, busy, onBusyChange
             {open && enabled && <BalanceStatements session={session} visible={open} emailEnabled={preferences.email_reminders} busy={!!disabled} onBusyChange={onBusyChange} />}
             </>}
         </>}
-        <LoadingSpinner visible={working} />
         {!!error && <><ErrorText>{error}</ErrorText>{!preferences && <Button title="Retry" disabled={busy || working} onPress={() => void load()} />}</>}
-      </DialogScrollBody><Dialog.Actions><Button title="Done" kind="text" disabled={busy || working} onPress={close} /></Dialog.Actions></KeyboardDialog>
+      </DialogScrollBody><Dialog.Actions><View style={{ width: 20, height: 20, alignItems: 'center', justifyContent: 'center' }}><LoadingSpinner visible={working} /></View><Button title="Done" kind="text" disabled={busy || working} onPress={close} /></Dialog.Actions></KeyboardDialog>
   </>;
 }
