@@ -8,6 +8,7 @@ export type UPILaunchQuote = {
 };
 export type UPIApp = { id: 'phonepe' | 'google-pay' | 'paytm' | 'cred' | 'bhim' | 'amazon-pay' | 'upi'; name: string };
 const vpaPattern = /^[A-Za-z0-9._-]{2,}@[A-Za-z0-9.-]{2,}$/;
+export const validUPIAddress = (value: string) => value.length <= 254 && vpaPattern.test(value);
 // Ordinary-payment routes from the user's QRScanner reference. A detected
 // handler is not proof that the installed version accepts a payment request.
 const prefixes = {

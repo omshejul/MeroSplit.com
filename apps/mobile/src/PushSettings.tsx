@@ -53,8 +53,9 @@ export function usePushNotifications(session: Session | null, callbacks: Callbac
     if (Platform.OS === 'android') await Notifications.setNotificationChannelAsync('shared-bills', { name: 'Shared bills', importance: Notifications.AndroidImportance.DEFAULT, lockscreenVisibility: Notifications.AndroidNotificationVisibility.PRIVATE });
   }
   async function refreshNow(token?: Notifications.DevicePushToken) {
-    const current = activeSession.current, value = await state(); if (mounted.current) setVerified(false);
-    const status = pushPermission(await Notifications.getPermissionsAsync()); if (mounted.current) setPermission(status);
+    try {
+    const current = activeSession.current, value = await state();
+    const status = pushPermission(await Notifications.getPermissionsAsync()); if (mounted.current) { setPermission(status); if (status !== 'granted') setVerified(false); }
     if (!current) return;
     await refreshPushDevice(current, value, status, async () => {
       await channel();
@@ -70,6 +71,7 @@ export function usePushNotifications(session: Session | null, callbacks: Callbac
       return { provider: 'expo', token: result.data, platform: Platform.OS === 'ios' ? 'ios' : 'android' };
     }, save);
     if (mounted.current && activeSession.current?.token === current.token && accountOwner(activeSession.current) === accountOwner(current)) setVerified(true);
+    } catch (cause) { if (mounted.current) setVerified(false); throw cause; }
   }
   const refresh = () => run(() => refreshNow());
   async function clearReadPrompts() {
@@ -81,18 +83,18 @@ export function usePushNotifications(session: Session | null, callbacks: Callbac
       if (activeSession.current?.token === current.token && AppState.currentState === 'active') await Notifications.dismissNotificationAsync(id);
     });
   }
-  const enable = () => { const current = activeSession.current; return run(async () => {
+  const enable = async () => { const current = activeSession.current; let enabled = false; await run(async () => {
     if (!current || !activeSession.current || accountOwner(activeSession.current) !== accountOwner(current)) throw new Error('Sign in to enable notifications.');
     await consentToPush(current, await state(), save); await channel();
     let status = await Notifications.getPermissionsAsync();
     if (pushPermission(status) === 'ask') status = await Notifications.requestPermissionsAsync({ ios: { allowAlert: true, allowBadge: false, allowSound: true } });
     if (activeSession.current?.token !== current.token || accountOwner(activeSession.current) !== accountOwner(current)) return;
     if (pushPermission(status) !== 'granted') { setPermission(pushPermission(status)); await unregisterPushDevice(current, await state(), save); return; }
-    await refreshNow();
-  }); };
+    await refreshNow(); enabled = true;
+  }); return enabled; };
   const disable = () => { const current = activeSession.current; return run(async () => {
-    if (mounted.current) setVerified(false);
     if (current) await unregisterPushDevice(current, await state(), save);
+    if (mounted.current) setVerified(false);
   }); };
   const clear = () => run(async () => {
     const value = await state(); await save(emptyPushPreferences(value.installation_id));
@@ -126,15 +128,15 @@ export function usePushNotifications(session: Session | null, callbacks: Callbac
     return () => { foreground.remove(); rotated.remove(); received.remove(); tapped.remove(); };
   }, []);
   const enabled = !!session && preferences?.owner === owner && preferences.opted_in && !!preferences.binding && permission === 'granted' && verified;
-  return { state: { ready: !!preferences, enabled, optedIn: !!preferences?.opted_in && preferences.owner === owner, pendingOff: !!preferences?.owner && preferences.owner === owner && !preferences.opted_in, permission, working, error }, enable, disable, refresh, clear, clearReadPrompts };
+  return { state: { ready: !!preferences, enabled, optedIn: !!preferences?.opted_in && preferences.owner === owner, pendingOff: !!preferences?.owner && preferences.owner === owner && !!preferences.pending_off, installationId: preferences?.installation_id, permission, working, error }, enable, disable, refresh, clear, clearReadPrompts };
 }
 export type PushControls = ReturnType<typeof usePushNotifications>;
-export default function PushSettings({ push, busy, onBusyChange }: { push: PushControls; busy: boolean; onBusyChange: (busy: boolean) => void }) {
+export default function PushSettings({ push, busy, onBusyChange, onChanged }: { push: PushControls; busy: boolean; onBusyChange: (busy: boolean) => void; onChanged?: (enabled: boolean) => Promise<void> }) {
   const { ui } = useUI(), { state } = push;
   const disabled = busy || state.working || !state.ready || state.permission === 'denied';
   async function act(action: () => Promise<void>) { if (busy || state.working) return; onBusyChange(true); try { await action(); } catch { /* The hook keeps the actionable error visible. */ } finally { onBusyChange(false); } }
   return <View style={{ gap: 8 }}>
-    <NotificationSwitch icon="phone" label="Push notifications" checked={state.enabled} disabled={disabled} onChange={value => void act(value ? push.enable : push.disable)} />
+    <NotificationSwitch icon="phone" label="Push notifications" checked={state.enabled} disabled={disabled} onChange={value => void act(async () => { if (value) { if (await push.enable()) await onChanged?.(true); } else { await push.disable(); await onChanged?.(false); } })} />
     {(state.working || state.permission === 'denied' || state.pendingOff) && <Text style={ui.caption}>{state.working ? 'Updating…' : state.permission === 'denied' ? 'Blocked in phone settings.' : 'Waiting to turn off. Retry when connected.'}</Text>}
     {state.permission === 'denied' && <Button title="Open phone settings" kind="text" disabled={busy || state.working} onPress={() => void Linking.openSettings().catch(() => {})} />}
     {!!state.error && <><Text accessibilityRole="alert" style={ui.error}>{state.error}</Text><Button title="Retry notifications" disabled={busy || state.working} onPress={() => void act(push.refresh)} /></>}

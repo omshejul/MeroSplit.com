@@ -6,6 +6,7 @@ import ts from 'typescript';
 import * as members from '../src/members.ts';
 import { formatMoney, integer, rupeesToPaise, validateExpense } from '../src/accounting.ts';
 import { isPersonalPayment } from '../src/personalBalances.ts';
+import { validUPIAddress } from '../src/upi.ts';
 import { paymentReturnNeedsConfirmation } from '../src/paymentReturn.ts';
 
 type Element = { type: any; props: Record<string, any>; children: any[] };
@@ -17,7 +18,7 @@ const tick = async () => { for (let i = 0; i < 15; i++) await Promise.resolve();
 function harness(file: string, name: string, extra: Record<string, any> = {}) {
   let cursor = 0, states: any[] = [], effects: (() => void)[] = [], cleanups: Record<number, () => void> = {};
   const deps: Record<number, any[]> = {};
-  const env: Record<string, any> = { React, Dialog, View: 'View', ScrollView: 'ScrollView', KeyboardDialog: 'KeyboardDialog', Pressable: 'Pressable', Text: 'Text', NotificationSwitch: 'NotificationSwitch', PushSettings: 'PushSettings', BalanceStatements: 'BalanceStatements', DialogScrollBody: 'DialogScrollBody', Form: 'Form', SectionHeading: 'SectionHeading', Button: 'Button', Icon: 'Icon', SettingsRow: 'SettingsRow', BillPeople: 'BillPeople', DraftAttachment: 'DraftAttachment', LocalAttachment: 'LocalAttachment', AmountField: 'AmountField', TextField: 'TextField', DateField: 'DateField', ErrorText: 'ErrorText', Checkbox: { Item: 'Checkbox' }, RadioChoice: 'RadioChoice', Crypto: { randomUUID: () => 'bill-id' }, StyleSheet: { create: (value: any) => value }, Keyboard: { dismiss() {} }, useWindowDimensions: () => ({ height: 667 }), useSafeAreaInsets: () => ({ top: 20, bottom: 0 }), Platform: { OS: 'native' }, requestAnimationFrame: (fn: () => void) => fn(), useUI: () => ({ ui: {} }), formatMoney, integer, rupeesToPaise, validateExpense, ...extra,
+  const env: Record<string, any> = { React, Dialog, validUPIAddress, View: 'View', ScrollView: 'ScrollView', KeyboardDialog: 'KeyboardDialog', Pressable: 'Pressable', Text: 'Text', NotificationSwitch: 'NotificationSwitch', PushSettings: 'PushSettings', BalanceStatements: 'BalanceStatements', DialogScrollBody: 'DialogScrollBody', Form: 'Form', SectionHeading: 'SectionHeading', Button: 'Button', Icon: 'Icon', SettingsRow: 'SettingsRow', BillPeople: 'BillPeople', DraftAttachment: 'DraftAttachment', LocalAttachment: 'LocalAttachment', AmountField: 'AmountField', TextField: 'TextField', DateField: 'DateField', ErrorText: 'ErrorText', Checkbox: { Item: 'Checkbox' }, RadioChoice: 'RadioChoice', Crypto: { randomUUID: () => 'bill-id' }, StyleSheet: { create: (value: any) => value }, Keyboard: { dismiss() {} }, useWindowDimensions: () => ({ height: 667 }), useSafeAreaInsets: () => ({ top: 20, bottom: 0 }), Platform: { OS: 'native' }, requestAnimationFrame: (fn: () => void) => fn(), useUI: () => ({ ui: {} }), formatMoney, integer, rupeesToPaise, validateExpense, ...extra,
     useState: (initial: any) => { const id = cursor++; if (!(id in states)) states[id] = typeof initial === 'function' ? initial() : initial; return [states[id], (value: any) => { states[id] = typeof value === 'function' ? value(states[id]) : value; }]; },
     useRef: (initial: any) => { const id = cursor++; return states[id] ??= { current: initial }; },
     useEffect: (fn: () => any, values: any[]) => { const id = cursor++; if (!deps[id] || values.some((value, i) => value !== deps[id][i])) { effects.push(() => { cleanups[id]?.(); cleanups[id] = fn(); }); deps[id] = values; } },
@@ -265,10 +266,10 @@ test('bill save preserves both draft and file if enqueue fails, then reuses the 
 
 const notificationToggle = (tree: any, label: string) => nodes(tree).find(node => node.type === 'NotificationSwitch' && node.props.label === label)!;
 
-function notificationPanel(initial: { expense_updates: boolean; email_reminders: boolean } | null) {
+function notificationPanel(initial: { expense_updates: boolean; email_reminders: boolean; notifications_enabled?: boolean; email_available?: boolean; push_device_ids?: string[] } | null) {
   let preferences = initial, loads = 0, pushCalls = 0;
   const changes: boolean[] = [], pending: { value: any; resolve: (value: any) => void; reject: (error: Error) => void }[] = [];
-  const push = { state: { enabled: true, optedIn: true, ready: true, working: false, permission: 'granted', error: '' }, enable: () => { pushCalls++; }, disable: () => { pushCalls++; } };
+  const push = { state: { enabled: true, installationId: 'this-device', optedIn: true, ready: true, working: false, permission: 'granted', error: '' }, enable: () => { pushCalls++; }, disable: () => { pushCalls++; } };
   const app = harness('src/AccountNotifications.tsx', 'AccountNotifications', { AppState: { addEventListener: () => ({ remove() {} }) },
     request: async (_session: unknown, _path: string, method = 'GET', value?: any) => {
       if (method === 'GET') { loads++; if (!preferences) throw Error('offline'); return { ...preferences }; }
@@ -276,14 +277,15 @@ function notificationPanel(initial: { expense_updates: boolean; email_reminders:
     } });
   const props = { session: { token: 'synthetic' }, push, busy: false, onBusyChange: (value: boolean) => changes.push(value) };
   return { app, props, pending, changes, get loads() { return loads; }, get pushCalls() { return pushCalls; },
-    saved: (at: number) => { preferences = pending[at].value; pending[at].resolve({ ...preferences }); }, restore: () => { preferences = { expense_updates: false, email_reminders: true }; } };
+    saved: (at: number) => { const next = pending[at].value; if (preferences?.email_reminders && !next.email_reminders && !push.state.enabled) next.expense_updates = false; preferences = { ...next, notifications_enabled: next.expense_updates && (next.email_reminders || push.state.enabled) }; pending[at].resolve({ ...preferences }); }, restore: () => { preferences = { expense_updates: false, email_reminders: true }; } };
 }
 
-test('Notifications master alone hides/reveals saved channels without requesting push permission or rewriting channel choices', async () => {
+test('Notifications master mutes/restores retained channels without requesting permission or rewriting choices', async () => {
   const panel = notificationPanel({ expense_updates: false, email_reminders: true }), { app, props } = panel;
   app.render(props); app.commit(); await tick(); let tree = app.render(props);
   assert.equal(notificationToggle(tree, 'Notifications').props.checked, false);
-  assert.ok(!nodes(tree).some(node => node.type === 'PushSettings' || node.props.label === 'Email notifications'));
+  assert.equal(notificationToggle(tree, 'Email notifications').props.checked, true);
+  assert.ok(nodes(tree).some(node => node.type === 'PushSettings'));
   notificationToggle(tree, 'Notifications').props.onChange(true); tree = app.render(props);
   assert.equal(notificationToggle(tree, 'Notifications').props.disabled, true);
   assert.deepEqual(panel.pending[0].value, { expense_updates: true, email_reminders: true });
@@ -293,7 +295,8 @@ test('Notifications master alone hides/reveals saved channels without requesting
   assert.equal(nodes(tree).filter(node => node.type === 'PushSettings').length, 1);
   notificationToggle(tree, 'Email notifications').props.onChange(false); panel.saved(1); await tick(); tree = app.render(props);
   notificationToggle(tree, 'Notifications').props.onChange(false); panel.saved(2); await tick(); tree = app.render(props);
-  assert.ok(!nodes(tree).some(node => node.type === 'PushSettings' || node.props.label === 'Email notifications'));
+  assert.equal(notificationToggle(tree, 'Notifications').props.checked, false);
+  assert.equal(notificationToggle(tree, 'Email notifications').props.checked, false);
   notificationToggle(tree, 'Notifications').props.onChange(true); panel.saved(3); await tick(); tree = app.render(props);
   assert.equal(notificationToggle(tree, 'Email notifications').props.checked, false);
   assert.equal(props.push.state.optedIn, true); assert.equal(panel.pushCalls, 0);
@@ -608,7 +611,7 @@ test('payment page shows the other person’s address in both directions and the
     { id: 'other', name: 'Asha', payment_profile: { vpa: 'asha@example' } },
   ] };
   const env = { useMemo: (fn: () => unknown) => fn(), useUI: () => ({ ui: {}, palette: {} }), isPersonalPayment, paymentReturnNeedsConfirmation,
-    PaymentAddress: 'PaymentAddress', LoadingSpinner: 'LoadingSpinner', UPIAppChooser: 'UPIAppChooser', WebPaymentQuote: 'WebPaymentQuote' };
+    PaymentAddress: 'PaymentAddress', PaymentHelpDialog: 'PaymentHelpDialog', LoadingSpinner: 'LoadingSpinner', UPIAppChooser: 'UPIAppChooser', WebPaymentQuote: 'WebPaymentQuote' };
   for (const incoming of [false, true]) {
     const props = { group: paymentGroup, selfId: 'self', busy: true, returnPayment: null,
       initial: { sender: incoming ? 'other' : 'self', recipient: incoming ? 'self' : 'other', amount: '500' } };
@@ -703,4 +706,117 @@ test('header keeps a fixed feedback slot, swaps it for the spinner while busy an
   assert.equal(nodes(tree).filter(node => node.type === 'ActivityIndicator').length, 1);
   assert.deepEqual(nodes(tree).find(node => node.props.style?.width === 44 && node.props.style?.height === 44)!.props.style, slot.props.style);
   assert.ok(!find(app.render({ title: 'Payment', busy: false }), 'label', 'Feedback'));
+});
+
+test('Payment failed opens frozen-address help without answering or changing the payment', () => {
+  let writes = 0;
+  const env = { useMemo: (fn: () => unknown) => fn(), useUI: () => ({ ui: {}, palette: {} }), isPersonalPayment, paymentReturnNeedsConfirmation,
+    PaymentAddress: 'PaymentAddress', PaymentHelpDialog: 'PaymentHelpDialog', LoadingSpinner: 'LoadingSpinner', UPIAppChooser: 'UPIAppChooser' };
+  const app = harness('src/SettleForm.tsx', 'SettleForm', env);
+  const props = { group: { ...group, transfers: [] }, selfId: 'self', busy: false,
+    returnPayment: { groupId: 'g', sender: 'self', recipient: 'other', payeeName: 'Original payee', vpa: 'original@example', amount: '500', launch: 'opened', decision: null, reviewRequested: true },
+    onSave: () => writes++, onResolveReturn: () => writes++, onReturnPaymentChange: () => writes++ };
+  let tree = app.render(props);
+  assert.ok(find(tree, 'title', 'Yes, I paid')); assert.ok(find(tree, 'title', 'No'));
+  find(tree, 'title', 'Payment failed').props.onPress(); tree = app.render(props);
+  const help = nodes(tree).find(node => node.type === 'PaymentHelpDialog')!;
+  assert.equal(help.props.visible, true); assert.equal(help.props.vpa, 'original@example'); assert.equal(help.props.name, 'Original payee');
+  help.props.onClose(); assert.equal(nodes(app.render(props)).find(node => node.type === 'PaymentHelpDialog')!.props.visible, false);
+  assert.equal(writes, 0);
+  const dialog = harness('src/PaymentPanels.tsx', 'PaymentHelpDialog', { DialogFocus: 'DialogFocus' }).render({ visible: true, name: 'Original payee', vpa: 'original@example', onClose() {} });
+  assert.deepEqual(nodes(dialog).filter(node => node.type === 'Button').map(node => node.props.title), ['Done']);
+  assert.ok(nodes(dialog).some(node => typeof node.type === 'function' && node.type.name === 'PaymentAddress' && node.props.vpa === 'original@example'));
+});
+
+test('master reflects usable channel combinations without changing saved choices or asking permission', async () => {
+  for (const email of [false, true]) for (const push of [false, true]) {
+    const panel = notificationPanel({ expense_updates: true, email_reminders: email });
+    panel.props.push.state.enabled = push;
+    panel.app.render(panel.props); panel.app.commit(); await tick();
+    assert.equal(notificationToggle(panel.app.render(panel.props), 'Notifications').props.checked, email || push);
+    assert.equal(panel.pending.length, 0); assert.equal(panel.pushCalls, 0);
+    panel.app.unmount();
+  }
+  for (const ids of [['this-device'], ['other-device']]) {
+    const panel = notificationPanel({ expense_updates: true, email_reminders: false, notifications_enabled: true, push_device_ids: ids });
+    panel.props.push.state.enabled = false; panel.props.push.state.permission = 'denied';
+    panel.app.render(panel.props); panel.app.commit(); await tick();
+    assert.equal(notificationToggle(panel.app.render(panel.props), 'Notifications').props.checked, ids[0] === 'other-device');
+    assert.equal(panel.pending.length, 0); panel.app.unmount();
+  }
+});
+
+test('last email OFF saves master OFF; enabling with no choices stays OFF until a channel is chosen', async () => {
+  const panel = notificationPanel({ expense_updates: true, email_reminders: true });
+  panel.props.push.state.enabled = false;
+  panel.app.render(panel.props); panel.app.commit(); await tick();
+  notificationToggle(panel.app.render(panel.props), 'Email notifications').props.onChange(false);
+  panel.saved(0); await tick();
+  assert.equal(notificationToggle(panel.app.render(panel.props), 'Notifications').props.checked, false);
+  notificationToggle(panel.app.render(panel.props), 'Notifications').props.onChange(true);
+  assert.equal(panel.pending[1].value.email_reminders, false); assert.equal(panel.pushCalls, 0);
+  panel.saved(1); await tick();
+  assert.equal(notificationToggle(panel.app.render(panel.props), 'Notifications').props.checked, false);
+  notificationToggle(panel.app.render(panel.props), 'Email notifications').props.onChange(true);
+  panel.saved(2); await tick();
+  assert.equal(notificationToggle(panel.app.render(panel.props), 'Notifications').props.checked, true);
+  find(panel.app.render(panel.props), 'label', 'Notifications').props.onPress(); await tick();
+  assert.equal(notificationToggle(panel.app.render(panel.props), 'Email notifications').props.checked, true);
+  panel.app.unmount();
+});
+
+test('Google Pay info pill opens address help without selecting an app or preparing a payment', () => {
+  let chosen = 0;
+  const app = harness('src/PaymentPanels.tsx', 'UPIAppChooser', { Chip: 'Chip', UPIAppIcon: 'UPIAppIcon', CancelDialogActions: 'CancelDialogActions' });
+  const props = { apps: [{ id: 'google-pay', name: 'Google Pay' }, { id: 'upi', name: 'Other UPI app' }], recipient: { name: 'Asha', vpa: 'asha@example' }, disabled: false, onChoose: () => chosen++, onDismiss() {} };
+  let tree = app.render(props); app.commit();
+  const pill = find(tree, 'accessibilityLabel', 'Why Google Pay might fail');
+  assert.ok(pill); pill.props.onPress(); tree = app.render(props);
+  const help = nodes(tree).find(node => node.type?.name === 'PaymentHelpDialog')!;
+  assert.equal(help.props.visible, true); assert.equal(help.props.kind, 'google-pay'); assert.equal(help.props.vpa, props.recipient.vpa); assert.equal(chosen, 0);
+  help.props.onClose(); tree = app.render(props);
+  find(tree, 'title', 'Google Pay').props.onPress(); assert.equal(chosen, 1);
+  app.unmount();
+});
+
+test('UPI setup follows name, can be skipped, validates format and waits for save confirmation', async () => {
+  let skips = 0, saves = 0, finish!: () => void;
+  const app = harness('src/UPISetupDialog.tsx', 'UPISetupDialog', { DialogFocus: 'DialogFocus', NameOnlyForm: 'NameOnlyForm' });
+  const props = { visible: true, busy: false, needsName: false, onSaveName: async () => {}, onSkip: () => skips++, onSave: async (value: string) => { assert.equal(value, 'name@example'); saves++; await new Promise<void>(resolve => { finish = resolve; }); } };
+  let tree = app.render({ ...props, needsName: true }); app.commit();
+  assert.ok(nodes(tree).some(node => node.type === 'NameOnlyForm'));
+  assert.ok(!nodes(tree).some(node => node.type === 'TextField'));
+  tree = app.render(props); find(tree, 'title', 'Skip').props.onPress(); assert.equal(skips, 1); assert.equal(saves, 0);
+  assert.equal(find(tree, 'title', 'Save').props.disabled, true);
+  find(tree, 'label', 'UPI ID (optional)').props.onChangeText(' name@example ');
+  tree = app.render(props); find(tree, 'title', 'Save').props.onPress(); find(tree, 'title', 'Save').props.onPress();
+  assert.equal(saves, 1); assert.equal(skips, 1);
+  finish(); await tick(); assert.equal(skips, 2);
+  app.unmount();
+});
+
+test('profile read prompts once only when missing UPI, never overwrites another account or known address', async () => {
+  const session = { baseUrl: 'https://synthetic.invalid', userId: '1', token: 'session-a' }, activeSessionRef = { current: session };
+  const owner = `${session.baseUrl}|1`, prompts: boolean[] = [], addresses: string[] = [];
+  let me = { display_name: 'Asha', payment_profile: null as null | { vpa: string } };
+  const env: Record<string, any> = { request: async () => me, rememberName: async () => {}, activeSessionRef, ownerRef: { current: owner }, accountOwner: (value: any) => `${value.baseUrl}|${value.userId}`, setVpa: (value: string) => addresses.push(value), setUpiSetup: (value: boolean) => prompts.push(value), upiPrompts: { current: new Set() } };
+  const read = appAction('readProfile', env);
+  await read(session); await read(session); assert.deepEqual(prompts, [true]);
+  me = { ...me, payment_profile: { vpa: 'known@example' } }; await read(session);
+  assert.deepEqual(prompts, [true, false]); assert.equal(addresses.at(-1), 'known@example');
+  activeSessionRef.current = { ...session, token: 'session-b' }; await read(session);
+  assert.equal(addresses.length, 3);
+});
+
+
+test('Failed optional UPI save retains the address and never dismisses as saved', async () => {
+  let skips = 0;
+  const app = harness('src/UPISetupDialog.tsx', 'UPISetupDialog', { DialogFocus: 'DialogFocus', NameOnlyForm: 'NameOnlyForm' });
+  const props = { visible: true, busy: false, needsName: false, onSaveName: async () => {}, onSkip: () => skips++, onSave: async () => { throw Error('Offline'); } };
+  let tree = app.render(props); app.commit();
+  find(tree, 'label', 'UPI ID (optional)').props.onChangeText('name@example');
+  tree = app.render(props); find(tree, 'title', 'Save').props.onPress(); await tick(); tree = app.render(props);
+  assert.equal(skips, 0); assert.equal(find(tree, 'label', 'UPI ID (optional)').props.value, 'name@example');
+  assert.ok(nodes(tree).some(node => node.type === 'ErrorText'));
+  app.unmount();
 });

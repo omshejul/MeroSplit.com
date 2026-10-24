@@ -19,7 +19,8 @@ def submit(actor, identifier, text):
     text = text.strip()
     if not text:
         raise HttpError(422, 'Write your feedback first.')
-    get_user_model().objects.select_for_update().get(pk=actor.pk)
+    if not get_user_model().objects.select_for_update(no_key=True).filter(pk=actor.pk, is_active=True).exists():
+        raise HttpError(401, 'Sign in again to send feedback.')
     existing = Feedback.objects.filter(pk=identifier).first()
     if existing:
         if existing.user_id != actor.pk or existing.text != text:

@@ -9,7 +9,7 @@ import { Button, ErrorText, Icon, useUI } from './ui';
 import type { Palette } from './ui';
 import { AmountField, RadioChoice } from './FormFields';
 import LoadingSpinner from './LoadingSpinner';
-import { PaymentAddress, UPIAppChooser, WebPaymentQuote } from './PaymentPanels';
+import { PaymentAddress, PaymentHelpDialog, UPIAppChooser, WebPaymentQuote } from './PaymentPanels';
 import { copyText } from './clipboard';
 import { availableUPIApps, buildUPIUrl, openUPIPayment, validateUPIPayment } from './upi';
 import type { UPIApp, UPILaunchQuote } from './upi';
@@ -44,6 +44,7 @@ export default function SettleForm({ group, initial, busy, selfId, onSave, onRev
   const [recipient, setRecipient] = useState(proposal?.recipient ?? '');
   const [amount, setAmount] = useState(proposal ? rupees(proposal.amount) : ''), [error, setError] = useState(''), [saving, setSaving] = useState(false);
   const [peopleOpen, setPeopleOpen] = useState(!proposal);
+  const [failureHelp, setFailureHelp] = useState(false);
   const [notice, setNotice] = useState(''), [reviewing, setReviewing] = useState(false);
   const [chooser, setChooser] = useState<{ payment: Payment; target: { vpa: string; name: string }; apps: UPIApp[] } | null>(null);
   const [webQuote, setWebQuote] = useState<{ quote: UPILaunchQuote; url: string; target: { vpa: string; name: string } } | null>(null);
@@ -238,7 +239,9 @@ export default function SettleForm({ group, initial, busy, selfId, onSave, onRev
         <Button title={saving ? 'Confirming update…' : 'Try again'} kind="primary" onPress={() => void resolveReturn(pendingReturn.decision === 'paid')} disabled={disabled} /> : needsAnswer ? <>
           <Button title={saving ? 'Recording payment…' : 'Yes, I paid'} kind="primary" onPress={() => void resolveReturn(true)} disabled={disabled} />
           <Button title="No" kind="secondary" onPress={() => void resolveReturn(false)} disabled={disabled} />
+          <Button title="Payment failed" kind="text" onPress={() => setFailureHelp(true)} disabled={disabled} />
         </> : <Button title="Review payment" kind="primary" disabled={disabled || pendingReturn.launch === 'opening' && Platform.OS !== 'web'} onPress={() => void transitionReturn({ type: 'review' }).catch(() => setReturnError('Could not save this payment reminder. Try again.'))} />}
+      <PaymentHelpDialog visible={failureHelp} name={pendingReturn.payeeName} vpa={pendingReturn.vpa} onClose={() => setFailureHelp(false)} />
     </View>;
   }
   return <View style={styles.form}>
@@ -270,7 +273,7 @@ export default function SettleForm({ group, initial, busy, selfId, onSave, onRev
     {!!notice && <Text accessibilityLiveRegion="polite" style={ui.caption}>{notice}</Text>}
     {!!error && <ErrorText live>{error}</ErrorText>}
     {!webQuote && <Button title={amountLabel ? `Record ${amountLabel} already paid` : 'Record a payment already made'} accessibilityLabel={amountLabel ? `Record ${amountLabel} to ${label(recipient)}` : 'Record payment'} onPress={confirm} disabled={disabled || group.archived || !isPersonalPayment(group, selfId, sender, recipient)} kind={canPay ? 'secondary' : 'primary'} icon="check" />}
-    <UPIAppChooser apps={chooser?.apps ?? null} disabled={busy || saving} onChoose={app => void pay(app)} onDismiss={() => { if (!busy && !saving) setChooser(null); }} />
+    <UPIAppChooser apps={chooser?.apps ?? null} recipient={chooser?.target ?? null} disabled={busy || saving} onChoose={app => void pay(app)} onDismiss={() => { if (!busy && !saving) setChooser(null); }} />
   </View>;
 }
 

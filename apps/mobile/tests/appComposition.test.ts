@@ -36,7 +36,7 @@ test('Me mounts Connect MCP on native and web, with current account key, session
   const env: Record<string, any> = { React, MCPSettings, screen: 'home', tab: 'Account', owner: 'account-one',
     session: { email: 'one@example.invalid', token: 'synthetic-one' }, busy: false, lock: { current: false },
     myName: 'One', vpa: '', push: {}, unavailable: [], commands: [], groups: [], expired: false,
-    legacy: [], legacySelf: {}, recoveries: [], ui: {}, saveName() {},
+    legacy: [], legacySelf: {}, recoveries: [], ui: {}, saveName() {}, saveUPI() {},
     AccountHeader: 'AccountHeader', View: 'View', ProfileSettings: 'ProfileSettings', AccountNotifications: 'AccountNotifications',
     DeleteAccount: 'DeleteAccount', ExportData: 'ExportData', SettingsRow: 'SettingsRow', Disclosure: 'Disclosure', Button: 'Button', Text: 'Text', SavedChanges: 'SavedChanges', LegacyRecords: 'LegacyRecords' };
   const busyChanges: boolean[] = [];

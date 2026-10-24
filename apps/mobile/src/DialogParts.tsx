@@ -4,10 +4,10 @@ import { Dialog } from 'react-native-paper';
 import { Button } from './ui';
 
 // Inputs/choices scroll while the separate action footer remains reachable.
-export function DialogScrollBody({ maxHeight, gap, paddingVertical = 12, children }: {
-  maxHeight: number; gap: number; paddingVertical?: number; children: React.ReactNode;
+export function DialogScrollBody({ maxHeight, gap, paddingVertical = 12, paddingHorizontal, children }: {
+  maxHeight: number; gap: number; paddingVertical?: number; paddingHorizontal?: number; children: React.ReactNode;
 }) {
-  return <Dialog.ScrollArea style={{ maxHeight }}>
+  return <Dialog.ScrollArea style={{ maxHeight, ...(paddingHorizontal !== undefined && { paddingHorizontal }) }}>
     <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingVertical, gap, paddingRight: Platform.OS === 'web' ? 16 : 0 }}>{children}</ScrollView>
   </Dialog.ScrollArea>;
 }

@@ -27,7 +27,13 @@ from .collaboration import (
     review_invite,
 )
 from .email_invites import send_person_invite, update_contact
-from .expense_notifications import foreground, mark_seen, notice_feed, preferences, update_preferences
+from .expense_notifications import (
+    foreground,
+    mark_seen,
+    notice_feed,
+    notification_settings,
+    update_preferences,
+)
 from .history_reads import (
     account_activity,
     expense_detail,
@@ -275,7 +281,7 @@ def account_profile_update(request, body: DisplayNameIn):
 
 @api.get("/me/notifications/preferences")
 def notification_preferences(request):
-    return preferences(request.auth)
+    return notification_settings(request.auth)
 
 
 @api.post('/me/feedback')
@@ -285,7 +291,8 @@ def submit_feedback(request, body: FeedbackIn):
 
 @api.put("/me/notifications/preferences")
 def notification_preferences_update(request, body: NotificationPreferencesIn):
-    return update_preferences(request.auth, body.expense_updates, body.email_reminders)
+    update_preferences(request.auth, body.expense_updates, body.email_reminders)
+    return notification_settings(request.auth)
 
 
 @api.get("/me/balance-statements/preferences")

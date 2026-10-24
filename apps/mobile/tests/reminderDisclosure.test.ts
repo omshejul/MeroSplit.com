@@ -16,7 +16,7 @@ find(source); assert.ok(handler, 'exercise the actual production sign-in action'
 const compiled = ts.transpile(handler, { target: ts.ScriptTarget.ES2022 });
 
 for (const [platform, requestEmailCode, client] of [['native', nativeRequest, 'app'], ['browser', browserRequest, 'browser']] as const) {
-  test(`${platform} disclosure-visible App action sends true through its actual code/request transport`, async () => {
+  test(`${platform} App action leaves email off through its actual code/request transport`, async () => {
     const original = { fetch: globalThis.fetch, window: globalThis.window, document: globalThis.document };
     Object.assign(globalThis, { window: { location: { origin: base } }, document: { cookie: 'csrftoken=synthetic-csrf' } });
     const calls: { url: string; init: RequestInit }[] = [];
@@ -29,7 +29,7 @@ for (const [platform, requestEmailCode, client] of [['native', nativeRequest, 'a
       assert.equal(calls.length, 1);
       assert.equal(calls[0].url, `${base}/_allauth/${client}/v1/auth/code/request`);
       assert.equal(calls[0].init.method, 'POST');
-      assert.deepEqual(JSON.parse(String(calls[0].init.body)), { email: email.trim(), email_reminders_disclosed: true });
+      assert.deepEqual(JSON.parse(String(calls[0].init.body)), { email: email.trim(), email_reminders_disclosed: false });
       assert.equal(new Headers(calls[0].init.headers).get('X-Session-Token'), null);
       if (platform === 'browser') { assert.equal(calls[0].init.credentials, 'same-origin'); assert.equal(new Headers(calls[0].init.headers).get('X-CSRFToken'), 'synthetic-csrf'); }
       assert.deepEqual(state.challenge, { challengeId: 'request-challenge', expiresIn: 180, retryAfter: 60 });

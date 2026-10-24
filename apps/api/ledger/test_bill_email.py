@@ -565,15 +565,15 @@ def test_same_bill_command_from_two_connections_captures_exactly_one_notice(ledg
 
 
 @pytest.mark.parametrize("claim_before_send", [False, True])
-def test_unknown_current_intent_survives_first_disclosed_account_enable_and_claim(ledger, provider, clock, claim_before_send):
+def test_unknown_current_intent_survives_explicit_account_enable_and_claim(ledger, provider, clock, claim_before_send):
     body = add(ledger)
     intent = BillEmailNotice.objects.get()
     assert intent.issued_user_id is None and not get_user_model().objects.filter(email=MAILBOX).exists()
     clock[0] += timedelta(minutes=1)
-    # This is the existing successful OTP identity-creation path, with the
-    # rendered new-account disclosure. It sends no email at this boundary.
+    # Sign-in leaves email off. Only an explicit channel choice enables it.
     with transaction.atomic():
         recipient, _ = _verified_user(MAILBOX, email_reminders_disclosed=True)
+    expense_notifications.update_preferences(recipient, True, True)
     pref = NotificationPreference.objects.get(user=recipient)
     assert pref.email_reminders and pref.email_enabled_at > intent.created_at
     if not claim_before_send:

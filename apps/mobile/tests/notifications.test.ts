@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import ts from 'typescript';
 import { accountOwner, ApiError, request } from '../src/api.ts';
 import { consentToPush, dismissReadPushes, emptyPushPreferences, notificationForAccount, notificationTarget, pushPermission, refreshPushDevice, unregisterPushDevice } from '../src/notifications.ts';
 import type { PushDevice, PushPreferences } from '../src/notifications.ts';
@@ -72,11 +74,11 @@ test('A failed registration keeps consent retryable without claiming a confirmed
   await assert.rejects(refreshPushDevice(session, opted, 'granted', async () => ({ ...device, token: 'raw-apns-token' }), save, failed), /unavailable/);
 });
 
-test('Permission revocation opts out before unregistering and never fetches another token', async () => {
+test('Permission revocation preserves confirmed choice until unregister acknowledgment and never fetches another token', async () => {
   const writes: PushPreferences[] = [], save = async (value: PushPreferences) => { writes.push(value); };
   const send: typeof request = async <T>(_active: Session, path: string, method?: string): Promise<T> => {
     assert.equal(path, `/me/push-devices/${installation}`); assert.equal(method, 'DELETE');
-    assert.equal(writes[0].opted_in, false); assert.deepEqual(writes[0].binding, device);
+    assert.equal(writes[0].opted_in, true); assert.equal(writes[0].pending_off, true); assert.deepEqual(writes[0].binding, device);
     return { removed: true } as T;
   };
   const result = await refreshPushDevice(session, registered, 'denied', async () => { throw new Error('No token call when denied'); }, save, send);
@@ -88,7 +90,7 @@ test('Offline unregister retains the retry identity, expired session401 safely c
   const save = async (value: PushPreferences) => { stored = value; };
   const offline: typeof request = async <T>(): Promise<T> => { throw new Error('Unregister offline'); };
   await assert.rejects(unregisterPushDevice(session, registered, save, offline), /Unregister offline/);
-  assert.equal(stored.opted_in, false); assert.equal(stored.owner, accountOwner(session)); assert.deepEqual(stored.binding, device);
+  assert.equal(stored.opted_in, true); assert.equal(stored.pending_off, true); assert.equal(stored.owner, accountOwner(session)); assert.deepEqual(stored.binding, device);
   const expired: typeof request = async <T>(): Promise<T> => { throw new ApiError(401, 'Session expired'); };
   assert.deepEqual(await unregisterPushDevice(session, stored, save, expired), initial);
   const other = { ...session, userId: '2' };
@@ -203,4 +205,29 @@ test('Displayed prompt reconciliation never dismisses an expense outside its bou
     return { has_more: false, notices: [] } as T;
   });
   assert.equal(dismissed.length, 50); assert.equal(dismissed.at(-1), '49');
+});
+
+
+test('Explicit Push enable cancels a failed disable intent before registering again', async () => {
+  let stored: PushPreferences = { ...registered, pending_off: true };
+  const save = async (value: PushPreferences) => { stored = value; };
+  const consent = await consentToPush(session, stored, save);
+  assert.equal(consent.pending_off, false);
+  const calls: string[] = [];
+  const send: typeof request = async <T>(_session: Session, _path: string, method?: string): Promise<T> => { calls.push(method || 'GET'); return { id: installation, enabled: true } as T; };
+  await refreshPushDevice(session, consent, 'granted', async () => device, save, send);
+  assert.deepEqual(calls, ['PUT']); assert.deepEqual(stored.binding, device);
+});
+
+
+test('A failed native token refresh invalidates availability, including token rotation', async () => {
+  const source = ts.createSourceFile('PushSettings.tsx', readFileSync(new URL('../src/PushSettings.tsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  let declaration = '';
+  function visit(node: ts.Node) { if (ts.isFunctionDeclaration(node) && node.name?.text === 'refreshNow') declaration = node.getText(source); ts.forEachChild(node, visit); }
+  visit(source); assert.ok(declaration);
+  let verified = true;
+  const env = { activeSession: { current: session }, state: async () => registered, mounted: { current: true }, setPermission() {}, setVerified: (value: boolean) => { verified = value; }, Notifications: { getPermissionsAsync: async () => ({ status: 'granted' }) }, pushPermission, refreshPushDevice: async () => { throw Error('Registry unavailable'); }, save() {} };
+  const refresh = new Function('env', `with(env){${ts.transpile(declaration, { target: ts.ScriptTarget.ES2022 })};return refreshNow;}`)(env);
+  await assert.rejects(refresh({ type: 'ios', data: 'synthetic-rotated' }), /Registry unavailable/);
+  assert.equal(verified, false);
 });

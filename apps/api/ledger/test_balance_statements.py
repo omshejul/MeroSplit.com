@@ -90,7 +90,7 @@ def test_default_off_legacy_two_fields_preserve_consent_and_resume_without_backl
     pref = NotificationPreference.objects.get(user=client.actor)
     assert pref.balance_statements and pref.statement_next_at > timezone.now()
     pending = BalanceStatement.objects.create(user=client.actor, period_key="monthly:old", due_at=timezone.now())
-    assert channels(client, master=False).json() == {"expense_updates": False, "email_reminders": True}
+    assert channels(client, master=False).json() == {"expense_updates": False, "email_reminders": True, "notifications_enabled": False, "email_available": True, "push_device_ids": []}
     pending.refresh_from_db()
     assert pending.state == "cancelled" and not pending.payload
     assert config(client, frequency="weekly").json()["next_at"] is None
@@ -412,3 +412,25 @@ def test_existing_frozen_recipe_is_sent_unchanged_after_report_format_changes(cl
     assert base64.b64decode(body["attachments"][0]["content"]) == legacy_csv
     job.refresh_from_db()
     assert job.state == "accepted" and len(calls) == 1
+
+
+def test_bill_mailbox_optout_preserves_own_email_channel_and_master_off_blocks_statements(client, settings):
+    settings.PUSH_PROVIDER = "expo"
+    from .bill_email import mailbox_digest
+    from .bill_email_models import BillEmailPreference
+    from .expense_notifications import notification_settings, verified_recipient
+    from .push import remove_device
+    from .test_push import register
+    BillEmailPreference.objects.create(email_digest=mailbox_digest(client.actor.email), suppressed=True)
+    assert channels(client).status_code == 200
+    device = register(client)
+    assert notification_settings(client.actor)['notifications_enabled'] is True
+    assert notification_settings(client.actor)['email_available'] is True
+    assert verified_recipient(client.actor) is None
+    assert remove_device(client.actor, device.id) == {'removed': True}
+    assert notification_settings(client.actor)['notifications_enabled'] is True
+    assert statements.statement_recipient(client.actor) == client.actor.email
+    assert channels(client, master=False).json()['notifications_enabled'] is False
+    assert NotificationPreference.objects.get(user=client.actor).email_reminders
+    assert BillEmailPreference.objects.get().suppressed
+    assert config(client).json()['next_at'] is None

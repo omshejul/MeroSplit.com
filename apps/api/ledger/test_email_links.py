@@ -94,7 +94,7 @@ def test_request_click_cross_browser_creates_same_allauth_identity_and_no_raw_db
     identity = get_user_model().objects.get(pk=body["data"]["user"]["id"])
     assert identity.email == row.email and not identity.has_usable_password()
     assert EmailAddress.objects.filter(user=identity, verified=True).exists()
-    assert NotificationPreference.objects.get(user=identity).email_reminders
+    assert not NotificationPreference.objects.filter(user=identity, email_reminders=True).exists()
     for session in Session.objects.all():
         assert token not in json.dumps(session.get_decoded())
     assert exchange(Client(), row).status_code == 400
@@ -129,7 +129,7 @@ def test_link_disclosure_is_request_bound_and_existing_preferences_unchanged(mai
     response = post(Client(), "exchange", {"grant_id": str(row.id), "proof": proof(row), "email_reminders_disclosed": True})
     assert response.status_code == 200
     identity = get_user_model().objects.get(pk=response.json()["data"]["user"]["id"])
-    assert bool(NotificationPreference.objects.filter(user=identity, email_reminders=True).exists()) == disclosed
+    assert not NotificationPreference.objects.filter(user=identity, email_reminders=True).exists()
     newer = grant(email_reminders_disclosed=True)
     NotificationPreference.objects.update_or_create(user=identity, defaults={"email_reminders": False, "email_enabled_at": None})
     assert exchange(Client(), newer).status_code == 200
@@ -523,7 +523,7 @@ def test_login_renewal_keeps_recorded_disclosure_for_new_identity(mailbox):
     assert replacement.email_reminders_disclosed
     response = exchange(Client(), replacement)
     assert response.status_code == 200
-    assert NotificationPreference.objects.get(user_id=response.json()["data"]["user"]["id"]).email_reminders
+    assert not NotificationPreference.objects.filter(user_id=response.json()["data"]["user"]["id"], email_reminders=True).exists()
 
 
 def test_renew_uncertain_retry_reuses_same_payload_proof_key_and_expiry(mailbox, monkeypatch):

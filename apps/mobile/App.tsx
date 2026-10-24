@@ -25,6 +25,7 @@ import { listPaymentReturns, savePaymentReturn, clearPaymentReturn, resolvePayme
 import MembersScreen from './src/MembersScreen';
 import SendInviteDialog from './src/SendInviteDialog';
 import FeedbackDialog from './src/FeedbackDialog';
+import UPISetupDialog from './src/UPISetupDialog';
 import { sendInvitation } from './src/members';
 import SavedChangeScreen from './src/SavedChangeScreen';
 import SplitwiseImportScreen from './src/SplitwiseImportScreen';
@@ -110,7 +111,8 @@ function AppContent() {
   const scroll = useRef<React.ComponentRef<typeof ScrollView>>(null), suppressPush = useRef<(data: unknown) => boolean>(() => false);
   const [viewport, setViewport] = useState<WindowFrame | null>(null), [scrollEpoch, setScrollEpoch] = useState(0);
   const [alertOpen, setAlertOpen] = useState(false);
-  const [vpa, setVpa] = useState('');
+  const [vpa, setVpa] = useState(''), [upiSetup, setUpiSetup] = useState(false);
+  const upiPrompts = useRef(new Set<string>());
   const [returnAttemptId, setReturnAttemptId] = useState<string | null>(null);
   const [returns, setReturns] = useState<PaymentReturn[]>([]), [settlementId, setSettlementId] = useState<string | null>(null);
   const [activity, setActivity] = useState<(ActivityPage & { firstPage: boolean }) | null>(null), [activityError, setActivityError] = useState('');
@@ -148,7 +150,7 @@ function AppContent() {
   function measureViewport() { scroll.current?.measureInWindow((x, y, width, height) => setViewport({ x, y, width, height })); }
   function navigate(value: Screen) { setNotice(''); setScreen(value); }
   function changeScope(value: Session | null) {
-    setFeedbackOpen(false);
+    setFeedbackOpen(false); setUpiSetup(false);
     setVerifiedEmptyOwner(''); setEmptyChatScope('');
     ownerRef.current = value ? accountOwner(value) : '';
     activeSessionRef.current = value;
@@ -205,6 +207,12 @@ function AppContent() {
   async function readProfile(active: Session) {
     const me = await request<{ display_name?: string; payment_profile: { vpa: string } | null }>(active, '/me');
     await rememberName(active, me.display_name ?? active.displayName ?? '');
+    if (activeSessionRef.current?.token === active.token && ownerRef.current === accountOwner(active)) {
+      setVpa(me.payment_profile?.vpa ?? '');
+      const key = `${accountOwner(active)}|${active.token}`;
+      if (me.payment_profile?.vpa) setUpiSetup(false);
+      else if (!upiPrompts.current.has(key)) { upiPrompts.current.add(key); setUpiSetup(true); }
+    }
     return me;
   }
   async function saveName(display_name: string, onlyIfUnnamed = false) {
@@ -215,6 +223,15 @@ function AppContent() {
       await rememberName(active, result.display_name);
       try { await refreshGroups(await getDatabase(), active, 'summary'); await load(accountOwner(active)); }
       catch { setNotice('Name saved. Reconnect to refresh your groups.', 'warning'); }
+    }, false);
+  }
+  async function saveUPI(value: string) {
+    await perform(async () => {
+      const active = session;
+      if (!active || activeSessionRef.current?.token !== active.token) throw new Error('Sign in again.');
+      const result = await request<{ vpa: string }>(active, '/me/payment-profile', 'PUT', { vpa: value.trim() });
+      if (activeSessionRef.current?.token !== active.token || ownerRef.current !== accountOwner(active) || result.vpa !== value.trim()) throw new Error('Could not confirm your UPI ID.');
+      setVpa(result.vpa);
     }, false);
   }
   async function syncAccount(active: Session) {
@@ -645,7 +662,7 @@ function AppContent() {
   }
   async function sendSignInCode() {
     setEmailRequested(false);
-    const value = await requestEmailCode(API_URL, email, true);
+    const value = await requestEmailCode(API_URL, email);
     setChallenge(value); setRetryAt(Date.now() + value.retryAfter * 1000); setCode(''); setClock(Date.now());
   }
   async function finishSignIn() {
@@ -934,7 +951,7 @@ function AppContent() {
         onImported={(group, alreadyImported) => { if (ownerRef.current !== accountOwner(session)) return; setGroups(rows => [...rows.filter(row => row.group.id !== group.id), { kind: 'shared', group }]); setGroupId(group.id); setExpenseId(null); setTab('Groups'); setScreen('group'); setNotice(alreadyImported ? 'Already imported.' : 'Imported.', 'success'); }} />}
       {screen === 'home' && tab === 'Account' && session && <>
         <AccountHeader key={owner} session={session} name={myName} busy={busy} onBusyChange={value => { lock.current = value; setBusy(value); }} />
-        <View><ProfileSettings key={owner} name={myName} vpa={vpa} busy={busy} onSaveName={saveName} onSaveUPI={value => perform(async () => { const result = await request<{ vpa: string }>(session, '/me/payment-profile', 'PUT', { vpa: value }); setVpa(result.vpa); }, false)} onAppearance={value => perform(() => changeAppearance(value), false)} onColorFamily={value => perform(() => changeColorFamily(value), false)} />
+        <View><ProfileSettings key={owner} name={myName} vpa={vpa} busy={busy} onSaveName={saveName} onSaveUPI={saveUPI} onAppearance={value => perform(() => changeAppearance(value), false)} onColorFamily={value => perform(() => changeColorFamily(value), false)} />
           <AccountNotifications key={owner} session={session} push={push} busy={busy} onBusyChange={value => { lock.current = value; setBusy(value); }} />
           <MCPSettings key={owner} session={session} busy={busy} onBusyChange={value => { lock.current = value; setBusy(value); }} />
         <View><SettingsRow label="Import from Splitwise" icon="import" disabled={busy} onPress={() => navigate('import')} />
@@ -961,6 +978,7 @@ function AppContent() {
     {showAddExpense && <AddExpenseButton disabled={busy} onPress={() => launch(() => openExpense())} />}
     {screen === 'home' && session && <AppTabs selected={tab} busy={busy} onSelect={value => { setShowArchived(false); setShowHidden(false); if (value === 'Activity') { activityOwner.current = ''; setActivityError(''); } setTab(value); setNotice(''); }} />}
   </View></AppFrame>
+    {session && !authHeld && !expired && <UPISetupDialog key={`${owner}|${session.token}`} visible={upiSetup && !feedbackOpen && screen !== 'settle' && screen !== 'expense' && screen !== 'billChat'} busy={busy} needsName={!session.displayName?.trim()} onSaveName={value => saveName(value, true)} onSave={saveUPI} onSkip={() => setUpiSetup(false)} />}
     {session && !authHeld && !expired && <FeedbackDialog key={`${owner}|${session.token}`} visible={feedbackOpen} onClose={() => setFeedbackOpen(false)} onSubmit={async body => {
       const active = session;
       if (activeSessionRef.current?.token !== active.token || ownerRef.current !== accountOwner(active)) throw new Error('Sign in again.');

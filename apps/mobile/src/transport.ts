@@ -38,7 +38,7 @@ export async function requestEmailCode(baseUrl: string, email: string, emailRemi
 }
 export async function confirmEmailCode(baseUrl: string, challengeId: string, code: string): Promise<Session> {
   const base = baseUrl.trim().replace(/\/+$/, '');
-  const { response, data } = await postEmailCode(base, 'confirm', { challenge_id: challengeId, code, email_reminders_disclosed: true }, preAuth.get(challengeId));
+  const { response, data } = await postEmailCode(base, 'confirm', { challenge_id: challengeId, code, email_reminders_disclosed: false }, preAuth.get(challengeId));
   if (!response.ok || !data.data?.user || !data.meta?.session_token || data.meta.is_authenticated === false) throw new Error(emailCodeError(data, 'The code is incorrect or expired. Try again.'));
   preAuth.delete(challengeId);
   return { baseUrl: base, userId: String(data.data.user.id), email: data.data.user.email ?? '', token: data.meta.session_token };

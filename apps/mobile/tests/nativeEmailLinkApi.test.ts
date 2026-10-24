@@ -43,7 +43,7 @@ test('native request sends disclosed email and returns existing delivered fallba
   ]);
   assert.deepEqual(await requestNativeEmailLink(`${base}/`, ' two@example.invalid ', fetcher), { challengeId: grantId, expiresIn: 180, retryAfter: 60 });
   await exchangeNativeEmailLink(base, grantId, proof, undefined, fetcher);
-  assert.deepEqual(JSON.parse(String(calls[0].init.body)), { email: 'two@example.invalid', email_reminders_disclosed: true });
+  assert.deepEqual(JSON.parse(String(calls[0].init.body)), { email: 'two@example.invalid', email_reminders_disclosed: false });
   assert.equal(headerToken(calls[0]), null);
   assert.equal(headerToken(calls[1]), null);
 });

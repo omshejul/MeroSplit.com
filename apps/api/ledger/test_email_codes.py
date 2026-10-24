@@ -79,7 +79,7 @@ def test_new_account_native_otp_verifies_allauth_and_never_persists_raw_code(mai
 
 @pytest.mark.parametrize("browser", [False, True])
 @pytest.mark.parametrize("disclosed", [None, False, True])
-def test_new_identity_email_default_requires_explicit_disclosure_flag(mailbox, browser, disclosed):
+def test_new_identity_email_stays_off_even_with_legacy_disclosure_flag(mailbox, browser, disclosed):
     client = Client(enforce_csrf_checks=browser)
     if browser:
         client.get("/_allauth/browser/v1/config")
@@ -92,8 +92,8 @@ def test_new_identity_email_default_requires_explicit_disclosure_flag(mailbox, b
     assert response.status_code == 200
     user_id = response.json()["data"]["user"]["id"]
     pref = NotificationPreference.objects.filter(user_id=user_id).first()
-    assert bool(pref and pref.email_reminders) == (disclosed is True)
-    assert bool(pref and pref.email_enabled_at) == (disclosed is True)
+    assert bool(pref and pref.email_reminders) is False
+    assert bool(pref and pref.email_enabled_at) is False
     assert not pref or pref.expense_updates
 
 

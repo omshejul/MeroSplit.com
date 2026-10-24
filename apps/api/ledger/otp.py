@@ -210,10 +210,7 @@ def _verified_user(email: str, *, email_reminders_disclosed: bool = False):
         user.username, user.email = f"email-{uuid4().hex}", email
         user.set_unusable_password()
         user.save()
-        # Older clients lack the disclosure/off control and omit this flag.
-        if email_reminders_disclosed:
-            from .models import NotificationPreference
-            NotificationPreference.objects.create(user=user, email_reminders=True, email_enabled_at=timezone.now())
+        # Legacy disclosure metadata is not an explicit channel opt-in.
     addresses = list(EmailAddress.objects.filter(user=user, email__iexact=email))
     if len(addresses) > 1:
         return None

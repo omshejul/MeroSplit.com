@@ -98,6 +98,39 @@ def test_browser_feedback_requires_csrf(client):
     assert not Feedback.objects.exists()
 
 
+def test_deactivated_actor_cannot_create_or_replay_feedback(client):
+    from ninja.errors import HttpError
+    identifier = uuid4()
+    feedback.submit(client.actor, identifier, 'Before deactivation')
+    type(client.actor).objects.filter(pk=client.actor.pk).update(is_active=False)
+    for value in [identifier, uuid4()]:
+        with pytest.raises(HttpError) as error:
+            feedback.submit(client.actor, value, 'Before deactivation')
+        assert error.value.status_code == 401
+    assert Feedback.objects.count() == 1
+
+
+@pytest.mark.parametrize('limit, expected', [(100, 5), (3, 3)])
+def test_feedback_batch_does_not_starve_the_existing_worker(settings, monkeypatch, limit, expected):
+    from io import StringIO
+
+    from django.core.management import call_command
+
+    from .management.commands import send_bill_notifications as command
+    settings.PUSH_PROVIDER = 'expo'
+    calls = {}
+    for name in ['send_pending_bill_notifications', 'check_pending_bill_receipts', 'send_pending_digests',
+                 'send_pending_bill_emails', 'send_chat_notifications', 'send_balance_statements',
+                 'send_membership_notifications', 'send_feedback_notifications']:
+        def fake(*, limit, label=name):
+            calls[label] = limit
+            return 0
+        monkeypatch.setattr(command, name, fake)
+    call_command('send_bill_notifications', limit=limit, stdout=StringIO())
+    assert calls.pop('send_feedback_notifications') == expected
+    assert set(calls.values()) == {limit}
+
+
 def test_overlapping_workers_cannot_send_feedback_twice(client, settings, monkeypatch):
     from concurrent.futures import ThreadPoolExecutor
     from threading import Event

@@ -30,7 +30,7 @@ function authenticated(baseUrl: string, result: Result): EmailLinkResult {
   return { session: makeBrowserSession(baseUrl, result.data.user), target: emailTarget(result.data.target), needsName: result.data.needs_name };
 }
 export async function requestEmailLink(baseUrl: string, email: string): Promise<EmailCodeChallenge> {
-  const result = await post(baseUrl, 'request', { email: email.trim(), email_reminders_disclosed: true });
+  const result = await post(baseUrl, 'request', { email: email.trim(), email_reminders_disclosed: false });
   if (result.data?.accepted !== true) throw new Error('Could not send a sign-in link. Use a code instead.');
   return challengeFromResponse(result);
 }

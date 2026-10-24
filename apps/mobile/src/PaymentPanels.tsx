@@ -1,13 +1,15 @@
 import { DialogScrollBody, CancelDialogActions } from './DialogParts';
 import KeyboardDialog from './KeyboardDialog';
-import React, { useState } from 'react';
+import DialogFocus from './DialogFocus';
+import React, { useEffect, useState } from 'react';
 import { View } from 'react-native';
-import { Dialog, Text } from 'react-native-paper';
+import { Chip, Dialog, Text } from 'react-native-paper';
 import QRCode from 'react-native-qrcode-svg';
 import { formatMoney } from './accounting';
 import type { UPIApp, UPILaunchQuote } from './upi';
-import { Button, ErrorText, useUI } from './ui';
+import { Button, ErrorText, Icon, useUI } from './ui';
 import { copyText } from './clipboard';
+import UPIAppIcon from './UPIAppIcon';
 
 export function PaymentAddress({ name, vpa }: { name: string; vpa: string }) {
   const { ui } = useUI();
@@ -43,14 +45,35 @@ export function WebPaymentQuote({ quote, url, disabled, onCopy, onOpen, onReview
   </View>;
 }
 
-export function UPIAppChooser({ apps, disabled, onChoose, onDismiss }: {
-  apps: UPIApp[] | null; disabled: boolean; onChoose: (app: UPIApp) => void; onDismiss: () => void;
+export function UPIAppChooser({ apps, recipient, disabled, onChoose, onDismiss }: {
+  apps: UPIApp[] | null; recipient?: { name: string; vpa: string } | null; disabled: boolean; onChoose: (app: UPIApp) => void; onDismiss: () => void;
 }) {
+  const [help, setHelp] = useState(false);
+  useEffect(() => { if (!apps) setHelp(false); }, [apps]);
   return <KeyboardDialog visible={apps !== null} onDismiss={onDismiss}>
     <Dialog.Title aria-level={2}>Pay with UPI</Dialog.Title>
-    <DialogScrollBody maxHeight={360} paddingVertical={8} gap={8}>
-      {apps?.map(app => <Button key={app.id} title={app.name} disabled={disabled} onPress={() => onChoose(app)} />)}
+    <DialogScrollBody maxHeight={360} paddingVertical={8} paddingHorizontal={8} gap={8}>
+      {apps?.map(app => <View key={app.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <View style={{ flex: 1 }}><Button title={app.name} compact icon={() => <UPIAppIcon app={app.id} />} disabled={disabled} onPress={() => onChoose(app)} /></View>
+        {app.id === 'google-pay' && <Chip compact disabled={disabled} accessibilityLabel="Why Google Pay might fail" icon={({ color }) => <Icon name="info" size={16} color={color} />} onPress={() => setHelp(true)} style={{ minHeight: 44, justifyContent: 'center', borderRadius: 22 }} textStyle={{ fontSize: 12 }}>Might fail</Chip>}
+      </View>)}
     </DialogScrollBody>
     <CancelDialogActions disabled={disabled} onCancel={onDismiss} />
+    {recipient && <PaymentHelpDialog kind="google-pay" visible={help && apps !== null} name={recipient.name} vpa={recipient.vpa} onClose={() => setHelp(false)} />}
+  </KeyboardDialog>;
+}
+
+export function PaymentHelpDialog({ kind = 'failed', visible, name, vpa, onClose }: { kind?: 'failed' | 'google-pay'; visible: boolean; name: string; vpa: string; onClose: () => void }) {
+  const { ui } = useUI();
+  return <KeyboardDialog visible={visible} onDismiss={onClose}>
+    <DialogFocus active={visible} onEscape={onClose}>
+      <Dialog.Title aria-level={2}>{kind === 'failed' ? 'Payment failed' : 'Google Pay might fail'}</Dialog.Title>
+      <DialogScrollBody maxHeight={380} gap={12}>
+        <Text style={ui.body}>{kind === 'google-pay' ? 'Google Pay may reject payment links to personal UPI IDs. If that happens, copy the UPI ID and pay inside Google Pay.' : 'Bank or network issues, payment limits, or the recipient’s UPI ID can stop a payment. Some app-to-app payments may also be rejected.'}</Text>
+        {kind === 'failed' && <Text style={ui.body}>If the payment failed and no money was debited, copy this UPI ID and try paying inside your UPI app. If it is pending or money was debited, check that payment before trying again.</Text>}
+        <PaymentAddress name={name} vpa={vpa} />
+      </DialogScrollBody>
+      <Dialog.Actions><Button title="Done" kind="text" onPress={onClose} /></Dialog.Actions>
+    </DialogFocus>
   </KeyboardDialog>;
 }

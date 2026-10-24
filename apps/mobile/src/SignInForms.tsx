@@ -7,7 +7,7 @@ import { Button, useUI } from './ui';
 export function EmailSignIn({ email, busy, onEmail, onSend, sendLabel = 'Send sign-in code', children }: { email: string; busy: boolean; onEmail: (value: string) => void; onSend: () => void; sendLabel?: string; children?: React.ReactNode }) {
   const { ui } = useUI();
   return <Form label="Email sign in" onSubmit={() => { if (!busy && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) onSend(); }}>
-    <Text style={ui.caption}>New accounts get email for bills still unseen after 10 minutes. Turn it off in Me → Notifications.</Text>
+    <Text style={ui.caption}>Choose email notifications later in Me → Notifications.</Text>
     <EmailField label="Email" value={email} onChangeText={onEmail} />
     <Button title={sendLabel} kind="primary" disabled={busy || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())} onPress={onSend} />
     {children}

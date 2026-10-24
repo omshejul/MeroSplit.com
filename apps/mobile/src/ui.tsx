@@ -40,6 +40,7 @@ import Shield01Icon from '@hugeicons/core-free-icons/Shield01Icon';
 import HelpCircleIcon from '@hugeicons/core-free-icons/HelpCircleIcon';
 import Comment01Icon from '@hugeicons/core-free-icons/Comment01Icon';
 import ThumbsUpIcon from '@hugeicons/core-free-icons/ThumbsUpIcon';
+import InformationCircleIcon from '@hugeicons/core-free-icons/InformationCircleIcon';
 import Sun03Icon from '@hugeicons/core-free-icons/Sun03Icon';
 import Notification01Icon from '@hugeicons/core-free-icons/Notification01Icon';
 import Mail01Icon from '@hugeicons/core-free-icons/Mail01Icon';
@@ -50,7 +51,7 @@ import { observeMotionPreference, useMotionValue, type MotionPreference } from '
 export const radii = { control: 12, surface: 16, navigation: 20 } as const;
 export const balanceColor = (value: string | bigint, palette: Palette) => BigInt(value) > 0n ? palette.positive : BigInt(value) < 0n ? palette.negative : palette.muted;
 const makeInputColors = (palette: Palette) => ({ selectionColor: Platform.OS === 'ios' ? palette.accent : palette.line, cursorColor: palette.accent, selectionHandleColor: palette.accent });
-const icons = { feedback: Comment01Icon, thumbsUp: ThumbsUpIcon, attachment: Attachment01Icon, archive: Archive01Icon, add: Add01Icon, down: ArrowDown01Icon, back: ArrowLeft01Icon, next: ArrowRight01Icon, external: ArrowUpRight01Icon, check: CheckmarkCircle01Icon, history: Clock01Icon, bill: Invoice01Icon, settings: Settings01Icon, me: UserCircleIcon, groups: UserGroupIcon, people: UserMultipleIcon, pay: Wallet01Icon, payment: MoneyExchange03Icon, remove: Delete02Icon, refresh: Refresh01Icon, export: Download01Icon, import: Upload01Icon, edit: PencilEdit02Icon, personAdd: UserAdd01Icon, privacy: Shield01Icon, help: HelpCircleIcon, appearance: Sun03Icon, notifications: Notification01Icon, mail: Mail01Icon, phone: SmartPhone01Icon };
+const icons = { info: InformationCircleIcon, feedback: Comment01Icon, thumbsUp: ThumbsUpIcon, attachment: Attachment01Icon, archive: Archive01Icon, add: Add01Icon, down: ArrowDown01Icon, back: ArrowLeft01Icon, next: ArrowRight01Icon, external: ArrowUpRight01Icon, check: CheckmarkCircle01Icon, history: Clock01Icon, bill: Invoice01Icon, settings: Settings01Icon, me: UserCircleIcon, groups: UserGroupIcon, people: UserMultipleIcon, pay: Wallet01Icon, payment: MoneyExchange03Icon, remove: Delete02Icon, refresh: Refresh01Icon, export: Download01Icon, import: Upload01Icon, edit: PencilEdit02Icon, personAdd: UserAdd01Icon, privacy: Shield01Icon, help: HelpCircleIcon, appearance: Sun03Icon, notifications: Notification01Icon, mail: Mail01Icon, phone: SmartPhone01Icon };
 export type IconName = keyof typeof icons;
 export function Icon({ name, size = 22, color }: { name: IconName; size?: number; color?: string }) {
   const { palette } = useUI();
@@ -125,12 +126,12 @@ function usePressFeedback(disabled: boolean) {
   return { onPressIn: () => { if (!disabled && motion.active) setPressed(true); }, onPressOut: () => setPressed(false),
     pressedStyle: { opacity: pressed && !disabled && motion.active ? 0.65 : 1 } };
 }
-export function Button({ title, onPress, disabled = false, kind = 'secondary', icon, accessibilityLabel }: { title: string; accessibilityLabel?: string; onPress: () => void; disabled?: boolean; kind?: 'primary' | 'secondary' | 'text' | 'danger'; icon?: IconName }) {
+export function Button({ title, onPress, disabled = false, kind = 'secondary', icon, accessibilityLabel, compact = false }: { compact?: boolean; title: string; accessibilityLabel?: string; onPress: () => void; disabled?: boolean; kind?: 'primary' | 'secondary' | 'text' | 'danger'; icon?: IconName | ((props: { size: number; color: string }) => React.ReactNode) }) {
   const { palette: colors } = useUI();
   const { pressedStyle, ...press } = usePressFeedback(disabled);
-  return <PaperButton {...press} accessibilityLabel={accessibilityLabel ?? title} mode={kind === 'text' ? 'text' : kind === 'secondary' ? 'contained-tonal' : 'contained'} onPress={onPress} disabled={disabled}
-    icon={icon ? ({ size, color }) => <Icon name={icon} size={size} color={color} /> : undefined}
-    buttonColor={kind === 'danger' ? colors.error : undefined} style={[{ borderRadius: radii.control }, pressedStyle]} contentStyle={{ minHeight: Platform.OS === 'ios' ? 44 : 48 }} labelStyle={{ fontSize: 16, fontWeight: '600' }}>{title}</PaperButton>;
+  return <PaperButton {...press} compact={compact} accessibilityLabel={accessibilityLabel ?? title} mode={kind === 'text' ? 'text' : kind === 'secondary' ? 'contained-tonal' : 'contained'} onPress={onPress} disabled={disabled}
+    icon={typeof icon === 'function' ? icon : icon ? ({ size, color }) => <Icon name={icon} size={size} color={color} /> : undefined}
+    buttonColor={kind === 'danger' ? colors.error : undefined} style={[{ borderRadius: radii.control }, pressedStyle]} contentStyle={{ minHeight: Platform.OS === 'ios' ? 44 : 48 }} labelStyle={{ fontSize: compact ? 14 : 16, fontWeight: '600', ...(compact && { marginHorizontal: 4 }) }}>{title}</PaperButton>;
 }
 export function IconAction({ name, label, onPress, disabled = false, hint }: { name: IconName; label: string; onPress: () => void; disabled?: boolean; hint?: string }) {
   const { pressedStyle, ...press } = usePressFeedback(disabled);

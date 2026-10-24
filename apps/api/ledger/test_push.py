@@ -675,3 +675,60 @@ def test_bill_enqueue_serializes_device_changes_without_losing_the_bill(client, 
             assert not get_user_model().objects.filter(pk=joined[0].actor.pk).exists()
         assert not PushDevice.objects.filter(pk=joined[1].id).exists()
         assert not ExpensePushDelivery.objects.filter(expense_id=body["id"]).exists()
+
+
+def test_logout_and_last_device_unregister_do_not_invert_delivery_cascade_locks(client, group, joined):
+    from concurrent.futures import TimeoutError
+    from threading import Event
+
+    from .expense_notifications import notification_settings
+    from .push import remove_device
+
+    recipient, device = joined
+    bill = new_bill(client, group)
+    assert ExpensePushDelivery.objects.filter(device=device, state='pending').exists()
+    device_locked, release_logout, unregister_waiting = Event(), Event(), Event()
+
+    def logout():
+        close_old_connections()
+        def pause_with_device_lock(execute, sql, params, many, context):
+            result = execute(sql, params, many, context)
+            if '"ledger_pushdevice"' in sql and 'FOR UPDATE' in sql:
+                device_locked.set()
+                assert release_logout.wait(10)
+            return result
+        try:
+            with connection.execute_wrapper(pause_with_device_lock):
+                return Client(**recipient.defaults).delete('/_allauth/app/v1/auth/session').status_code
+        finally:
+            connections.close_all()
+
+    def unregister():
+        close_old_connections()
+        def observe_device_lock(execute, sql, params, many, context):
+            if '"ledger_pushdevice"' in sql and 'FOR UPDATE' in sql:
+                unregister_waiting.set()
+            return execute(sql, params, many, context)
+        try:
+            with connection.execute_wrapper(observe_device_lock):
+                return remove_device(recipient.actor, device.id)
+        finally:
+            connections.close_all()
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        signing_out = pool.submit(logout)
+        assert device_locked.wait(10)
+        removing = pool.submit(unregister)
+        try:
+            assert unregister_waiting.wait(10)
+            with pytest.raises(TimeoutError):
+                removing.result(timeout=.2)
+        finally:
+            release_logout.set()
+        assert signing_out.result(timeout=10) == 401
+        assert removing.result(timeout=10) == {'removed': True}
+
+    assert not PushDevice.objects.filter(pk=device.id).exists()
+    assert not ExpensePushDelivery.objects.filter(expense_id=bill['id']).exists()
+    assert Expense.objects.filter(pk=bill['id']).exists()
+    assert notification_settings(recipient.actor)['notifications_enabled'] is False

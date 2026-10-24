@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import ts from 'typescript';
 import { colorFamilies, isColorFamily, isDarkOnly } from '../src/theme.ts';
+import { validUPIAddress } from '../src/upi.ts';
 
 type Element = { type: any; props: Record<string, any>; children: any[] };
 const React = { Fragment: 'Fragment', createElement: (type: any, props: any, ...children: any[]): Element => ({ type, props: props ?? {}, children }) };
@@ -90,7 +91,7 @@ test('Appearance dialog offers four colors and three modes, applies each at once
   const calls: string[] = [], focus: string[] = [];
   let states: any[] = [], cursor = 0;
   const env: Record<string, any> = { React, View: 'View', ScrollView: 'ScrollView', TextInput: 'TextInput', KeyboardDialog: 'KeyboardDialog', Dialog: { Title: 'Title', Content: 'Content', Actions: 'Actions' }, Text: 'Text', RadioChoice: 'RadioChoice', Button: 'Button', ErrorText: 'ErrorText', SettingsRow: 'SettingsRow', CancelDialogActions: 'CancelDialogActions', DialogScrollBody: 'DialogScrollBody',
-    colorFamilies, isDarkOnly, Platform: { OS: 'ios' }, Keyboard: { dismiss() {} }, requestAnimationFrame: (fn: () => void) => fn(), useWindowDimensions: () => ({ height: 400 }),
+    colorFamilies, isDarkOnly, validUPIAddress, Platform: { OS: 'ios' }, Keyboard: { dismiss() {} }, requestAnimationFrame: (fn: () => void) => fn(), useWindowDimensions: () => ({ height: 400 }),
     useUI: () => ({ ui: {}, inputColors: {}, appearance: 'system', colorFamily: 'cove' }),
     useState: (initial: any) => { const id = cursor++; if (!(id in states)) states[id] = initial; return [states[id], (value: any) => { states[id] = typeof value === 'function' ? value(states[id]) : value; }]; },
     useRef: (initial: any) => { const id = cursor++; return states[id] ??= { current: initial }; }, useEffect: () => {} };
@@ -146,7 +147,7 @@ test('web Appearance starts on the selected color, keeps Tab inside Color, Mode 
   const colorGroup = { contains: (value: any) => value?.name?.startsWith('color') }, modeGroup = { contains: (value: any) => value?.name?.startsWith('mode') };
   const color = element('color checked', colorGroup), otherColor = element('color other', colorGroup), mode = element('mode checked', modeGroup), done = element('done'), row = element('row');
   const env: Record<string, any> = { React, View: 'View', ScrollView: 'ScrollView', TextInput: 'TextInput', KeyboardDialog: 'KeyboardDialog', Dialog: { Title: 'Title', Content: 'Content', Actions: 'Actions' }, Text: 'Text', RadioChoice: 'RadioChoice', Button: 'Button', ErrorText: 'ErrorText', SettingsRow: 'SettingsRow', CancelDialogActions: 'CancelDialogActions', DialogScrollBody: 'DialogScrollBody',
-    colorFamilies, isDarkOnly, Platform: { OS: 'web' }, Keyboard: { dismiss() {} }, requestAnimationFrame: (fn: () => void) => { fn(); return 1; }, cancelAnimationFrame() {}, useWindowDimensions: () => ({ height: 900 }),
+    colorFamilies, isDarkOnly, validUPIAddress, Platform: { OS: 'web' }, Keyboard: { dismiss() {} }, requestAnimationFrame: (fn: () => void) => { fn(); return 1; }, cancelAnimationFrame() {}, useWindowDimensions: () => ({ height: 900 }),
     document: { get activeElement() { return active; }, addEventListener: (type: string, fn: any) => { (listeners[type] ??= []).push(fn); }, removeEventListener: (type: string, fn: any) => { listeners[type] = (listeners[type] ?? []).filter(value => value !== fn); } },
     useUI: () => ({ ui: {}, inputColors: {}, appearance: 'dark', colorFamily: 'orchid' }),
     useState: (initial: any) => { const id = cursor++; if (!(id in states)) states[id] = initial; return [states[id], (value: any) => { states[id] = typeof value === 'function' ? value(states[id]) : value; }]; },

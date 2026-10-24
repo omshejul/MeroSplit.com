@@ -19,6 +19,17 @@ from .models import ExpenseNotice, ExpensePushDelivery, Group, NotificationPrefe
 from .store_review import groups_for_actor, review_ids
 
 
+def registered_push_ids(actor):
+    """Last confirmed server bindings; current OS permission is checked by the app."""
+    if not actor.is_active or actor.pk in review_ids() or not settings.PUSH_PROVIDER:
+        return []
+    now = timezone.now()
+    devices = PushDevice.objects.filter(user=actor, provider=settings.PUSH_PROVIDER,
+        session__expire_date__gt=now, updated_at__gte=now - timedelta(days=30))
+    return [str(device.pk) for device in devices if
+            (user := get_session_user(SessionStore(session_key=device.session_id))) and user.pk == actor.pk]
+
+
 def register_device(request, installation_id, payload):
     if not settings.PUSH_PROVIDER or payload["provider"] != settings.PUSH_PROVIDER:
         raise HttpError(503, "Push notifications are not configured for this provider")
@@ -72,12 +83,21 @@ def register_device(request, installation_id, payload):
     return {"id": str(device.id), "enabled": True}
 
 
-@transaction.atomic
 def remove_device(actor, installation_id):
-    # Lock before Django collects cascading deliveries, including a concurrent enqueue.
-    device = PushDevice.objects.select_for_update().filter(id=installation_id, user=actor).first()
-    if device:
-        device.delete()
+    from .expense_notifications import _locked_preference, account_email, update_preferences
+    # Finish device cascades before cancelling deliveries: logout locks Device first.
+    with transaction.atomic():
+        device = PushDevice.objects.select_for_update().filter(id=installation_id, user=actor).first()
+        if device:
+            device.delete()
+        elif PushDevice.objects.filter(id=installation_id).exists():
+            return {"removed": True}
+    with transaction.atomic():
+        if not get_user_model().objects.select_for_update(no_key=True).filter(pk=actor.pk, is_active=True).exists():
+            return {"removed": True}
+        pref = _locked_preference(actor)
+        if not (pref.email_reminders and account_email(actor)) and not registered_push_ids(actor):
+            update_preferences(actor, False, pref.email_reminders)
     return {"removed": True}
 
 

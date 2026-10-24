@@ -1,0 +1,54 @@
+{
+  "phonepe": {
+    "name": "PhonePe UPI, Payment, Recharge",
+    "bundle_id": "com.phonepe.PhonePeApp",
+    "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/60/75/ff/6075ff86-8cf3-7315-3184-b01f6c7f7ed7/AppIcon-0-0-1x_U007emarketing-0-6-0-85-220.png/512x512bb.jpg",
+    "store": "https://apps.apple.com/in/app/phonepe-upi-payment-recharge/id1170055821?uo=4",
+    "sha256": "20e946430c2c97c717b29809fffd8b552a0f608960343a4ba91653cc3ae213e2"
+  },
+  "google-pay": {
+    "name": "Google Pay: UPI, Cards, Loans",
+    "bundle_id": "com.google.paisa",
+    "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/b6/52/33/b65233f3-2e8f-d937-76fe-1ef8e131c3ea/GPayAppIcon-0-0-1x_U007ephone-0-0-0-1-0-0-0-85-220.png/512x512bb.jpg",
+    "store": "https://apps.apple.com/in/app/google-pay-upi-cards-loans/id1193357041?uo=4",
+    "sha256": "2da6529e9f908ef6e7dcfd96a32dd8d07de85f576d3f0d394d040fc31198b1a8"
+  },
+  "paytm": {
+    "name": "Paytm: Secure UPI Payments",
+    "bundle_id": "com.one97.paytm",
+    "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/3a/42/d7/3a42d722-cdbb-ba50-d09f-ee68f77e36ec/AppIcon-0-0-1x_U007ephone-0-1-0-85-220.png/512x512bb.jpg",
+    "store": "https://apps.apple.com/in/app/paytm-secure-upi-payments/id473941634?uo=4",
+    "sha256": "7d98a5507986e62dd538b37321b21702a25d84cb52450d58e433a126b7bd083f"
+  },
+  "cred": {
+    "name": "CRED: Credit Cards, Bills, UPI",
+    "bundle_id": "com.dreamplug.cred",
+    "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/0f/e3/6e/0fe36e23-46ed-27b7-aceb-9d34616a9903/AppIcon-0-0-1x_U007emarketing-0-11-0-sRGB-85-220.png/512x512bb.jpg",
+    "store": "https://apps.apple.com/in/app/cred-credit-cards-bills-upi/id1428580080?uo=4",
+    "sha256": "d205827f9d28fcbdd52bb66b6f81db7042fe8f4fd2d6daf5eff841b1b4d829e7"
+  },
+  "bhim": {
+    "name": "BHIM Bharat's Own Payments App",
+    "bundle_id": "in.org.npci.ios.upiapp",
+    "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/db/d4/7b/dbd47b12-94b4-075e-572c-94f508107493/AppIcon-0-0-1x_U007emarketing-0-11-0-85-220.png/512x512bb.jpg",
+    "store": "https://apps.apple.com/in/app/bhim-bharats-own-payments-app/id1200315258?uo=4",
+    "sha256": "b024836dbf6f50e8132358dcbe9975273c81d84a1771fb1a63ed57e1accf61cd"
+  },
+  "amazon-pay": {
+    "name": "Amazon India Shop, Pay, miniTV",
+    "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/e5/14/a4/e514a49a-69ec-4d42-5676-8abbdf314cf6/AppIcon-0-0-1x_U007epad-0-1-0-0-85-220.png/512x512bb.jpg",
+    "store": "https://apps.apple.com/in/app/amazon-india-shop-pay-minitv/id1478350915?uo=4",
+    "bundle_id": "com.amazon.AmazonIN",
+    "note": "Amazon Pay UPI is in the Amazon India app; use its actual app icon rather than a squeezed wide wordmark."
+  },
+  "rendering": {
+    "logical_size": 24,
+    "pixel_sizes": [
+      24,
+      48,
+      72
+    ],
+    "method": "Pillow LANCZOS, original colors, no crop or stretch",
+    "accessed": "2026-10-19"
+  }
+}

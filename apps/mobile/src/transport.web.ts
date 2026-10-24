@@ -42,7 +42,7 @@ export async function requestEmailCode(baseUrl: string, email: string, emailRemi
 }
 export async function confirmEmailCode(baseUrl: string, challengeId: string, code: string): Promise<Session> {
   const base = sameOrigin(baseUrl);
-  const response = await sessionRequest({ baseUrl: base } as Session, '/_allauth/browser/v1/auth/code/confirm', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ challenge_id: challengeId, code, email_reminders_disclosed: true }), signal: AbortSignal.timeout(15_000) });
+  const response = await sessionRequest({ baseUrl: base } as Session, '/_allauth/browser/v1/auth/code/confirm', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ challenge_id: challengeId, code, email_reminders_disclosed: false }), signal: AbortSignal.timeout(15_000) });
   const data = await response.json() as EmailCodeResponse;
   if (!response.ok || !data.data?.user || data.meta?.is_authenticated === false) throw new Error(emailCodeError(data, 'The code is incorrect or expired. Try again.'));
   return makeBrowserSession(base, { ...data.data.user, email: data.data.user.email ?? '' });

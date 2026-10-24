@@ -207,7 +207,7 @@ def test_binding_appearing_during_grace_gets_one_route_but_later_registration_do
 
 
 def test_account_preferences_are_prospective_and_master_off_survives_registration(client, group, recipient, clock, configured, providers):
-    assert send(recipient, "get", "/me/notifications/preferences").json() == {"expense_updates": True, "email_reminders": False}
+    assert send(recipient, "get", "/me/notifications/preferences").json() == {"expense_updates": True, "email_reminders": False, "notifications_enabled": False, "email_available": True, "push_device_ids": []}
     old = add_bill(client, group)
     enable(recipient)
     assert not ExpenseNotice.objects.get(expense_id=old["id"]).email_eligible
@@ -225,15 +225,15 @@ def test_account_preferences_are_prospective_and_master_off_survives_registratio
     assert send(recipient, "get", "/me/notifications/preferences").json()["expense_updates"] is False
 
 
-def test_only_actual_new_otp_identity_has_disclosed_email_default(client, clock):
+def test_sign_in_never_enables_email_from_legacy_disclosure(client, clock):
     assert not NotificationPreference.objects.filter(user=client.actor).exists()
     with transaction.atomic():
         _verified_user(client.actor.email, email_reminders_disclosed=True)
     assert not NotificationPreference.objects.filter(user=client.actor).exists()
     with transaction.atomic():
         user, _ = _verified_user("new-synthetic@example.com", email_reminders_disclosed=True)
-    preference = NotificationPreference.objects.get(user=user)
-    assert preference.expense_updates and preference.email_reminders and preference.email_enabled_at == clock[0]
+    assert notifications.preferences(user) == {"expense_updates": True, "email_reminders": False}
+    assert not NotificationPreference.objects.filter(user=user).exists()
     with transaction.atomic():
         older_client_user, _ = _verified_user("older-client-synthetic@example.com")
     assert notifications.preferences(older_client_user) == {"expense_updates": True, "email_reminders": False}
@@ -619,3 +619,71 @@ def test_cloudflare_uncertain_account_digest_holds_immediately(client, group, re
     assert notifications.send_pending_digests() == 0
     row.refresh_from_db()
     assert calls == [1] and row.payload == frozen and row.attempts == 1
+
+
+def test_effective_channels_legacy_empty_email_mute_restore_and_last_off(client):
+    assert not NotificationPreference.objects.filter(user=client.actor).exists()
+    empty = send(client, 'get', '/me/notifications/preferences').json()
+    assert empty['expense_updates'] is True and empty['notifications_enabled'] is False
+    assert not NotificationPreference.objects.filter(user=client.actor).exists()
+    client.actor.email = 'channel-fixture@example.com'
+    client.actor.save(update_fields=['email'])
+    EmailAddress.objects.create(user=client.actor, email=client.actor.email, verified=True)
+    def save(master, email):
+        response = send(client, 'put', '/me/notifications/preferences', {'expense_updates': master, 'email_reminders': email})
+        assert response.status_code == 200
+        return response.json()
+    assert save(True, False)['notifications_enabled'] is False
+    assert save(True, True)['notifications_enabled'] is True
+    muted = save(False, True)
+    assert muted['email_reminders'] is True and muted['notifications_enabled'] is False
+    assert send(client, 'get', '/me/notifications/preferences').json() == muted
+    assert save(True, True)['notifications_enabled'] is True
+    last = save(True, False)
+    assert last['expense_updates'] is False and last['notifications_enabled'] is False
+    assert not NotificationPreference.objects.get(user=client.actor).expense_updates
+
+
+def test_effective_push_bindings_last_removal_and_registration_never_unmutes(client):
+    send(client, 'put', '/me/notifications/preferences', {'expense_updates': False, 'email_reminders': False})
+    first, second = register(client), register(client)
+    value = send(client, 'get', '/me/notifications/preferences').json()
+    assert value['notifications_enabled'] is False and set(value['push_device_ids']) == {str(first.id), str(second.id)}
+    enabled = send(client, 'put', '/me/notifications/preferences', {'expense_updates': True, 'email_reminders': False}).json()
+    assert enabled['notifications_enabled'] is True
+    assert send(client, 'delete', f'/me/push-devices/{first.id}').status_code == 200
+    assert send(client, 'get', '/me/notifications/preferences').json()['notifications_enabled'] is True
+    assert send(client, 'delete', f'/me/push-devices/{second.id}').status_code == 200
+    assert NotificationPreference.objects.get(user=client.actor).expense_updates is False
+    assert send(client, 'get', '/me/notifications/preferences').json()['notifications_enabled'] is False
+    register(client)
+    assert send(client, 'get', '/me/notifications/preferences').json()['notifications_enabled'] is False
+
+
+def test_effective_push_rejects_stale_expired_and_rebound_sessions(client, clock):
+    from .models import PushDevice
+    fresh = register(client)
+    assert str(fresh.id) in send(client, 'get', '/me/notifications/preferences').json()['push_device_ids']
+    PushDevice.objects.filter(pk=fresh.id).update(updated_at=clock[0] - timedelta(days=31))
+    assert not send(client, 'get', '/me/notifications/preferences').json()['notifications_enabled']
+    PushDevice.objects.filter(pk=fresh.id).update(updated_at=clock[0])
+    fresh.session.expire_date = clock[0] - timedelta(seconds=1)
+    fresh.session.save(update_fields=['expire_date'])
+    assert not notifications.notification_settings(client.actor)['push_device_ids']
+
+
+def test_last_device_removal_retry_finishes_master_normalization(client, monkeypatch):
+    device = register(client)
+    send(client, 'put', '/me/notifications/preferences', {'expense_updates': True, 'email_reminders': False})
+    original = notifications._locked_preference
+    def interrupted(actor):
+        raise RuntimeError('Synthetic interruption after binding removal')
+    monkeypatch.setattr(notifications, '_locked_preference', interrupted)
+    from .push import remove_device
+    with pytest.raises(RuntimeError):
+        remove_device(client.actor, device.id)
+    assert not PushDevice.objects.filter(pk=device.id).exists()
+    assert NotificationPreference.objects.get(user=client.actor).expense_updates
+    monkeypatch.setattr(notifications, '_locked_preference', original)
+    assert remove_device(client.actor, device.id) == {'removed': True}
+    assert not NotificationPreference.objects.get(user=client.actor).expense_updates

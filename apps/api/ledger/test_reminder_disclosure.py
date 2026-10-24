@@ -58,8 +58,8 @@ def test_production_code_request_new_account_defaults_agree_for_delivered_code_a
     assert confirmed.status_code == 200
     identity = get_user_model().objects.get(pk=confirmed.json()["data"]["user"]["id"])
     pref = NotificationPreference.objects.filter(user=identity).first()
-    assert bool(pref and pref.email_reminders) == (disclosure is True)
-    assert bool(pref and pref.email_enabled_at) == (disclosure is True)
+    assert bool(pref and pref.email_reminders) is False
+    assert bool(pref and pref.email_enabled_at) is False
     assert EmailAddress.objects.filter(user=identity, verified=True).exists()
     assert get_user_model().objects.count() == 1 and len(mail) == 1
 

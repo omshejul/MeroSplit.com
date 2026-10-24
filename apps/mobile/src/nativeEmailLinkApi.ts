@@ -62,7 +62,7 @@ function authenticated(base: string, result: Result, current?: Session, resume =
   return { session: { baseUrl: base, userId, email: user.email, displayName: user.display_name ?? '', token }, target, needsName: result.data.needs_name };
 }
 export async function requestNativeEmailLink(baseUrl: string, email: string, fetcher: typeof fetch = fetch): Promise<EmailCodeChallenge> {
-  const result = await post(server(baseUrl), 'request', { email: email.trim(), email_reminders_disclosed: true }, undefined, fetcher);
+  const result = await post(server(baseUrl), 'request', { email: email.trim(), email_reminders_disclosed: false }, undefined, fetcher);
   if (result.data?.accepted !== true) throw new Error('Could not send a sign-in link. Use a code instead.');
   if (!uuid.test(result.data.challenge_id ?? '')) throw new NativeEmailLinkError(503);
   return challengeFromResponse(result);

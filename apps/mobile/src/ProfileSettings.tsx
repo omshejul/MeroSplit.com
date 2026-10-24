@@ -1,5 +1,6 @@
 import { CancelDialogActions, DialogScrollBody } from './DialogParts';
 import KeyboardDialog from './KeyboardDialog';
+import { validUPIAddress } from './upi';
 import React, { useEffect, useRef, useState } from 'react';
 import { Keyboard, Platform, ScrollView, TextInput, useWindowDimensions, View } from 'react-native';
 import { Dialog, Text } from 'react-native-paper';
@@ -26,7 +27,7 @@ export default function ProfileSettings({ name, vpa, busy, onSaveName, onSaveUPI
   const initialChoiceFocused = useRef(false);
   const choices = useRef<React.ComponentRef<typeof View>>(null), doneArea = useRef<React.ComponentRef<typeof View>>(null), { height } = useWindowDimensions();
   const disabled = busy || saving, isName = editing === 'name', isAppearance = editing === 'appearance';
-  const valid = isName ? !!draft.trim() : /^[A-Za-z0-9._-]{2,}@[A-Za-z0-9.-]{2,}$/.test(draft.trim()) && draft.trim().length <= 254;
+  const valid = isName ? !!draft.trim() : validUPIAddress(draft.trim());
   function open(field: NonNullable<typeof editing>) { initialChoiceFocused.current = false; setDraft(field === 'name' ? name : vpa); setError(''); setEditing(field); }
   function close() { const row = isName ? nameRow : isAppearance ? appearanceRow : upiRow; Keyboard.dismiss(); setEditing(null); setError(''); requestAnimationFrame(() => row.current?.focus()); }
   useEffect(() => {

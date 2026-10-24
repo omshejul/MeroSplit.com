@@ -35,6 +35,16 @@ def preferences(actor):
             "email_reminders": row.email_reminders if row else False}
 
 
+def notification_settings(actor):
+    from .push import registered_push_ids
+    value = preferences(actor)
+    email_available = bool(account_email(actor))
+    devices = registered_push_ids(actor)
+    return {**value, 'notifications_enabled': bool(value['expense_updates'] and
+            (value['email_reminders'] and email_available or devices)),
+            'email_available': email_available, 'push_device_ids': devices}
+
+
 def _locked_preference(actor):
     if not get_user_model().objects.select_for_update(no_key=True).filter(pk=actor.pk, is_active=True).exists():
         raise HttpError(401, "Sign in again to change notifications")
@@ -45,6 +55,10 @@ def _locked_preference(actor):
 @transaction.atomic
 def update_preferences(actor, expense_updates, email_reminders):
     row = _locked_preference(actor)
+    if row.email_reminders and not email_reminders:
+        from .push import registered_push_ids
+        if not registered_push_ids(actor):
+            expense_updates = False
     now = timezone.now()
     if expense_updates and not row.expense_updates:
         row.updates_enabled_at = now
@@ -168,16 +182,21 @@ def mark_seen(actor, notices):
     return {"seen": count}
 
 
-def verified_recipient(user):
+def account_email(user):
+    """Usable own-account channel; bill-only mailbox opt-outs remain separate."""
     email = user.email.strip().lower()
-    from .bill_email import mailbox_digest
-    from .bill_email_models import BillEmailPreference
-    if BillEmailPreference.objects.filter(email_digest=mailbox_digest(email), suppressed=True).exists():
-        return None
     domain = email.rpartition("@")[2]
     if not user.is_active or user.pk in review_ids() or not domain or domain == "invalid" or domain.endswith(".invalid"):
         return None
     return email if EmailAddress.objects.filter(user=user, email__iexact=email, verified=True).exists() else None
+
+
+def verified_recipient(user):
+    from .bill_email import mailbox_digest
+    from .bill_email_models import BillEmailPreference
+    if BillEmailPreference.objects.filter(email_digest=mailbox_digest(user.email), suppressed=True).exists():
+        return None
+    return account_email(user)
 
 
 def _unmailed(now):

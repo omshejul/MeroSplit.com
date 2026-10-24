@@ -3,7 +3,7 @@ import type { Expense, Group, Session } from './types.ts';
 
 export type PushPermission = 'ask' | 'granted' | 'denied';
 export type PushDevice = { provider: 'expo'; token: string; platform: 'ios' | 'android' };
-export type PushPreferences = { installation_id: string; owner: string | null; opted_in: boolean; binding: PushDevice | null };
+export type PushPreferences = { installation_id: string; owner: string | null; opted_in: boolean; binding: PushDevice | null; pending_off?: boolean };
 export type PushTarget = { group: Group; expenseId: string | null; chat?: true };
 export type PushSave = (state: PushPreferences) => Promise<void>;
 export const emptyPushPreferences = (installation_id: string): PushPreferences => ({ installation_id, owner: null, opted_in: false, binding: null });
@@ -14,15 +14,18 @@ export function pushPermission(value: { status: string; canAskAgain?: boolean; i
 }
 
 export async function consentToPush(session: Session, state: PushPreferences, save: PushSave): Promise<PushPreferences> {
-  const next = { ...state, owner: accountOwner(session), opted_in: true, binding: state.owner === accountOwner(session) ? state.binding : null };
+  const next = { ...state, owner: accountOwner(session), opted_in: true, pending_off: false, binding: state.owner === accountOwner(session) ? state.binding : null };
   await save(next); return next;
 }
 
 export async function unregisterPushDevice(session: Session, state: PushPreferences, save: PushSave, send: typeof request = request): Promise<PushPreferences> {
   if (state.owner !== accountOwner(session)) { const next = emptyPushPreferences(state.installation_id); await save(next); return next; }
-  const disabled = { ...state, opted_in: false };
-  await save(disabled);
-  try { await send(session, `/me/push-devices/${state.installation_id}`, 'DELETE'); }
+  // Persist retry intent without presenting an unconfirmed OFF choice as saved.
+  await save({ ...state, pending_off: true });
+  try {
+    const result = await send<{ removed: boolean }>(session, `/me/push-devices/${state.installation_id}`, 'DELETE');
+    if (result.removed !== true) throw new Error('Could not confirm notifications are off. Try again.');
+  }
   catch (error) { if (!(error instanceof ApiError && error.status === 401)) throw error; }
   const next = emptyPushPreferences(state.installation_id);
   await save(next); return next;
@@ -30,7 +33,7 @@ export async function unregisterPushDevice(session: Session, state: PushPreferen
 
 export async function refreshPushDevice(session: Session, state: PushPreferences, permission: PushPermission, getDevice: () => Promise<PushDevice>, save: PushSave, send: typeof request = request): Promise<PushPreferences> {
   if (state.owner !== accountOwner(session)) { const next = emptyPushPreferences(state.installation_id); await save(next); return next; }
-  if (!state.opted_in || permission !== 'granted') return unregisterPushDevice(session, state, save, send);
+  if (state.pending_off || !state.opted_in || permission !== 'granted') return unregisterPushDevice(session, state, save, send);
   const device = await getDevice();
   if (!/^(?:Expo|Exponent)PushToken\[[^\]]+\]$/.test(device.token) || device.provider !== 'expo' || !['ios', 'android'].includes(device.platform)) throw new Error('Notifications are unavailable on this device.');
   const result = await send<{ id: string; enabled: boolean }>(session, `/me/push-devices/${state.installation_id}`, 'PUT', { ...device, bill_chat: true });
