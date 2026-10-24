@@ -306,6 +306,9 @@ def archive_group(actor, group_id, payload):
     group.archived = payload["archived"]
     group.save(update_fields=["archived"])
     if group.archived:
+        from .membership_notifications import cancel_membership
+        from .models import MembershipDelivery
+        cancel_membership(MembershipDelivery.objects.filter(change__group=group), 'group_archived')
         from .bill_email import cancel_bill_emails
         from .bill_email_models import BillEmailNotice
         cancel_bill_emails(BillEmailNotice.objects.filter(expense__group=group), "group_archived")
@@ -325,7 +328,8 @@ def archive_group(actor, group_id, payload):
 
 @transaction.atomic
 def add_participant(actor, group_id, payload):
-    group = visible_group(actor, group_id, lock=True)
+    from .membership import limit_links, linked_result, lock_link_users
+    group = visible_group(actor, group_id)
     if group.owner_id != actor.pk:
         raise HttpError(403, "Only the organizer can add participants")
     if not payload.get("email"):
@@ -333,6 +337,14 @@ def add_participant(actor, group_id, payload):
     previous, fingerprint = previous_result(
         actor, payload["command_id"], f"add_participant:{group_id}", payload
     )
+    if previous:
+        return previous
+    email = clean_contact_email(payload.get("email", ""))
+    matches = lock_link_users(actor, [email])
+    group = visible_group(actor, group_id, lock=True)
+    if group.owner_id != actor.pk:
+        raise HttpError(403, "Only the organizer can add participants")
+    previous, fingerprint = previous_result(actor, payload["command_id"], f"add_participant:{group_id}", payload)
     if previous:
         return previous
     writable(group)
@@ -344,18 +356,23 @@ def add_participant(actor, group_id, payload):
         raise HttpError(409, "Participant ID is already in use")
     if not payload["name"].strip():
         raise AccountingError("Enter a participant name")
+    user = matches.get(email)
+    if user and group.participants.filter(user=user).exists():
+        raise HttpError(409, "This account is already included in the ledger")
+    limit_links(actor, [user] if user else [])
     person = Participant.objects.create(
         id=payload["id"], group=group, name=payload["name"].strip(),
-        contact_email=clean_contact_email(payload.get("email", "")),
+        contact_email=email, user=user,
     )
-    return record_change(
+    result = record_change(
         group,
         actor,
         payload["command_id"],
         fingerprint,
         "participant_added",
-        {"id": str(person.id), "name": person.name},
+        {"id": str(person.id), "name": person.name, "linked_participant_ids": [str(person.id)] if user else []},
     )
+    return linked_result(result, actor, payload["command_id"], [person])
 
 
 @transaction.atomic
@@ -393,6 +410,9 @@ def remove_participant(actor, group_id, participant_id, payload):
     cancel_chat_notices(BillChatNotice.objects.filter(participant=person), 'member_removed')
     person.removed = True
     person.save(update_fields=["removed"])
+    from .membership_notifications import cancel_membership
+    from .models import MembershipDelivery
+    cancel_membership(MembershipDelivery.objects.filter(participant=person), 'member_removed')
     Invite.objects.filter(participant=person).update(revoked=True)
     involved_attempts.filter(state="prepared").update(state="cancelled")
     if person.user_id:

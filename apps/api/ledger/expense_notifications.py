@@ -56,7 +56,13 @@ def update_preferences(actor, expense_updates, email_reminders):
     if channels_changed:
         from .balance_statements import reset_schedule
         reset_schedule(row, now)
-    from .models import BillChatDelivery, BillChatNotice
+    from .membership_notifications import cancel_membership
+    from .models import BillChatDelivery, BillChatNotice, MembershipDelivery
+    membership = MembershipDelivery.objects.filter(recipient=actor)
+    if not expense_updates:
+        cancel_membership(membership, 'notifications_off')
+    elif not email_reminders:
+        cancel_membership(membership.filter(channel='email'), 'email_off')
     chat = BillChatNotice.objects.filter(recipient=actor)
     if not expense_updates:
         chat.update(push_eligible=False)

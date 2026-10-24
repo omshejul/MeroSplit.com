@@ -9,6 +9,7 @@ from ledger.balance_statements import send_balance_statements
 from ledger.bill_email import send_pending_bill_emails
 from ledger.chat_notifications import send_chat_notifications
 from ledger.expense_notifications import send_pending_digests
+from ledger.membership_notifications import send_membership_notifications
 from ledger.models import ExpensePushDelivery
 from ledger.push import check_pending_bill_receipts, send_pending_bill_notifications
 
@@ -46,8 +47,9 @@ class Command(BaseCommand):
                 mailbox_notices = send_pending_bill_emails(limit=options["limit"])
                 chat = send_chat_notifications(limit=options['limit'])
                 statements = send_balance_statements(limit=options['limit'])
-                if count or receipts or digests or mailbox_notices or chat or statements or not options["loop"]:
-                    self.stdout.write(f"Processed {count} bill notifications, {receipts} receipts and {digests} unread digests and {mailbox_notices} mailbox notices and {chat} chat deliveries and {statements} balance statements")
+                memberships = send_membership_notifications(limit=options['limit'])
+                if count or receipts or digests or mailbox_notices or chat or statements or memberships or not options["loop"]:
+                    self.stdout.write(f"Processed {count} bill notifications, {receipts} receipts and {digests} unread digests and {mailbox_notices} mailbox notices and {chat} chat deliveries and {statements} balance statements and {memberships} membership deliveries")
                 if not options["loop"]:
                     return
                 time.sleep(options["interval"])

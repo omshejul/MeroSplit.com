@@ -163,6 +163,76 @@ def _recipient(grant):
     return user, email
 
 
+def _unconsumed_proof(grant, proof):
+    if (not grant or not isinstance(proof, str) or len(proof) != 43 or not proof.isascii() or not _valid_metadata(grant)
+            or not secrets.compare_digest(_proof(grant), proof) or grant.revoked_at or grant.consumed_at
+            or grant.expires_at <= timezone.now()):
+        raise EmailCodeInvalid()
+
+
+def _recipient_before_login(grant):
+    """Resolve a recipient without verifying, creating or updating an identity."""
+    from allauth.account.models import EmailAddress
+
+    User = get_user_model()
+    if store_review.entry_for_email(grant.email):
+        raise EmailCodeInvalid()
+    ids = set(User.objects.filter(email__iexact=grant.email).values_list("pk", flat=True))
+    addresses = EmailAddress.objects.filter(email__iexact=grant.email)
+    ids.update(addresses.values_list("user_id", flat=True))
+    if len(ids) > 1 or addresses.count() > 1:
+        raise EmailCodeInvalid()
+    expected = grant.recipient_id or grant.issued_user_id
+    user = User.objects.filter(pk=next(iter(ids))).first() if ids else None
+    if (expected and (not user or user.pk != expected or user.email.strip().lower() != grant.email)
+            or user and (not user.is_active or user.pk in store_review.review_ids())):
+        raise EmailCodeInvalid()
+    # An unsaved recipient lets the same read-only destination guards apply to
+    # a mailbox whose account will be created only during confirmed exchange.
+    return user or User(email=grant.email)
+
+
+def _inspect_destination(grant, user):
+    if grant.purpose == "notice" and grant.target.get("kind") == "notice":
+        from .bill_email import validate_notification_entry
+        validate_notification_entry(grant, user)
+        return
+    target = _target(grant.target)
+    if target == {"kind": "home"}:
+        return
+    if str(grant.invitation_id) != target["invite_id"]:
+        raise EmailCodeInvalid()
+    invite = Invite.objects.select_related("participant__group").filter(pk=target["invite_id"]).first()
+    if (not invite or invite.revoked or invite.expires_at <= timezone.now() or invite.participant.group.archived
+            or invite.intended_email.lower() != grant.email or invite.participant.removed):
+        raise EmailCodeInvalid()
+    store_review.require_group_scope(user, invite.participant.group)
+    if invite.approved:
+        if not user.pk or invite.participant.user_id != user.pk or invite.claimant_id != user.pk:
+            raise EmailCodeInvalid()
+    elif invite.participant.user_id or user.pk and invite.participant.group.participants.filter(user=user).exists():
+        raise EmailCodeInvalid()
+
+
+@sensitive_variables()
+def inspect_email_link(grant_id, proof):
+    """Bearer-proof inspection is lock-free and performs no database writes."""
+    grant = EmailLoginGrant.objects.filter(pk=grant_id).first()
+    _unconsumed_proof(grant, proof)
+    user = _recipient_before_login(grant)
+    _inspect_destination(grant, user)
+    return {"email": grant.email, "user_id": user.pk, "purpose": grant.purpose}
+
+
+def _require_switch(actor, target_user_id, switch_from_user_id):
+    current_id = actor.pk if actor is not None and actor.is_authenticated and actor.is_active else None
+    if switch_from_user_id is not None and (type(switch_from_user_id) is not int or switch_from_user_id <= 0
+                                            or current_id != switch_from_user_id):
+        raise EmailCodeInvalid()
+    if current_id is not None and current_id != target_user_id and switch_from_user_id != current_id:
+        raise EmailCodeInvalid()
+
+
 def _destination(grant, user, *, claim):
     if grant.purpose == "notice" and grant.target.get("kind") == "notice":
         from .bill_email import validate_notification_entry
@@ -192,7 +262,7 @@ def _destination(grant, user, *, claim):
 
 
 @sensitive_variables()
-def exchange_email_link(grant_id, proof, network):
+def exchange_email_link(grant_id, proof, network, *, actor=None, switch_from_user_id=None):
     # The email row is also OTP's identity-creation mutex. Grant is locked last,
     # after user/group/invite, matching issuance and account-deletion ordering.
     initial = EmailLoginGrant.objects.filter(pk=grant_id).first()
@@ -203,11 +273,11 @@ def exchange_email_link(grant_id, proof, network):
         _limits(initial.email if initial else None, network)
         try:
             with transaction.atomic():
-                if (not initial or not isinstance(proof, str) or len(proof) != 43 or not proof.isascii() or not _valid_metadata(initial)
-                        or not secrets.compare_digest(_proof(initial), proof) or initial.revoked_at or initial.consumed_at
-                        or initial.expires_at <= timezone.now()):
-                    raise EmailCodeInvalid()
+                _unconsumed_proof(initial, proof)
+                candidate = _recipient_before_login(initial)
+                _require_switch(actor, candidate.pk, switch_from_user_id)
                 user, email = _recipient(initial)
+                _require_switch(actor, user.pk, switch_from_user_id)
                 if not user.first_name.strip() and initial.target.get("kind") == "invite":
                     from .profiles import update_display_name
                     name = Invite.objects.filter(pk=initial.target.get("invite_id")).values_list("participant__name", flat=True).first()

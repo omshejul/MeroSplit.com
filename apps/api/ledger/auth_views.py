@@ -10,9 +10,10 @@ from allauth.headless.internal.restkit.response import APIResponse
 from django.contrib.auth import logout
 from django.core.exceptions import ValidationError
 from django.views.decorators.debug import sensitive_variables
+from ninja.errors import HttpError
 
 from .email_delivery import EmailDeliveryUnavailable
-from .email_links import exchange_email_link, renew_email_link, resume_email_link
+from .email_links import exchange_email_link, inspect_email_link, renew_email_link, resume_email_link
 from .otp import (
     EmailCodeInvalid,
     EmailCodeLimited,
@@ -117,6 +118,23 @@ class RequestEmailLinkView(APIView):
         return APIResponse(request, data={**challenge, "accepted": not bool(entry_for_email(normalized_email(data.get("email"))))}, meta={"is_authenticated": False})
 
 
+class InspectEmailLinkView(APIView):
+    @sensitive_variables()
+    def post(self, request, *args, **kwargs):
+        try:
+            data = self.data or {}
+            if not isinstance(data, dict) or set(data) != {"grant_id", "proof"}:
+                raise ValueError()
+            result = inspect_email_link(UUID(str(data["grant_id"])), data["proof"])
+        except (ValueError, EmailCodeInvalid):
+            return link_error(request)
+        except HttpError:
+            return link_error(request)
+        current = request.user if request.user.is_authenticated else None
+        return APIResponse(request, data={**result, "current_user_id": current.pk if current else None,
+                                          "current_email": current.email if current else None})
+
+
 class ExchangeEmailLinkView(APIView):
     @sensitive_variables()
     def post(self, request, *args, **kwargs):
@@ -125,9 +143,13 @@ class ExchangeEmailLinkView(APIView):
             if not isinstance(data, dict):
                 raise ValueError()
             disclosed = data.get("email_reminders_disclosed", False)
-            if type(disclosed) is not bool or set(data) - {"grant_id", "proof", "email_reminders_disclosed"}:
+            if type(disclosed) is not bool or set(data) - {"grant_id", "proof", "email_reminders_disclosed", "switch_from_user_id"}:
                 raise ValueError()
-            user, email, target = exchange_email_link(UUID(str(data.get("grant_id", ""))), data.get("proof"), client_network(request))
+            switch_from = data.get("switch_from_user_id")
+            if "switch_from_user_id" in data and (type(switch_from) is not int or switch_from <= 0):
+                raise ValueError()
+            user, email, target = exchange_email_link(UUID(str(data.get("grant_id", ""))), data.get("proof"), client_network(request),
+                                                     actor=request.user, switch_from_user_id=switch_from)
         except (ValueError, EmailCodeInvalid):
             return link_error(request)
         except EmailCodeLimited:

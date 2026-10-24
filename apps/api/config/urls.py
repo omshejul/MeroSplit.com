@@ -6,6 +6,7 @@ from ledger.api import api
 from ledger.auth_views import (
     ConfirmEmailCodeView,
     ExchangeEmailLinkView,
+    InspectEmailLinkView,
     RenewEmailLinkView,
     RequestEmailCodeView,
     RequestEmailLinkView,
@@ -44,7 +45,7 @@ urlpatterns = [
     path("_allauth/browser/v1/auth/code/confirm", ConfirmEmailCodeView.as_api_view(client=Client.BROWSER)),
     *[path(f"_allauth/{client}/v1/auth/link/{action}", view.as_api_view(client=kind))
       for client, kind in [("browser", Client.BROWSER), ("app", Client.APP)]
-      for action, view in [("request", RequestEmailLinkView), ("exchange", ExchangeEmailLinkView),
+      for action, view in [("request", RequestEmailLinkView), ("inspect", InspectEmailLinkView), ("exchange", ExchangeEmailLinkView),
                            ("resume", ResumeEmailLinkView), ("renew", RenewEmailLinkView)]],
     path("privacy", TemplateView.as_view(template_name="ledger/public.html", extra_context={"page": "privacy"})),
     path("chat-policy", TemplateView.as_view(template_name="ledger/public.html", extra_context={"page": "chat"})),

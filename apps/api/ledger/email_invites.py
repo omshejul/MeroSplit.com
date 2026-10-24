@@ -81,15 +81,34 @@ def _finish_delivery(invite, group_id, state, provider_id=""):
 
 def send_person_invite(actor, group_id, participant_id, payload, origin, network):
     require_no_review_email(actor)
+    from .membership import limit_links, linked_result, lock_link_users
     with transaction.atomic():
-        group, person = _person(actor, group_id, participant_id)
+        group = visible_group(actor, group_id)
+        if group.owner_id != actor.pk:
+            raise HttpError(403, "Only the organizer can invite this person")
         previous, fingerprint = previous_result(actor, payload["command_id"], f"email_invite:{participant_id}", payload)
+        if previous and previous.get('linked_participant_ids'):
+            return previous
+        initial = group.participants.filter(id=participant_id, removed=False).first()
+        if not initial:
+            raise HttpError(409, "Choose an unclaimed person in this ledger")
+        matches = lock_link_users(actor, [initial.contact_email])
+        group = visible_group(actor, group_id, lock=True)
+        if group.owner_id != actor.pk:
+            raise HttpError(403, "Only the organizer can invite this person")
+        previous, fingerprint = previous_result(actor, payload["command_id"], f"email_invite:{participant_id}", payload)
+        if previous and previous.get('linked_participant_ids'):
+            return previous
+        writable(group)
+        person = group.participants.filter(id=participant_id, user__isnull=True, removed=False).first()
+        if not person or person.contact_email != initial.contact_email:
+            raise HttpError(409, "This person's account details changed; refresh before trying again")
         now = timezone.now()
         if previous:
             invite = Invite.objects.filter(id=payload["command_id"], participant=person).first()
             if not invite or invite.revoked or invite.expires_at <= now:
                 raise HttpError(409, "This invitation is no longer active; send a new invitation")
-            result = previous
+            result = {**previous, 'linked_participant_ids': previous.get('linked_participant_ids', [])}
             if invite.send_state == "sent":
                 return {**result, "invite": invite_status(invite)}
             if invite.last_send_at and invite.last_send_at > now - timedelta(seconds=60):
@@ -99,6 +118,20 @@ def send_person_invite(actor, group_id, participant_id, payload, origin, network
         else:
             if not person.contact_email:
                 raise HttpError(422, "Add this person's email before sending an invitation")
+            user = matches.get(person.contact_email)
+            if user:
+                if group.participants.filter(user=user).exists():
+                    raise HttpError(409, "This account is already included in the ledger")
+                limit_links(actor, [user])
+                person.user = user
+                person.save(update_fields=['user'])
+                Invite.objects.filter(participant=person, approved=False).update(revoked=True)
+                from .bill_email import promote_current_bill_emails
+                promote_current_bill_emails(person)
+                result = record_change(group, actor, payload['command_id'], fingerprint, 'participant_claim_approved', {
+                    'participant_id': str(person.id), 'linked_participant_ids': [str(person.id)],
+                })
+                return linked_result(result, actor, payload['command_id'], [person])
             parsed = urlsplit(origin)
             if (parsed.scheme != "https" or not parsed.netloc or parsed.username or parsed.password
                     or parsed.query or parsed.fragment or parsed.path not in {"", "/"}):
@@ -131,6 +164,7 @@ def send_person_invite(actor, group_id, participant_id, payload, origin, network
                 group, actor, payload["command_id"], fingerprint, "email_invite_created",
                 {"id": str(invite.id), "participant_id": str(person.id)},
             )
+            result = linked_result(result, actor, payload['command_id'], [])
         try:
             consume_limits([
                 ("invite-email", invite.intended_email, 86400, 5),

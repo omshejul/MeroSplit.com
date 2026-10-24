@@ -59,7 +59,7 @@ def test_optional_contact_is_not_identity_or_automatic_email(client, direct, mai
     assert Group.objects.count() == 1
 
 
-def test_group_member_with_email_is_immediately_usable_without_sending_or_linking(client, group, mailbox):
+def test_group_member_with_verified_email_links_immediately_without_invitation(client, group, mailbox):
     group_id, people, _ = group
     old_bill = expense(people)
     assert send(client, "post", f"/groups/{group_id}/expenses", old_bill).status_code == 200
@@ -70,12 +70,13 @@ def test_group_member_with_email_is_immediately_usable_without_sending_or_linkin
     assert response.status_code == 200, response.content
     assert send(client, "post", path, added).json() == response.json()
     person = Participant.objects.get(pk=added["id"])
-    assert person.name == "Added person" and person.contact_email == "friend@example.invalid" and person.user_id is None
+    assert person.name == "Added person" and person.contact_email == "friend@example.invalid" and person.user_id == existing.actor.pk
+    assert response.json()['linked_participant_ids'] == [added['id']]
     state = send(client, "get", f"/groups/{group_id}").json()
     assert added["id"] not in state["expenses"][0]["shares"] and state["balances"][added["id"]] == "0"
     new_bill = expense(people + [added["id"]], beneficiaries=[3])
     assert send(client, "post", f"/groups/{group_id}/expenses", new_bill).status_code == 200
-    assert send(existing, "get", f"/groups/{group_id}").status_code == 404
+    assert send(existing, "get", f"/groups/{group_id}").status_code == 200
     assert Participant.objects.count() == 4 and Invite.objects.count() == 0 and mailbox == []
 
 
@@ -117,8 +118,9 @@ def test_saving_group_contact_revokes_manual_pending_claim_and_requires_explicit
     assert send(client, "post", f"/groups/{group_id}/invites/{command}/approve", {"command_id": uid()}).status_code == 409
     assert send(client, "post", f"/groups/{group_id}/invites", {"command_id": uid(), "participant_id": people[1]}).status_code == 409
     email_command, response = send_invite(client, group)
-    assert response.status_code == 200 and len(mailbox) == 1
-    assert send(target, "post", f"/invites/{invite_token(email_command)}/claim", {"command_id": uid()}).status_code == 200
+    assert response.status_code == 200 and mailbox == []
+    assert response.json()['linked_participant_ids'] == [people[1]] and 'invite' not in response.json()
+    assert send_invite(client, group, email_command)[1].json() == response.json()
     assert Participant.objects.get(pk=people[1]).user_id == target.actor.pk
 
 

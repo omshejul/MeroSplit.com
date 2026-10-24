@@ -22,12 +22,14 @@ def _next_organizer(group, person):
     if not candidates:
         return None
     joined = {}
-    for change in group.changes.filter(kind__in=["group_created", "participant_claim_approved"]).order_by("sequence"):
+    for change in group.changes.filter(kind__in=["group_created", "participant_added", "participant_claim_approved"]).order_by("sequence"):
+        for participant_id in change.data.get("linked_participant_ids", []):
+            joined[str(participant_id)] = change.sequence
         if change.kind == "group_created":
             for candidate in candidates:
                 if candidate.user_id == change.actor_id:
                     joined.setdefault(str(candidate.id), change.sequence)
-        else:
+        elif change.kind == "participant_claim_approved":
             participant_id = str(change.data.get("participant_id", ""))
             # A previously deleted account can be replaced through a fresh claim.
             # Its current member joined at that latest claim, not the former identity.
@@ -84,6 +86,9 @@ def leave_group(actor, group_id, payload):
         group.save(update_fields=["owner", "import_source_hash"])
     person.removed, person.hidden = True, False
     person.save(update_fields=["removed", "hidden"])
+    from .membership_notifications import cancel_membership
+    from .models import MembershipDelivery
+    cancel_membership(MembershipDelivery.objects.filter(participant=person), 'member_left')
     attempts.filter(state="prepared").update(state="cancelled")
     Invite.objects.filter(participant=person).update(revoked=True)
     now = timezone.now()

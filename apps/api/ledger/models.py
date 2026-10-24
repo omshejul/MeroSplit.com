@@ -432,3 +432,35 @@ class BalanceStatement(models.Model):
             models.CheckConstraint(condition=Q(state__in=["pending", "sending", "accepted", "cancelled", "held", "failed"]), name="balance_statement_state"),
         ]
         indexes = [models.Index(fields=["state", "due_at"], name="balance_statement_due")]
+
+
+class MembershipDelivery(models.Model):
+    """One committed membership notification per email or current device binding."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    change = models.ForeignKey(Change, on_delete=models.CASCADE)
+    participant = models.ForeignKey(Participant, on_delete=models.CASCADE)
+    recipient = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    channel = models.CharField(max_length=5)
+    device = models.ForeignKey(PushDevice, null=True, on_delete=models.CASCADE)
+    device_revision = models.PositiveIntegerField(null=True)
+    recipient_email = models.EmailField(blank=True)
+    payload = models.JSONField(default=dict)
+    state = models.CharField(max_length=9, default='pending')
+    due_at = models.DateTimeField()
+    first_attempt_at = models.DateTimeField(null=True)
+    accepted_at = models.DateTimeField(null=True)
+    attempts = models.PositiveSmallIntegerField(default=0)
+    lease_id = models.UUIDField(null=True)
+    lease_until = models.DateTimeField(null=True)
+    provider_id = models.CharField(max_length=200, blank=True)
+    last_error = models.CharField(max_length=40, blank=True)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(condition=Q(channel='email', device__isnull=True, device_revision__isnull=True)
+                                   | Q(channel='push', device__isnull=False, device_revision__isnull=False), name='membership_delivery_channel'),
+            models.CheckConstraint(condition=Q(state__in=['pending', 'sending', 'queued', 'sent', 'cancelled', 'held']), name='membership_delivery_state'),
+            models.UniqueConstraint(fields=['change', 'recipient'], condition=Q(channel='email'), name='membership_email_once'),
+            models.UniqueConstraint(fields=['change', 'device', 'device_revision'], condition=Q(channel='push'), name='membership_push_once'),
+        ]
+        indexes = [models.Index(fields=['state', 'due_at', 'id'], name='membership_delivery_due')]

@@ -1,6 +1,9 @@
 import React, { useState } from 'react';
 import { ActivityIndicator, ScrollView, View } from 'react-native';
-import { Text } from 'react-native-paper';
+import { Dialog, Text } from 'react-native-paper';
+import DialogFocus from './DialogFocus';
+import KeyboardDialog from './KeyboardDialog';
+import { DialogScrollBody } from './DialogParts';
 import { TextField } from './FormFields';
 import { Button, ErrorText, useUI } from './ui';
 import { AppFrame, pageContentStyle, ScreenHeader } from './AppNavigation';
@@ -10,6 +13,14 @@ export function EmailLinkScreen({ title, busy, children }: { title: string; busy
     <ScreenHeader title={title} busy={busy} />
     <ScrollView role="main" contentContainerStyle={pageContentStyle} keyboardShouldPersistTaps="handled">{children}</ScrollView>
   </AppFrame>;
+}
+export function EmailLinkDialog({ title, children }: { title: string; children: React.ReactNode }) {
+  return <KeyboardDialog visible dismissable={false} onDismiss={() => {}}>
+    <DialogFocus>
+    <Dialog.Title aria-level={2}>{title}</Dialog.Title>
+    <DialogScrollBody maxHeight={400} gap={12}>{children}</DialogScrollBody>
+    </DialogFocus>
+  </KeyboardDialog>;
 }
 
 export function EmailLinkStatus({ opening, error, sent, canRenew, busy, onRetry, onRenew, onSignIn }: { opening: boolean; error: string; sent: boolean; canRenew: boolean; busy: boolean; onRetry: () => void; onRenew: () => void; onSignIn: () => void }) {

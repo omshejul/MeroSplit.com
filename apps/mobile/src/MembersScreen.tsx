@@ -1,6 +1,7 @@
 import { publicAppUrl } from './appLinks';
 import { DialogScrollBody, CancelDialogActions } from './DialogParts';
 import KeyboardDialog from './KeyboardDialog';
+import SendInviteDialog from './SendInviteDialog';
 import { GroupMembershipActions } from './GroupMembershipActions';
 import React, { useEffect, useRef, useState } from 'react';
 import { Keyboard, Platform, Pressable, Share, StyleSheet, View } from 'react-native';
@@ -39,28 +40,24 @@ function balanceDescription(amount: string) {
   return value === 0n ? 'Settled' : `${value < 0n ? 'Owes' : 'Is owed'} ${formatMoney((value < 0n ? -value : value).toString())}`;
 }
 
-const emailStatus = (state: string | undefined, email: string) => state === 'sent' ? `Sent to ${email}`
-  : state === 'failed' ? 'Invitation failed. Try again.'
-    : state === 'sending' ? 'Sending status pending' : 'Invitation not sent';
-
 function FeedbackNote({ section, feedback }: { section: string; feedback: Feedback }) {
   const { ui } = useUI();
-  return feedback?.section === section
+  return feedback?.section === section && !!feedback.text
     ? <Text style={feedback.error ? ui.error : ui.caption} accessibilityLiveRegion="polite" accessibilityRole={feedback.error ? 'alert' : undefined}>{feedback.text}</Text>
     : null;
 }
 
-function MemberRow({ group, person, selfId, organizer, disabled, working, feedback, emailRequest, cooldown, contactChanged, onAddEmail, onSend, onRemove }: {
+function MemberRow({ group, person, selfId, organizer, disabled, working, feedback, cooldown, contactChanged, onAddEmail, onSend, onRemove }: {
   group: Group; person: Participant; selfId: string; organizer: boolean; disabled: boolean; working: boolean; feedback: Feedback;
-  emailRequest?: EmailInviteRequest; cooldown: number; contactChanged: boolean; onAddEmail: () => void; onSend: () => void; onRemove: () => void;
+  cooldown: number; contactChanged: boolean; onAddEmail: () => void; onSend: () => void; onRemove: () => void;
 }) {
   const { ui } = useUI();
   const removable = organizer && !person.removed && person.id !== selfId && person.user_id !== group.owner_id;
   const balance = BigInt(group.balances[person.id] ?? '0'), blocked = removable && balance !== 0n;
-  const invitation = currentEmailInvite(group, person.id, person.email ?? ''), inviteSection = `email-invite:${person.id}`;
+  const inviteSection = `email-invite:${person.id}`;
   const canAddEmail = organizer && !group.is_direct && !group.archived && !person.removed && person.id !== selfId && person.user_id == null && !person.email;
   const canInvite = organizer && !person.removed && person.user_id == null && !!person.email;
-  const status = person.removed ? 'Removed' : person.user_id != null ? person.user_id === group.owner_id ? 'Organizer' : 'Joined' : invitation?.send_state === 'sent' ? 'Invited' : '';
+  const status = person.removed ? 'Removed' : person.user_id != null ? person.user_id === group.owner_id ? 'Organizer' : 'Joined' : '';
   const reason = blocked ? `Settle ${formatMoney((balance < 0n ? -balance : balance).toString())} first` : '';
   const displayName = `${person.name}${person.id === selfId && person.name.toLowerCase() !== 'you' ? ' (you)' : ''}`;
   return <View style={ui.row}>
@@ -74,9 +71,8 @@ function MemberRow({ group, person, selfId, organizer, disabled, working, feedba
       </Pressable>
       {canInvite && <>
         <Text numberOfLines={1} accessibilityLabel={person.email} style={ui.rowSub}>{person.email}</Text>
-        <Button title={working && feedback?.section === inviteSection ? 'Sending…' : cooldown > 0 ? `Retry in ${cooldown}s` : emailRequest || ['failed', 'sending'].includes(invitation?.send_state ?? '') ? 'Retry invitation' : invitation?.send_state === 'sent' ? 'Resend invitation' : 'Send invitation'} accessibilityLabel={`Send invitation to ${person.name} at ${person.email}`} kind="text"
+        <Button title={working && feedback?.section === inviteSection ? 'Sending' : 'Send'} accessibilityLabel={`Send invite to ${person.name} at ${person.email}`} kind="text"
           disabled={disabled || !!group.archived || cooldown > 0 || contactChanged} onPress={onSend} />
-        {invitation && ['failed', 'sending'].includes(invitation.send_state ?? '') && feedback?.section !== inviteSection && <Text style={invitation.send_state === 'failed' ? ui.error : ui.caption}>{emailStatus(invitation.send_state, person.email!)}</Text>}
         <FeedbackNote section={inviteSection} feedback={feedback} />
       </>}
     </View>
@@ -100,14 +96,14 @@ function AddPersonDialog({ visible, disabled, working, archived, name, email, on
   </KeyboardDialog>;
 }
 
-function PersonEmailDialog({ person, email, disabled, unavailable, onEmail, onClose, onSave, feedback }: { person?: Participant; email: string; disabled: boolean; unavailable: boolean; onEmail: (value: string) => void; onClose: () => void; onSave: () => void; feedback: Feedback }) {
+function PersonEmailDialog({ person, email, disabled, working, unavailable, onEmail, onClose, onSave, feedback }: { person?: Participant; email: string; disabled: boolean; working: boolean; unavailable: boolean; onEmail: (value: string) => void; onClose: () => void; onSave: () => void; feedback: Feedback }) {
   return <KeyboardDialog visible={!!person} dismissable={!disabled} onDismiss={() => { if (!disabled) onClose(); }}>
     <Dialog.Title aria-level={2}>Invite {person?.name}</Dialog.Title>
     <DialogScrollBody maxHeight={280} gap={8}>
       <EmailField label="Email" value={email} onChangeText={onEmail} editable={!disabled && !unavailable} maxLength={254} autoFocus />
       <FeedbackNote section={`email-invite:${person?.id}`} feedback={feedback} />
     </DialogScrollBody>
-    <CancelDialogActions disabled={disabled} onCancel={onClose}><Button title="Save and invite" kind="primary" icon="mail" disabled={disabled || unavailable || !email.trim()} onPress={onSave} /></CancelDialogActions>
+    <CancelDialogActions disabled={disabled} onCancel={onClose}><Button title={working ? 'Sending' : 'Send'} kind="primary" icon="mail" disabled={disabled || unavailable || !email.trim()} onPress={onSave} /></CancelDialogActions>
   </KeyboardDialog>;
 }
 
@@ -131,7 +127,7 @@ function InviteRow({ invite, name, disabled, onApprove, onRevoke }: { invite: In
   const { palette: colors, ui } = useUI();
   return <View style={[s.row, { borderBottomColor: colors.line }]}>
     <Text style={ui.rowTitle}>{name}</Text>
-    <Text style={ui.caption}>{invite.approved ? 'Account approved' : invite.intended_email ? emailStatus(invite.send_state, invite.intended_email) : invite.claimant_email ? `Requested by ${invite.claimant_email}` : 'Waiting for someone to request to join.'}</Text>
+    <Text style={ui.caption}>{invite.approved ? 'Account approved' : invite.intended_email || (invite.claimant_email ? `Requested by ${invite.claimant_email}` : 'Waiting for someone to request to join.')}</Text>
     {!invite.intended_email && !invite.approved && invite.claimant_id != null && invite.claimant_email && <Button title="Approve request" accessibilityLabel={`Approve ${invite.claimant_email} for ${name}`} kind="primary" disabled={disabled} onPress={onApprove} />}
     <Button title="Revoke invite" accessibilityLabel={`Revoke invite for ${name}`} kind="text" disabled={disabled} onPress={onRevoke} />
   </View>;
@@ -163,6 +159,7 @@ function MemberSettings({ group, selfId, busy, addPersonRequest = 0, onAction, o
   const emailPerson = group.participants.find(person => person.id === emailPersonId);
   function closePersonEmail() { Keyboard.dismiss(); setEmailPersonId(null); requestAnimationFrame(() => emailTrigger.current?.focus()); }
   const [inviteLink, setInviteLink] = useState<InviteLink | null>(null);
+  const [invitePerson, setInvitePerson] = useState<Participant | null>(null);
   const [working, setWorking] = useState(false);
   const [feedback, setFeedback] = useState<Feedback>(null);
   const [contactEmail, setContactEmail] = useState<string | null>(null);
@@ -222,27 +219,44 @@ function MemberSettings({ group, selfId, busy, addPersonRequest = 0, onAction, o
     Alert.alert(title, detail, [{ text: 'Cancel', style: 'cancel' }, { text: label, onPress: action }]);
   }
 
-  async function deliverEmailInvite(person: Participant, prefix = '') {
+  async function deliverEmailInvite(person: Participant) {
     if (!mounted.current) return;
     const current = latestGroup.current, live = current.participants.find(value => value.id === person.id), actor = current.participants.find(value => value.id === selfId);
     if (current.id !== group.id || current.archived || actor?.removed || actor?.user_id == null || actor.user_id !== current.owner_id || !live || live.removed || live.user_id != null
       || live.email && live.email.trim().toLowerCase() !== person.email?.trim().toLowerCase()) throw new Error('The group or contact changed. Check it before sending.');
-    const saved = person.email!, section = `email-invite:${person.id}`;
+    const saved = person.email!;
     const request = emailInvitationRequest(person.id, saved, emailRequests[person.id], currentEmailInvite(latestGroup.current, person.id, saved), Crypto.randomUUID);
     setEmailRequests(current => ({ ...current, [person.id]: request }));
     setInviteCooldowns(current => ({ ...current, [person.id]: 60 }));
-    setFeedback({ section, text: prefix + 'Sending invitation…', error: false });
     const status = await sendInvitation(group.id, request, latestAction.current);
     setInviteCooldowns(current => ({ ...current, [person.id]: status.retryAfter }));
-    if (status.state === 'sent') setEmailRequests(current => { const next = { ...current }; delete next[person.id]; return next; });
-    setFeedback({ section, text: prefix + (status.state === 'sent' ? `Invitation sent to ${saved}.` : status.state === 'failed' ? 'The invitation email could not be sent. You can retry.' : 'The invitation is still being sent. Check its status before retrying.'), error: status.state === 'failed' });
+    if (status.state === 'sent' || status.state === 'linked') {
+      setEmailRequests(current => { const next = { ...current }; delete next[person.id]; return next; });
+      setInvitePerson(null);
+    } else if (status.state === 'failed') throw new Error('Could not send the invite. Wait a minute, then press Send.');
+    else throw new Error('Could not confirm the invite. Wait a minute, then press Send to check.');
   }
 
   function sendEmailInvite(person: Participant) {
     const saved = person.email ?? '';
-    if (!organizer || person.removed || person.user_id != null || !saved || inviteCooldowns[person.id] || group.archived
-      || (person.id === directPerson?.id && emailChanged)) return;
-    void perform(`email-invite:${person.id}`, () => deliverEmailInvite(person));
+    if (disabled || inviteCooldowns[person.id]) return;
+    if (!organizer || person.removed || person.user_id != null || !saved || group.archived || (person.id === directPerson?.id && emailChanged)) {
+      setFeedback({ section: `email-invite:${person.id}`, text: 'The group or contact changed. Close and check it before sending.', error: true });
+      return;
+    }
+    void perform(`email-invite:${person.id}`, async () => {
+      setFeedback({ section: `email-invite:${person.id}`, text: '', error: false });
+      await deliverEmailInvite(person);
+    });
+  }
+
+  function sendConfirmedInvite() {
+    if (!invitePerson) return;
+    if (inviteCooldowns[invitePerson.id]) {
+      setFeedback({ section: `email-invite:${invitePerson.id}`, text: 'Wait a minute, then press Send to try again.', error: true });
+      return;
+    }
+    sendEmailInvite(invitePerson);
   }
 
   function editPersonEmail(person: Participant) {
@@ -263,7 +277,7 @@ function MemberSettings({ group, selfId, busy, addPersonRequest = 0, onAction, o
       pendingContact.current = request;
       await saveContact(current.id, person.id, { command_id: request.id, email }, latestAction.current);
       pendingContact.current = null; closePersonEmail();
-      try { await deliverEmailInvite({ ...person, email }, 'Contact saved. '); }
+      try { await deliverEmailInvite({ ...person, email }); }
       catch (error) { throw new Error(`Contact saved. ${error instanceof Error ? error.message : 'Check the invitation before retrying.'}`); }
     });
   }
@@ -273,17 +287,17 @@ function MemberSettings({ group, selfId, busy, addPersonRequest = 0, onAction, o
     void perform('add-person', async () => {
       const request = personRequest(newName, newEmail, pendingPerson.current, Crypto.randomUUID);
       pendingPerson.current = request;
-      await addPerson(group.id, request, onAction);
+      const result = await addPerson(group.id, request, onAction);
       pendingPerson.current = null;
       setNewName(''); setNewEmail(''); closeAddPerson();
-      setFeedback({ section: 'members', text: 'Person added. No invitation was sent.', error: false });
+      if (request.email && !result.linked) setInvitePerson({ id: request.id, name: request.name, email: request.email });
     });
   }
 
   return <View style={s.content}>
     <View>
       {group.participants.map(person => <MemberRow key={person.id} group={group} person={person} selfId={selfId} organizer={organizer} disabled={disabled} working={working} feedback={feedback}
-        emailRequest={emailRequests[person.id]} cooldown={inviteCooldowns[person.id] ?? 0} contactChanged={person.id === directPerson?.id && emailChanged}
+        cooldown={inviteCooldowns[person.id] ?? 0} contactChanged={person.id === directPerson?.id && emailChanged}
         onAddEmail={() => editPersonEmail(person)} onSend={() => sendEmailInvite(person)} onRemove={() => confirm(
             `Remove ${person.name}?`, `${person.user_id != null ? 'They will lose access to this group. ' : ''}Existing bills and payment history remain.`,
             () => void perform('members', async () => { await onAction(`/participants/${person.id}/remove`, {}); }, 'Person removed.'), 'Remove')} />)}
@@ -300,9 +314,12 @@ function MemberSettings({ group, selfId, busy, addPersonRequest = 0, onAction, o
       <Text style={ui.caption}>{emailChanged ? 'Save before sending an invitation.' : savedEmail ? 'Only this email can accept the invitation.' : 'Add an email to invite them later.'}</Text>
       {!!group.archived && <Text style={ui.caption}>Reopen this group to change the email or send an invitation.</Text>}
     </Disclosure>}
-    <PersonEmailDialog person={emailPerson} email={personEmail} disabled={disabled} unavailable={!organizer || !!group.archived || !!emailPerson?.removed || emailPerson?.user_id != null} onEmail={setPersonEmail} onClose={closePersonEmail} onSave={savePersonEmail} feedback={feedback} />
+    <PersonEmailDialog person={emailPerson} email={personEmail} disabled={disabled} working={working} unavailable={!organizer || !!group.archived || !!emailPerson?.removed || emailPerson?.user_id != null} onEmail={setPersonEmail} onClose={closePersonEmail} onSave={savePersonEmail} feedback={feedback} />
     <AddPersonDialog visible={addingPerson} disabled={disabled} working={working} archived={!!group.archived} name={newName} email={newEmail}
       onName={setNewName} onEmail={setNewEmail} onClose={closeAddPerson} onSave={savePerson} feedback={feedback} />
+    <SendInviteDialog visible={!!invitePerson} email={invitePerson?.email ?? ''} busy={disabled}
+      error={feedback?.error && feedback.section === `email-invite:${invitePerson?.id}` ? feedback.text : ''}
+      onSend={sendConfirmedInvite} onCancel={() => { if (!disabled) { setInvitePerson(null); setFeedback(null); } }} />
     <FeedbackNote section="members" feedback={feedback} />
 
     {organizer && hasInvites && <Disclosure title="Invite people">

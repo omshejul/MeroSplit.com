@@ -23,6 +23,8 @@ import { createPaymentReturn } from './src/paymentReturn';
 import type { PaymentReturn } from './src/paymentReturn';
 import { listPaymentReturns, savePaymentReturn, clearPaymentReturn, resolvePaymentReturn } from './src/paymentReturnStorage';
 import MembersScreen from './src/MembersScreen';
+import SendInviteDialog from './src/SendInviteDialog';
+import { sendInvitation } from './src/members';
 import SavedChangeScreen from './src/SavedChangeScreen';
 import SplitwiseImportScreen from './src/SplitwiseImportScreen';
 import AccountHeader from './src/AccountHeader';
@@ -31,13 +33,14 @@ import { groupListRows } from './src/groupListRows';
 import Mascot from './src/Mascot';
 import { AddExpenseButton, AppFrame, pageContentStyle, ScreenHeader, AppTabs } from './src/AppNavigation';
 import { EmailSignIn, CodeSignIn } from './src/SignInForms';
-import { captureEmailLink, forgetEmailProof, subscribeEmailLinks, type EmailLink, type EmailTarget } from './src/emailLink';
-import { resolveEmailLink, renewEmailLink, requestEmailLink } from './src/emailLinkApi';
-import { resolveNativeEmailLink, renewNativeEmailLink } from './src/nativeEmailLinkApi';
+import { captureEmailLink, forgetEmailProof, subscribeEmailLinks, type EmailLink, type EmailTarget, type EmailLinkInspection } from './src/emailLink';
+import { inspectEmailLink, resolveEmailLink, renewEmailLink, requestEmailLink, EmailLinkError } from './src/emailLinkApi';
+import { inspectNativeEmailLink, resolveNativeEmailLink, renewNativeEmailLink, NativeEmailLinkError } from './src/nativeEmailLinkApi';
+import SwitchAccountDialog from './src/SwitchAccountDialog';
 import { APP_ORIGIN, startNativeLinks } from './src/appLinks';
 import { pauseAccountRequests, resumeAccountRequests } from './src/accountRequests';
 import { readBrowserSession, updateBrowserSessionMetadata } from './src/browserAuth';
-import { EmailLinkScreen, EmailLinkStatus, EmailLinkSent, NameOnlyForm } from './src/EmailLinkScreens';
+import { EmailLinkDialog, EmailLinkScreen, EmailLinkStatus, EmailLinkSent, NameOnlyForm } from './src/EmailLinkScreens';
 import CreateGroupForm from './src/CreateGroupForm';
 import type { NewGroupValues } from './src/CreateGroupForm';
 import { SavedChanges, LegacyRecovery as LegacyRecords } from './src/AccountRecovery';
@@ -58,7 +61,7 @@ import ExportData from './src/ExportData';
 import { clearAccountMediaUploads, clearMediaPreviews, enqueueExpenseWithMedia, retryAccountMediaUploads, type PendingMediaUpload } from './src/media';
 import type { CachedGroup, Command, Expense, Group, LegacyRecovery, Session, Settlement, HistoryResource, ActivityPage, ActivityTarget, BillRow } from './src/types';
 import { Button, Disclosure, IconAction, SettingsRow, UIProvider, useUI, type Palette } from './src/ui';
-import { visiblePeopleSummary } from './src/personalBalances';
+import { groupDisplayName, visiblePeopleSummary } from './src/personalBalances';
 import { useExpenseNotices } from './src/useExpenseNotices';
 import type { WindowFrame } from './src/expenseNotices';
 import { Text } from 'react-native-paper';
@@ -67,7 +70,7 @@ const API_URL = process.env.EXPO_PUBLIC_API_URL ?? (Platform.OS === 'web' ? wind
 const uuid = () => Crypto.randomUUID();
 type Screen = 'home' | 'create' | 'group' | 'expense' | 'expenseDetail' | 'billChat' | 'settle' | 'members' | 'login' | 'review' | 'paymentDetail' | 'import';
 type Transfer = { sender: string; recipient: string; amount: string };
-type EmailEntry = { id: string | null; phase: 'opening' | 'target' | 'name' | 'error'; error: string; sent: boolean; target?: EmailTarget };
+type EmailEntry = { id: string | null; phase: 'opening' | 'switch' | 'target' | 'name' | 'error'; error: string; sent: boolean; target?: EmailTarget; inspection?: EmailLinkInspection; switchFromUserId?: number };
 function AppContent() {
   const { palette: colors, ui, changeAppearance, changeColorFamily } = useUI();
   const s = makeStyles(colors);
@@ -93,9 +96,14 @@ function AppContent() {
   const [nativeLinksReady, setNativeLinksReady] = useState(Platform.OS === 'web');
   const authEpoch = useRef(0), cookieCheck = useRef(false), validatedBrowserSession = useRef('');
   const authHeld = !nativeLinksReady || !!emailEntry || checkingCookie, authHeldRef = useRef(authHeld); authHeldRef.current = authHeld;
-  const authPending = !nativeLinksReady || checkingCookie || emailEntry?.phase === 'opening' || emailEntry?.phase === 'error';
+  const protectedContent = useRef<React.ComponentRef<typeof View>>(null);
+  useEffect(() => {
+    if (Platform.OS === 'web' && protectedContent.current) (protectedContent.current as unknown as HTMLElement).inert = authHeld;
+  }, [authHeld, !!session]);
+  const authPending = !nativeLinksReady || checkingCookie || emailEntry?.phase === 'opening' || emailEntry?.phase === 'switch' || emailEntry?.phase === 'error';
   const [myName, setMyName] = useState('You');
   const [addPersonRequest, setAddPersonRequest] = useState(0);
+  const [newPersonInvite, setNewPersonInvite] = useState<{ owner: string; groupId: string; personId: string; email: string; id: string } | null>(null), [newPersonInviteError, setNewPersonInviteError] = useState('');
   const [foreground, setForeground] = useState(AppState.currentState === 'active' && (Platform.OS !== 'web' || document.visibilityState === 'visible'));
   const scroll = useRef<React.ComponentRef<typeof ScrollView>>(null), suppressPush = useRef<(data: unknown) => boolean>(() => false);
   const [viewport, setViewport] = useState<WindowFrame | null>(null), [scrollEpoch, setScrollEpoch] = useState(0);
@@ -125,6 +133,12 @@ function AppContent() {
   const expense = preview?.expenses.find(value => value.id === expenseId) ?? (preview?.focused_expense?.id === expenseId ? preview.focused_expense : undefined);
   const returnPayment = returns.find(value => value.groupId === groupId && value.attemptId === returnAttemptId) ?? null;
   const settlement = selected?.group.settlements.find(value => value.id === settlementId) ?? (selected?.group.focused_settlement?.id === settlementId ? selected.group.focused_settlement : undefined);
+  const inviteGroup = groups.find(row => row.group.id === newPersonInvite?.groupId)?.group;
+  const invitePerson = inviteGroup?.participants.find(person => person.id === newPersonInvite?.personId);
+  const showNewPersonInvite = !!newPersonInvite && newPersonInvite.owner === owner && !!inviteGroup && inviteGroup.version > 0 && !!invitePerson && !invitePerson.user_id && !commands.some(value => value.group_id === inviteGroup.id && value.path === '/groups');
+  useEffect(() => {
+    if (newPersonInvite && (newPersonInvite.owner !== owner || invitePerson?.user_id)) { setNewPersonInvite(null); setNewPersonInviteError(''); }
+  }, [owner, newPersonInvite, invitePerson?.user_id]);
   const notices = useExpenseNotices(session, { enabled: ready && foreground && !expired && !authHeld, visibleExpenseIds: screen === 'group' ? selected?.group.transactions?.flatMap(value => value.kind === 'bill' ? [value.bill.id] : []) ?? selected?.group.expenses.map(value => value.id) : screen === 'expenseDetail' && expense ? [expense.id] : [],
     onRefresh: async () => { if (authHeldRef.current || lock.current || !session || activeSessionRef.current?.token !== session.token) return; await perform(() => syncAccount(session), false).catch(() => {}); } });
   suppressPush.current = notices.shouldSuppress;
@@ -491,7 +505,7 @@ function AppContent() {
     else if (screen === 'import') openMe();
     else navigate(session ? 'home' : 'login');
   }
-  useEffect(() => { const event = BackHandler.addEventListener('hardwareBackPress', () => { if (busy) return true; if (screen === 'home' && !(tab === 'Groups' && (showArchived || showHidden)) || !session && screen === 'login') return false; back(); return true; }); return () => event.remove(); }, [screen, tab, showArchived, showHidden, busy, !!session]);
+  useEffect(() => { const event = BackHandler.addEventListener('hardwareBackPress', () => { if (busy || authHeldRef.current) return true; if (screen === 'home' && !(tab === 'Groups' && (showArchived || showHidden)) || !session && screen === 'login') return false; back(); return true; }); return () => event.remove(); }, [screen, tab, showArchived, showHidden, busy, !!session]);
   function command(method: Command['method'], path: string, body: Record<string, unknown>): Command {
     const id = typeof body.command_id === 'string' ? body.command_id : uuid(); return { command_id: id, group_id: groupId!, base_version: selected?.group.version ?? 0, method, path, body: { ...body, command_id: id }, state: 'pending', error: null };
   }
@@ -667,9 +681,22 @@ function AppContent() {
     const group = { ...emptyGroup(uuid(), direct ? values.people[0].trim() : values.name, participants), owner_id: Number(session.userId), is_direct: direct };
     const id = uuid(), create: Command = { command_id: id, group_id: group.id, base_version: 0, method: 'POST', path: '/groups', body: { command_id: id, id: group.id, name: group.name, participants: participants.map(({ id, name, email }) => ({ id, name, ...(email ? { email } : {}) })), self_participant_id: participants[0].id, is_direct: direct }, state: 'pending', error: null };
     await createPendingGroup(await getDatabase(), owner, group, [create]);
+    if (direct && values.email.trim()) {
+      setNewPersonInvite({ owner, groupId: group.id, personId: participants[1].id, email: values.email.trim().toLowerCase(), id: uuid() }); setNewPersonInviteError('');
+    }
     try { await syncOutbox(await getDatabase(), session, 'summary'); }
     catch (error) { if (error instanceof ApiError && error.status === 401) setExpired(true); setNotice(storageIsDurable() ? 'Saved. Reconnect to finish syncing.' : 'Not confirmed by the server. Keep this tab open and reconnect to retry.', 'warning'); }
     setGroupId(group.id); setExpenseId(null); setDraft(null); setScreen('group');
+  }
+  async function sendNewPersonInvite() {
+    const value = newPersonInvite;
+    if (!value || busy || value.owner !== owner || groupId !== value.groupId || invitePerson?.email !== value.email) return;
+    setNewPersonInviteError('');
+    try {
+      const result = await sendInvitation(value.groupId, { personId: value.personId, email: value.email, id: value.id }, groupAction);
+      if (result.state !== 'sent' && result.state !== 'linked') throw new Error('Could not confirm this invitation. Try again shortly.');
+      setNewPersonInvite(null);
+    } catch (error) { setNewPersonInviteError(error instanceof Error ? error.message : 'Could not send this invitation. Try again.'); }
   }
   async function exportData() {
     if (!session || ownerRef.current !== owner) return;
@@ -759,9 +786,31 @@ function AppContent() {
     const proof = emailProof.current?.id === entry.id ? emailProof.current.proof : null;
     const prior = Platform.OS === 'web' ? session : await savedSession();
     if (epoch !== authEpoch.current) return;
+    let checkedProof = proof;
+    if (proof) {
+      let inspection: EmailLinkInspection;
+      try {
+        inspection = Platform.OS === 'web' ? await inspectEmailLink(API_URL, entry.id, proof)
+          : await inspectNativeEmailLink(API_URL, entry.id, proof, prior ?? undefined);
+      } catch (error) {
+        // A consumed link can only resume its already authenticated recipient.
+        // Do not exchange the bearer after a failed preview.
+        if (!(error instanceof EmailLinkError || error instanceof NativeEmailLinkError) || error.status !== 400 || entry.switchFromUserId !== undefined) throw error;
+        checkedProof = null;
+      }
+      if (epoch !== authEpoch.current) return;
+      if (checkedProof) {
+        if (entry.switchFromUserId !== undefined && entry.switchFromUserId !== inspection!.currentUserId) throw new Error('Your account changed. Open this link again.');
+        if (inspection!.currentUserId !== null && inspection!.currentUserId !== inspection!.userId && entry.switchFromUserId === undefined) {
+          const next: EmailEntry = { ...entry, phase: 'switch', inspection: inspection! };
+          emailEntryRef.current = next; setEmailEntry(next);
+          return;
+        }
+      }
+    }
     const result = Platform.OS === 'web'
-      ? await resolveEmailLink(API_URL, { id: entry.id, proof }, () => epoch === authEpoch.current)
-      : await resolveNativeEmailLink(API_URL, { id: entry.id, proof }, () => epoch === authEpoch.current, prior ?? undefined);
+      ? await resolveEmailLink(API_URL, { id: entry.id, proof: checkedProof }, () => epoch === authEpoch.current, entry.switchFromUserId)
+      : await resolveNativeEmailLink(API_URL, { id: entry.id, proof: checkedProof }, () => epoch === authEpoch.current, prior ?? undefined, undefined, entry.switchFromUserId);
     if (!result || epoch !== authEpoch.current) return;
     await saveSession(result.session);
     if (epoch !== authEpoch.current) return;
@@ -801,7 +850,21 @@ function AppContent() {
     await perform(async () => { await (Platform.OS === 'web' ? renewEmailLink : renewNativeEmailLink)(API_URL, entry.id!); if (emailEntryRef.current?.id === entry.id) setEmailEntry({ ...entry, error: '', sent: true }); }, false).catch(() => { if (emailEntryRef.current?.id === entry.id) setEmailEntry({ ...entry, error: 'Could not send a new link. Try again.', sent: false }); });
   }
   function retryEmailLink() { const entry = emailEntryRef.current; if (entry) setEmailEntry({ ...entry, phase: 'opening', error: '', sent: false }); }
+  function confirmAccountSwitch() {
+    const entry = emailEntryRef.current;
+    if (busy || entry?.phase !== 'switch' || !entry.inspection?.currentUserId) return;
+    const next: EmailEntry = { ...entry, phase: 'opening', switchFromUserId: entry.inspection.currentUserId };
+    emailEntryRef.current = next; setEmailEntry(next);
+  }
+  function cancelAccountSwitch() {
+    if (busy) return;
+    authEpoch.current++;
+    forgetEmailProof(); initialEmailLink.current = null; emailProof.current = null; emailEntryRef.current = null; setEmailEntry(null);
+    authHeldRef.current = false; activeSessionRef.current = session;
+    resumeAccountRequests(); queueCookieCheck();
+  }
   function leaveEmailLink() {
+    if (session && !emailEntryRef.current?.target) { cancelAccountSwitch(); return; }
     if (Platform.OS !== 'web' && session && !emailEntryRef.current?.target) setExpired(true);
     forgetEmailProof(); initialEmailLink.current = null; emailProof.current = null; emailEntryRef.current = null; setEmailEntry(null);
     authHeldRef.current = false; resumeAccountRequests(); queueCookieCheck();
@@ -814,14 +877,14 @@ function AppContent() {
   const archivedGroups = groupListRows(listedGroups, true);
   const visibleGroups = !direct && showHidden ? hiddenGroups : direct ? listedGroups.filter(row => !!session && visiblePeopleSummary(row.group, session.userId, commands.some(command => command.group_id === row.group.id))) : groupListRows(listedGroups, showArchived);
   const showAddExpense = screen === 'group' && !!selected && !selected.group.archived;
-  const title = screen === 'home' ? (tab === 'Friends' ? 'People' : tab === 'Account' ? 'Me' : tab === 'Groups' && showHidden ? 'Removed from my list' : tab === 'Groups' && showArchived ? 'Archived groups' : tab) : screen === 'login' ? 'Sign in' : screen === 'create' ? (direct ? 'Add a person' : 'New group') : screen === 'expense' ? (expenseId ? 'Edit bill' : 'Add expense') : screen === 'billChat' ? 'Chat' : screen === 'expenseDetail' ? expense?.description ?? 'Bill' : screen === 'settle' ? 'Payment' : screen === 'members' ? 'Group settings' : screen === 'review' ? 'Review your bill' : screen === 'paymentDetail' ? 'Payment record' : screen === 'import' ? 'Import from Splitwise' : selected?.group.name ?? 'Group';
+  const title = screen === 'home' ? (tab === 'Friends' ? 'People' : tab === 'Account' ? 'Me' : tab === 'Groups' && showHidden ? 'Removed from my list' : tab === 'Groups' && showArchived ? 'Archived groups' : tab) : screen === 'login' ? 'Sign in' : screen === 'create' ? (direct ? 'Add a person' : 'New group') : screen === 'expense' ? (expenseId ? 'Edit bill' : 'Add expense') : screen === 'billChat' ? 'Chat' : screen === 'expenseDetail' ? expense?.description ?? 'Bill' : screen === 'settle' ? 'Payment' : screen === 'members' ? 'Group settings' : screen === 'review' ? 'Review your bill' : screen === 'paymentDetail' ? 'Payment record' : screen === 'import' ? 'Import from Splitwise' : selected ? groupDisplayName(selected.group, session?.userId) : 'Group';
   if (!ready) return <SafeAreaView style={[s.screen, s.loading]}><ActivityIndicator color={colors.accent} /><Text style={ui.caption}>Opening your groups…</Text></SafeAreaView>;
   if (storageError) return <SafeAreaView role="main" style={[s.screen, pageContentStyle]}><Text accessibilityRole="header" aria-level={1} style={ui.section}>Could not open saved records</Text><Text accessibilityRole="alert" style={ui.error}>{storageError}</Text><Button title="Retry" disabled={busy} onPress={() => launch(restore)} /></SafeAreaView>;
-  if (authHeld) return <EmailLinkScreen title={emailEntry?.phase === 'name' ? 'Name' : 'Sign in'} busy={busy}>
-    {!checkingCookie && emailEntry?.phase === 'name' ? <NameOnlyForm key={emailEntry.id} busy={busy} onSave={finishEmailName} />
-      : <EmailLinkStatus opening={checkingCookie || emailEntry?.phase === 'opening' || emailEntry?.phase === 'target'} busy={busy} error={emailEntry?.error ?? ''} sent={!!emailEntry?.sent} canRenew={!!emailEntry?.id} onRetry={retryEmailLink} onRenew={() => void renewCurrentEmailLink()} onSignIn={leaveEmailLink} />}
-  </EmailLinkScreen>;
-  return <AppFrame onTouchStart={notices.engage}>
+  const emailContent = !checkingCookie && emailEntry?.phase === 'switch' && emailEntry.inspection ? <SwitchAccountDialog currentEmail={emailEntry.inspection.currentEmail!} targetEmail={emailEntry.inspection.email} invitation={emailEntry.inspection.purpose === 'invite'} busy={busy} onSwitch={confirmAccountSwitch} onCancel={cancelAccountSwitch} />
+      : !checkingCookie && emailEntry?.phase === 'name' ? <NameOnlyForm key={emailEntry.id} busy={busy} onSave={finishEmailName} />
+      : <EmailLinkStatus opening={checkingCookie || emailEntry?.phase === 'opening' || emailEntry?.phase === 'target'} busy={busy} error={emailEntry?.error ?? ''} sent={!!emailEntry?.sent} canRenew={!!emailEntry?.id} onRetry={retryEmailLink} onRenew={() => void renewCurrentEmailLink()} onSignIn={leaveEmailLink} />;
+  if (authHeld && !session) return <EmailLinkScreen title={emailEntry?.phase === 'name' ? 'Name' : 'Sign in'} busy={busy}>{emailContent}</EmailLinkScreen>;
+  return <><AppFrame onTouchStart={notices.engage}><View ref={protectedContent} style={{ flex: 1 }} pointerEvents={authHeld ? 'none' : 'auto'} accessibilityElementsHidden={authHeld} importantForAccessibility={authHeld ? 'no-hide-descendants' : 'auto'} aria-hidden={authHeld}>
     {screen === 'login' && !session && !challenge && !emailRequested && mascotEligible && <Mascot size="welcome" />}
     <ScreenHeader title={title} busy={busy} onBack={screen === 'home' && tab === 'Groups' && (showArchived || showHidden) || screen !== 'home' && (session || screen !== 'login') ? back : undefined}>
       {Platform.OS === 'web' && session && (screen === 'home' && tab !== 'Account' || screen === 'group') && <IconAction name="refresh" label="Refresh" disabled={busy} onPress={() => { if (screen === 'home' && tab === 'Activity') void refreshActivity().catch(() => {}); else launch(sync); }} />}
@@ -894,7 +957,10 @@ function AppContent() {
     </ScrollView>}
     {showAddExpense && <AddExpenseButton disabled={busy} onPress={() => launch(() => openExpense())} />}
     {screen === 'home' && session && <AppTabs selected={tab} busy={busy} onSelect={value => { setShowArchived(false); setShowHidden(false); if (value === 'Activity') { activityOwner.current = ''; setActivityError(''); } setTab(value); setNotice(''); }} />}
-  </AppFrame>;
+  </View></AppFrame>
+    {newPersonInvite && <SendInviteDialog visible={showNewPersonInvite && !authHeld} email={newPersonInvite.email} busy={busy} error={newPersonInviteError} onSend={() => void sendNewPersonInvite()} onCancel={() => { if (!busy) { setNewPersonInvite(null); setNewPersonInviteError(''); } }} />}
+    {authHeld && (emailEntry?.phase === 'switch' ? emailContent : <EmailLinkDialog title={emailEntry?.phase === 'name' ? 'Name' : 'Sign in'}>{emailContent}</EmailLinkDialog>)}
+  </>;
 }
 export default function App() { return <SafeAreaProvider><UIProvider><AppContent /></UIProvider></SafeAreaProvider>; }
 const makeStyles = (colors: Palette) => StyleSheet.create({

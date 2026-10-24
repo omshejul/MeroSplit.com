@@ -1,5 +1,5 @@
 import { challengeFromResponse, type EmailCodeChallenge } from './emailCode.ts';
-import { emailTarget, type EmailLinkResult } from './emailLink.ts';
+import { emailTarget, emailLinkInspection, type EmailLinkInspection, type EmailLinkResult } from './emailLink.ts';
 import type { Session } from './types.ts';
 
 export class NativeEmailLinkError extends Error {
@@ -30,7 +30,7 @@ function currentFor(base: string, current?: Session): Session | undefined {
     return { ...current };
   } catch { return undefined; }
 }
-async function post(base: string, action: 'request' | 'exchange' | 'resume' | 'renew', body: unknown, current: Session | undefined, fetcher: typeof fetch): Promise<Result> {
+async function post(base: string, action: 'request' | 'inspect' | 'exchange' | 'resume' | 'renew', body: unknown, current: Session | undefined, fetcher: typeof fetch): Promise<Result> {
   const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 15_000);
   try {
     let response: Response;
@@ -67,9 +67,18 @@ export async function requestNativeEmailLink(baseUrl: string, email: string, fet
   if (!uuid.test(result.data.challenge_id ?? '')) throw new NativeEmailLinkError(503);
   return challengeFromResponse(result);
 }
-export async function exchangeNativeEmailLink(baseUrl: string, grantId: string, proof: string, currentSession?: Session, fetcher: typeof fetch = fetch): Promise<EmailLinkResult> {
+export async function inspectNativeEmailLink(baseUrl: string, grantId: string, proof: string, currentSession?: Session, fetcher: typeof fetch = fetch): Promise<EmailLinkInspection> {
+  const base = server(baseUrl);
+  const current = currentFor(base, currentSession), body = { grant_id: grantId, proof };
+  try { return emailLinkInspection((await post(base, 'inspect', body, current, fetcher)).data); }
+  catch (error) {
+    if (!current || !(error instanceof NativeEmailLinkError) || ![401, 410].includes(error.status)) throw error;
+    return emailLinkInspection((await post(base, 'inspect', body, undefined, fetcher)).data);
+  }
+}
+export async function exchangeNativeEmailLink(baseUrl: string, grantId: string, proof: string, currentSession?: Session, fetcher: typeof fetch = fetch, switchFromUserId?: number): Promise<EmailLinkResult> {
   const base = server(baseUrl), current = currentFor(base, currentSession);
-  return authenticated(base, await post(base, 'exchange', { grant_id: grantId, proof }, current, fetcher), current);
+  return authenticated(base, await post(base, 'exchange', { grant_id: grantId, proof, ...(switchFromUserId === undefined ? {} : { switch_from_user_id: switchFromUserId }) }, current, fetcher), current);
 }
 export async function resumeNativeEmailLink(baseUrl: string, grantId: string, currentSession: Session, fetcher: typeof fetch = fetch): Promise<EmailLinkResult> {
   const base = server(baseUrl), current = currentFor(base, currentSession);
@@ -82,11 +91,11 @@ export async function renewNativeEmailLink(baseUrl: string, grantId: string, fet
   return result.data.retry_after ?? 60;
 }
 
-export async function resolveNativeEmailLink(baseUrl: string, link: Readonly<{ id: string; proof: string | null }>, isCurrent: () => boolean, currentSession?: Session, fetcher: typeof fetch = fetch): Promise<EmailLinkResult | null> {
+export async function resolveNativeEmailLink(baseUrl: string, link: Readonly<{ id: string; proof: string | null }>, isCurrent: () => boolean, currentSession?: Session, fetcher: typeof fetch = fetch, switchFromUserId?: number): Promise<EmailLinkResult | null> {
   const base = server(baseUrl), { id, proof } = link;
   let current = currentFor(base, currentSession);
   if (!isCurrent()) return null;
-  if (current) {
+  if (current && switchFromUserId === undefined) {
     try {
       const resumed = await resumeNativeEmailLink(base, id, current, fetcher);
       return isCurrent() ? resumed : null;
@@ -99,10 +108,11 @@ export async function resolveNativeEmailLink(baseUrl: string, link: Readonly<{ i
   }
   if (!proof) throw new NativeEmailLinkError(400);
   try {
-    const exchanged = await exchangeNativeEmailLink(base, id, proof, current, fetcher);
+    const exchanged = await exchangeNativeEmailLink(base, id, proof, current, fetcher, switchFromUserId);
     return isCurrent() ? exchanged : null;
   } catch (error) {
     if (!isCurrent()) return null;
+    if (switchFromUserId !== undefined) throw error;
     if (current) {
       try {
         const recovered = await resumeNativeEmailLink(base, id, current, fetcher);

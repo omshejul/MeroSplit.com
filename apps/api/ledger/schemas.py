@@ -150,6 +150,7 @@ class ArchiveIn(Command):
 class WriteResult(Schema):
     id: str
     version: int
+    linked_participant_ids: list[str] = []
 
 
 class ParticipantIn(Command):

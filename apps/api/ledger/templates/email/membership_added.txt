@@ -1,0 +1,5 @@
+You were added to a shared ledger in MeroSplit.
+
+Open MeroSplit: {{ app_url }}
+
+Sign in normally to view it. You can change notification settings in Me.

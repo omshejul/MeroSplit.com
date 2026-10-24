@@ -359,7 +359,7 @@ test('Delete group removes routine caption but retains blocked reason, busy/canL
 const inviteGroup = { id: 'imported-group', name: 'Imported trip', owner_id: 1, version: 1, participants: [{ id: 'owner', name: 'Om', user_id: 1 }, { id: 'imported-person', name: 'Asha' }], balances: { owner: '500', 'imported-person': '-500' }, expenses: [{ id: 'existing-bill' }], settlements: [], invites: [] };
 function memberPanel(onAction: (path: string, body: any) => Promise<any>, group: any = inviteGroup) {
   let ids = 0;
-  const app = harness('src/MembersScreen.tsx', 'MemberSettings', { ...members, Avatar: 'Avatar', IconAction: 'IconAction', Disclosure: 'Disclosure', GroupMembershipActions: 'GroupMembershipActions', EmailField: 'EmailField',
+  const app = harness('src/MembersScreen.tsx', 'MemberSettings', { ...members, Avatar: 'Avatar', IconAction: 'IconAction', Disclosure: 'Disclosure', GroupMembershipActions: 'GroupMembershipActions', EmailField: 'EmailField', SendInviteDialog: 'SendInviteDialog',
     Crypto: { randomUUID: () => `command-${++ids}` }, setTimeout: () => 0, clearTimeout() {} });
   const props = { group, selfId: 'owner', busy: false, onAction, onMembership() {} };
   const row = (tree: any) => nodes(tree).find(node => node.props.person?.id === 'imported-person' && node.props.onAddEmail)!;
@@ -374,34 +374,42 @@ test('Existing imported person email saves before invitation, uses the refreshed
   panel.open(' ASHA@Example.invalid ').props.onSave(); await tick();
   assert.equal(calls.length, 1); assert.equal(calls[0].path, '/participants/imported-person/contact');
   assert.deepEqual(calls[0].body, { command_id: 'command-1', email: 'asha@example.invalid' });
-  const freshAction = async (path: string, body: any) => { calls.push({ path, body, fresh: true }); return { id: inviteGroup.id, version: 3, invite: { id: body.command_id, state: 'sent', retry_after: 60 } }; };
+  assert.equal(panel.dialog(panel.app.render(panel.props)).props.working, true);
+  const freshAction = async (path: string, body: any) => { calls.push({ path, body, fresh: true }); return { id: inviteGroup.id, version: 3, linked_participant_ids: [], invite: { id: body.command_id, state: 'sent', retry_after: 60 } }; };
   const before = JSON.stringify(inviteGroup); panel.app.render({ ...panel.props, onAction: freshAction });
   finish({ id: inviteGroup.id, version: 2 }); await tick();
   assert.equal(calls.length, 2); assert.equal(calls[1].path, '/participants/imported-person/email-invite'); assert.equal(calls[1].fresh, true);
   assert.equal(JSON.stringify(inviteGroup), before);
   const tree = panel.app.render(panel.props); assert.equal(panel.dialog(tree).props.person, undefined);
-  assert.match(panel.row(tree).props.feedback.text, /Contact saved. Invitation sent to asha@example.invalid/); panel.app.unmount();
+  assert.equal(panel.row(tree).props.feedback, null, 'accepted delivery closes quietly without a success caption');
+  assert.equal(nodes(tree).find(node => node.type === 'SendInviteDialog')!.props.visible, false, 'the explicit Send action already authorized this invitation');
+  panel.app.unmount();
 });
 
 test('Unknown contact save retries the same command and never sends before accepted contact acknowledgment', async () => {
-  const calls: any[] = []; const panel = memberPanel(async (path, body) => { calls.push({ path, body }); if (calls.length === 1) throw Error('Response lost'); return path.endsWith('/contact') ? { id: inviteGroup.id, version: 2 } : { id: inviteGroup.id, version: 3, invite: { id: body.command_id, state: 'sending', retry_after: 60 } }; });
+  const calls: any[] = []; const panel = memberPanel(async (path, body) => { calls.push({ path, body }); if (calls.length === 1) throw Error('Response lost'); return path.endsWith('/contact') ? { id: inviteGroup.id, version: 2 } : { id: inviteGroup.id, version: 3, linked_participant_ids: [], invite: { id: body.command_id, state: 'sending', retry_after: 60 } }; });
   panel.open('bad address').props.onSave(); await tick(); assert.equal(calls.length, 0);
   panel.dialog(panel.app.render(panel.props)).props.onEmail('asha@example.invalid'); panel.dialog(panel.app.render(panel.props)).props.onSave(); await tick();
   assert.equal(calls.length, 1); assert.ok(panel.dialog(panel.app.render(panel.props)).props.person);
+  assert.match(panel.dialog(panel.app.render(panel.props)).props.feedback.text, /Response lost/);
+  assert.equal(panel.dialog(panel.app.render(panel.props)).props.feedback.error, true);
   panel.dialog(panel.app.render(panel.props)).props.onSave(); await tick(); assert.deepEqual(calls[1], calls[0]);
   assert.equal(calls.length, 3); const feedback = panel.row(panel.app.render(panel.props)).props.feedback;
-  assert.match(feedback.text, /Contact saved.*still being sent/); assert.doesNotMatch(feedback.text, /Invitation sent to/); panel.app.unmount();
+  assert.equal(feedback.error, true); assert.match(feedback.text, /Contact saved.*Could not confirm.*press Send to check/);
+  assert.doesNotMatch(feedback.text, /Invitation sent to/); panel.app.unmount();
 });
 
 test('Contact saved but invitation failed exposes original retry identity, and a reloaded pending invitation reuses the same UUID', async () => {
   const calls: any[] = []; let fail = true;
-  const action = async (path: string, body: any) => { calls.push({ path, body }); return path.endsWith('/contact') ? { id: inviteGroup.id, version: 2 } : { id: inviteGroup.id, version: 3, invite: { id: body.command_id, state: fail ? 'failed' : 'sent', retry_after: 0 } }; };
+  const action = async (path: string, body: any) => { calls.push({ path, body }); return path.endsWith('/contact') ? { id: inviteGroup.id, version: 2 } : { id: inviteGroup.id, version: 3, linked_participant_ids: [], invite: { id: body.command_id, state: fail ? 'failed' : 'sent', retry_after: 0 } }; };
   const panel = memberPanel(action); panel.open('asha@example.invalid').props.onSave(); await tick();
   const invitationId = calls[1].body.command_id;
   const savedGroup = { ...inviteGroup, participants: [inviteGroup.participants[0], { ...inviteGroup.participants[1], email: 'asha@example.invalid' }], invites: [{ id: invitationId, participant_id: 'imported-person', intended_email: 'asha@example.invalid', send_state: 'failed', revoked: false, approved: false }] };
-  let tree = panel.app.render({ ...panel.props, group: savedGroup }); assert.match(panel.row(tree).props.feedback.text, /Contact saved.*could not be sent/);
+  let tree = panel.app.render({ ...panel.props, group: savedGroup }); assert.match(panel.row(tree).props.feedback.text, /Contact saved.*Could not send.*press Send/);
   assert.equal(panel.row(tree).props.feedback.error, true); fail = false; panel.row(tree).props.onSend(); await tick();
-  assert.equal(calls.length, 3); assert.deepEqual(calls[2], calls[1]); panel.app.unmount();
+  assert.equal(calls.length, 3); assert.deepEqual(calls[2], calls[1]);
+  assert.equal(panel.row(panel.app.render({ ...panel.props, group: savedGroup })).props.feedback.text, '', 'successful Send has no sent caption');
+  panel.app.unmount();
   const reload = memberPanel(action, { ...savedGroup, invites: [{ ...savedGroup.invites[0], send_state: 'sending' }] });
   reload.row(reload.app.render(reload.props)).props.onSend(); await tick();
   assert.equal(calls.at(-1).body.command_id, invitationId); assert.ok(calls.every(call => call.path.includes('imported-person'))); reload.app.unmount();

@@ -19,7 +19,7 @@ def email_code_only(get_response):
         path = request.path.rstrip("/")
         if path.startswith(("/_allauth/app/v1/", "/_allauth/browser/v1/")) and request.method not in {"GET", "HEAD", "OPTIONS"}:
             suffix = path.split("/v1/", 1)[1]
-            allowed = (request.method == "POST" and suffix in {"auth/code/request", "auth/code/confirm", "auth/link/request", "auth/link/exchange", "auth/link/resume", "auth/link/renew"}) or (
+            allowed = (request.method == "POST" and suffix in {"auth/code/request", "auth/code/confirm", "auth/link/request", "auth/link/inspect", "auth/link/exchange", "auth/link/resume", "auth/link/renew"}) or (
                 request.method == "DELETE" and suffix == "auth/session"
             )
             if not allowed:

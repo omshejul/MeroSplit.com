@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  NativeEmailLinkError, exchangeNativeEmailLink, requestNativeEmailLink, renewNativeEmailLink,
+  NativeEmailLinkError, inspectNativeEmailLink, exchangeNativeEmailLink, requestNativeEmailLink, renewNativeEmailLink,
   resolveNativeEmailLink, resumeNativeEmailLink,
 } from '../src/nativeEmailLinkApi.ts';
 import type { Session } from '../src/types.ts';
@@ -200,5 +200,23 @@ test('invalid native base never sends credentials or link proof', async () => {
     let calls = 0;
     await assert.rejects(exchangeNativeEmailLink(invalid, grantId, proof, current, async () => { calls++; return authenticated(); }));
     assert.equal(calls, 0);
+  }
+});
+
+
+for(const status of [401,410]) test(`native inspection retries definitively revoked token ${status} anonymously without consuming proof`,async()=>{
+  const {fetcher,calls}=mock([Response.json({}, {status}),Response.json({data:{email:'two@example.invalid',user_id:2,purpose:'login',current_user_id:null,current_email:null}})]);
+  assert.deepEqual(await inspectNativeEmailLink(base,grantId,proof,current,fetcher),{email:'two@example.invalid',userId:2,purpose:'login',currentUserId:null,currentEmail:null});
+  assert.deepEqual(calls.map(action),['inspect','inspect']); assert.equal(headerToken(calls[0]),oldToken);assert.equal(headerToken(calls[1]),null);
+  assert.ok(calls.every(call=>!call.url.includes(proof)));
+});
+
+test('confirmed native switch skips resume and retains bound old-account identity on rejection or uncertain response',async()=>{
+  for(const status of [200,400,410,503]) {
+    const {fetcher,calls}=mock([status===200?authenticated():Response.json({}, {status})]);
+    const run=resolveNativeEmailLink(base,link(),()=>true,current,fetcher,1);
+    if(status===200) assert.equal((await run)?.session.userId,'2');else await assert.rejects(run);
+    assert.deepEqual(calls.map(action),['exchange']);assert.equal(headerToken(calls[0]),oldToken);
+    assert.deepEqual(JSON.parse(String(calls[0].init.body)),{grant_id:grantId,proof,switch_from_user_id:1});
   }
 });

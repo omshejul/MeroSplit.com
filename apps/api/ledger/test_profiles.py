@@ -114,17 +114,19 @@ def test_display_name_update_preserves_store_review_group_isolation(client, grou
     assert client.actor.first_name == "Synthetic reviewer" and Group.objects.get(pk=group_id).version == version
 
 
-@pytest.mark.parametrize("joining", ["email_claim", "manual_approval"])
+@pytest.mark.parametrize("joining", ["email_claim", "manual_approval", "automatic_link"])
 @pytest.mark.django_db(transaction=True)
 def test_new_membership_waits_for_profile_name_update(client, group, mailbox, joining):
     group_id, ids, _ = group
     member = account()
-    if joining == "email_claim":
-        EmailAddress.objects.create(user=member.actor, email=member.actor.email, verified=True, primary=True)
+    if joining in {"email_claim", "automatic_link"}:
+        EmailAddress.objects.create(user=member.actor, email=member.actor.email, verified=joining == "automatic_link", primary=True)
         assert send(client, "post", f"/groups/{group_id}/participants/{ids[1]}/contact", {"command_id": uid(), "email": member.actor.email}).status_code == 200
-        invitation = uid()
-        assert send(client, "post", f"/groups/{group_id}/participants/{ids[1]}/email-invite", {"command_id": invitation}).status_code == 200
-        token = invite_token(invitation)
+        if joining == "email_claim":
+            invitation = uid()
+            assert send(client, "post", f"/groups/{group_id}/participants/{ids[1]}/email-invite", {"command_id": invitation}).status_code == 200
+            EmailAddress.objects.filter(user=member.actor).update(verified=True)
+            token = invite_token(invitation)
     else:
         invitation, token = invite(client, group_id, ids[1])
         assert send(member, "post", f"/invites/{token}/claim", {"command_id": uid()}).status_code == 200
@@ -137,6 +139,9 @@ def test_new_membership_waits_for_profile_name_update(client, group, mailbox, jo
             started.set()
             if joining == "email_claim":
                 return claim_invite(actor, token, {"command_id": uid()})
+            if joining == "automatic_link":
+                from .email_invites import send_person_invite
+                return send_person_invite(actor, group_id, ids[1], {"command_id": uid()}, 'https://merosplit.example', 'synthetic-network')
             return review_invite(actor, group_id, invitation, {"command_id": uid()}, True)
         finally:
             connections.close_all()

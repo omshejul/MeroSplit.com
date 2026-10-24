@@ -16,7 +16,11 @@ function elements(value: unknown): Element[] {
 // Importing or testing MCPSettings alone cannot satisfy this host-level check.
 const source = ts.createSourceFile('App.tsx', readFileSync(new URL('../App.tsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
 const app = source.statements.find((node): node is ts.FunctionDeclaration => ts.isFunctionDeclaration(node) && node.name?.text === 'AppContent')!;
-const main = app.body!.statements.filter(ts.isReturnStatement).map(node => node.expression).find((node): node is ts.JsxElement => !!node && ts.isJsxElement(node) && node.openingElement.tagName.getText(source) === 'AppFrame')!;
+function appFrame(node: ts.Node): ts.JsxElement | undefined {
+  if (ts.isJsxElement(node) && node.openingElement.tagName.getText(source) === 'AppFrame') return node;
+  return ts.forEachChild(node, appFrame);
+}
+const main = appFrame(app)!;
 function pageScroll(node: ts.Node): ts.JsxElement | undefined {
   if (ts.isJsxElement(node) && node.openingElement.tagName.getText(source) === 'ScrollView') return node;
   return ts.forEachChild(node, pageScroll);

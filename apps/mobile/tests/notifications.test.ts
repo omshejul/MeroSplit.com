@@ -13,6 +13,7 @@ const opted = { ...initial, owner: accountOwner(session), opted_in: true };
 const registered = { ...opted, binding: device };
 const groupId = 'e8ba5bee-0f17-42a5-b46f-0e4f27b07260', expenseId = '13dc400e-268e-4ab3-a905-08b357ca7850';
 const data = { type: 'new_bill', recipient_user_id: '1', group_id: groupId, expense_id: expenseId, event_id: 'synthetic-event' };
+const membership = { type: 'group_membership', recipient_user_id: '1', group_id: groupId, event_id: `membership:${installation}:1` };
 const group: Group = { id: groupId, name: 'Synthetic trip', version: 1, participants: [], expenses: [{ id: expenseId, version: 1, description: 'Dinner', total: '100', paid: {}, shares: {}, split: { mode: 'equal', values: {} }, date: '2026-10-17', category: 'general', notes: '', deleted: false }], settlements: [], balances: {}, transfers: [], activity: [] };
 
 test('Notification permissions interpret iOS granular authorization and Android status', () => {
@@ -114,6 +115,46 @@ test('Wrong-account, malformed, revoked and unavailable push taps safely fall ba
   assert.equal(requests, 0); assert.equal(await notificationTarget(session, data, denied), null); assert.equal(requests, 1);
   assert.equal(notificationForAccount(null, data), false); assert.equal(notificationForAccount(session, { ...data, recipient_user_id: '2' }), false);
   assert.equal(notificationForAccount(session, data), true);
+});
+
+test('Membership taps fetch one authorized summary and never select, fetch or acknowledge a bill', async () => {
+  const summary = { ...group, read_mode: 'summary' as const, expenses: [] };
+  const paths: string[] = [];
+  const send: typeof request = async <T>(active: Session, path: string, method = 'GET', body?: unknown): Promise<T> => {
+    assert.equal(active, session); assert.equal(method, 'GET'); assert.equal(body, undefined);
+    paths.push(path); return summary as T;
+  };
+  assert.equal(notificationForAccount(session, membership), true);
+  assert.deepEqual(await notificationTarget(session, membership, send), { group: summary, expenseId: null });
+  assert.deepEqual(paths, [`/groups/${groupId}/summary`]);
+  await dismissReadPushes(session, [{ identifier: 'membership', data: membership }],
+    async () => assert.fail('Membership is not a bill-read prompt'),
+    async () => assert.fail('Membership must not query any bill/chat read feed'));
+});
+
+test('Membership payload account, event, group and shape are validated before any request', async () => {
+  const invalid = [null, [], {}, { ...membership, recipient_user_id: '2' }, { ...membership, recipient_user_id: 1 },
+    { ...membership, group_id: '../account' }, { ...membership, group_id: null }, { ...membership, event_id: null },
+    { ...membership, event_id: `membership:${installation}:2` }, { ...membership, event_id: `membership:${installation}:01` },
+    { ...membership, event_id: `membership:${installation}:1:extra` }, { ...membership, event_id: `membership:invalid:1` },
+    { ...membership, event_id: `MEMBERSHIP:${installation}:1` }, { ...membership, type: 'membership' },
+    { ...membership, expense_id: expenseId }, { ...membership, bank_verified: true }];
+  const send: typeof request = async () => assert.fail('Invalid membership payload must not contact the server');
+  for (const payload of invalid) {
+    assert.equal(notificationForAccount(session, payload), false);
+    assert.equal(await notificationTarget(session, payload, send), null);
+  }
+  assert.equal(notificationForAccount(null, membership), false);
+  assert.equal(notificationForAccount({ ...session, userId: '2' }, membership), false);
+});
+
+test('Membership taps fail closed when access is revoked, offline or the summary identifies another group', async () => {
+  for (const error of [new ApiError(401, 'Expired'), new ApiError(404, 'No membership'), new Error('offline')]) {
+    let requests = 0;
+    assert.equal(await notificationTarget(session, membership, async () => { requests++; throw error; }), null);
+    assert.equal(requests, 1);
+  }
+  assert.equal(await notificationTarget(session, membership, async <T>() => ({ ...group, id: installation }) as T), null);
 });
 
 

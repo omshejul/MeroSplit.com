@@ -2,7 +2,6 @@ import hashlib
 import json
 from datetime import date
 
-from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.utils import timezone
 from ninja.errors import HttpError
@@ -229,7 +228,7 @@ def snapshot(group):
 
 @transaction.atomic
 def create_group(actor, payload):
-    get_user_model().objects.select_for_update().get(pk=actor.pk)
+    from .membership import limit_links, linked_result, lock_link_users
     # Keep pre-flag creation receipts replayable after the schema adds its default.
     if not payload.get("is_direct", False):
         payload = {key: value for key, value in payload.items() if key != "is_direct"}
@@ -241,31 +240,43 @@ def create_group(actor, payload):
     if previous:
         visible_group(actor, previous["id"])
         return previous
+    emails = {p["id"]: clean_contact_email(p.get("email", "")) for p in payload["participants"]}
+    matches = lock_link_users(actor, [email for person_id, email in emails.items() if person_id != payload["self_participant_id"]])
+    previous, fingerprint = previous_result(actor, payload["command_id"], "create_group", payload)
+    if previous:
+        visible_group(actor, previous["id"])
+        return previous
     ids = [p["id"] for p in payload["participants"]]
     if len(set(ids)) != len(ids) or payload["self_participant_id"] not in ids:
         raise AccountingError("Participants must be unique and include the creator")
     if payload.get("is_direct", False) and len(ids) != 2:
         raise AccountingError("A direct ledger requires exactly two participants")
+    linked_users = [matches[email] for person_id, email in emails.items()
+                    if person_id != payload["self_participant_id"] and email in matches]
+    if actor.pk in [user.pk for user in linked_users] or len({user.pk for user in linked_users}) != len(linked_users):
+        raise HttpError(409, "This account is already included in the ledger")
+    limit_links(actor, linked_users)
     if Group.objects.filter(id=payload["id"]).exists() or Participant.objects.filter(id__in=ids).exists():
         raise HttpError(409, "A supplied ID is already in use")
     group = Group.objects.create(
         id=payload["id"], name=payload["name"], owner=actor, is_direct=payload.get("is_direct", False)
     )
-    Participant.objects.bulk_create(
+    participants = Participant.objects.bulk_create(
         [
             Participant(
                 id=p["id"],
                 name=p["name"],
                 group=group,
-                user=actor if p["id"] == payload["self_participant_id"] else None,
-                contact_email=clean_contact_email(p.get("email", "")),
+                user=actor if p["id"] == payload["self_participant_id"] else matches.get(emails[p["id"]]),
+                contact_email=emails[p["id"]],
             )
             for p in payload["participants"]
         ]
     )
-    return record_change(
-        group, actor, payload["command_id"], fingerprint, "group_created", {"name": group.name}
-    )
+    result = record_change(group, actor, payload["command_id"], fingerprint, "group_created", {
+        "name": group.name, "linked_participant_ids": [str(p.id) for p in participants if p.user_id and p.user_id != actor.pk],
+    })
+    return linked_result(result, actor, payload["command_id"], participants)
 
 
 def clean_contact_email(value):

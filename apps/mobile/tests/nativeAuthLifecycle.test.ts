@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import ts from 'typescript';
+import { EmailLinkError } from '../src/emailLinkApi.ts';
+import { NativeEmailLinkError } from '../src/nativeEmailLinkApi.ts';
 import type { Session } from '../src/types.ts';
 
 const baseUrl = 'https://merosplit.test';
@@ -24,7 +26,7 @@ function collect(node: ts.Node) {
 collect(source);
 assert.equal(declarations.length, names.length, 'each named production lifecycle function must exist exactly once');
 const compiled = ts.transpile(declarations.join('\n'), { target: ts.ScriptTarget.ES2022 });
-type Entry = { id: string; phase: string; error: string; sent: boolean; target?: unknown };
+type Entry = { id: string; phase: string; error: string; sent: boolean; switchFromUserId?: number; target?: unknown };
 type Result = { session: Session; needsName: boolean; target: { kind: 'home' } | { kind: 'group'; group_id: string } };
 type Calls = { beginEmailLink: (link: typeof first) => void; restore: () => Promise<void>; finishEmailLink: (entry: Entry, epoch: number) => Promise<void>; openEmailTarget: (active: Session, target: Result['target'], epoch: number) => Promise<void>; finishSignIn: () => Promise<void> };
 function harness() {
@@ -32,6 +34,8 @@ function harness() {
   const state = { persisted: old as Session | null, session: old as Session | null, entry: null as Entry | null, ready: false, paused: false, groupId: null as string | null, screen: '', tab: '', storageError: '', result: { session: fresh, needsName: false, target: { kind: 'home' } } as Result };
   const ref = <T>(current: T) => ({ current });
   const env: Record<string, any> = {
+    EmailLinkError, NativeEmailLinkError,
+    inspectNativeEmailLink: async () => ({email:state.result.session.email,userId:Number(state.result.session.userId),purpose:'login',currentUserId:1,currentEmail:old.email}),
     Platform: { OS: 'android' }, API_URL: baseUrl, authEpoch: ref(0), authHeldRef: ref(false), activeSessionRef: ref(old),
     emailProof: ref(null), emailEntryRef: ref(null), cookieCheck: ref(false), initialEmailLink: ref(null), validatedBrowserSession: ref(''), draftWrites: ref(Promise.resolve()),
     challenge: { challengeId: 'qa-code' }, email: fresh.email, code: '0000',
@@ -61,7 +65,9 @@ function harness() {
   };
   Object.defineProperty(env, 'session', { get: () => state.session });
   const api = new Function('env', `with (env) { ${compiled}; return { ${names.join(',')} }; }`)(env) as Calls;
-  const begin = () => { api.beginEmailLink(first); return { entry: state.entry!, epoch: env.authEpoch.current as number }; };
+  // These adoption/recovery tests start after explicit confirmation. The popup
+  // and no-exchange-before-confirmation boundary is tested in accountSwitch.test.
+  const begin = () => { api.beginEmailLink(first); const entry = { ...state.entry!, switchFromUserId: 1 }; state.entry = entry; env.emailEntryRef.current = entry; return { entry, epoch: env.authEpoch.current as number }; };
   return { env, state, events, resolved, scopedWrites, api, begin };
 }
 

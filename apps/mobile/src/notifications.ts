@@ -62,15 +62,24 @@ export async function dismissReadPushes(session: Session, shown: { identifier: s
   for (const value of chats) if (!remaining.has(String((value.data as Record<string, unknown>).event_id))) await dismiss(value.identifier);
 }
 export function notificationForAccount(session: Session | null, data: unknown): data is Record<string, string> {
-  return !!session && !!data && typeof data === 'object' && !Array.isArray(data)
-    && ['new_bill', 'bill_chat'].includes(String((data as Record<string, unknown>).type)) && (data as Record<string, unknown>).recipient_user_id === session.userId;
+  if (!session || !data || typeof data !== 'object' || Array.isArray(data)) return false;
+  const value = data as Record<string, unknown>;
+  if (value.recipient_user_id !== session.userId) return false;
+  if (value.type !== 'group_membership') return value.type === 'new_bill' || value.type === 'bill_chat';
+  if (typeof value.recipient_user_id !== 'string' || !/^[1-9]\d*$/.test(value.recipient_user_id)
+    || typeof value.group_id !== 'string' || !uuid.test(value.group_id) || typeof value.event_id !== 'string'
+    || Object.keys(value).some(key => !['type', 'event_id', 'recipient_user_id', 'group_id'].includes(key))) return false;
+  const event = value.event_id.split(':');
+  return event.length === 3 && event[0] === 'membership' && uuid.test(event[1]) && event[2] === value.recipient_user_id;
 }
 
 export async function notificationTarget(session: Session, data: unknown, send: typeof request = request): Promise<PushTarget | null> {
-  if (!notificationForAccount(session, data) || !uuid.test(data.group_id ?? '') || !uuid.test(data.expense_id ?? '')) return null;
+  if (!notificationForAccount(session, data) || !uuid.test(data.group_id ?? '')
+    || data.type !== 'group_membership' && !uuid.test(data.expense_id ?? '')) return null;
   try {
     let group = await send<Group>(session, `/groups/${data.group_id}/summary`);
     if (group.id !== data.group_id) return null;
+    if (data.type === 'group_membership') return { group, expenseId: null };
     if (group.read_mode === 'summary' && !group.expenses.some(expense => expense.id === data.expense_id)) {
       try {
         const detail = await send<Expense & { group_id: string; group_version: number }>(session, `/groups/${group.id}/expenses/${data.expense_id}?version=${group.version}`);

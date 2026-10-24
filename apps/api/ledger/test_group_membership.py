@@ -217,12 +217,14 @@ def test_import_creator_and_email_claim_produce_succession_evidence(client, monk
     imported = import_splitwise(client.actor, data)
     gid = imported["id"]
     person = Participant.objects.get(group_id=gid, name="Beta")
-    recipient = verified_person("successor@example.invalid")
+    recipient = verified_person("successor@example.invalid", verified=False)
     assert send(client, "post", f"/groups/{gid}/participants/{person.id}/contact", {
         "command_id": uid(), "email": recipient.actor.email,
     }).status_code == 200
     command = uid()
     assert send(client, "post", f"/groups/{gid}/participants/{person.id}/email-invite", {"command_id": command}).status_code == 200
+    from allauth.account.models import EmailAddress
+    EmailAddress.objects.filter(user=recipient.actor).update(verified=True)
     assert send(recipient, "post", f"/invites/{invite_token(command)}/claim", {"command_id": uid()}).status_code == 200
     evidence = Change.objects.get(group_id=gid, kind="participant_claim_approved")
     assert evidence.data["participant_id"] == str(person.id)
@@ -355,10 +357,12 @@ def test_outstanding_guest_invites_revoke_only_when_explicit_last_owner_leaves(c
         link(client, successor, gid, ids[2])
     assert send(client, "post", f"/groups/{gid}/expenses", expense(ids, payer=0, beneficiaries=[0], total="900")).status_code == 200
     command = uid()
-    recipient = verified_person() if kind == "email" else account()
+    recipient = verified_person(verified=False) if kind == "email" else account()
     if kind == "email":
         assert send(client, "post", f"/groups/{gid}/participants/{ids[1]}/contact", {"command_id": uid(), "email": recipient.actor.email}).status_code == 200
         assert send_invite(client, group, command)[1].json()["invite"]["state"] == "sent"
+        from allauth.account.models import EmailAddress
+        EmailAddress.objects.filter(user=recipient.actor).update(verified=True)
     else:
         assert send(client, "post", f"/groups/{gid}/invites", {"command_id": command, "participant_id": ids[1]}).status_code == 200
     token = invite_token(command)

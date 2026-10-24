@@ -186,6 +186,12 @@ def test_different_account_email_link_rotation_preserves_only_valid_pending_and_
     proof = urlsplit(email_links.delivery_url(grant.id)).fragment.removeprefix("proof=")
     result = post(client, "/_allauth/browser/v1/auth/link/exchange", {"grant_id": str(grant.id), "proof": proof},
         json_body=True, HTTP_X_CSRFTOKEN=client.cookies["csrftoken"].value)
+    assert result.status_code == 400 and client.session[oauth.MCP_PENDING_SESSION_KEY] == request_id
+    assert client.get("/api/v1/me").json()["id"] == old.pk
+    grant.refresh_from_db()
+    assert grant.consumed_at is None
+    result = post(client, "/_allauth/browser/v1/auth/link/exchange", {"grant_id": str(grant.id), "proof": proof, "switch_from_user_id": old.pk},
+        json_body=True, HTTP_X_CSRFTOKEN=client.cookies["csrftoken"].value)
     assert result.status_code == 200 and result.json()["data"]["user"]["id"] == intended.pk
     assert client.session[oauth.MCP_PENDING_SESSION_KEY] == request_id
     assert client.get("/api/v1/me/mcp/pending").json()["authorization_url"] == f"/oauth/authorize?request={request_id}"

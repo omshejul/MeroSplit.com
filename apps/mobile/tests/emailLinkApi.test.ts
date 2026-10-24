@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { exchangeEmailLink, resumeEmailLink, renewEmailLink, requestEmailLink, resolveEmailLink, EmailLinkError } from '../src/emailLinkApi.ts';
+import { inspectEmailLink, exchangeEmailLink, resumeEmailLink, renewEmailLink, requestEmailLink, resolveEmailLink, EmailLinkError } from '../src/emailLinkApi.ts';
 import { pauseBrowserRequests, resumeBrowserRequests } from '../src/browserAuth.ts';
 
 test('proof exchanges use only same-origin POST bodies with current CSRF while account requests are paused', async () => {
@@ -106,4 +106,28 @@ test('failed recovery preserves the original exchange error and missing proof ne
     assert.equal(await resolveEmailLink(origin, { id: grantA, proof: 'a'.repeat(43) }, () => false), null);
     assert.equal(calls, 1);
   });
+});
+
+
+test('browser inspection exposes only validated account metadata and never exchanges or resumes', async () => {
+  const calls: {url:string; body:unknown}[] = [];
+  const data = {email:'two@example.invalid',user_id:2,purpose:'invite',current_user_id:1,current_email:'one@example.invalid'};
+  await withBrowser(async (url, init) => { calls.push({url:String(url),body:JSON.parse(String(init?.body))}); return Response.json({data}); }, async () => {
+    assert.deepEqual(await inspectEmailLink(origin, grantA, 'p'.repeat(43)), {email:data.email,userId:2,purpose:'invite',currentUserId:1,currentEmail:data.current_email});
+    assert.deepEqual(calls.map(call=>call.url.split('/').at(-1)), ['inspect']);
+    assert.deepEqual(calls[0].body, {grant_id:grantA,proof:'p'.repeat(43)});
+  });
+  await withBrowser(async()=>Response.json({data:{...data,current_user_id:null}}), async()=>{await assert.rejects(inspectEmailLink(origin,grantA,'p'.repeat(43)),/Could not check/);});
+});
+
+test('confirmed browser switch always uses the bound exchange and never masks a rebound rejection through resume', async () => {
+  for (const status of [200,400,401,503]) {
+    const calls: {url:string;body:unknown}[]=[];
+    await withBrowser(async(url,init)=>{calls.push({url:String(url),body:JSON.parse(String(init?.body))});return status===200?accepted():Response.json({}, {status});},async()=>{
+      const run=resolveEmailLink(origin,{id:grantA,proof:'p'.repeat(43)},()=>true,1);
+      if(status===200) assert.equal((await run)?.session.userId,'2'); else await assert.rejects(run);
+      assert.deepEqual(calls.map(call=>call.url.split('/').at(-1)),['exchange']);
+      assert.deepEqual(calls[0].body,{grant_id:grantA,proof:'p'.repeat(43),switch_from_user_id:1});
+    });
+  }
 });

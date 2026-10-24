@@ -3,6 +3,16 @@ import type { Session } from './types.ts';
 export type EmailLink = { id: string | null; proof: string | null };
 export type EmailTarget = { kind: 'home' } | { kind: 'group'; group_id: string };
 export type EmailLinkResult = { session: Session; target: EmailTarget; needsName: boolean };
+export type EmailLinkInspection = { email: string; userId: number | null; purpose: string; currentUserId: number | null; currentEmail: string | null };
+export function emailLinkInspection(value: unknown): EmailLinkInspection {
+  const data = value as Record<string, unknown> | null;
+  const accountId = (id: unknown) => id === null || typeof id === 'number' && Number.isSafeInteger(id) && id > 0;
+  if (!data || typeof data.email !== 'string' || !data.email.trim() || data.email.length > 254
+    || !accountId(data.user_id) || !accountId(data.current_user_id)
+    || typeof data.purpose !== 'string' || !['login', 'invite', 'digest', 'notice'].includes(data.purpose)
+    || (data.current_user_id === null ? data.current_email !== null : typeof data.current_email !== 'string' || !data.current_email.trim())) throw new Error('Could not check this link. Try again.');
+  return { email: data.email, userId: data.user_id as number | null, purpose: data.purpose, currentUserId: data.current_user_id as number | null, currentEmail: data.current_email as string | null };
+}
 const uuid = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
 let pending: EmailLink | null = null;
 
