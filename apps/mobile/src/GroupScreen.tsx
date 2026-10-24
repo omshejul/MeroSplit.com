@@ -58,7 +58,7 @@ function ReceiptRequest({ attempt, groupName, senderName, disabled, onConfirm }:
   const { palette: colors, ui } = useUI();
   return <View style={[s.receipt, { backgroundColor: colors.surface }]}>
     <Text style={ui.section}>Did you get {formatMoney(attempt.recorded_amount ?? attempt.amount)} from {senderName}?</Text>
-    <Text style={[ui.caption, { color: colors.warning }]}>{groupName}. {attempt.state === 'cancelled' ? 'The earlier report was cancelled. ' : ''}Check your bank or UPI app before confirming.</Text>
+    <Text style={[ui.caption, { color: colors.warning }]}>{groupName}{attempt.state === 'cancelled' ? '. The earlier report was cancelled.' : ''}</Text>
     <Button title={`Yes, I got ${formatMoney(attempt.recorded_amount ?? attempt.amount)}`} icon="check" disabled={disabled} onPress={() => onConfirm(attempt)} />
   </View>;
 }
@@ -73,8 +73,8 @@ function PersonalTransferRow({ transfer, group, selfId, disabled, onSettle, onEx
   return <View style={ui.row}>
     <Pressable ref={row} accessibilityRole="button" accessibilityLabel={`Why ${outgoing ? 'you owe' : 'you are owed'} ${formatMoney(transfer.amount)} ${outgoing ? 'to' : 'by'} ${name}`} onPress={() => onExplain(transfer, () => row.current?.focus())} style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 44 }}>
       <Avatar name={name} />
-      <View style={ui.rowBody}><Text numberOfLines={1} ellipsizeMode="tail" style={ui.rowTitle}>{name}</Text><Text style={ui.rowSub}>{outgoing ? 'You owe' : 'Owes you'}{removed ? ' · Removed' : ''}</Text></View>
-      <AmountText amount={transfer.amount} style={{ color: outgoing ? colors.negative : colors.positive }} />
+      <View style={ui.rowBody}><Text numberOfLines={1} ellipsizeMode="tail" style={[ui.rowTitle, s.logTitle]}>{name}</Text><Text style={[ui.rowSub, s.logCaption]}>{outgoing ? 'You owe' : 'Owes you'}{removed ? ' · Removed' : ''}</Text></View>
+      <AmountText amount={transfer.amount} style={[s.balanceAmount, { color: outgoing ? colors.negative : colors.positive }]} />
     </Pressable>
     <Button title={action} kind="text" accessibilityLabel={`${action} payment ${outgoing ? 'to' : 'from'} ${name}, ${formatMoney(transfer.amount)}`} disabled={disabled || !!removed} onPress={() => onSettle(transfer)} />
   </View>;
@@ -91,9 +91,9 @@ function LogDate({ date }: { date?: string | null }) {
 }
 
 // One compact log row for bills and payments: date, what happened, and (for bills) your balance effect.
-function LogRow({ date, label, busy, onPress, trailing, children }: { date?: string | null; label: string; busy: boolean; onPress: () => void; trailing?: React.ReactNode; children: React.ReactNode }) {
-  const { ui } = useUI();
-  return <Pressable accessibilityRole="button" accessibilityLabel={label} disabled={busy} style={({ pressed }) => [ui.row, pressed && s.pressed]} onPress={onPress}>
+function LogRow({ date, label, busy, onPress, trailing, children, payment = false }: { date?: string | null; label: string; busy: boolean; onPress: () => void; trailing?: React.ReactNode; children: React.ReactNode; payment?: boolean }) {
+  const { ui, palette } = useUI();
+  return <Pressable accessibilityRole="button" accessibilityLabel={label} disabled={busy} style={({ pressed }) => [ui.row, s.edgeRow, { borderBottomColor: `${palette.line}80` }, payment && { backgroundColor: palette.surface }, pressed && s.pressed]} onPress={onPress}>
     <LogDate date={date} />
     <View style={ui.rowBody}>{children}</View>
     {trailing}
@@ -105,11 +105,11 @@ function PaymentRow({ payment, accepted, group, selfId, busy, onPayment }: Pick<
   const isAccepted = accepted.settlements.some(record => record.id === payment.id) || accepted.transactions?.some(record => record.kind === 'payment' && record.payment.id === payment.id);
   if (!isAccepted) return null;
   const presentation = paymentPresentation(payment, selfId, id => participantName(group.participants, selfId, id));
-  const status = payment.reversed ? `${presentation.status} · No bank refund` : presentation.status;
-  return <LogRow date={payment.date} busy={busy} onPress={() => onPayment(payment)} label={`Payment, ${presentation.title}, ${formatMoney(payment.amount)}${status ? `, ${status}` : ''}, ${displayDate(payment.date)}`}>
+  const status = presentation.status;
+  return <LogRow payment date={payment.date} busy={busy} onPress={() => onPayment(payment)} label={`Payment, ${presentation.title}, ${formatMoney(payment.amount)}${status ? `, ${status}` : ''}, ${displayDate(payment.date)}`}>
     <View style={s.paymentLine}>
       <Icon name={payment.reversed ? 'refresh' : 'payment'} size={18} color={colors.muted} />
-      <Text style={[ui.rowSub, s.paymentSentence, { color: colors.text }]}>{presentation.title} {formatMoney(payment.amount)}{!!status && <Text style={ui.rowSub}> · {status}</Text>}</Text>
+      <Text style={[ui.rowSub, s.logCaption, s.paymentSentence, { color: colors.text }]}>{presentation.title} <Text style={{ color: presentation.cashflow === '0' ? colors.text : balanceColor(presentation.cashflow, colors) }}>{formatMoney(payment.amount)}</Text>{!!status && <Text style={[ui.rowSub, s.logCaption]}> · {status}</Text>}</Text>
     </View>
   </LogRow>;
 }
@@ -120,7 +120,7 @@ function BillEffect({ change, involved, reversed }: { change: string; involved: 
   const value = BigInt(change), color = value === 0n ? colors.muted : balanceColor(change, colors);
   const label = reversed ? 'Reversed' : value > 0n ? 'You lent' : value < 0n ? 'You borrowed' : involved ? 'No balance change' : 'Not involved';
   return <View style={s.trailing}>
-    <Text style={[ui.rowSub, { color, textAlign: 'right' }]}>{label}</Text>
+    <Text style={[ui.rowSub, s.logCaption, { color, textAlign: 'right' }]}>{label}</Text>
     {value !== 0n && <AmountText amount={(value < 0n ? -value : value).toString()} style={[s.effect, { color }]} />}
   </View>;
 }
@@ -135,8 +135,8 @@ function BillTimelineRow({ expense, group, selfId, busy, onExpense, noticeVisibi
   return <VisibleExpense groupId={group.id} expense={expense} visibility={noticeVisibility}>
     <LogRow date={expense.date} busy={busy} onPress={() => onExpense(expense)} trailing={<BillEffect change={change} involved={involved} reversed={!!expense.deleted} />}
       label={`Bill, ${expense.description}, total ${formatMoney(expense.total)}, ${expense.deleted ? 'reversed, no balance impact' : billImpact(change)}, ${payers || 'no payer recorded'}, Your share ${formatMoney(expense.shares[selfId] ?? '0')}, ${displayDate(expense.date)}`}>
-      <Text numberOfLines={2} ellipsizeMode="tail" style={ui.rowTitle}>{expense.description}</Text>
-      <Text style={ui.rowSub}>{paidBy.length ? `${who} paid ${formatMoney(expense.total)}` : `Total ${formatMoney(expense.total)}`}</Text>
+      <Text numberOfLines={2} ellipsizeMode="tail" style={[ui.rowTitle, s.logTitle]}>{expense.description}</Text>
+      <Text style={[ui.rowSub, s.logCaption]}>{paidBy.length ? `${who} paid ${formatMoney(expense.total)}` : `Total ${formatMoney(expense.total)}`}</Text>
     </LogRow>
   </VisibleExpense>;
 }
@@ -198,7 +198,7 @@ export default function GroupScreen({ noticeVisibility, group, accepted, pending
     {transfers.map(transfer => <PersonalTransferRow key={`${transfer.sender}:${transfer.recipient}`} transfer={transfer} group={group} selfId={selfId} disabled={busy || !!group.archived || pending.length > 0} onSettle={onSettle} onExplain={(transfer, restoreFocus) => setExplanation({ group, accepted, commands: pending, selfId, transfer, restoreFocus, load: onLoadBalanceGroup })} />)}
     {/* Search opens from the heading line; an active query or typed text keeps it open. */}
     <View style={s.logHeading}>
-      <SectionHeading style={[ui.caption, s.flex]}>Bills and payments</SectionHeading>
+      <SectionHeading style={[ui.caption, s.logCaption, s.flex]}>Bills and payments</SectionHeading>
       {searchable && !showSearch && <Button title="Search" kind="text" accessibilityLabel="Search bills" onPress={() => setSearching(true)} />}
     </View>
       {showSearch && <BillSearch value={search} onChange={setSearch} onSearch={() => onHistoryPage?.(historyResource, 'search', search.trim())} showSubmit={group.read_mode === 'summary'} busy={busy} autoFocus={searching} />}
@@ -234,8 +234,8 @@ export function PaymentDetail({ payment, group, selfId, busy, canReverse, onReve
       <RecordAttribution action="Marked paid" name={payment.recorded_by_name} />
       {payment.reversed && <RecordAttribution action="Reversed" name={payment.reversal?.actor_name} />}
     </RecordSummary>
-    {payment.reversed ? <Text style={ui.notice}>This payment record was reversed. No bank transfer was reversed.</Text>
-      : <>{involved && <View style={s.section}><Button title="Reverse record" kind="danger" disabled={busy || !canReverse || group.archived || [payment.sender, payment.recipient].some(id => group.participants.find(person => person.id === id)?.removed)} onPress={onReverse} /><Text style={ui.caption}>Reverses this record, not a bank transfer.</Text></View>}</>}
+    {payment.reversed ? <Text style={ui.notice}>This payment record was reversed.</Text>
+      : <>{involved && <View style={s.section}><Button title="Reverse record" kind="danger" disabled={busy || !canReverse || group.archived || [payment.sender, payment.recipient].some(id => group.participants.find(person => person.id === id)?.removed)} onPress={onReverse} /></View>}</>}
   </View>;
 }
 
@@ -278,7 +278,11 @@ const s = StyleSheet.create({
   section: { gap: 10, paddingVertical: 4 },
   receipt: { gap: 12, padding: 12, borderRadius: radii.surface },
   trailing: { flexShrink: 1, maxWidth: '45%', alignItems: 'flex-end' },
-  effect: { flexShrink: 1, fontSize: 16, lineHeight: 22 },
+  effect: { flexShrink: 1, fontSize: 14, lineHeight: 20 },
+  balanceAmount: { fontSize: 16, lineHeight: 22 },
+  logTitle: { fontSize: 14, lineHeight: 20 },
+  logCaption: { fontSize: 12, lineHeight: 17 },
+  edgeRow: { marginHorizontal: -16, paddingHorizontal: 16 },
   date: { minWidth: 40, flexShrink: 0, alignItems: 'center' },
   dateMonth: { fontSize: 11, lineHeight: 14 },
   dateDay: { fontSize: 14, lineHeight: 18 },

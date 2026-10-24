@@ -87,7 +87,7 @@ export default function ProfileSettings({ name, vpa, busy, onSaveName, onSaveUPI
       </> : <><Dialog.Content style={{ flexShrink: 1 }}><ScrollView keyboardShouldPersistTaps="handled">
           <View style={{ gap: 8 }}><TextInput ref={input} {...inputColors} autoFocus accessibilityLabel={isName ? 'Name' : 'UPI ID'} value={draft} maxLength={isName ? 120 : 254} autoCorrect={false} autoCapitalize={isName ? 'words' : 'none'} autoComplete={isName ? 'name' : 'off'} keyboardType={isName ? 'default' : 'email-address'} returnKeyType="done" editable={!disabled} style={ui.input}
             onChangeText={text => { setDraft(text); setError(''); }} onSubmitEditing={() => void save()} onKeyPress={event => { if (event.nativeEvent.key === 'Escape' && !disabled) close(); }} />
-            {!isName && <Text style={ui.caption}>Check this address. It is not bank verified.</Text>}</View>
+          </View>
           {!!error && <ErrorText live>{error}</ErrorText>}
         </ScrollView></Dialog.Content>
         <CancelDialogActions disabled={disabled} onCancel={close}><Button title={saving ? 'Saving…' : 'Save'} disabled={disabled || !valid || draft.trim() === (isName ? name : vpa)} onPress={() => void save()} /></CancelDialogActions></>}

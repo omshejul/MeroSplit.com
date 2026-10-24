@@ -196,7 +196,7 @@ export default function SettleForm({ group, initial, busy, selfId, onSave, onRev
   async function cancelAttempt(id: string) {
     if (lock.current || busy) return;
     lock.current = true; setSaving(true); setError('');
-    try { await onCancelUPI(id); if (mounted.current) { setWebQuote(null); setNotice('Unpaid attempt cancelled. No bank transfer was reversed.'); } }
+    try { await onCancelUPI(id); if (mounted.current) { setWebQuote(null); setNotice('Unpaid attempt cancelled.'); } }
     catch (cause) { if (mounted.current) setError(cause instanceof Error ? cause.message : 'Could not cancel this attempt.'); }
     finally { lock.current = false; if (mounted.current) setSaving(false); }
   }
@@ -211,7 +211,7 @@ export default function SettleForm({ group, initial, busy, selfId, onSave, onRev
       const payment = { sender, recipient, amount: rupeesToPaise(amount) };
       addSettlement(group.balances, sender, recipient, payment.amount);
       setError('');
-      Alert.alert('Record this payment?', `${label(sender)} paid ${label(recipient)} ${formatMoney(payment.amount)} outside MeroSplit. No money is sent.`, [
+      Alert.alert('Record this payment?', `${label(sender)} paid ${label(recipient)} ${formatMoney(payment.amount)}.`, [
         { text: 'Cancel', style: 'cancel' }, { text: 'Record payment', onPress: () => void save(payment) },
       ]);
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Check the people and payment amount.'); }
@@ -228,7 +228,6 @@ export default function SettleForm({ group, initial, busy, selfId, onSave, onRev
     return <View style={styles.form}>
       <Text style={ui.caption}>{group.name}</Text>
       <Text style={[ui.section, styles.returnTitle]}>{needsAnswer ? `Did you pay ${pendingReturn.payeeName} ${formatMoney(pendingReturn.amount)}?` : `${formatMoney(pendingReturn.amount)} to ${pendingReturn.payeeName}`}</Text>
-      <Text style={ui.body}>Check your UPI app before answering.</Text>
       {!!returnError && <ErrorText>{returnError}</ErrorText>}
       {returnReview ? <Button title="Review balance" kind="primary" onPress={onCancel} disabled={disabled} /> : pendingReturn.decision !== null ?
         <Button title={saving ? 'Confirming update…' : 'Try again'} kind="primary" onPress={() => void resolveReturn(pendingReturn.decision === 'paid')} disabled={disabled} /> : needsAnswer ? <>
@@ -255,14 +254,13 @@ export default function SettleForm({ group, initial, busy, selfId, onSave, onRev
       </View>}
     </View>
     </>}
-    {profile && !webQuote && <Disclosure title="Payment address"><Text selectable style={ui.body}>{label(recipient)}'s UPI ID: {profile.vpa}</Text>
-      <Text style={ui.caption}>Entered by this person. Not bank verified.</Text></Disclosure>}
-    {sender === selfId && debt && !profile && <Text style={ui.caption}>Ask {label(recipient)} to {group.participants.find(person => person.id === recipient)?.user_id != null ? 'add a UPI address' : 'join and add a UPI address'}. You can still record a payment made outside MeroSplit.</Text>}
-    {canPay && !webQuote && <><Text style={ui.caption}>Pay up to {formatMoney(debt!.amount)}. Check the recipient in your UPI app.</Text><Button title={saving ? 'Preparing…' : amountLabel ? `Pay ${amountLabel} with UPI` : 'Pay with UPI'} kind="primary" icon="pay" disabled={disabled || !amountLabel} onPress={() => void pay()} /></>}
+    {profile && !webQuote && <Disclosure title="Payment address"><Text selectable style={ui.body}>{label(recipient)}'s UPI ID: {profile.vpa}</Text></Disclosure>}
+    {sender === selfId && debt && !profile && <Text style={ui.caption}>Ask {label(recipient)} to {group.participants.find(person => person.id === recipient)?.user_id != null ? 'add a UPI address' : 'join and add a UPI address'}.</Text>}
+    {canPay && !webQuote && <><Text style={ui.caption}>Pay up to {formatMoney(debt!.amount)}.</Text><Button title={saving ? 'Preparing…' : amountLabel ? `Pay ${amountLabel} with UPI` : 'Pay with UPI'} kind="primary" icon="pay" disabled={disabled || !amountLabel} onPress={() => void pay()} /></>}
     {webQuote && <WebPaymentQuote quote={webQuote.quote} url={webQuote.url} disabled={disabled}
       onCopy={text => void copy(text)} onOpen={openWebPayment} onReview={() => void reviewWebPayment()} />}
     {activeAttempt?.state === 'reported' && sender === selfId && <Text style={ui.caption}>This payment is already reported. Check it before paying again.</Text>}
-    {activeAttempt?.state === 'prepared' && sender === selfId && <Button title="Cancel unpaid attempt" kind="text" disabled={disabled} onPress={() => Alert.alert('Cancel unpaid attempt?', 'Cancel only if you have not paid. This cannot reverse money already sent.', [{ text: 'Keep', style: 'cancel' }, { text: 'Cancel attempt', onPress: () => void cancelAttempt(activeAttempt.id) }])} />}
+    {activeAttempt?.state === 'prepared' && sender === selfId && <Button title="Cancel unpaid attempt" kind="text" disabled={disabled} onPress={() => Alert.alert('Cancel unpaid attempt?', 'Cancel this unpaid attempt?', [{ text: 'Keep', style: 'cancel' }, { text: 'Cancel attempt', onPress: () => void cancelAttempt(activeAttempt.id) }])} />}
     {!!notice && <Text accessibilityLiveRegion="polite" style={ui.caption}>{notice}</Text>}
     {!!error && <ErrorText live>{error}</ErrorText>}
     {!webQuote && <Button title={amountLabel ? `Record ${amountLabel} already paid` : 'Record a payment already made'} accessibilityLabel={amountLabel ? `Record ${amountLabel} to ${label(recipient)}` : 'Record payment'} onPress={confirm} disabled={disabled || group.archived || !isPersonalPayment(group, selfId, sender, recipient)} kind={canPay ? 'secondary' : 'primary'} icon="check" />}

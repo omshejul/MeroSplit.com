@@ -40,7 +40,6 @@ function ActivityRow({ item, busy, showDay, onOpen }: {
         <Text numberOfLines={1} ellipsizeMode="tail" style={ui.rowTitle}>{row.title}</Text>
         <Text numberOfLines={1} ellipsizeMode="tail" style={ui.rowSub}>{item.group.name} · {activityTime(item.created_at)}</Text>
         {item.kind === 'payment_recorded' && item.payment?.reversed && <Text style={ui.rowSub}>Record later reversed</Text>}
-        {item.kind === 'payment_reversed' && <Text style={ui.rowSub}>No bank transfer was reversed</Text>}
       </View>
       <View style={s.trailing}>{row.amount && <AmountText amount={row.amount} style={[s.amount, { color: row.cashflow === '0' ? palette.text : balanceColor(row.cashflow, palette) }]} />}<Icon name="next" size={16} color={palette.muted} /></View>
     </Pressable>

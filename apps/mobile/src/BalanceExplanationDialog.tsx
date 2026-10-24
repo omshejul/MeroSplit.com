@@ -8,7 +8,7 @@ import type { BalanceSource } from './balanceExplanationStorage';
 import type { Command, Group } from './types';
 import KeyboardDialog from './KeyboardDialog';
 import { DialogScrollBody } from './DialogParts';
-import { Button, Disclosure, SectionHeading, useUI } from './ui';
+import { balanceColor, Button, Disclosure, SectionHeading, useUI } from './ui';
 
 export type BalanceSelection = { group: Group; accepted: Group; commands: Command[]; selfId: string; transfer: Transfer; restoreFocus: () => void; load?: (expected: Group) => Promise<BalanceSource> };
 type Explanation = ReturnType<typeof explainTransfer>;
@@ -16,15 +16,15 @@ const nameFor = (group: Group, selfId: string, id: string) => id === selfId ? 'Y
 const netText = (name: string, amount: string) => BigInt(amount) > 0n ? `${name} ${name === 'You' ? 'are' : 'is'} owed ${formatMoney(amount)}` : BigInt(amount) < 0n ? `${name} ${name === 'You' ? 'owe' : 'owes'} ${formatMoney((-BigInt(amount)).toString())}` : `${name} ${name === 'You' ? 'are' : 'is'} settled up`;
 
 function CalculationLine({ label, amount, subtract = false }: { label: string; amount: string; subtract?: boolean }) {
-  const { ui } = useUI();
-  return <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}><Text style={[ui.body, { flex: 1, minWidth: 0 }]}>{label}</Text><Text style={[ui.body, { fontVariant: ['tabular-nums'] }]}>{subtract ? '−' : '+'}{formatMoney(amount)}</Text></View>;
+  const { ui, palette } = useUI();
+  return <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}><Text style={[ui.body, { flex: 1, minWidth: 0 }]}>{label}</Text><Text style={[ui.body, { fontVariant: ['tabular-nums'], color: balanceColor(subtract ? -BigInt(amount) : amount, palette) }]}>{subtract ? '−' : '+'}{formatMoney(amount)}</Text></View>;
 }
 
 function LedgerDetails({ group, selfId }: { group: Group; selfId: string }) {
   const { ui } = useUI(), [limit, setLimit] = useState(20);
   const names = (values: Record<string, string>) => Object.entries(values).filter(([, value]) => value !== '0').map(([id, value]) => `${nameFor(group, selfId, id)} ${formatMoney(value)}`).join(', ');
   const entries = [...group.expenses.map(bill => ({ key: `bill:${bill.id}`, date: bill.date, title: `${bill.description} · ${formatMoney(bill.total)}`, detail: `${bill.deleted ? 'Reversed. No effect on balances. ' : ''}Paid: ${names(bill.paid)}. Shares: ${names(bill.shares)}.` })),
-    ...group.settlements.map(payment => ({ key: `payment:${payment.id}`, date: payment.date, title: `${nameFor(group, selfId, payment.sender)} to ${nameFor(group, selfId, payment.recipient)} · ${formatMoney(payment.amount)}`, detail: payment.reversed ? 'Payment record reversed. No effect on balances. No bank refund.' : 'Recorded payment. This is not bank verification.' }))]
+    ...group.settlements.map(payment => ({ key: `payment:${payment.id}`, date: payment.date, title: `${nameFor(group, selfId, payment.sender)} to ${nameFor(group, selfId, payment.recipient)} · ${formatMoney(payment.amount)}`, detail: payment.reversed ? 'Payment record reversed. No effect on balances.' : 'Recorded payment.' }))]
     .sort((a, b) => (b.date ?? '').localeCompare(a.date ?? '') || a.key.localeCompare(b.key));
   return <>
     {entries.slice(0, limit).map(entry => <View key={entry.key} style={{ gap: 3 }}><Text style={ui.body}>{entry.title}</Text><Text style={ui.caption}>{entry.date ? new Date(`${entry.date}T12:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Date unavailable'}</Text><Text style={ui.caption}>{entry.detail}</Text></View>)}
@@ -54,7 +54,6 @@ function ExplanationBody({ value, selfId }: { value: Explanation; selfId: string
       {people.map(person => <Text key={person.id} style={ui.body}>{netText(person.name, person.balance)}</Text>)}
       <SectionHeading>Suggested payments in order</SectionHeading>
       {plan.map((row, step) => <Text key={`${row.sender}:${row.recipient}`} style={ui.body}>{step + 1}. {nameFor(group, selfId, row.sender)} to {nameFor(group, selfId, row.recipient)} · {formatMoney(row.amount)}{step === index ? ' · This payment' : ''}</Text>)}
-      <Text style={ui.caption}>These are suggestions. Opening this explanation does not move money or mark a payment as paid.</Text>
     </Disclosure>
     <Disclosure title="Bills and recorded payments"><LedgerDetails group={group} selfId={selfId} /></Disclosure>
     {value.pending && <Text style={ui.caption}>Includes changes waiting to sync.</Text>}
