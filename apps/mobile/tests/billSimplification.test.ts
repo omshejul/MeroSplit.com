@@ -157,7 +157,7 @@ test('PDF and photo attachment rows reuse the same private thumbnail component a
 
 test('private thumbnail retries stay bounded and late results cannot replace the next account preview', async () => {
   const waiting: { resolve: (value: string) => void; reject: () => void }[] = [];
-  const app = harness('src/PrivateMediaThumbnail.tsx', 'PrivateMediaThumbnail', { Image: 'Image', radii: { control: 8 }, useUI: () => ({ ui: {}, palette: {} }),
+  const app = harness('src/PrivateMediaThumbnail.tsx', 'PrivateMediaThumbnail', { Platform: { OS: 'web' }, Image: 'Image', radii: { control: 8 }, useUI: () => ({ ui: {}, palette: {} }),
     mediaThumbnail: () => new Promise<string>((resolve, reject) => waiting.push({ resolve, reject: () => reject(Error('Unavailable')) })) });
   const media = { id: 'file', name: 'Receipt.pdf', content_type: 'application/pdf', size: 1000 };
   const props = { session: { baseUrl: 'https://example.invalid', userId: 'a', token: 'a' }, media };
@@ -176,6 +176,22 @@ test('private thumbnail retries stay bounded and late results cannot replace the
   const later = { ...next, media: { ...media, id: 'next-file' } };
   app.render(later); app.commit(); assert.equal(waiting.length, 4);
   app.unmount(); waiting[3].resolve('after-unmount'); await tick();
+});
+
+test('native thumbnail failure retains the original manual Retry on iOS and Android', async () => {
+  for (const OS of ['ios', 'android']) {
+    const waiting: { resolve: (value: string) => void; reject: () => void }[] = [];
+    const app = harness('src/PrivateMediaThumbnail.tsx', 'PrivateMediaThumbnail', { Platform: { OS }, Image: 'Image', radii: { control: 8 }, useUI: () => ({ ui: {}, palette: {} }),
+      mediaThumbnail: () => new Promise<string>((resolve, reject) => waiting.push({ resolve, reject: () => reject(Error('Unavailable')) })) });
+    const props = { session: { baseUrl: 'https://example.invalid', userId: 'owner', token: 'synthetic' }, media: { id: 'file', name: 'Receipt.pdf', content_type: 'application/pdf' } };
+    app.render(props); app.commit(); waiting[0].reject(); await tick();
+    const retry = find(app.render(props), 'accessibilityLabel', 'Retry PDF preview');
+    assert.equal(retry.type, 'Pressable'); assert.equal(retry.props.accessibilityRole, 'button');
+    retry.props.onPress(); assert.equal(waiting.length, 2);
+    waiting[1].resolve('native-retry-image'); await tick();
+    assert.equal(nodes(app.render(props)).find(node => node.type === 'Image')!.props.source.uri, 'native-retry-image');
+    app.unmount();
+  }
 });
 
 test('web PDFs use the shared private thumbnail while web photos retain the existing cookie-protected path', () => {
