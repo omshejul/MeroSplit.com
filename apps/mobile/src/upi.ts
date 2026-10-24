@@ -44,7 +44,7 @@ export async function availableUPIApps(platform: string, canOpenURL: (url: strin
   if (platform !== 'ios' && platform !== 'android') return [];
   // iOS has app-specific handlers, not Android's generic UPI resolver. Do not
   // assume these iOS routes or installed-app detection work on other platforms.
-  // Relative order matches the dated payer-app volume snapshot in upiDirectory.ts; generic stays last.
+  // Relative payer-app volume order: September2026, data.indiadispatch.com/payments (NPCI-derived secondary source); generic stays last.
   const choices: UPIApp[] = platform === 'ios' ? [
     { id: 'phonepe', name: 'PhonePe' }, { id: 'google-pay', name: 'Google Pay' },
     { id: 'paytm', name: 'Paytm' }, { id: 'bhim', name: 'BHIM' }, { id: 'cred', name: 'CRED' },

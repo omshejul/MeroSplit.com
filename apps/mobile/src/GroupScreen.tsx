@@ -76,7 +76,7 @@ function PersonalTransferRow({ transfer, group, selfId, disabled, onSettle, onEx
       <View style={ui.rowBody}><Text numberOfLines={1} ellipsizeMode="tail" style={[ui.rowTitle, s.logTitle]}>{name}</Text><Text style={[ui.rowSub, s.logCaption]}>{outgoing ? 'You owe' : 'Owes you'}{removed ? ' · Removed' : ''}</Text></View>
       <AmountText amount={transfer.amount} style={[s.balanceAmount, { color: outgoing ? colors.negative : colors.positive }]} />
     </Pressable>
-    <Button title={action} kind="text" accessibilityLabel={`${action} payment ${outgoing ? 'to' : 'from'} ${name}, ${formatMoney(transfer.amount)}`} disabled={disabled || !!removed} onPress={() => onSettle(transfer)} />
+    <Button title={action} kind={action === 'Pay' ? 'outlined' : 'text'} icon={action === 'Pay' ? 'pay' : undefined} compact accessibilityLabel={`${action} payment ${outgoing ? 'to' : 'from'} ${name}, ${formatMoney(transfer.amount)}`} disabled={disabled || !!removed} onPress={() => onSettle(transfer)} />
   </View>;
 }
 

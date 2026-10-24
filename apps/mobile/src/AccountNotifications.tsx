@@ -9,6 +9,7 @@ import type { Session } from './types';
 import { Button, ErrorText, SettingsRow } from './ui';
 import NotificationSwitch from './NotificationSwitch';
 import BalanceStatements from './BalanceStatements';
+import LoadingSpinner from './LoadingSpinner';
 
 type Preferences = { expense_updates: boolean; email_reminders: boolean; notifications_enabled?: boolean; email_available?: boolean; push_device_ids?: string[] };
 function confirmed(value: Preferences) {
@@ -20,7 +21,8 @@ function confirmed(value: Preferences) {
 }
 export default function AccountNotifications({ session, push, busy, onBusyChange }: { session: Session; push: PushControls; busy: boolean; onBusyChange: (value: boolean) => void }) {
   const { height } = useWindowDimensions();
-  const [open, setOpen] = useState(false), [preferences, setPreferences] = useState<Preferences | null>(null), [error, setError] = useState(''), [working, setWorking] = useState(false);
+  const [open, setOpen] = useState(false), [preferences, setPreferences] = useState<Preferences | null>(null), [error, setError] = useState(''), [working, setWorking] = useState(false), [pendingEnabled, setPendingEnabled] = useState<boolean | null>(null);
+  const activeToken = useRef(session.token); activeToken.current = session.token;
   const row = useRef<React.ComponentRef<typeof View>>(null), mounted = useRef(true), inFlight = useRef(false), revision = useRef(0);
   async function load() {
     if (inFlight.current) return;
@@ -35,16 +37,24 @@ export default function AccountNotifications({ session, push, busy, onBusyChange
     if (Platform.OS === 'web') document.addEventListener('visibilitychange', foreground);
     return () => { mounted.current = false; listener.remove(); if (Platform.OS === 'web') document.removeEventListener('visibilitychange', foreground); };
   }, [session.token, push.state.enabled, push.state.working]);
-  async function update(value: Preferences) {
+  async function update(value: Preferences, enablePush = false) {
     if (busy || inFlight.current) return;
-    inFlight.current = true; ++revision.current; setWorking(true); setError(''); onBusyChange(true);
-    try { const saved = confirmed(await request<Preferences>(session, '/me/notifications/preferences', 'PUT', { expense_updates: value.expense_updates, email_reminders: value.email_reminders })); if (mounted.current) setPreferences(saved); }
+    inFlight.current = true; ++revision.current; setWorking(true); setPendingEnabled(enabled); setError(''); onBusyChange(true);
+    try {
+      const saved = confirmed(await request<Preferences>(session, '/me/notifications/preferences', 'PUT', { expense_updates: value.expense_updates, email_reminders: value.email_reminders }));
+      if (!mounted.current || activeToken.current !== session.token) return;
+      if (enablePush && Platform.OS !== 'web' && !push.state.enabled) {
+        try { await push.enable(); }
+        catch { if (mounted.current) setError('Email is on. Could not enable push notifications.'); }
+      }
+      if (mounted.current && activeToken.current === session.token) setPreferences(saved);
+    }
     catch { if (mounted.current) setError('Could not save notifications. Try again.'); }
-    finally { inFlight.current = false; if (mounted.current) setWorking(false); onBusyChange(false); }
+    finally { inFlight.current = false; if (mounted.current) { setWorking(false); setPendingEnabled(null); } onBusyChange(false); }
   }
   const emailAvailable = !!preferences?.email_reminders && preferences.email_available !== false;
-  const pushAvailable = preferences?.push_device_ids ? preferences.push_device_ids.some(id => Platform.OS === 'web' || push.state.ready && (id !== push.state.installationId || push.state.enabled)) : push.state.enabled;
-  const enabled = !!preferences?.expense_updates && preferences.notifications_enabled !== false && (emailAvailable || pushAvailable);
+  const pushAvailable = push.state.enabled || (preferences?.push_device_ids ? preferences.push_device_ids.some(id => Platform.OS === 'web' || push.state.ready && (id !== push.state.installationId || push.state.enabled)) : false);
+  const enabled = pendingEnabled ?? (!!preferences?.expense_updates && (emailAvailable || pushAvailable));
   const disabled = busy || working || push.state.working || !preferences;
   const value = !preferences ? 'Unavailable' : !enabled ? 'Off' : pushAvailable ? emailAvailable ? 'Push and email' : 'Push' : 'Email only';
   function close() { setOpen(false); requestAnimationFrame(() => row.current?.focus()); }
@@ -57,11 +67,13 @@ export default function AccountNotifications({ session, push, busy, onBusyChange
   return <><SettingsRow rowRef={row} icon="notifications" label="Notifications" value={value} disabled={busy} onPress={() => { setOpen(true); void load(); }} />
     <KeyboardDialog visible={open} dismissable={!busy && !working} onDismiss={() => { if (!busy && !working) close(); }}><Dialog.Title aria-level={2}>Notifications</Dialog.Title>
       <DialogScrollBody maxHeight={Platform.OS === 'web' ? Math.min(560, Math.max(0, height - 224)) : 440} gap={12}>
-        {preferences && <><NotificationSwitch icon="notifications" label="Notifications" checked={enabled} disabled={!!disabled} onChange={expense_updates => void update({ ...preferences, expense_updates })} />
-            <PushSettings push={push} busy={!!disabled} onBusyChange={onBusyChange} onChanged={async enabled => { if (enabled) await update({ ...preferences, expense_updates: true }); else await load(); }} />
-            <NotificationSwitch icon="mail" label="Email notifications" checked={preferences.email_reminders} disabled={!!disabled} onChange={email_reminders => void update({ ...preferences, expense_updates: email_reminders || preferences.expense_updates, email_reminders })} />
+        {preferences && <><NotificationSwitch icon="notifications" label="Notifications" checked={enabled} disabled={!!disabled} onChange={expense_updates => void update({ ...preferences, expense_updates, email_reminders: expense_updates ? true : preferences.email_reminders }, expense_updates)} />
+            {enabled && <><PushSettings push={push} busy={!!disabled} onBusyChange={onBusyChange} onChanged={async enabled => { await update({ ...preferences, expense_updates: enabled || emailAvailable }); }} />
+            <NotificationSwitch icon="mail" label="Email notifications" checked={preferences.email_reminders} disabled={!!disabled} onChange={email_reminders => void update({ ...preferences, expense_updates: email_reminders || push.state.enabled, email_reminders })} />
             {open && enabled && <BalanceStatements session={session} visible={open} emailEnabled={preferences.email_reminders} busy={!!disabled} onBusyChange={onBusyChange} />}
+            </>}
         </>}
+        <LoadingSpinner visible={working} />
         {!!error && <><ErrorText>{error}</ErrorText>{!preferences && <Button title="Retry" disabled={busy || working} onPress={() => void load()} />}</>}
       </DialogScrollBody><Dialog.Actions><Button title="Done" kind="text" disabled={busy || working} onPress={close} /></Dialog.Actions></KeyboardDialog>
   </>;

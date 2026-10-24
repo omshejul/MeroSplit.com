@@ -10,7 +10,6 @@ import type { UPIApp, UPILaunchQuote } from './upi';
 import { Button, ErrorText, Icon, radii, useUI } from './ui';
 import { copyText } from './clipboard';
 import UPIAppIcon from './UPIAppIcon';
-import UPIAppDirectory from './UPIAppDirectory';
 
 export function PaymentAddress({ name, vpa }: { name: string; vpa: string }) {
   const { ui } = useUI();
@@ -68,7 +67,6 @@ export function UPIAppChooser({ apps, recipient, disabled, onChoose, onDismiss }
         </TouchableRipple>
       </View> : <Button key={app.id} title={app.name} compact icon={() => <UPIAppIcon app={app.id} />} disabled={disabled} onPress={() => onChoose(app)} />)}
     </DialogScrollBody>
-    <UPIAppDirectory disabled={disabled} />
     <CancelDialogActions disabled={disabled} onCancel={onDismiss} />
     {recipient && <PaymentHelpDialog kind="google-pay" visible={help && apps !== null} name={recipient.name} vpa={recipient.vpa} onClose={() => setHelp(false)} />}
   </KeyboardDialog>;

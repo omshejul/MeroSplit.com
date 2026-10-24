@@ -87,3 +87,11 @@ test('Android selection cancellation survives the UPI helper without becoming a 
   assert.equal(await openUPIPayment(quote, 'upi', expected, async () => false), false);
   assert.equal(await openUPIPayment(quote, 'upi', expected, async () => true), true);
 });
+
+test('payment selection has one scrolling UPI chooser and no separate app directory', () => {
+  const panel = readFileSync(new URL('../src/PaymentPanels.tsx', import.meta.url), 'utf8');
+  const form = readFileSync(new URL('../src/SettleForm.tsx', import.meta.url), 'utf8');
+  assert.ok(!panel.includes('UPIAppDirectory') && !form.includes('UPIAppDirectory'));
+  assert.ok(!panel.includes('Find another UPI app') && !form.includes('Find another UPI app'));
+  assert.match(panel, /DialogScrollBody maxHeight=\{360\}/);
+});

@@ -285,3 +285,16 @@ test('local full-history search remains editable and clearable after filtering b
     assert.equal(tree.filter(node => node.type === 'BillTimelineRow').length, count);
   }
 });
+
+test('group and direct-person Pay use the same outlined icon button without changing guards', () => {
+  const render = production('PersonalTransferRow'), transfer = { sender: 'self', recipient: 'other', amount: '501' };
+  const payable = { ...group, participants: group.participants.map(person => person.id === 'other' ? { ...person, user_id: 2, payment_profile: { vpa: 'other@bank' } } : person) };
+  for (const direct of [false, true]) {
+    let calls = 0;
+    const props = { group: { ...payable, is_direct: direct }, transfer, selfId: 'self', disabled: false, onSettle: (value: unknown) => { assert.equal(value, transfer); calls++; }, onExplain() {} };
+    const button = render(props).children[1] as Element;
+    assert.equal(button.props.title, 'Pay'); assert.equal(button.props.kind, 'outlined'); assert.equal(button.props.icon, 'pay'); assert.equal(button.props.compact, true);
+    button.props.onPress(); assert.equal(calls, 1);
+    assert.equal((render({ ...props, disabled: true }).children[1] as Element).props.disabled, true);
+  }
+});
