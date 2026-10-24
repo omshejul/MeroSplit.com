@@ -150,6 +150,7 @@ SECURE_SSL_REDIRECT = not DEBUG
 SECURE_REDIRECT_EXEMPT = [r"^api/v1/(health|ready)$"]
 
 PUSH_PROVIDER = os.environ.get("PUSH_PROVIDER", "")
+FEEDBACK_NOTIFY_ENABLED = os.environ.get('FEEDBACK_NOTIFY_ENABLED', '').lower() == 'true'
 EXPO_ACCESS_TOKEN = os.environ.get("EXPO_ACCESS_TOKEN", "")
 
 # One canonical OAuth issuer/resource, independent of request Host headers.

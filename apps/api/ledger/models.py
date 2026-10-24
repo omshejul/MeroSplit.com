@@ -434,6 +434,15 @@ class BalanceStatement(models.Model):
         indexes = [models.Index(fields=["state", "due_at"], name="balance_statement_due")]
 
 
+class Feedback(models.Model):
+    id = models.UUIDField(primary_key=True, editable=False)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    text = models.CharField(max_length=2000)
+    created_at = models.DateTimeField(auto_now_add=True)
+    notify_state = models.CharField(max_length=8, default='pending')
+    attempted_at = models.DateTimeField(null=True)
+
+
 class MembershipDelivery(models.Model):
     """One committed membership notification per email or current device binding."""
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

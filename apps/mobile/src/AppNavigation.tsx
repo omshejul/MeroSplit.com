@@ -18,15 +18,16 @@ export function AppFrame({ children, onTouchStart }: { children: React.ReactNode
 const pageWidthStyle = Platform.OS === 'web' ? { width: '100%' as const, maxWidth: 760, alignSelf: 'center' as const } : {};
 export const pageContentStyle = { padding: 16, gap: 12, paddingBottom: 24, ...pageWidthStyle };
 
-export function ScreenHeader({ title, busy, onBack, children }: { title: string; busy: boolean; onBack?: () => void; children?: React.ReactNode }) {
+export function ScreenHeader({ title, busy, onBack, onFeedback, children }: { title: string; busy: boolean; onFeedback?: () => void; onBack?: () => void; children?: React.ReactNode }) {
   const { palette } = useUI();
   // The working indicator floats over the title's trailing edge, so actions never shift.
   return <View role="banner" style={styles.header}>
     {onBack && <IconAction name="back" label="Back" disabled={busy} onPress={onBack} />}
     <View style={styles.titleArea}>
       <Text style={[styles.title, { color: palette.text }]} accessibilityRole="header" aria-level={1} numberOfLines={1} ellipsizeMode="tail" accessibilityLabel={title}>{title}</Text>
-      {busy && <View pointerEvents="none" style={[styles.working, { backgroundColor: palette.background }]}><ActivityIndicator accessibilityLabel="Working" color={palette.accent} /></View>}
+      {busy && !onFeedback && <View pointerEvents="none" style={[styles.working, { backgroundColor: palette.background }]}><ActivityIndicator accessibilityLabel="Working" color={palette.accent} /></View>}
     </View>
+    {onFeedback && <View style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}>{busy ? <ActivityIndicator accessibilityLabel="Working" color={palette.accent} /> : <IconAction name="feedback" label="Feedback" onPress={onFeedback} />}</View>}
     {children}
   </View>;
 }

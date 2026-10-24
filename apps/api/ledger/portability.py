@@ -130,12 +130,13 @@ def csv_export(export):
 
 @transaction.atomic
 def account_export(actor):
-    from .models import BillChatAcceptance, BillChatBlock, BillChatMessage, BillChatReport
+    from .models import BillChatAcceptance, BillChatBlock, BillChatMessage, BillChatReport, Feedback
     groups = groups_for_actor(Group.objects.filter(participants__user=actor, participants__removed=False), actor).order_by("id")
     return {
         "schema_version": 1,
         "account": {"id": actor.pk, "email": actor.email, "avatar": avatar_for(actor)},
         "groups": [accepted_export(actor, group.id) for group in groups],
+        'feedback': list(Feedback.objects.filter(user=actor).order_by('created_at').values('id', 'text', 'created_at')),
         'chat': {
             'authored_messages': list(BillChatMessage.objects.filter(sender=actor).order_by('id').values('id', 'expense_id', 'client_id', 'text', 'created_at', 'hidden_at')),
             'reports': list(BillChatReport.objects.filter(reporter=actor).order_by('created_at').values('id', 'message_id', 'kind', 'reason', 'created_at', 'reviewed_at', 'resolution')),

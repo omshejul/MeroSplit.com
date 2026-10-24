@@ -648,3 +648,59 @@ test('clipboard uses the native write boundary on phones and awaits browser succ
   web.env.navigator.clipboard = undefined;
   await assert.rejects(web.render('unsupported@example'));
 });
+
+test('feedback has one field, blocks blank/double submission and shows thanks only after acknowledgment', async () => {
+  const sent: any[] = [];
+  let finish!: () => void, closes = 0;
+  const app = harness('src/FeedbackDialog.tsx', 'FeedbackDialog', { DialogFocus: 'DialogFocus', CancelDialogActions: 'CancelDialogActions' });
+  const props = { visible: true, onClose: () => closes++, onSubmit: (body: any) => { sent.push(body); return new Promise<void>(resolve => { finish = resolve; }); } };
+  let tree = app.render(props); app.commit();
+  assert.equal(nodes(tree).filter(node => node.type === 'TextField').length, 1);
+  assert.equal(find(tree, 'title', 'Submit').props.disabled, true);
+  find(tree, 'label', 'Your feedback').props.onChangeText('  Make lunch easier  ');
+  tree = app.render(props);
+  find(tree, 'title', 'Submit').props.onPress(); find(tree, 'title', 'Submit').props.onPress();
+  assert.equal(sent.length, 1); assert.equal(sent[0].text, 'Make lunch easier');
+  tree = app.render(props); assert.equal(find(tree, 'title', 'Submitting').props.disabled, true);
+  nodes(tree).find(node => node.type === 'KeyboardDialog')!.props.onDismiss(); assert.equal(closes, 0);
+  assert.ok(!nodes(tree).some(node => node.type?.name === 'FeedbackThanks'));
+  finish(); await tick(); tree = app.render(props);
+  const thanks = nodes(tree).find(node => node.type?.name === 'FeedbackThanks')!;
+  assert.ok(thanks); assert.ok(!nodes(tree).some(node => node.type === 'TextField'));
+  thanks.props.onClose(); assert.equal(closes, 1);
+  assert.equal(find(app.render(props), 'label', 'Your feedback').props.value, '');
+});
+
+test('uncertain feedback preserves the exact submission through close/reopen and retries without changing accounts', async () => {
+  const sent: any[] = [];
+  let first = true;
+  const app = harness('src/FeedbackDialog.tsx', 'FeedbackDialog', { DialogFocus: 'DialogFocus', CancelDialogActions: 'CancelDialogActions' });
+  const props = { visible: true, onClose() {}, onSubmit: async (body: any) => { sent.push(body); if (first) { first = false; throw Error('Response lost'); } } };
+  let tree = app.render(props); app.commit();
+  find(tree, 'label', 'Your feedback').props.onChangeText('Synthetic feedback');
+  find(app.render(props), 'title', 'Submit').props.onPress(); await tick();
+  tree = app.render(props);
+  assert.ok(nodes(tree).some(node => node.type === 'ErrorText'));
+  assert.equal(find(tree, 'label', 'Your feedback').props.editable, false);
+  nodes(tree).find(node => node.type === 'KeyboardDialog')!.props.onDismiss();
+  app.render({ ...props, visible: false }); tree = app.render(props);
+  find(tree, 'title', 'Submit').props.onPress(); await tick();
+  assert.equal(sent.length, 2); assert.equal(sent[1], sent[0]);
+  assert.ok(nodes(app.render(props)).some(node => node.type?.name === 'FeedbackThanks'));
+  app.unmount();
+});
+
+test('header keeps a fixed feedback slot, swaps it for the spinner while busy and leaves other screens unchanged', () => {
+  let opens = 0;
+  const env = { IconAction: 'IconAction', ActivityIndicator: 'ActivityIndicator', radii: { navigation: 20, surface: 16 }, pageWidthStyle: {}, useUI: () => ({ palette: {} }) };
+  const app = harness('src/AppNavigation.tsx', 'ScreenHeader', env), props = { title: 'Groups', busy: false, onFeedback: () => opens++ };
+  let tree = app.render(props);
+  find(tree, 'label', 'Feedback').props.onPress(); assert.equal(opens, 1);
+  assert.ok(!nodes(tree).some(node => node.type === 'ActivityIndicator'));
+  const slot = nodes(tree).find(node => node.props.style?.width === 44 && node.props.style?.height === 44)!;
+  tree = app.render({ ...props, busy: true });
+  assert.ok(!find(tree, 'label', 'Feedback'));
+  assert.equal(nodes(tree).filter(node => node.type === 'ActivityIndicator').length, 1);
+  assert.deepEqual(nodes(tree).find(node => node.props.style?.width === 44 && node.props.style?.height === 44)!.props.style, slot.props.style);
+  assert.ok(!find(app.render({ title: 'Payment', busy: false }), 'label', 'Feedback'));
+});

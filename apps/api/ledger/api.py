@@ -12,7 +12,7 @@ from ninja.errors import HttpError, ValidationError
 from ninja.files import UploadedFile as RequestFile
 from ninja.security import django_auth
 
-from . import balance_statements, bill_chat
+from . import balance_statements, bill_chat, feedback
 from .accounting import AccountingError
 from .collaboration import (
     acknowledge_opening,
@@ -64,6 +64,7 @@ from .schemas import (
     ContactIn,
     DisplayNameIn,
     ExpenseIn,
+    FeedbackIn,
     GroupIn,
     GroupLeaveIn,
     InviteIn,
@@ -275,6 +276,11 @@ def account_profile_update(request, body: DisplayNameIn):
 @api.get("/me/notifications/preferences")
 def notification_preferences(request):
     return preferences(request.auth)
+
+
+@api.post('/me/feedback')
+def submit_feedback(request, body: FeedbackIn):
+    return feedback.submit(request.auth, body.id, body.text)
 
 
 @api.put("/me/notifications/preferences")

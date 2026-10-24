@@ -38,6 +38,8 @@ import PencilEdit02Icon from '@hugeicons/core-free-icons/PencilEdit02Icon';
 import UserAdd01Icon from '@hugeicons/core-free-icons/UserAdd01Icon';
 import Shield01Icon from '@hugeicons/core-free-icons/Shield01Icon';
 import HelpCircleIcon from '@hugeicons/core-free-icons/HelpCircleIcon';
+import Comment01Icon from '@hugeicons/core-free-icons/Comment01Icon';
+import ThumbsUpIcon from '@hugeicons/core-free-icons/ThumbsUpIcon';
 import Sun03Icon from '@hugeicons/core-free-icons/Sun03Icon';
 import Notification01Icon from '@hugeicons/core-free-icons/Notification01Icon';
 import Mail01Icon from '@hugeicons/core-free-icons/Mail01Icon';
@@ -48,7 +50,7 @@ import { observeMotionPreference, useMotionValue, type MotionPreference } from '
 export const radii = { control: 12, surface: 16, navigation: 20 } as const;
 export const balanceColor = (value: string | bigint, palette: Palette) => BigInt(value) > 0n ? palette.positive : BigInt(value) < 0n ? palette.negative : palette.muted;
 const makeInputColors = (palette: Palette) => ({ selectionColor: Platform.OS === 'ios' ? palette.accent : palette.line, cursorColor: palette.accent, selectionHandleColor: palette.accent });
-const icons = { attachment: Attachment01Icon, archive: Archive01Icon, add: Add01Icon, down: ArrowDown01Icon, back: ArrowLeft01Icon, next: ArrowRight01Icon, external: ArrowUpRight01Icon, check: CheckmarkCircle01Icon, history: Clock01Icon, bill: Invoice01Icon, settings: Settings01Icon, me: UserCircleIcon, groups: UserGroupIcon, people: UserMultipleIcon, pay: Wallet01Icon, payment: MoneyExchange03Icon, remove: Delete02Icon, refresh: Refresh01Icon, export: Download01Icon, import: Upload01Icon, edit: PencilEdit02Icon, personAdd: UserAdd01Icon, privacy: Shield01Icon, help: HelpCircleIcon, appearance: Sun03Icon, notifications: Notification01Icon, mail: Mail01Icon, phone: SmartPhone01Icon };
+const icons = { feedback: Comment01Icon, thumbsUp: ThumbsUpIcon, attachment: Attachment01Icon, archive: Archive01Icon, add: Add01Icon, down: ArrowDown01Icon, back: ArrowLeft01Icon, next: ArrowRight01Icon, external: ArrowUpRight01Icon, check: CheckmarkCircle01Icon, history: Clock01Icon, bill: Invoice01Icon, settings: Settings01Icon, me: UserCircleIcon, groups: UserGroupIcon, people: UserMultipleIcon, pay: Wallet01Icon, payment: MoneyExchange03Icon, remove: Delete02Icon, refresh: Refresh01Icon, export: Download01Icon, import: Upload01Icon, edit: PencilEdit02Icon, personAdd: UserAdd01Icon, privacy: Shield01Icon, help: HelpCircleIcon, appearance: Sun03Icon, notifications: Notification01Icon, mail: Mail01Icon, phone: SmartPhone01Icon };
 export type IconName = keyof typeof icons;
 export function Icon({ name, size = 22, color }: { name: IconName; size?: number; color?: string }) {
   const { palette } = useUI();

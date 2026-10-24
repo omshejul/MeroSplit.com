@@ -21,6 +21,11 @@ class Command(Input):
     command_id: UUID
 
 
+class FeedbackIn(Input):
+    id: UUID
+    text: Annotated[StrictStr, Field(min_length=1, max_length=2000)]
+
+
 class GroupLeaveIn(Command):
     remove_membership: StrictBool = False
 

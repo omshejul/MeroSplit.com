@@ -24,6 +24,7 @@ import type { PaymentReturn } from './src/paymentReturn';
 import { listPaymentReturns, savePaymentReturn, clearPaymentReturn, resolvePaymentReturn } from './src/paymentReturnStorage';
 import MembersScreen from './src/MembersScreen';
 import SendInviteDialog from './src/SendInviteDialog';
+import FeedbackDialog from './src/FeedbackDialog';
 import { sendInvitation } from './src/members';
 import SavedChangeScreen from './src/SavedChangeScreen';
 import SplitwiseImportScreen from './src/SplitwiseImportScreen';
@@ -85,6 +86,7 @@ function AppContent() {
   const [expenseId, setExpenseId] = useState<string | null>(null), [draft, setDraft] = useState<ExpenseFormDraft | null>(null), [transfer, setTransfer] = useState<Transfer | undefined>();
   const [reviewCommand, setReviewCommand] = useState<Command | null>(null), [reviewInput, setReviewInput] = useState<Expense | undefined>();
   const [busy, setBusy] = useState(false), [pulling, setPulling] = useState(false), [feedback, setFeedback] = useState({ text: '', tone: 'info' as 'info' | 'success' | 'warning' | 'error' });
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
   const notice = feedback.text;
   const setNotice = (text: string, tone: typeof feedback.tone = 'info') => setFeedback({ text, tone });
   const [email, setEmail] = useState(''), [code, setCode] = useState(''), [challenge, setChallenge] = useState<EmailCodeChallenge | null>(null), [retryAt, setRetryAt] = useState(0), [clock, setClock] = useState(Date.now());
@@ -146,6 +148,7 @@ function AppContent() {
   function measureViewport() { scroll.current?.measureInWindow((x, y, width, height) => setViewport({ x, y, width, height })); }
   function navigate(value: Screen) { setNotice(''); setScreen(value); }
   function changeScope(value: Session | null) {
+    setFeedbackOpen(false);
     setVerifiedEmptyOwner(''); setEmptyChatScope('');
     ownerRef.current = value ? accountOwner(value) : '';
     activeSessionRef.current = value;
@@ -886,7 +889,7 @@ function AppContent() {
   if (authHeld && !session) return <EmailLinkScreen title={emailEntry?.phase === 'name' ? 'Name' : 'Sign in'} busy={busy}>{emailContent}</EmailLinkScreen>;
   return <><AppFrame onTouchStart={notices.engage}><View ref={protectedContent} style={{ flex: 1 }} pointerEvents={authHeld ? 'none' : 'auto'} accessibilityElementsHidden={authHeld} importantForAccessibility={authHeld ? 'no-hide-descendants' : 'auto'} aria-hidden={authHeld}>
     {screen === 'login' && !session && !challenge && !emailRequested && mascotEligible && <Mascot size="welcome" />}
-    <ScreenHeader title={title} busy={busy} onBack={screen === 'home' && tab === 'Groups' && (showArchived || showHidden) || screen !== 'home' && (session || screen !== 'login') ? back : undefined}>
+    <ScreenHeader title={title} busy={busy} onFeedback={session && !authHeld && !expired && screen === 'home' && ['Groups', 'Friends', 'Activity'].includes(tab) ? () => setFeedbackOpen(true) : undefined} onBack={screen === 'home' && tab === 'Groups' && (showArchived || showHidden) || screen !== 'home' && (session || screen !== 'login') ? back : undefined}>
       {Platform.OS === 'web' && session && (screen === 'home' && tab !== 'Account' || screen === 'group') && <IconAction name="refresh" label="Refresh" disabled={busy} onPress={() => { if (screen === 'home' && tab === 'Activity') void refreshActivity().catch(() => {}); else launch(sync); }} />}
       {screen === 'group' && selected && <IconAction name="settings" label="Group settings" disabled={busy} onPress={() => navigate('members')} />}
       {screen === 'members' && selected && !selected.group.is_direct && !selected.group.archived && selected.group.participants.some(person => person.id === selfId && !person.removed && person.user_id === selected.group.owner_id) && <IconAction name="personAdd" label="Add person" disabled={busy} onPress={() => setAddPersonRequest(value => value + 1)} />}
@@ -947,7 +950,7 @@ function AppContent() {
           })}
           />
         {recoveries.some(value => value.status === 'conflict') && <Text style={[ui.notice, ui.warning]}>Some earlier records could not be safely combined. Use Export data to review their saved originals.</Text>}
-        <View><SettingsRow external label="Privacy" icon="privacy" disabled={busy} onPress={() => launch(() => Linking.openURL(`${APP_ORIGIN}/privacy`))} /><SettingsRow external label="Help and support" icon="help" disabled={busy} onPress={() => launch(() => Linking.openURL(`${APP_ORIGIN}/support`))} /></View>
+        <View><SettingsRow label="Feedback" icon="feedback" disabled={busy || expired} onPress={() => setFeedbackOpen(true)} /><SettingsRow external label="Privacy" icon="privacy" disabled={busy} onPress={() => launch(() => Linking.openURL(`${APP_ORIGIN}/privacy`))} /><SettingsRow external label="Help and support" icon="help" disabled={busy} onPress={() => launch(() => Linking.openURL(`${APP_ORIGIN}/support`))} /></View>
         <View>
 
           <SettingsRow label="Sign out" icon="back" chevron={false} disabled={busy} onPress={() => confirm('Sign out?', storageIsDurable() ? 'Saved changes stay on this device for your next sign-in to this account.' : 'Export any temporary unsent changes before leaving. They will end when this tab closes.', async () => { await draftWrites.current; await flushChatWrites(); await endPushSession(session); await clearMediaPreviews(); await saveSession(null); changeScope(null); })} />
@@ -958,6 +961,12 @@ function AppContent() {
     {showAddExpense && <AddExpenseButton disabled={busy} onPress={() => launch(() => openExpense())} />}
     {screen === 'home' && session && <AppTabs selected={tab} busy={busy} onSelect={value => { setShowArchived(false); setShowHidden(false); if (value === 'Activity') { activityOwner.current = ''; setActivityError(''); } setTab(value); setNotice(''); }} />}
   </View></AppFrame>
+    {session && !authHeld && !expired && <FeedbackDialog key={`${owner}|${session.token}`} visible={feedbackOpen} onClose={() => setFeedbackOpen(false)} onSubmit={async body => {
+      const active = session;
+      if (activeSessionRef.current?.token !== active.token || ownerRef.current !== accountOwner(active)) throw new Error('Sign in again.');
+      const result = await request<{ id: string; saved: boolean }>(active, '/me/feedback', 'POST', body);
+      if (activeSessionRef.current?.token !== active.token || ownerRef.current !== accountOwner(active) || result.id !== body.id || result.saved !== true) throw new Error('Could not confirm feedback.');
+    }} />}
     {newPersonInvite && <SendInviteDialog visible={showNewPersonInvite && !authHeld} email={newPersonInvite.email} busy={busy} error={newPersonInviteError} onSend={() => void sendNewPersonInvite()} onCancel={() => { if (!busy) { setNewPersonInvite(null); setNewPersonInviteError(''); } }} />}
     {authHeld && (emailEntry?.phase === 'switch' ? emailContent : <EmailLinkDialog title={emailEntry?.phase === 'name' ? 'Name' : 'Sign in'}>{emailContent}</EmailLinkDialog>)}
   </>;
