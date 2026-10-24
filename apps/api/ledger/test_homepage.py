@@ -8,6 +8,7 @@ from config.associations import ANDROID_ASSOCIATION, APPLE_ASSOCIATION
 from config.web import public_asset
 from django.conf import settings
 from django.test import Client, RequestFactory
+from django.urls import resolve
 
 
 class Document(HTMLParser):
@@ -41,6 +42,7 @@ class Document(HTMLParser):
 
 
 def test_crawler_gets_real_homepage_and_head_without_javascript_or_an_app_export(tmp_path, monkeypatch):
+    monkeypatch.setitem(resolve("/").func.view_initkwargs["extra_context"], "testing_links_ready", False)
     monkeypatch.setenv("MEROSPLIT_WEB_ROOT", str(tmp_path / "absent-web-export"))
     browser = Client(HTTP_USER_AGENT="Googlebot")
     response = browser.get("/")
@@ -117,7 +119,6 @@ def test_homepage_does_not_take_over_existing_app_legal_association_or_invitatio
 
 
 def test_install_intent_is_manual_safe_and_android_group_precedes_play(monkeypatch):
-    from django.urls import resolve
     monkeypatch.setitem(resolve("/").func.view_initkwargs["extra_context"], "testing_links_ready", True)
     browser = Client()
     for ua in ["Googlebot", "iPhone", "Android", "Macintosh"]:
@@ -149,7 +150,8 @@ def test_home_header_is_logo_only_with_help_links_in_footer():
         assert '<nav aria-label="Help">' in help_header and 'href="/support"' in help_header
 
 
-def test_pending_testing_links_never_emit_native_links_or_handoff_script():
+def test_pending_testing_links_never_emit_native_links_or_handoff_script(monkeypatch):
+    monkeypatch.setitem(resolve("/").func.view_initkwargs["extra_context"], "testing_links_ready", False)
     browser = Client()
     for url in ["/", "/?install=1", "/?install=1#install"]:
         for ua in ["Googlebot", "iPhone", "Android", "Macintosh"]:
