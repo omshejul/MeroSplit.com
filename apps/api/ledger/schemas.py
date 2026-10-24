@@ -167,6 +167,10 @@ class ParticipantIn(Command):
     email: Annotated[str, Field(max_length=254)] = ""
 
 
+class ParticipantNameIn(Command):
+    name: Annotated[str, Field(min_length=1, max_length=120, pattern=r"\S")]
+
+
 class ContactIn(Command):
     email: Annotated[str, Field(max_length=254)] = ""
 

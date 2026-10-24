@@ -19,7 +19,7 @@ function production(file: string, extra: Record<string, any> = {}) {
     ...members, React: { Fragment: 'Fragment', createElement: (type: any, props: any, ...children: any[]) => ({ type, props: props ?? {}, children }) },
     Platform: { OS: 'native' }, View: 'View', Text: 'Text', Pressable: 'Pressable', Button: 'Button', Avatar: 'Avatar', Icon: 'Icon', IconAction: 'IconAction',
     Disclosure: 'Disclosure', EmailField: 'EmailField', TextField: 'TextField', GroupMembershipActions: 'GroupMembershipActions', KeyboardDialog: 'KeyboardDialog', SendInviteDialog: 'SendInviteDialog',
-    DialogFocus: 'DialogFocus', DialogScrollBody: 'DialogScrollBody', CancelDialogActions: 'CancelDialogActions', ErrorText: 'ErrorText', Dialog: Object.assign(() => {}, { Title: 'Dialog.Title' }),
+    LoadingSpinner: 'LoadingSpinner', DialogFocus: 'DialogFocus', DialogScrollBody: 'DialogScrollBody', CancelDialogActions: 'CancelDialogActions', ErrorText: 'ErrorText', Dialog: Object.assign(() => {}, { Title: 'Dialog.Title' }),
     Keyboard: { dismiss() {} }, StyleSheet: { create: (value: any) => value, hairlineWidth: 1 }, Crypto: { randomUUID: () => `id-${++nextId}` }, useUI: () => ({ ui: {}, palette: {} }),
     requestAnimationFrame: (callback: () => void) => { callback(); return 1; }, cancelAnimationFrame() {},
     setTimeout: (callback: () => void) => { const id = ++nextId; timers.set(id, callback); return id; }, clearTimeout: (id: number) => timers.delete(id),
@@ -153,4 +153,43 @@ test('Member invitation buttons remain Send or Sending through cooldown and deli
   }
   const tree = app.render('MemberRow', { group, person, selfId: 'self', organizer: true, disabled: true, working: true, feedback: { section: 'email-invite:person', text: '', error: false }, cooldown: 60, contactChanged: false });
   assert.equal(button(tree, 'Sending').props.disabled, true);
+});
+
+
+test('guest name edit waits for confirmation, preserves failed draft and retries one command', async () => {
+  let resolve!: (value: any) => void, reject!: (error: Error) => void;
+  const panel = settings(false, async () => new Promise((yes, no) => { resolve = yes; reject = no; }));
+  let tree = await panel.add('');
+  const member = nodes(tree).find(node => node.type?.name === 'MemberRow' && node.props.person.id !== 'self')!;
+  member.props.onRename(); tree = panel.render();
+  assert.equal(component(tree, 'EditNameDialog').props.name, 'Noor');
+  component(tree, 'EditNameDialog').props.onName('Noor updated'); tree = panel.render();
+  component(tree, 'EditNameDialog').props.onSave(); component(tree, 'EditNameDialog').props.onSave(); await tick();
+  const writes = () => panel.calls.filter(call => call.path.endsWith('/name'));
+  assert.equal(writes().length, 1); assert.equal(panel.group.participants[1].name, 'Noor');
+  assert.equal(component(panel.render(), 'EditNameDialog').props.disabled, true);
+  reject(Error('Offline')); await tick(); tree = panel.render();
+  assert.equal(component(tree, 'EditNameDialog').props.name, 'Noor updated');
+  assert.equal(component(tree, 'EditNameDialog').props.feedback.error, true);
+  component(tree, 'EditNameDialog').props.onSave(); await tick();
+  assert.equal(writes().length, 2); assert.equal(writes()[0].body.command_id, writes()[1].body.command_id);
+  resolve({ id: panel.group.id, version: ++panel.group.version }); await tick();
+  assert.equal(component(panel.render(), 'EditNameDialog').props.person, undefined);
+  assert.equal(panel.calls.filter(call => call.path.endsWith('/email-invite')).length, 0);
+  panel.unmount();
+});
+
+test('guest name save is blocked when the person joins or is removed while the dialog is open', async () => {
+  for (const change of ['joined', 'removed', 'archived']) {
+    const panel = settings(); let tree = await panel.add('');
+    nodes(tree).find(node => node.type?.name === 'MemberRow' && node.props.person.id !== 'self')!.props.onRename();
+    tree = panel.render(); component(tree, 'EditNameDialog').props.onName('Changed');
+    if (change === 'joined') panel.group.participants[1].user_id = 2;
+    else if (change === 'removed') panel.group.participants[1].removed = true;
+    else panel.group.archived = true;
+    tree = panel.render(); const dialog = component(tree, 'EditNameDialog');
+    assert.equal(dialog.props.unavailable, true); assert.equal(dialog.props.disabled, false, 'Cancel remains available'); dialog.props.onSave(); await tick();
+    assert.equal(panel.calls.filter(call => call.path.endsWith('/name')).length, 0);
+    panel.unmount();
+  }
 });

@@ -21,7 +21,7 @@ from .store_review import require_no_review_email
 def _person(actor, group_id, participant_id):
     group = visible_group(actor, group_id, lock=True)
     if group.owner_id != actor.pk:
-        raise HttpError(403, "Only the organizer can invite this person")
+        raise HttpError(403, "Only the organizer can edit this person")
     writable(group)
     person = group.participants.filter(id=participant_id, user__isnull=True, removed=False).first()
     if not person:
@@ -47,6 +47,17 @@ def update_contact(actor, group_id, participant_id, payload):
         from .models import BillChatNotice
         cancel_chat_notices(BillChatNotice.objects.filter(participant=person, recipient__isnull=True), 'contact_changed')
     return record_change(group, actor, payload["command_id"], fingerprint, "contact_changed", {"participant_id": str(person.id)})
+
+
+@transaction.atomic
+def rename_person(actor, group_id, participant_id, payload):
+    group, person = _person(actor, group_id, participant_id)
+    previous, fingerprint = previous_result(actor, payload["command_id"], f"person_name:{participant_id}", payload)
+    if previous:
+        return previous
+    person.name = payload["name"].strip()
+    person.save(update_fields=["name"])
+    return record_change(group, actor, payload["command_id"], fingerprint, "participant_renamed", {"participant_id": str(person.id)})
 
 
 def invite_status(invite):
