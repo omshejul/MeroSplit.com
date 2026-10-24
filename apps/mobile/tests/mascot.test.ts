@@ -27,19 +27,33 @@ const uiEnv = { Mascot, Text: 'Text', ErrorText: 'ErrorText', View: 'View', Acti
 test('Groups and Activity decorate only verified true empty states while retaining their existing copy', () => {
   const groups = productionFunction('src/GroupList.tsx', 'GroupList', uiEnv);
   const activity = productionFunction('src/ActivityScreen.tsx', 'ActivityScreen', uiEnv);
-  const base = { groups: [], commands: [], busy: false, direct: false, onOpen() {} };
-  const count = (tree: unknown) => elements(tree).filter(value => value.type === Mascot).length;
+  const base = { groups: [], commands: [], busy: false, direct: false, decorated: true, onOpen() {} };
+  // Visible mascots only; an invisible Mascot keeps the footprint without an image.
+  const count = (tree: unknown) => elements(tree).filter(value => value.type === Mascot && value.props.visible).length;
+  const slots = (tree: unknown) => elements(tree).filter(value => value.type === Mascot).length;
   assert.equal(count(groups(base)), 0, 'cache/startup empty is not canonical emptiness');
+  assert.equal(slots(groups(base)), 1, 'its footprint is reserved so the caption does not move once verified');
   const verified = groups({ ...base, emptyVerified: true }); assert.equal(count(verified), 1);
   assert.ok(elements(verified).some(value => value.type === 'Text' && value.children.includes('No groups yet')));
   for (const changed of [{ direct: true }, { busy: true }, { commands: [{ group_id: 'pending' }] }, { groups: [{ group: { id: 'existing' } }] }]) assert.equal(count(groups({ ...base, emptyVerified: true, ...changed })), 0);
+  for (const changed of [{ busy: true }, { commands: [{ group_id: 'pending' }] }]) assert.equal(slots(groups({ ...base, emptyVerified: true, ...changed })), 1, 'sync and saved work keep the same caption position');
+  for (const changed of [{ direct: true }, { decorated: false }]) assert.equal(slots(groups({ ...base, emptyVerified: true, ...changed })), 0, 'People and archived/removed lists keep a plain caption');
   const feed = { items: [], busy: false, onRefresh() {}, onOpen() {} };
   assert.equal(count(activity(feed)), 0);
   const suppressed = activity({ ...feed, emptyVerified: true, showEmpty: false });
   assert.ok(!elements(suppressed).some(value => value.type === 'Text' && value.children.includes('No activity yet')));
+  assert.equal(slots(suppressed), 0);
   const empty = activity({ ...feed, emptyVerified: true }); assert.equal(count(empty), 1);
   assert.ok(elements(empty).some(value => value.type === 'Text' && value.children.includes('No activity yet')));
   for (const changed of [{ showEmpty: false }, { busy: true }, { error: 'Offline' }, { hasMore: true }, { items: [{ id: 'existing' }] }]) assert.equal(count(activity({ ...feed, emptyVerified: true, ...changed })), 0);
+  const loading = activity({ ...feed, emptyVerified: true, busy: true });
+  assert.equal(slots(loading), 1, 'refresh keeps the empty footprint'); assert.ok(elements(loading).some(value => value.type === 'Text' && value.children.includes('Loading activity…')));
+});
+
+test('App keeps the Activity empty region during refresh but claims emptiness only when verified', () => {
+  const app = readFileSync(new URL('../App.tsx', import.meta.url), 'utf8');
+  assert.match(app, /<ActivityScreen emptyVerified=\{activityEmptyVerified\} showEmpty=\{activityEmptyVerified \|\| busy\}/);
+  assert.match(app, /decorated=\{!showArchived && !showHidden && !archivedGroups\.length && !hiddenGroups\.length\}/);
 });
 
 test('approved PNG is unchanged and the image is decorative, contained and absent on short screens or keyboard', () => {
@@ -61,6 +75,14 @@ test('approved PNG is unchanged and the image is decorative, contained and absen
       assert.equal(elements(hidden).filter(value => value.type === 'Image' || value.type === 'View').length, 0);
       assert.equal(elements(hidden).find(value => value.type === 'Text'), caption);
     }
+    const reserve = (height: number, keyboard: boolean, children?: Element) => productionFunction('src/Mascot.tsx', 'Mascot', { Image: 'Image', View: 'View', Keyboard: { isVisible: () => keyboard }, useWindowDimensions: () => ({ height }), useState: (initial: () => boolean) => [initial(), () => {}], useEffect: () => {}, require: (path: string) => path })({ size, visible: false, children });
+    const slot = reserve(800, false) as Element;
+    assert.equal(slot.type, 'View', 'no mascot image while not eligible'); assert.deepEqual(slot.props.style, image.props.style, 'same footprint as the image');
+    assert.equal(slot.props['aria-hidden'], true); assert.equal(slot.props.accessible, false); assert.equal(slot.props.importantForAccessibility, 'no-hide-descendants');
+    const reservedCaption = elements(reserve(800, false, caption));
+    assert.equal(reservedCaption.filter(value => value.type === 'Image').length, 0);
+    assert.deepEqual(reservedCaption.find(value => value.type === 'View' && value.children[0] === caption)?.props.style, { alignItems: 'center' }, 'caption keeps the decorated position');
+    assert.equal(reserve(599, false), null); assert.equal(elements(reserve(800, true, caption)).find(value => value.type === 'Text'), caption);
   }
 });
 

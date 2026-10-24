@@ -1,7 +1,7 @@
 import React from 'react';
 import Mascot from './Mascot';
 import { Pressable, StyleSheet, View } from 'react-native';
-import { ActivityIndicator, Text } from 'react-native-paper';
+import { Text } from 'react-native-paper';
 import { formatMoney } from './accounting';
 import { activityDay, activityPresentation, activityTime } from './activityPresentation';
 import type { ActivityItem, ActivityTarget } from './types';
@@ -18,9 +18,8 @@ export default function ActivityScreen({ items, busy, error, hasMore, emptyVerif
   return <View style={s.content}>
     {!!error && <View style={s.message}><ErrorText live>{error}</ErrorText><Button title="Try again" disabled={busy} onPress={onRefresh} /></View>}
     {showEmpty && !items.length && !hasMore && !error && <View style={s.empty}>
-      {emptyVerified && !busy && <Mascot size="empty" />}
-      {busy && <ActivityIndicator accessibilityLabel="Loading activity" />}
-      <Text style={ui.caption}>{busy ? 'Loading activity…' : 'No activity yet'}</Text>
+      <Mascot size="empty" visible={emptyVerified && !busy} />
+      <Text accessibilityLiveRegion="polite" style={ui.caption}>{busy ? 'Loading activity…' : 'No activity yet'}</Text>
     </View>}
     {!!items.length && <View role="list" accessibilityLabel="Activity">{items.map((item, index) => <View role="listitem" key={item.id}><ActivityRow item={item} busy={busy} onOpen={onOpen}
       showDay={index === 0 || activityDay(items[index - 1].created_at) !== activityDay(item.created_at)} /></View>)}</View>}

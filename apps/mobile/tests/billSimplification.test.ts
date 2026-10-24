@@ -1,3 +1,4 @@
+import { explainTransfer, balanceKey } from '../src/balanceExplanation.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -540,4 +541,34 @@ test('member mail slot centers against the complete name/status block and matche
   const icon = nodes(slot).find(node => node.type === 'Icon')!; assert.equal(icon.props.name, 'mail'); assert.equal(icon.props.size, 22);
   assert.equal(find(tree, 'label', 'Remove Asha').props.disabled, true);
   assert.ok(nodes(name).some(node => node.props.accessibilityLabel === 'Settle ₹1,034.00 first'));
+});
+
+
+test('balance dialog hides changed calculations, ignores late closed loads, and stays read-only', async () => {
+  let resolve!: (value: any) => void, restores = 0, closes = 0;
+  const group = { id: 'g', name: 'Trip', version: 1, participants: [{ id: 'A', name: 'Riya' }, { id: 'B', name: 'Asha' }], expenses: [{ id: 'bill', description: 'Lunch', total: '501', paid: { B: '501' }, shares: { A: '501' }, date: '2026-10-19', deleted: false }], settlements: [], balances: { A: '-501', B: '501' }, transfers: [{ sender: 'A', recipient: 'B', amount: '501' }], activity: [] };
+  const selection = { group, accepted: group, selfId: 'A', commands: [], transfer: group.transfers[0], restoreFocus: () => restores++, load: () => new Promise(done => { resolve = done; }) };
+  const app = harness('src/BalanceExplanationDialog.tsx', 'BalanceExplanation', { explainTransfer, balanceKey, changedBalance: 'This balance changed.', Disclosure: 'Disclosure' });
+  const props = { selection, currentKey: balanceKey(group as any, []), onClose: () => closes++ };
+  let tree = app.render(props); app.commit();
+  assert.equal(nodes(tree).find(node => node.type === 'KeyboardDialog')!.props.visible, true);
+  assert.ok(nodes(tree).some(node => node.type === 'Text' && node.children.includes('Loading the full breakdown…')));
+  resolve({ group, saved: true }); await tick(); tree = app.render(props); app.commit();
+  assert.ok(nodes(tree).some(node => typeof node.type === 'function' && node.type.name === 'ExplanationBody'));
+  assert.ok(!nodes(tree).some(node => ['Pay', 'Record', 'Record payment'].includes(node.props.title)));
+  const changed = app.render({ ...props, currentKey: 'newer group' }); app.commit();
+  assert.ok(!nodes(changed).some(node => typeof node.type === 'function' && node.type.name === 'ExplanationBody'));
+  assert.ok(nodes(changed).some(node => node.props.accessibilityRole === 'alert'));
+  find(tree, 'title', 'Close').props.onPress(); assert.equal(closes, 1); assert.equal(restores, 1);
+  assert.doesNotThrow(() => app.render({ ...props, selection: null }), 'closing renders safely before effects clear the loaded result');
+  app.commit();
+  const next = { ...selection };
+  app.render({ ...props, selection: next }); app.commit();
+  const old = resolve;
+  app.render({ ...props, selection: null }); app.commit();
+  old({ group, saved: false }); await tick();
+  tree = app.render({ ...props, selection: null });
+  assert.equal(nodes(tree).find(node => node.type === 'KeyboardDialog')!.props.visible, false);
+  assert.ok(!nodes(tree).some(node => typeof node.type === 'function' && node.type.name === 'ExplanationBody'));
+  app.unmount();
 });

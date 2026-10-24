@@ -13,7 +13,7 @@ function production(name: string) {
   const helpers = source.statements.filter(node => ts.isVariableStatement(node) && node.declarationList.declarations.some(d => ['billImpact', 'participantName', 'displayDate', 's'].includes(d.name.getText(source)))).map(node => node.getText(source)).join('\n');
   const node = source.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === name); assert.ok(node);
   const code = ts.transpile(`${helpers}\n${node.getText(source).replace(/^export (?:default )?/, '')}\nreturn ${name};`, { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React });
-  return new Function('env', `with(env) { ${code} }`)({ React, expenseBalanceChange, formatMoney, paymentPresentation, personalSettlements, personalTransfers, useState: (initial: unknown) => [initial, () => {}], Text: 'Text', SectionHeading: 'SectionHeading', View: 'View', Pressable: 'Pressable', Icon: 'Icon', Button: 'Button', RecordSummary: 'RecordSummary', ParticipantAmountRow: 'ParticipantAmountRow', TransactionRow: 'TransactionRow', VisibleExpense: 'VisibleExpense', HistoryPages: 'HistoryPages', BillSearch: 'BillSearch', PaymentRow: 'PaymentRow', BillTimelineRow: 'BillTimelineRow', Disclosure: 'Disclosure', BillPeople: 'BillPeople', RecordAttribution: 'RecordAttribution', PersonalTransferRow: 'PersonalTransferRow', PendingChangeRow: 'PendingChangeRow', StyleSheet: { create: (styles: unknown) => styles }, radii: { surface: 16 }, balanceColor: (amount: string) => BigInt(amount) < 0n ? 'negative' : 'positive', useUI: () => ({ ui: { numeric: { fontSize: 32, fontWeight: '600' }, caption: { fontSize: 14 } }, palette: {} }) });
+  return new Function('env', `with(env) { ${code} }`)({ React, expenseBalanceChange, formatMoney, paymentPresentation, personalSettlements, personalTransfers, BalanceExplanation: 'BalanceExplanation', balanceKey: () => '', useRef: () => ({ current: null }), useState: (initial: unknown) => [initial, () => {}], Avatar: 'Avatar', AmountText: 'AmountText', Text: 'Text', SectionHeading: 'SectionHeading', View: 'View', Pressable: 'Pressable', Icon: 'Icon', Button: 'Button', RecordSummary: 'RecordSummary', ParticipantAmountRow: 'ParticipantAmountRow', TransactionRow: 'TransactionRow', VisibleExpense: 'VisibleExpense', HistoryPages: 'HistoryPages', BillSearch: 'BillSearch', PaymentRow: 'PaymentRow', BillTimelineRow: 'BillTimelineRow', Disclosure: 'Disclosure', BillPeople: 'BillPeople', RecordAttribution: 'RecordAttribution', PersonalTransferRow: 'PersonalTransferRow', PendingChangeRow: 'PendingChangeRow', StyleSheet: { create: (styles: unknown) => styles }, radii: { surface: 16 }, balanceColor: (amount: string) => BigInt(amount) < 0n ? 'negative' : 'positive', useUI: () => ({ ui: { numeric: { fontSize: 32, fontWeight: '600' }, caption: { fontSize: 14 } }, palette: {} }) });
 }
 function elements(tree: unknown): Element[] {
   if (Array.isArray(tree)) return tree.flatMap(elements);
@@ -183,4 +183,19 @@ test('manual payment details omit an unconfirmed label and dangling separator', 
   const tree = production('PaymentDetail')({ payment, group: { ...group, name: 'Trip' }, selfId: 'self', busy: false, canReverse: true });
   const caption = elements(tree).find(node => node.type === 'Text')!;
   assert.equal(text(caption), 'Trip · Date unavailable');
+});
+
+
+test('balance explanation target and Record remain independent siblings with unchanged payment guards', () => {
+  const render = production('PersonalTransferRow'), transfer = { sender: 'other', recipient: 'self', amount: '501' };
+  let explanations = 0, records = 0;
+  const props = { transfer, group, selfId: 'self', disabled: false, onSettle: (row: unknown) => { assert.equal(row, transfer); records++; }, onExplain: (row: unknown, focus: unknown) => { assert.equal(row, transfer); assert.equal(typeof focus, 'function'); explanations++; } };
+  const tree = render(props), direct = tree.children.filter(Boolean) as Element[];
+  assert.deepEqual(direct.map(node => node.type), ['Pressable', 'Button']);
+  direct[0].props.onPress(); assert.equal(explanations, 1); assert.equal(records, 0);
+  direct[1].props.onPress(); assert.equal(explanations, 1); assert.equal(records, 1);
+  assert.equal(direct[1].props.title, 'Record'); assert.equal(direct[1].props.disabled, false);
+  assert.equal((render({ ...props, disabled: true }).children[1] as Element).props.disabled, true);
+  const removed = { ...group, participants: group.participants.map(person => ({ ...person, removed: person.id === 'other' })) };
+  assert.equal((render({ ...props, group: removed }).children[1] as Element).props.disabled, true);
 });

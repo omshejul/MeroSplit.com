@@ -21,11 +21,11 @@ function GroupListRow({ row, waiting, userId, busy, onOpen }: { row: CachedGroup
     <Icon name="next" size={18} color={palette.muted} />
   </Pressable>;
 }
-export default function GroupList({ groups, commands, userId, busy, direct, emptyLabel, emptyVerified = false, onOpen }: { groups: CachedGroup[]; commands: Command[]; userId?: string; busy: boolean; direct: boolean; emptyLabel?: string; emptyVerified?: boolean; onOpen: (row: CachedGroup) => void }) {
+export default function GroupList({ groups, commands, userId, busy, direct, emptyLabel, emptyVerified = false, decorated = false, onOpen }: { groups: CachedGroup[]; commands: Command[]; userId?: string; busy: boolean; direct: boolean; emptyLabel?: string; emptyVerified?: boolean; decorated?: boolean; onOpen: (row: CachedGroup) => void }) {
   const { palette, ui } = useUI();
   if (!groups.length) {
     const caption = <Text style={ui.caption}>{emptyLabel ?? (direct ? 'No people yet' : 'No groups yet')}</Text>;
-    return emptyVerified && !busy && !direct && !commands.length ? <Mascot size="empty">{caption}</Mascot> : caption;
+    return decorated && !direct ? <Mascot size="empty" visible={emptyVerified && !busy && !commands.length}>{caption}</Mascot> : caption;
   }
   return <View role="list" accessibilityLabel={direct ? 'People' : 'Groups'} style={[styles.list, { backgroundColor: palette.surface }]}>{groups.map(row => <View role="listitem" key={row.group.id}><GroupListRow row={row} waiting={commands.filter(value => value.group_id === row.group.id)} userId={userId} busy={busy} onOpen={() => onOpen(row)} /></View>)}</View>;
 }

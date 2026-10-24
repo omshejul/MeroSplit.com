@@ -7,6 +7,6 @@ export default function NotificationSwitch({ icon, label, checked, disabled, onC
   const { ui, palette } = useUI();
   return <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: 48, gap: 12 }}>
     <View aria-hidden><Icon name={icon} /></View><Text style={[ui.body, { flex: 1 }]}>{label}</Text>
-    <Switch accessibilityLabel={label} value={checked} disabled={disabled} trackColor={{ false: palette.outline, true: disabled ? palette.outline : '#007AFF' }} thumbColor="#FFFFFF" ios_backgroundColor={palette.outline} onValueChange={onChange} />
+    <Switch accessibilityLabel={label} value={checked} disabled={disabled} trackColor={{ false: palette.outline, true: disabled ? palette.outline : palette.switchOn }} thumbColor="#FFFFFF" ios_backgroundColor={palette.outline} onValueChange={onChange} />
   </View>;
 }

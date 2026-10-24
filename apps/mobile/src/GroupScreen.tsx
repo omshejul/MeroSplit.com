@@ -1,5 +1,8 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import BillPeople from './BillPeople';
+import BalanceExplanation, { type BalanceSelection } from './BalanceExplanationDialog';
+import { balanceKey } from './balanceExplanation';
+import type { BalanceSource } from './balanceExplanationStorage';
 import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { expenseBalanceChange, formatMoney } from './accounting';
 import { Text } from 'react-native-paper';
@@ -15,6 +18,7 @@ type ReceiptAttempt = NonNullable<Group['payment_attempts']>[number];
 type Props = {
   noticeVisibility?: NoticeVisibility;
   group: Group; accepted: Group; durable?: boolean; pending: Command[]; busy: boolean; selfId: string;
+  onLoadBalanceGroup?: (expected: Group) => Promise<BalanceSource>;
   onHistoryPage?: (resource: HistoryResource, direction: 'next' | 'previous' | 'search', query?: string) => void;
   onExpense: (expense: BillRow) => void; onPayment: (payment: Settlement) => void; onSettle: (transfer?: Transfer) => void;
   onReverse: (settlement: Settlement) => void;
@@ -59,16 +63,19 @@ function ReceiptRequest({ attempt, groupName, senderName, disabled, onConfirm }:
   </View>;
 }
 
-function PersonalTransferRow({ transfer, group, selfId, disabled, onSettle }: { transfer: Transfer; group: Group; selfId: string; disabled: boolean; onSettle: Props['onSettle'] }) {
+function PersonalTransferRow({ transfer, group, selfId, disabled, onSettle, onExplain }: { transfer: Transfer; group: Group; selfId: string; disabled: boolean; onSettle: Props['onSettle']; onExplain: (transfer: Transfer, restoreFocus: () => void) => void }) {
   const { palette: colors, ui } = useUI();
+  const row = useRef<React.ComponentRef<typeof View>>(null);
   const outgoing = transfer.sender === selfId, counterpart = outgoing ? transfer.recipient : transfer.sender;
   const person = group.participants.find(person => person.id === counterpart), removed = person?.removed;
   const name = participantName(group.participants, selfId, counterpart);
   const action = outgoing && person?.user_id != null && !!person.payment_profile?.vpa ? 'Pay' : 'Record';
   return <View style={ui.row}>
-    <Avatar name={name} />
-    <View style={ui.rowBody}><Text numberOfLines={1} ellipsizeMode="tail" style={ui.rowTitle}>{name}</Text><Text style={ui.rowSub}>{outgoing ? 'You owe' : 'Owes you'}{removed ? ' · Removed' : ''}</Text></View>
-    <AmountText amount={transfer.amount} style={{ color: outgoing ? colors.negative : colors.positive }} />
+    <Pressable ref={row} accessibilityRole="button" accessibilityLabel={`Why ${outgoing ? 'you owe' : 'you are owed'} ${formatMoney(transfer.amount)} ${outgoing ? 'to' : 'by'} ${name}`} onPress={() => onExplain(transfer, () => row.current?.focus())} style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 44 }}>
+      <Avatar name={name} />
+      <View style={ui.rowBody}><Text numberOfLines={1} ellipsizeMode="tail" style={ui.rowTitle}>{name}</Text><Text style={ui.rowSub}>{outgoing ? 'You owe' : 'Owes you'}{removed ? ' · Removed' : ''}</Text></View>
+      <AmountText amount={transfer.amount} style={{ color: outgoing ? colors.negative : colors.positive }} />
+    </Pressable>
     <Button title={action} kind="text" accessibilityLabel={`${action} payment ${outgoing ? 'to' : 'from'} ${name}, ${formatMoney(transfer.amount)}`} disabled={disabled || !!removed} onPress={() => onSettle(transfer)} />
   </View>;
 }
@@ -139,8 +146,9 @@ function BillSearch({ value, onChange, onSearch, showSubmit, busy }: { value: st
   </View>;
 }
 
-export default function GroupScreen({ noticeVisibility, group, accepted, pending, durable = true, busy, selfId, onHistoryPage, onExpense, onPayment, onSettle, onSync, onDiscard, onReview, onConfirmReceipt }: Props) {
+export default function GroupScreen({ noticeVisibility, group, accepted, pending, durable = true, busy, selfId, onLoadBalanceGroup, onHistoryPage, onExpense, onPayment, onSettle, onSync, onDiscard, onReview, onConfirmReceipt }: Props) {
   const { ui } = useUI();
+  const [explanation, setExplanation] = useState<BalanceSelection | null>(null);
   const historyResource = group.transactions ? 'transactions' : 'bills';
   const [search, setSearch] = useState(group.history?.[historyResource]?.query ?? '');
   const expenses = group.read_mode === 'summary' ? group.expenses : group.expenses.filter(expense => group.expenses.length < 5 || `${expense.description} ${expense.notes}`.toLowerCase().includes(search.trim().toLowerCase()));
@@ -165,7 +173,7 @@ export default function GroupScreen({ noticeVisibility, group, accepted, pending
     {receipts.map(attempt => <ReceiptRequest key={attempt.id} attempt={attempt} groupName={group.name} senderName={participantName(group.participants, selfId, attempt.sender)} disabled={busy || pending.length > 0} onConfirm={onConfirmReceipt} />)}
     <HistoryPages history={group.history?.attempts} resource="attempts" busy={busy} onPage={onHistoryPage} />
     {!transfers.length && <Text style={celebrateSettled ? ui.numeric : ui.caption}>{celebrateSettled ? '🎉 All settled' : 'All settled'}</Text>}
-    {transfers.map(transfer => <PersonalTransferRow key={`${transfer.sender}:${transfer.recipient}`} transfer={transfer} group={group} selfId={selfId} disabled={busy || !!group.archived || pending.length > 0} onSettle={onSettle} />)}
+    {transfers.map(transfer => <PersonalTransferRow key={`${transfer.sender}:${transfer.recipient}`} transfer={transfer} group={group} selfId={selfId} disabled={busy || !!group.archived || pending.length > 0} onSettle={onSettle} onExplain={(transfer, restoreFocus) => setExplanation({ group, accepted, commands: pending, selfId, transfer, restoreFocus, load: onLoadBalanceGroup })} />)}
     <SectionHeading style={ui.caption}>Bills and payments</SectionHeading>
       {(rows.length >= 5 || !!(group.history?.[historyResource]?.next_cursor || group.history?.[historyResource]?.previous?.length || group.history?.[historyResource]?.query)) && <BillSearch value={search} onChange={setSearch} onSearch={() => onHistoryPage?.(historyResource, 'search', search.trim())} showSubmit={group.read_mode === 'summary'} busy={busy} />}
       {!rows.length && <View style={s.empty}>
@@ -180,6 +188,7 @@ export default function GroupScreen({ noticeVisibility, group, accepted, pending
         <HistoryPages history={group.history?.settlements} resource="settlements" busy={busy} onPage={onHistoryPage} />
       </Disclosure>}
       <HistoryPages history={group.history?.[historyResource]} resource={historyResource} busy={busy} onPage={onHistoryPage} />
+    <BalanceExplanation selection={explanation} currentKey={balanceKey(group, pending)} onClose={() => setExplanation(null)} />
   </View>;
 }
 

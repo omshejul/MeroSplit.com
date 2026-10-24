@@ -5,6 +5,7 @@ import * as Sharing from 'expo-sharing';
 import { migrate } from './storage';
 import type { Database } from './storage';
 import type { Session } from './types';
+import { isColorFamily, type ColorFamily } from './theme';
 
 let database: Promise<Database> | undefined;
 export function storageIsDurable(): boolean { return true; }
@@ -38,6 +39,15 @@ export async function savedAppearance(): Promise<AppearancePreference> {
 export async function saveAppearance(value: AppearancePreference): Promise<void> {
   if (!['system', 'light', 'dark'].includes(value)) throw new Error('Choose System, Light or Dark.');
   await SecureStore.setItemAsync(APPEARANCE_KEY, value);
+}
+const COLOR_FAMILY_KEY = 'splitdumb.colorFamily';
+export async function savedColorFamily(): Promise<ColorFamily> {
+  const value = await SecureStore.getItemAsync(COLOR_FAMILY_KEY);
+  return isColorFamily(value) ? value : 'basic';
+}
+export async function saveColorFamily(value: ColorFamily): Promise<void> {
+  if (!isColorFamily(value)) throw new Error('Choose a color.');
+  await SecureStore.setItemAsync(COLOR_FAMILY_KEY, value);
 }
 
 // Older releases allowed pausing sync. All account changes now sync automatically.

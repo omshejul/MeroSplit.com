@@ -1,10 +1,13 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Animated, Appearance, Platform, Pressable, StyleSheet, useColorScheme, View } from 'react-native';
 import { Button as PaperButton, IconButton as PaperIconButton, List, Tooltip, MD3DarkTheme, MD3LightTheme, PaperProvider, ThemeProvider, Text, useTheme, configureFonts } from 'react-native-paper';
 import type { MD3Theme } from 'react-native-paper';
-import { savedAppearance, saveAppearance } from './native';
+import { savedAppearance, saveAppearance, savedColorFamily, saveColorFamily } from './native';
 import type { AppearancePreference } from './native';
 export type { AppearancePreference } from './native';
+import { themeColors, type ColorFamily, type Palette, type ThemeColors } from './theme';
+export type { ColorFamily, Palette } from './theme';
+import { useSavedChoice } from './savedChoice';
 import { useFonts } from 'expo-font';
 import { appFontFamily, appFontFaces } from './typography';
 import FieldLabel from './FieldLabel';
@@ -41,13 +44,9 @@ import SmartPhone01Icon from '@hugeicons/core-free-icons/SmartPhone01Icon';
 import { formatMoney } from './accounting';
 import { observeMotionPreference, useMotionValue, type MotionPreference } from './motion';
 
-export type Palette = { background: string; surface: string; text: string; muted: string; accent: string; soft: string; line: string; outline: string; error: string; positive: string; negative: string; info: string; warning: string };
 export const radii = { control: 12, surface: 16, navigation: 20 } as const;
-const colors: Palette = { background: '#F7F7F7', surface: '#FFFFFF', text: '#161616', muted: '#626262', accent: '#075DB4', soft: '#ECECEC', line: '#D4D4D4', outline: '#8A8A8A', error: '#B42318', positive: '#176B3A', negative: '#B42318', info: '#075DB4', warning: '#8A5300' };
-const darkColors: Palette = { background: '#111111', surface: '#1C1C1C', text: '#F5F5F5', muted: '#B5B5B5', accent: '#83B9FF', soft: '#2D2D2D', line: '#444444', outline: '#808080', error: '#FF9B93', positive: '#78D9A0', negative: '#FF9B93', info: '#83B9FF', warning: '#F2C266' };
 export const balanceColor = (value: string | bigint, palette: Palette) => BigInt(value) > 0n ? palette.positive : BigInt(value) < 0n ? palette.negative : palette.muted;
 const makeInputColors = (palette: Palette) => ({ selectionColor: Platform.OS === 'ios' ? palette.accent : palette.line, cursorColor: palette.accent, selectionHandleColor: palette.accent });
-const inputColors = makeInputColors(colors);
 const icons = { attachment: Attachment01Icon, archive: Archive01Icon, add: Add01Icon, down: ArrowDown01Icon, back: ArrowLeft01Icon, next: ArrowRight01Icon, check: CheckmarkCircle01Icon, history: Clock01Icon, bill: Invoice01Icon, settings: Settings01Icon, me: UserCircleIcon, groups: UserGroupIcon, people: UserMultipleIcon, pay: Wallet01Icon, payment: MoneyExchange03Icon, remove: Delete02Icon, refresh: Refresh01Icon, export: Download01Icon, import: Upload01Icon, edit: PencilEdit02Icon, personAdd: UserAdd01Icon, privacy: Shield01Icon, help: HelpCircleIcon, appearance: Sun03Icon, notifications: Notification01Icon, mail: Mail01Icon, phone: SmartPhone01Icon };
 export type IconName = keyof typeof icons;
 export function Icon({ name, size = 22, color }: { name: IconName; size?: number; color?: string }) {
@@ -70,8 +69,8 @@ export function ErrorText({ children, live = false }: { children: string; live?:
   const { ui } = useUI();
   return <Text accessibilityRole="alert" accessibilityLiveRegion={live ? 'polite' : undefined} style={ui.error}>{children}</Text>;
 }
-function makeTheme(palette: Palette, dark: boolean): MD3Theme {
-  const colors = palette, onAccent = dark ? '#161616' : '#FFFFFF';
+function makeTheme({ palette, elevation }: ThemeColors, dark: boolean): MD3Theme {
+  const colors = palette, onAccent = dark ? '#161616' : '#FFFFFF', [level1, level2, level3, level4, level5] = elevation;
   return { ...(dark ? MD3DarkTheme : MD3LightTheme), roundness: 3, colors: {
     primary: colors.accent, onPrimary: onAccent, primaryContainer: colors.soft, onPrimaryContainer: colors.text,
     secondary: colors.accent, onSecondary: onAccent, secondaryContainer: colors.soft, onSecondaryContainer: colors.text,
@@ -82,53 +81,37 @@ function makeTheme(palette: Palette, dark: boolean): MD3Theme {
     outline: colors.outline, outlineVariant: colors.line, error: colors.error, onError: onAccent, errorContainer: colors.soft, onErrorContainer: colors.error,
     inverseSurface: dark ? '#EAEAEA' : '#303030', inverseOnSurface: dark ? '#161616' : '#FAFAFA', inversePrimary: dark ? '#161616' : '#FFFFFF',
     shadow: '#000000', scrim: '#000000', backdrop: 'rgba(0, 0, 0, 0.4)',
-    elevation: dark ? { level0: 'transparent', level1: '#202020', level2: '#242424', level3: '#282828', level4: '#2C2C2C', level5: '#303030' }
-      : { level0: 'transparent', level1: '#FAFAFA', level2: '#F7F7F7', level3: '#F2F2F2', level4: '#EEEEEE', level5: '#EAEAEA' },
+    elevation: { level0: 'transparent', level1, level2, level3, level4, level5 },
   } };
 }
-const theme = makeTheme(colors, false);
-const darkTheme = makeTheme(darkColors, true);
-type UITheme = MD3Theme & { palette: Palette; ui: ReturnType<typeof makeUI>; inputColors: ReturnType<typeof makeInputColors>; appearance: AppearancePreference; changeAppearance: (value: AppearancePreference) => Promise<void>; motion: MotionPreference };
+type UITheme = MD3Theme & { palette: Palette; ui: ReturnType<typeof makeUI>; inputColors: ReturnType<typeof makeInputColors>; appearance: AppearancePreference; changeAppearance: (value: AppearancePreference) => Promise<void>; colorFamily: ColorFamily; changeColorFamily: (value: ColorFamily) => Promise<void>; motion: MotionPreference };
 export function useUI() {
-  const { palette, ui, inputColors, dark, appearance, changeAppearance, motion } = useTheme<UITheme>();
-  return { palette, ui, inputColors, dark, appearance, changeAppearance, motion };
+  const { palette, ui, inputColors, dark, appearance, changeAppearance, colorFamily, changeColorFamily, motion } = useTheme<UITheme>();
+  return { palette, ui, inputColors, dark, appearance, changeAppearance, colorFamily, changeColorFamily, motion };
 }
 function LibraryIcon({ name, color, size }: { name: string; color?: string; size: number }) {
   const { palette } = useUI();
   const libraryIcons = { check: CheckmarkCircle01Icon, 'chevron-down': ArrowDown01Icon };
   return <HugeiconsIcon icon={libraryIcons[name as keyof typeof libraryIcons] ?? CheckmarkCircle01Icon} color={color ?? palette.accent} size={size} strokeWidth={1.7} />;
 }
+function applyAppearance(value: AppearancePreference) {
+  if (Platform.OS !== 'web') Appearance.setColorScheme(value === 'system' ? 'auto' : value);
+}
 export function UIProvider({ children }: { children: React.ReactNode }) {
   const [fontsLoaded] = useFonts(appFontFaces);
   const system = useColorScheme();
-  const [appearance, setAppearance] = useState<AppearancePreference>('system');
+  const [appearance, changeAppearance] = useSavedChoice<AppearancePreference>('system', savedAppearance, saveAppearance, applyAppearance);
+  const [colorFamily, changeColorFamily] = useSavedChoice<ColorFamily>('basic', savedColorFamily, saveColorFamily);
   const [motion, setMotion] = useState<MotionPreference>({ enabled: false, active: false });
   useEffect(() => observeMotionPreference(value => setMotion(previous => previous.enabled === value.enabled && previous.active === value.active ? previous : value)), []);
-  const revision = useRef(0), writes = useRef(Promise.resolve());
-  useEffect(() => {
-    let mounted = true;
-    const initialRevision = revision.current;
-    void savedAppearance().then(value => {
-      if (!mounted || revision.current !== initialRevision) return;
-      setAppearance(value);
-      if (Platform.OS !== 'web') Appearance.setColorScheme(value === 'system' ? 'auto' : value);
-    }).catch(() => {});
-    return () => { mounted = false; };
-  }, []);
-  const changeAppearance = useCallback(async (value: AppearancePreference) => {
-    const currentRevision = ++revision.current;
-    const write = writes.current.catch(() => {}).then(() => saveAppearance(value));
-    writes.current = write;
-    await write;
-    if (revision.current !== currentRevision) return;
-    setAppearance(value);
-    if (Platform.OS !== 'web') Appearance.setColorScheme(value === 'system' ? 'auto' : value);
-  }, []);
   const dark = appearance === 'system' ? system === 'dark' : appearance === 'dark';
-  const value = useMemo<UITheme>(() => ({ ...(dark ? darkTheme : theme), palette: dark ? darkColors : colors,
-    fonts: fontsLoaded ? configureFonts({ config: { fontFamily: appFontFamily } }) : (dark ? darkTheme : theme).fonts,
-    ui: makeUI(dark ? darkColors : colors, fontsLoaded ? appFontFamily : undefined), inputColors: dark ? darkInputColors : inputColors, appearance, changeAppearance, motion, animation: { scale: 0 },
-  }), [dark, appearance, changeAppearance, motion, fontsLoaded]);
+  const value = useMemo<UITheme>(() => {
+    const colors = themeColors[colorFamily][dark ? 'dark' : 'light'], theme = makeTheme(colors, dark);
+    return { ...theme, palette: colors.palette,
+      fonts: fontsLoaded ? configureFonts({ config: { fontFamily: appFontFamily } }) : theme.fonts,
+      ui: makeUI(colors.palette, fontsLoaded ? appFontFamily : undefined), inputColors: makeInputColors(colors.palette), appearance, changeAppearance, colorFamily, changeColorFamily, motion, animation: { scale: 0 },
+    };
+  }, [dark, appearance, changeAppearance, colorFamily, changeColorFamily, motion, fontsLoaded]);
   // PaperProvider overwrites animation.scale. Its public ThemeProvider also
   // supplies the corrected theme to Portals, without replacing their owner.
   return <PaperProvider theme={value} settings={{ icon: LibraryIcon, rippleEffectEnabled: false }}><ThemeProvider theme={value}>{children}</ThemeProvider></PaperProvider>;
@@ -211,5 +194,3 @@ const makeUI = (colors: Palette, fontFamily?: string) => StyleSheet.create({
   disclosureHeading: { minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
   disclosureBody: { gap: 10, paddingBottom: 12 },
 });
-
-const darkInputColors = makeInputColors(darkColors);
