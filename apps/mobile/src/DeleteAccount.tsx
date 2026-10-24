@@ -30,7 +30,7 @@ export default function DeleteAccount({ email: currentEmail, busy, onDelete }: {
         <EmailField label="Current email" value={email} onChangeText={setEmail} editable={!disabled} />
         {!!error && <ErrorText live>{error}</ErrorText>}
       </ScrollView></Dialog.Content>
-      <Dialog.Actions><Button title="Cancel" kind="text" disabled={disabled} onPress={() => setOpen(false)} /><Button title="Delete account" icon="remove" disabled={disabled || !valid} onPress={() => void remove()} /></Dialog.Actions>
+      <Dialog.Actions style={{ flexDirection: 'column', alignItems: 'stretch', flexGrow: 0, flexShrink: 0, gap: 8 }}><Button title="Cancel" kind="text" disabled={disabled} onPress={() => setOpen(false)} /><Button title="Delete account" icon="remove" disabled={disabled || !valid} onPress={() => void remove()} /></Dialog.Actions>
     </KeyboardDialog>
   </>;
 }
