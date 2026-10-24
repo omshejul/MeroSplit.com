@@ -767,7 +767,7 @@ test('last email OFF saves master OFF; enabling with no choices stays OFF until 
 
 test('Google Pay info pill opens address help without selecting an app or preparing a payment', () => {
   let chosen = 0;
-  const app = harness('src/PaymentPanels.tsx', 'UPIAppChooser', { Chip: 'Chip', UPIAppIcon: 'UPIAppIcon', CancelDialogActions: 'CancelDialogActions' });
+  const app = harness('src/PaymentPanels.tsx', 'UPIAppChooser', { TouchableRipple: 'TouchableRipple', radii: { button: 8 }, useUI: () => ({ palette: {} }), UPIAppIcon: 'UPIAppIcon', CancelDialogActions: 'CancelDialogActions' });
   const props = { apps: [{ id: 'google-pay', name: 'Google Pay' }, { id: 'upi', name: 'Other UPI app' }], recipient: { name: 'Asha', vpa: 'asha@example' }, disabled: false, onChoose: () => chosen++, onDismiss() {} };
   let tree = app.render(props); app.commit();
   const pill = find(tree, 'accessibilityLabel', 'Why Google Pay might fail');
@@ -775,7 +775,14 @@ test('Google Pay info pill opens address help without selecting an app or prepar
   const help = nodes(tree).find(node => node.type?.name === 'PaymentHelpDialog')!;
   assert.equal(help.props.visible, true); assert.equal(help.props.kind, 'google-pay'); assert.equal(help.props.vpa, props.recipient.vpa); assert.equal(chosen, 0);
   help.props.onClose(); tree = app.render(props);
-  find(tree, 'title', 'Google Pay').props.onPress(); assert.equal(chosen, 1);
+  const launch = find(tree, 'accessibilityLabel', 'Google Pay');
+  const row = nodes(tree).find(node => node.children.includes(launch) && node.children.some((child: any) => child?.props?.accessibilityLabel === 'Why Google Pay might fail'))!;
+  assert.ok(row && !row.props.onPress, 'main and info are sibling actions in one noninteractive visual surface');
+  assert.ok(!nodes(pill).slice(1).some(node => node.props.onPress), 'no nested interactive control');
+  launch.props.onPress(); assert.equal(chosen, 1);
+  const locked = app.render({ ...props, disabled: true });
+  assert.equal(find(locked, 'accessibilityLabel', 'Google Pay').props.disabled, true);
+  assert.equal(find(locked, 'accessibilityLabel', 'Why Google Pay might fail').props.disabled, true);
   app.unmount();
 });
 
