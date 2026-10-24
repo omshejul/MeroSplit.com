@@ -129,9 +129,9 @@ function usePressFeedback(disabled: boolean) {
 export function Button({ title, onPress, disabled = false, kind = 'secondary', icon, accessibilityLabel, compact = false, style }: { style?: React.ComponentProps<typeof PaperButton>['style']; compact?: boolean; title: string; accessibilityLabel?: string; onPress: () => void; disabled?: boolean; kind?: 'primary' | 'secondary' | 'text' | 'danger'; icon?: IconName | ((props: { size: number; color: string }) => React.ReactNode) }) {
   const { palette: colors } = useUI();
   const { pressedStyle, ...press } = usePressFeedback(disabled);
-  return <PaperButton {...press} compact={compact} accessibilityLabel={accessibilityLabel ?? title} mode={kind === 'text' ? 'text' : kind === 'secondary' ? 'contained-tonal' : 'contained'} onPress={onPress} disabled={disabled}
+  return <PaperButton {...press} hitSlop={{ top: 6, bottom: 6 }} compact={compact} accessibilityLabel={accessibilityLabel ?? title} mode={kind === 'text' ? 'text' : kind === 'secondary' ? 'contained-tonal' : 'contained'} onPress={onPress} disabled={disabled}
     icon={typeof icon === 'function' ? icon : icon ? ({ size, color }) => <Icon name={icon} size={size} color={color} /> : undefined}
-    buttonColor={kind === 'danger' ? colors.error : undefined} textColor={kind === 'text' ? colors.text : undefined} style={[{ borderRadius: radii.button, minWidth: compact && icon ? 64 : 80 }, pressedStyle, style]} contentStyle={{ minHeight: Platform.OS === 'ios' ? 44 : 48 }} labelStyle={{ fontSize: 14, lineHeight: 20, fontWeight: '500', marginVertical: 0, marginHorizontal: compact && icon ? 4 : 16 }}>{title}</PaperButton>;
+    buttonColor={kind === 'danger' ? colors.error : undefined} textColor={kind === 'text' ? colors.text : undefined} style={[{ borderRadius: radii.button, minWidth: compact && icon ? 64 : 80 }, pressedStyle, style]} contentStyle={{ minHeight: 36 }} labelStyle={{ fontSize: 14, lineHeight: 20, fontWeight: '500', marginVertical: 0, marginHorizontal: compact && icon ? 4 : 20 }}>{title}</PaperButton>;
 }
 export function IconAction({ name, label, onPress, disabled = false, hint }: { name: IconName; label: string; onPress: () => void; disabled?: boolean; hint?: string }) {
   const { pressedStyle, ...press } = usePressFeedback(disabled);
