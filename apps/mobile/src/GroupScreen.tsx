@@ -282,7 +282,7 @@ const s = StyleSheet.create({
   balanceAmount: { fontSize: 16, lineHeight: 22 },
   logTitle: { fontSize: 14, lineHeight: 20 },
   logCaption: { fontSize: 12, lineHeight: 17 },
-  edgeRow: { marginHorizontal: -16, paddingHorizontal: 16 },
+  edgeRow: { minHeight: 44, marginHorizontal: -16, paddingHorizontal: 16 },
   date: { minWidth: 40, flexShrink: 0, alignItems: 'center' },
   dateMonth: { fontSize: 11, lineHeight: 14 },
   dateDay: { fontSize: 14, lineHeight: 18 },
