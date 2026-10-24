@@ -5,6 +5,7 @@ import { StatusBar } from 'expo-status-bar';
 import { Text } from 'react-native-paper';
 import { Icon, IconAction, radii, useUI } from './ui';
 import { useMotionValue } from './motion';
+import TabBarSurface from './TabBarSurface';
 
 export function AppFrame({ children, onTouchStart }: { children: React.ReactNode; onTouchStart?: () => void }) {
   const { palette, dark } = useUI();
@@ -40,10 +41,9 @@ function TabButton({ item, selected, busy, onSelect }: { item: typeof tabs[numbe
   </Pressable>;
 }
 export function AppTabs({ selected, busy, onSelect }: { selected: string; busy: boolean; onSelect: (value: string) => void }) {
-  const { palette } = useUI();
-  return <View role="navigation" accessibilityLabel="Main navigation" style={pageWidthStyle}><View style={[styles.tabs, { backgroundColor: palette.surface }]} accessibilityRole={Platform.OS === 'web' ? undefined : 'tablist'}>
+  return <View role="navigation" accessibilityLabel="Main navigation" style={pageWidthStyle}><TabBarSurface style={styles.tabs}>
     {tabs.map(item => <TabButton key={item.value} item={item} selected={selected === item.value} busy={busy} onSelect={onSelect} />)}
-  </View></View>;
+  </TabBarSurface></View>;
 }
 const styles = StyleSheet.create({
   header: { ...pageWidthStyle, flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 56, paddingHorizontal: 16, paddingTop: 4, paddingBottom: 8 },
