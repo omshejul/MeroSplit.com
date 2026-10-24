@@ -14,7 +14,6 @@ import type { BillRow, Command, Expense, Group, GroupTransaction, Participant, S
 import { SectionHeading, AmountText, Avatar, balanceColor, Button, Disclosure, Icon, radii, useUI } from './ui';
 
 type Transfer = { sender: string; recipient: string; amount: string };
-type ReceiptAttempt = NonNullable<Group['payment_attempts']>[number];
 type Props = {
   noticeVisibility?: NoticeVisibility;
   group: Group; accepted: Group; durable?: boolean; pending: Command[]; busy: boolean; selfId: string;
@@ -24,7 +23,6 @@ type Props = {
   onReverse: (settlement: Settlement) => void;
   onSync: () => void; onDiscard: (command: Command) => void;
   onReview: (command: Command) => void;
-  onConfirmReceipt: (attempt: ReceiptAttempt) => void;
 };
 export const position = (name: string, value: string) => BigInt(value) > 0n ? `${name} ${name === 'You' ? 'are' : 'is'} owed ${formatMoney(value)}` : BigInt(value) < 0n ? `${name} ${name === 'You' ? 'owe' : 'owes'} ${formatMoney((-BigInt(value)).toString())}` : `${name} ${name === 'You' ? 'are' : 'is'} settled up`;
 const displayDate = (value?: string | null) => {
@@ -51,15 +49,6 @@ function PendingChangeRow({ command, busy, onReview, onDiscard }: { command: Com
     <Text style={[ui.caption, { color: colors.warning }]}>{command.state === 'pending' ? 'Waiting to sync' : command.error ?? 'Needs review'}</Text>
     {command.state !== 'pending' && ['POST', 'PUT'].includes(command.method) && /\/expenses(?:\/[^/]+)?$/.test(command.path) && <Button title="Review my saved change" disabled={busy} onPress={() => onReview(command)} />}
     <Button kind="text" title={command.path === '/groups' ? 'Discard unsent group' : 'Discard this saved change'} disabled={busy} onPress={() => onDiscard(command)} />
-  </View>;
-}
-
-function ReceiptRequest({ attempt, groupName, senderName, disabled, onConfirm }: { attempt: ReceiptAttempt; groupName: string; senderName: string; disabled: boolean; onConfirm: Props['onConfirmReceipt'] }) {
-  const { palette: colors, ui } = useUI();
-  return <View style={[s.receipt, { backgroundColor: colors.surface }]}>
-    <Text style={ui.section}>Did you get {formatMoney(attempt.recorded_amount ?? attempt.amount)} from {senderName}?</Text>
-    <Text style={[ui.caption, { color: colors.warning }]}>{groupName}{attempt.state === 'cancelled' ? '. The earlier report was cancelled.' : ''}</Text>
-    <Button title={`Yes, I got ${formatMoney(attempt.recorded_amount ?? attempt.amount)}`} icon="check" disabled={disabled} onPress={() => onConfirm(attempt)} />
   </View>;
 }
 
@@ -165,7 +154,7 @@ function BillSearch({ value, onChange, onSearch, showSubmit, busy, autoFocus }: 
   </View>;
 }
 
-export default function GroupScreen({ noticeVisibility, group, accepted, pending, durable = true, busy, selfId, onLoadBalanceGroup, onHistoryPage, onExpense, onPayment, onSettle, onSync, onDiscard, onReview, onConfirmReceipt }: Props) {
+export default function GroupScreen({ noticeVisibility, group, accepted, pending, durable = true, busy, selfId, onLoadBalanceGroup, onHistoryPage, onExpense, onPayment, onSettle, onSync, onDiscard, onReview }: Props) {
   const { ui } = useUI();
   const [explanation, setExplanation] = useState<BalanceSelection | null>(null);
   const historyResource = group.transactions ? 'transactions' : 'bills';
@@ -173,10 +162,6 @@ export default function GroupScreen({ noticeVisibility, group, accepted, pending
   const historyWindow = group.history?.[historyResource];
   const expenses = group.read_mode === 'summary' ? group.expenses : group.expenses.filter(expense => group.expenses.length < 5 || `${expense.description} ${expense.notes}`.toLowerCase().includes(search.trim().toLowerCase()));
   const needsAttention = pending.some(command => command.state !== 'pending' || !!command.error);
-  const receipts = (group.payment_attempts ?? []).filter(attempt =>
-    attempt.recipient === selfId && ['reported', 'recorded', 'cancelled'].includes(attempt.state)
-    && [attempt.sender, attempt.recipient].every(id => group.participants.some(person => person.id === id && !person.removed))
-    && !group.settlements.some(settlement => settlement.reversed && (settlement.id === attempt.settlement_id || settlement.attempt_id === attempt.id)));
   const transfers = personalTransfers(group, selfId);
   const celebrateSettled = pending.length === 0 && accepted.balances?.[selfId] === '0';
   const rows: GroupTransaction[] = group.transactions ?? (group.read_mode === 'summary' ? expenses : [...expenses].reverse()).map(bill => ({ kind: 'bill', date: bill.date, bill }));
@@ -184,7 +169,7 @@ export default function GroupScreen({ noticeVisibility, group, accepted, pending
   const searchable = rows.length >= 5 || !!(historyWindow?.next_cursor || historyWindow?.previous?.length || historyWindow?.query);
   const showSearch = searching || !!historyWindow?.query || !!search;
   return <View role="region" accessibilityLabel={group.name} style={s.content}>
-    {group.archived && <Text style={ui.notice}>Archived. Reopen in settings to make changes.{receipts.length > 0 ? ' You can still confirm money received.' : ''}</Text>}
+    {group.archived && <Text style={ui.notice}>Archived. Reopen in settings to make changes.</Text>}
     {pending.length > 0 && <View style={s.section}>
       <Text style={[ui.notice, ui.warning]}>{needsAttention ? 'Some changes need your attention.' : durable ? 'Waiting to sync.' : 'Not confirmed. Keep this tab open and reconnect.'}</Text>
       <Disclosure title={`${pending.length} ${durable ? 'saved' : 'temporary'} ${pending.length === 1 ? 'change' : 'changes'}`} initialOpen={needsAttention}>
@@ -192,8 +177,6 @@ export default function GroupScreen({ noticeVisibility, group, accepted, pending
         {pending.map(command => <PendingChangeRow key={command.command_id} command={command} busy={busy} onReview={onReview} onDiscard={onDiscard} />)}
       </Disclosure>
     </View>}
-    {receipts.map(attempt => <ReceiptRequest key={attempt.id} attempt={attempt} groupName={group.name} senderName={participantName(group.participants, selfId, attempt.sender)} disabled={busy || pending.length > 0} onConfirm={onConfirmReceipt} />)}
-    <HistoryPages history={group.history?.attempts} resource="attempts" busy={busy} onPage={onHistoryPage} />
     {!transfers.length && <Text style={celebrateSettled ? ui.numeric : ui.caption}>{celebrateSettled ? '🎉 All settled' : 'All settled'}</Text>}
     {transfers.map(transfer => <PersonalTransferRow key={`${transfer.sender}:${transfer.recipient}`} transfer={transfer} group={group} selfId={selfId} disabled={busy || !!group.archived || pending.length > 0} onSettle={onSettle} onExplain={(transfer, restoreFocus) => setExplanation({ group, accepted, commands: pending, selfId, transfer, restoreFocus, load: onLoadBalanceGroup })} />)}
     {/* Search opens from the heading line; an active query or typed text keeps it open. */}
@@ -276,7 +259,6 @@ const s = StyleSheet.create({
   content: { gap: 10 },
   summary: { gap: 4, paddingVertical: 8 },
   section: { gap: 10, paddingVertical: 4 },
-  receipt: { gap: 12, padding: 12, borderRadius: radii.surface },
   trailing: { flexShrink: 1, maxWidth: '45%', alignItems: 'flex-end' },
   effect: { flexShrink: 1, fontSize: 14, lineHeight: 20 },
   balanceAmount: { fontSize: 16, lineHeight: 22 },
