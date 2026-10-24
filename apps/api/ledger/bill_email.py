@@ -266,6 +266,9 @@ def notification_entry(actor):
 def opt_out(notice_id, proof):
     with transaction.atomic():
         row = BillEmailNotice.objects.filter(pk=notice_id).first()
+        if row is None:
+            from .chat_notifications import opt_out_chat_email
+            return opt_out_chat_email(notice_id, proof)
         if not row or not isinstance(proof, str) or len(proof) != 64 or not secrets.compare_digest(_proof(row), proof):
             raise HttpError(400, 'This email preference link is unavailable')
         mailbox, _ = BillEmailPreference.objects.get_or_create(email_digest=mailbox_digest(row.recipient_email))

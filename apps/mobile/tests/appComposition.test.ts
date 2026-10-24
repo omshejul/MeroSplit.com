@@ -17,7 +17,11 @@ function elements(value: unknown): Element[] {
 const source = ts.createSourceFile('App.tsx', readFileSync(new URL('../App.tsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
 const app = source.statements.find((node): node is ts.FunctionDeclaration => ts.isFunctionDeclaration(node) && node.name?.text === 'AppContent')!;
 const main = app.body!.statements.filter(ts.isReturnStatement).map(node => node.expression).find((node): node is ts.JsxElement => !!node && ts.isJsxElement(node) && node.openingElement.tagName.getText(source) === 'AppFrame')!;
-const scroll = main.children.find((node): node is ts.JsxElement => ts.isJsxElement(node) && node.openingElement.tagName.getText(source) === 'ScrollView')!;
+function pageScroll(node: ts.Node): ts.JsxElement | undefined {
+  if (ts.isJsxElement(node) && node.openingElement.tagName.getText(source) === 'ScrollView') return node;
+  return ts.forEachChild(node, pageScroll);
+}
+const scroll = pageScroll(main)!;
 const me = scroll.children.find((node): node is ts.JsxExpression => ts.isJsxExpression(node) && !!node.expression && node.expression.getText(source).startsWith("screen === 'home' && tab === 'Account' && session &&"))!;
 assert.ok(me?.expression, 'exercise the actual Me host inside the rendered app');
 const code = ts.transpile(`return (${me.expression.getText(source)});`, { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React });
@@ -59,4 +63,52 @@ test('Me mounts Connect MCP on native and web, with current account key, session
   for (const away of [{ screen: 'group' }, { tab: 'Groups' }, { session: null }]) {
     assert.equal(elements(render({ ...env, ...away })).some(node => node.type === MCPSettings || node.type === 'ExportData'), false);
   }
+});
+
+test('Activity discovers unread chats before a bill is opened and resolves the authorized exact conversation', async () => {
+  const expression = scroll.children.find((node): node is ts.JsxExpression => ts.isJsxExpression(node) && !!node.expression && node.expression.getText(source).startsWith("screen === 'home' && tab === 'Activity' && session && <ChatInbox"));
+  assert.ok(expression?.expression, 'Activity must mount the unread inbox');
+  const evaluate = new Function('env', `with(env){${ts.transpile('return (' + expression.expression.getText(source) + ');', { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React })}}`);
+  const selected: any[] = [];
+  const tree = evaluate({ React, ChatInbox: 'ChatInbox', screen: 'home', tab: 'Activity', session: { token: 'current' }, owner: 'one', foreground: true, authHeld: false, expired: false, online: true, busy: false, openActivityTarget: async (...args: any[]) => { selected.push(args); } });
+  const entry = elements(tree).find(node => node.type === 'ChatInbox')!;
+  assert.equal(entry.props.key, 'one'); assert.equal(entry.props.active, true); assert.equal(selected.length, 0);
+  entry.props.onOpen('g', 'b'); assert.deepEqual(selected, [[{ kind: 'bill', groupId: 'g', expenseId: 'b' }, true]]);
+  const declaration = app.body!.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === 'openActivityTarget')!;
+  const calls: string[] = [], active = { token: 'current' };
+  const scope = { session: active, activeSessionRef: { current: active }, perform: async (fn: () => Promise<void>) => fn(), fetchGroup: async () => { calls.push('group-read'); return { id: 'g' }; }, withBill: async (_session: any, group: any, id: string) => { calls.push('bill-read-' + id); return group; }, getDatabase: async () => ({}), accountOwner: () => 'one', saveGroup: async () => {}, setGroupId() {}, setExpenseId() {}, setSettlementId() {}, setScreen: (screen: string) => calls.push(screen) };
+  const open = new Function('env', `with(env){${ts.transpile(declaration.getText(source), { target: ts.ScriptTarget.ES2022 })};return openActivityTarget;}`)(scope);
+  await open(selected[0][0], true); assert.deepEqual(calls, ['group-read', 'bill-read-b', 'billChat']);
+});
+
+test('Leaving chat keeps the existing account-wide temporary-tab guard honest about all saved work', async () => {
+  let callback: ts.Expression | undefined;
+  function visit(node: ts.Node): void {
+    if (ts.isJsxSelfClosingElement(node) && node.tagName.getText(source) === 'BillChatScreen') {
+      const attr = node.attributes.properties.find(row => ts.isJsxAttribute(row) && row.name.getText(source) === 'onUnsentChange') as ts.JsxAttribute;
+      callback = (attr.initializer as ts.JsxExpression).expression;
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(main); assert.ok(callback);
+  let pending = 2, flag = false;
+  const ownerRef = { current: 'one' };
+  const handler = new Function('env', `with(env){${ts.transpile('const handler=' + callback.getText(source) + ';return handler;', { target: ts.ScriptTarget.ES2022 })}}`)({ owner: 'one', ownerRef, setHasDrafts: (value: boolean) => { flag = value; }, flushChatWrites: async () => {}, getDatabase: async () => ({ getFirstAsync: async () => ({ n: pending }) }) });
+  handler(true); assert.equal(flag, true);
+  handler(false); for (let i = 0; i < 20; i++) await Promise.resolve(); assert.equal(flag, true, 'another saved draft keeps the host guard after leaving chat');
+  pending = 0; handler(false); for (let i = 0; i < 20; i++) await Promise.resolve(); assert.equal(flag, false);
+  ownerRef.current = 'two'; handler(true); assert.equal(flag, false, 'old account cannot change the new account guard');
+});
+
+
+test('Chat empty verification is scoped to the current account and session and cannot be restored by an old response', () => {
+  const declaration = app.body!.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === 'chatInboxEmptyChanged')!;
+  let verified = '';
+  const ownerRef = { current: 'one' }, activeSessionRef = { current: { token: 'fresh' } };
+  const change = new Function('env', `with(env){${ts.transpile(declaration.getText(source), { target: ts.ScriptTarget.ES2022 })};return chatInboxEmptyChanged;}`)({ ownerRef, activeSessionRef, accountOwner: (active: any) => active.owner, setEmptyChatScope: (value: any) => { verified = typeof value === 'function' ? value(verified) : value; } });
+  change({ owner: 'one', token: 'fresh' }, true); assert.equal(verified, 'one|fresh');
+  change({ owner: 'one', token: 'old' }, false); assert.equal(verified, 'one|fresh');
+  change({ owner: 'one', token: 'old' }, true); assert.equal(verified, 'one|fresh');
+  change({ owner: 'two', token: 'fresh' }, true); assert.equal(verified, 'one|fresh');
+  change({ owner: 'one', token: 'fresh' }, false); assert.equal(verified, '');
 });

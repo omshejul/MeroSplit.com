@@ -12,6 +12,7 @@ from ninja.errors import HttpError, ValidationError
 from ninja.files import UploadedFile as RequestFile
 from ninja.security import django_auth
 
+from . import bill_chat
 from .accounting import AccountingError
 from .collaboration import (
     acknowledge_opening,
@@ -52,6 +53,11 @@ from .profiles import display_name, update_display_name
 from .schemas import (
     ArchiveIn,
     AttemptIn,
+    ChatBlockIn,
+    ChatMessageIn,
+    ChatPolicyIn,
+    ChatReportIn,
+    ChatSeenIn,
     Command,
     ContactIn,
     DisplayNameIn,
@@ -303,6 +309,64 @@ def attachments_get(request, group_id: UUID, expense_id: UUID):
     return list_attachments(request.auth, group_id, expense_id)
 
 
+def _chat_json(data):
+    response = JsonResponse(data)
+    response['Cache-Control'] = 'private, no-store'
+    return response
+
+
+@api.get('/groups/{group_id}/expenses/{expense_id}/chat')
+def bill_chat_get(request, group_id: UUID, expense_id: UUID, limit: int = 50, before: str | None = None, after: str | None = None, known: str = ''):
+    return _chat_json(bill_chat.chat_page(request.auth, group_id, expense_id, limit=limit, before=before, after=after, known=known))
+
+
+@api.get('/groups/{group_id}/expenses/{expense_id}/chat/status')
+def bill_chat_status(request, group_id: UUID, expense_id: UUID):
+    return _chat_json(bill_chat.chat_status(request.auth, group_id, expense_id))
+
+
+@api.post('/groups/{group_id}/expenses/{expense_id}/chat')
+def bill_chat_send(request, group_id: UUID, expense_id: UUID, body: ChatMessageIn):
+    return _chat_json(bill_chat.send_message(request.auth, group_id, expense_id, body.client_id, body.text))
+
+
+@api.post('/groups/{group_id}/expenses/{expense_id}/chat/seen')
+def bill_chat_seen(request, group_id: UUID, expense_id: UUID, body: ChatSeenIn):
+    return _chat_json(bill_chat.chat_seen(request.auth, group_id, expense_id, body.tokens))
+
+
+@api.put('/me/chat-policy')
+def chat_policy_accept(request, body: ChatPolicyIn):
+    return _chat_json(bill_chat.accept_policy(request.auth, body.version))
+
+
+@api.put('/groups/{group_id}/expenses/{expense_id}/chat/block')
+def bill_chat_block(request, group_id: UUID, expense_id: UUID, body: ChatBlockIn):
+    return _chat_json(bill_chat.block_user(request.auth, group_id, expense_id, body.user_id, body.blocked))
+
+
+@api.post('/groups/{group_id}/expenses/{expense_id}/chat/report')
+def bill_chat_report(request, group_id: UUID, expense_id: UUID, body: ChatReportIn):
+    return _chat_json(bill_chat.report_message(request.auth, group_id, expense_id, body.message_id, body.kind, body.reason))
+
+
+@api.get('/me/chat-conversations')
+def chat_conversations_get(request, limit: int = 20, before: str | None = None):
+    return _chat_json(bill_chat.chat_inbox(request.auth, limit=limit, before=before))
+
+
+@api.get('/me/chat-notifications')
+def chat_notifications_get(request, notice_ids: str = ''):
+    try:
+        if len(notice_ids) > 3700:
+            raise ValueError()
+        ids = [UUID(value) for value in notice_ids.split(',')] if notice_ids else []
+    except ValueError as exc:
+        raise HttpError(422, 'Choose valid chat notice IDs') from exc
+    from .chat_notifications import chat_notice_feed
+    return _chat_json(chat_notice_feed(request.auth, ids))
+
+
 @api.post("/groups/{group_id}/expenses/{expense_id}/attachments")
 def attachment_upload(request, group_id: UUID, expense_id: UUID, id: Form[UUID], file: File[RequestFile]):
     return upload_file(request.auth, id, file, group_id=group_id, expense_id=expense_id)
@@ -311,6 +375,7 @@ def attachment_upload(request, group_id: UUID, expense_id: UUID, id: Form[UUID],
 @api.delete("/groups/{group_id}/expenses/{expense_id}/attachments/{file_id}")
 def attachment_remove(request, group_id: UUID, expense_id: UUID, file_id: UUID):
     return remove_attachment(request.auth, group_id, expense_id, file_id)
+
 
 
 @api.get("/media/{file_id}/url")

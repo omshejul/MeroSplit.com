@@ -16,6 +16,30 @@ class Command(Input):
     command_id: UUID
 
 
+class ChatMessageIn(Input):
+    client_id: UUID
+    text: Annotated[StrictStr, Field(min_length=1, max_length=2000)]
+
+
+class ChatSeenIn(Input):
+    tokens: Annotated[list[Annotated[StrictStr, Field(max_length=512)]], Field(max_length=50)]
+
+
+class ChatPolicyIn(Input):
+    version: StrictInt
+
+
+class ChatBlockIn(Input):
+    user_id: StrictInt
+    blocked: StrictBool
+
+
+class ChatReportIn(Input):
+    message_id: Annotated[StrictStr, Field(pattern=r'^[1-9][0-9]{0,18}$')]
+    kind: Literal['message', 'user']
+    reason: Annotated[StrictStr, Field(min_length=1, max_length=500)]
+
+
 class Person(Input):
     id: UUID
     name: Annotated[str, Field(min_length=1, max_length=120, pattern=r"\S")]
@@ -140,6 +164,7 @@ class SplitwiseImportResult(WriteResult):
 
 
 class PushDeviceIn(Input):
+    bill_chat: StrictBool = False
     provider: Literal["expo"]
     token: Annotated[str, Field(min_length=1, max_length=4096, pattern=r"^(ExpoPushToken|ExponentPushToken)\[[A-Za-z0-9_-]+\]$")]
     platform: Literal["ios", "android"]

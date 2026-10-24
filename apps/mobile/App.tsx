@@ -17,6 +17,7 @@ import ExpenseForm from './src/ExpenseForm';
 import type { ExpenseFormDraft } from './src/ExpenseForm';
 import SettleForm from './src/SettleForm';
 import ActivityScreen from './src/ActivityScreen';
+import ChatInbox from './src/ChatInbox';
 import { createPaymentReturn } from './src/paymentReturn';
 import type { PaymentReturn } from './src/paymentReturn';
 import { listPaymentReturns, savePaymentReturn, clearPaymentReturn, resolvePaymentReturn } from './src/paymentReturnStorage';
@@ -47,6 +48,8 @@ import OAuthContinuation from './src/OAuthContinuation';
 import { changeGroupMembership } from './src/groupMembership';
 import type { PushTarget } from './src/notifications';
 import BillAttachments from './src/BillAttachments';
+import BillChatScreen, { BillChatEntry } from './src/BillChatScreen';
+import { flushChatWrites } from './src/billChat';
 import ExportData from './src/ExportData';
 import { clearAccountMediaUploads, clearMediaPreviews } from './src/media';
 import type { CachedGroup, Command, Expense, Group, LegacyRecovery, Session, Settlement, HistoryResource, ActivityPage, ActivityTarget, BillRow } from './src/types';
@@ -58,7 +61,7 @@ import { Text } from 'react-native-paper';
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL ?? (Platform.OS === 'web' ? window.location.origin : Platform.OS === 'android' ? 'http://10.0.2.2:8000' : 'http://localhost:8000');
 const uuid = () => Crypto.randomUUID();
-type Screen = 'home' | 'create' | 'group' | 'expense' | 'expenseDetail' | 'settle' | 'members' | 'login' | 'review' | 'paymentDetail' | 'import';
+type Screen = 'home' | 'create' | 'group' | 'expense' | 'expenseDetail' | 'billChat' | 'settle' | 'members' | 'login' | 'review' | 'paymentDetail' | 'import';
 type Transfer = { sender: string; recipient: string; amount: string };
 type EmailEntry = { id: string | null; phase: 'opening' | 'target' | 'name' | 'error'; error: string; sent: boolean; target?: EmailTarget };
 function AppContent() {
@@ -66,7 +69,7 @@ function AppContent() {
   const s = makeStyles(colors);
   const [session, setSession] = useState<Session | null>(null), [ready, setReady] = useState(false), [expired, setExpired] = useState(false);
   const [storageError, setStorageError] = useState(''), [hasDrafts, setHasDrafts] = useState(false);
-  const [verifiedEmptyOwner, setVerifiedEmptyOwner] = useState('');
+  const [verifiedEmptyOwner, setVerifiedEmptyOwner] = useState(''), [emptyChatScope, setEmptyChatScope] = useState('');
   const [online, setOnline] = useState(isOnline);
   const [groups, setGroups] = useState<CachedGroup[]>([]), [commands, setCommands] = useState<Command[]>([]);
   const [showArchived, setShowArchived] = useState(false), [showHidden, setShowHidden] = useState(false);
@@ -125,7 +128,7 @@ function AppContent() {
   function measureViewport() { scroll.current?.measureInWindow((x, y, width, height) => setViewport({ x, y, width, height })); }
   function navigate(value: Screen) { setNotice(''); setScreen(value); }
   function changeScope(value: Session | null) {
-    setVerifiedEmptyOwner('');
+    setVerifiedEmptyOwner(''); setEmptyChatScope('');
     ownerRef.current = value ? accountOwner(value) : '';
     activeSessionRef.current = value;
     setShowArchived(false); setShowHidden(false); setNeedsInvitation(false); setSession(value); setExpired(false); setGroups([]); setCommands([]); setLegacy([]); setRecoveries([]); setUnavailable([]); setLegacySelf({});
@@ -261,7 +264,13 @@ function AppContent() {
   useEffect(() => {
     if (ready && session && !authHeld && !expired && foreground && screen === 'home' && tab === 'Activity' && !busy && activityOwner.current !== owner && !activityError) void refreshActivity().catch(() => {});
   }, [ready, session?.token, authHeld, expired, foreground, screen, tab, busy, owner, activityError]);
-  async function openActivityTarget(target: ActivityTarget) {
+  function chatInboxEmptyChanged(active: Session, empty: boolean) {
+    const account = accountOwner(active), scope = `${account}|${active.token}`;
+    if (ownerRef.current !== account) return;
+    if (!empty) setEmptyChatScope(previous => previous === scope ? '' : previous);
+    else if (activeSessionRef.current?.token === active.token) setEmptyChatScope(scope);
+  }
+  async function openActivityTarget(target: ActivityTarget, chat = false) {
     await perform(async () => {
       if (!session) return;
       const active = session;
@@ -271,7 +280,7 @@ function AppContent() {
       if (activeSessionRef.current?.token !== active.token) return;
       await saveGroup(await getDatabase(), accountOwner(active), group, 'shared');
       setGroupId(group.id); setExpenseId(target.kind === 'bill' ? target.expenseId : null); setSettlementId(target.kind === 'payment' ? target.settlementId : null);
-      setScreen(target.kind === 'bill' ? 'expenseDetail' : target.kind === 'payment' ? 'paymentDetail' : 'group');
+      setScreen(target.kind === 'bill' ? chat ? 'billChat' : 'expenseDetail' : target.kind === 'payment' ? 'paymentDetail' : 'group');
     });
   }
   async function armPaymentReturn(payment: Transfer, quote: UPILaunchQuote): Promise<PaymentReturn> {
@@ -382,7 +391,7 @@ function AppContent() {
         await saveGroup(await getDatabase(), accountOwner(active), group, 'shared');
         setGroupId(group.id); setTab(group.is_direct ? 'Friends' : 'Groups');
         const bill = target.expenseId && (group.expenses.find(value => value.id === target.expenseId) ?? (group.focused_expense?.id === target.expenseId ? group.focused_expense : undefined));
-        setExpenseId(bill ? bill.id : null); setDraft(null); setScreen(bill ? 'expenseDetail' : 'group');
+        setExpenseId(bill ? bill.id : null); setDraft(null); setScreen(bill ? target.chat ? 'billChat' : 'expenseDetail' : 'group');
       } catch (error) {
         if (error instanceof ApiError && error.status === 404) { setScreen('home'); setNotice('This link is unavailable, or your request is waiting for approval.', 'warning'); }
         else throw error;
@@ -391,7 +400,7 @@ function AppContent() {
   }, [ready, session?.token, authHeld, expired, busy, appLink]);
   useEffect(() => {
     if (!ready || !session || authHeld || appLink || busy) return;
-    if (screen === 'group' || screen === 'expenseDetail') writeAppLink(groupId ? { groupId, ...(screen === 'expenseDetail' && expenseId ? { expenseId } : {}) } : null);
+    if (screen === 'group' || screen === 'expenseDetail' || screen === 'billChat') writeAppLink(groupId ? { groupId, ...((screen === 'expenseDetail' || screen === 'billChat') && expenseId ? { expenseId, ...(screen === 'billChat' ? { chat: true as const } : {}) } : {}) } : null);
     else if (screen === 'home') writeAppLink(null);
   }, [ready, session?.token, authHeld, appLink, busy, screen, groupId, expenseId]);
   useEffect(() => {
@@ -441,7 +450,7 @@ function AppContent() {
         try {
           let group = await fetchGroup(active, target.group.id);
           group = await withBill(active, group, target.expenseId ?? undefined);
-          target = { group, expenseId: group.expenses.some(value => value.id === target?.expenseId && !value.deleted) || group.focused_expense?.id === target.expenseId ? target.expenseId : null };
+          target = { group, ...(target.chat ? { chat: true } : {}), expenseId: group.expenses.some(value => value.id === target?.expenseId && (target?.chat || !value.deleted)) || group.focused_expense?.id === target.expenseId ? target.expenseId : null };
         } catch { target = null; }
       }
       if (target) await saveGroup(await getDatabase(), scope, target.group, 'shared');
@@ -449,7 +458,7 @@ function AppContent() {
       changeScope(active); setTab('Groups');
       if (target) {
         setGroups([{ kind: 'shared', group: target.group }]); setGroupId(target.group.id);
-        setExpenseId(target.expenseId); setScreen(target.expenseId ? 'expenseDetail' : 'group');
+        setExpenseId(target.expenseId); setScreen(target.expenseId ? target.chat ? 'billChat' : 'expenseDetail' : 'group');
       } else setNotice('This bill is no longer available. Your groups are still here.');
     });
   }, [ready, busy, authHeld, pushTarget, session?.token]);
@@ -459,6 +468,7 @@ function AppContent() {
     await push.clear(); setPushTarget(null);
   }
   function back() {
+    if (screen === 'billChat') { navigate('expenseDetail'); return; }
     if (screen === 'home' && tab === 'Groups' && (showArchived || showHidden)) { setShowArchived(false); setShowHidden(false); return; }
     if (screen === 'expense' || screen === 'expenseDetail' || screen === 'settle' || screen === 'members' || screen === 'review' || screen === 'paymentDetail') navigate('group');
     else if (screen === 'import') openMe();
@@ -772,12 +782,13 @@ function AppContent() {
     authHeldRef.current = false; resumeAccountRequests(); queueCookieCheck();
   }
   const mascotEligible = online && isOnline() && !busy && !expired && !notice && !commands.length && !hasDrafts && !legacy.length && !recoveries.length && !unavailable.length && !returns.length;
+  const activityEmptyVerified = mascotEligible && !activityError && activity?.firstPage === true && activityOwner.current === owner && emptyChatScope === `${owner}|${session?.token}`;
   const direct = tab === 'Friends';
   const hiddenGroups = groups.filter(row => row.group.hidden);
   const listedGroups = groups.filter(row => !row.group.hidden || commands.some(value => value.group_id === row.group.id) || !!session && row.group.participants.some(person => !person.removed && String(person.user_id) === session.userId && BigInt(row.group.balances[person.id] ?? '0') !== 0n));
   const archivedGroups = groupListRows(listedGroups, true);
   const visibleGroups = !direct && showHidden ? hiddenGroups : direct ? listedGroups.filter(row => !!session && visiblePeopleSummary(row.group, session.userId, commands.some(command => command.group_id === row.group.id))) : groupListRows(listedGroups, showArchived);
-  const title = screen === 'home' ? (tab === 'Friends' ? 'People' : tab === 'Account' ? 'Me' : tab === 'Groups' && showHidden ? 'Removed from my list' : tab === 'Groups' && showArchived ? 'Archived groups' : tab) : screen === 'login' ? 'Sign in' : screen === 'create' ? (direct ? 'Add a person' : 'New group') : screen === 'expense' ? (expenseId ? 'Edit bill' : 'Add a bill') : screen === 'expenseDetail' ? expense?.description ?? 'Bill' : screen === 'settle' ? 'Payment' : screen === 'members' ? 'Group settings' : screen === 'review' ? 'Review your bill' : screen === 'paymentDetail' ? 'Payment record' : screen === 'import' ? 'Import from Splitwise' : selected?.group.name ?? 'Group';
+  const title = screen === 'home' ? (tab === 'Friends' ? 'People' : tab === 'Account' ? 'Me' : tab === 'Groups' && showHidden ? 'Removed from my list' : tab === 'Groups' && showArchived ? 'Archived groups' : tab) : screen === 'login' ? 'Sign in' : screen === 'create' ? (direct ? 'Add a person' : 'New group') : screen === 'expense' ? (expenseId ? 'Edit bill' : 'Add a bill') : screen === 'billChat' ? 'Chat' : screen === 'expenseDetail' ? expense?.description ?? 'Bill' : screen === 'settle' ? 'Payment' : screen === 'members' ? 'Group settings' : screen === 'review' ? 'Review your bill' : screen === 'paymentDetail' ? 'Payment record' : screen === 'import' ? 'Import from Splitwise' : selected?.group.name ?? 'Group';
   if (!ready) return <SafeAreaView style={[s.screen, s.loading]}><ActivityIndicator color={colors.accent} /><Text style={ui.caption}>Opening your groups…</Text></SafeAreaView>;
   if (storageError) return <SafeAreaView style={[s.screen, pageContentStyle]}><Text style={ui.section}>Could not open saved records</Text><Text accessibilityRole="alert" style={ui.error}>{storageError}</Text><Button title="Retry" disabled={busy} onPress={() => launch(restore)} /></SafeAreaView>;
   if (authHeld) return <EmailLinkScreen title={emailEntry?.phase === 'name' ? 'Name' : 'Sign in'} busy={busy}>
@@ -792,7 +803,7 @@ function AppContent() {
       {screen === 'group' && selected && <IconAction name="settings" label="Group settings" disabled={busy} onPress={() => navigate('members')} />}
       {screen === 'members' && selected && !selected.group.is_direct && !selected.group.archived && selected.group.participants.some(person => person.id === selfId && !person.removed && person.user_id === selected.group.owner_id) && <IconAction name="personAdd" label="Add person" disabled={busy} onPress={() => setAddPersonRequest(value => value + 1)} />}
     </ScreenHeader>
-    <ScrollView ref={scroll} onLayout={measureViewport} onScroll={() => setScrollEpoch(value => value + 1)} scrollEventThrottle={100} key={`${owner}|${screen}|${groupId ?? ''}`} contentContainerStyle={pageContentStyle} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag"
+    {screen === 'billChat' && session && selected && expense ? <BillChatScreen key={`${owner}|${groupId}|${expense.id}`} session={session} groupId={selected.group.id} expenseId={expense.id} active={foreground && !authHeld && !expired} online={online} onRead={() => void push.clearReadPrompts().catch(() => {})} onUnsentChange={unsent => { if (ownerRef.current !== owner) return; if (unsent) { setHasDrafts(true); return; } void flushChatWrites().then(() => getDatabase()).then(db => db.getFirstAsync<{ n: number }>('SELECT count(*) AS n FROM drafts WHERE owner=? AND body<>?', owner, 'null')).then(value => { if (ownerRef.current === owner) setHasDrafts(!!value?.n); }).catch(() => {}); }} /> : <ScrollView ref={scroll} onLayout={measureViewport} onScroll={() => setScrollEpoch(value => value + 1)} scrollEventThrottle={100} key={`${owner}|${screen}|${groupId ?? ''}`} contentContainerStyle={pageContentStyle} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag"
       refreshControl={session && !expired && (screen === 'home' || screen === 'group') ? <RefreshControl refreshing={busy} tintColor={colors.accent} colors={[colors.accent]} onRefresh={() => { if (screen === 'home' && tab === 'Activity') void refreshActivity().catch(() => {}); else launch(() => sync()); }} /> : undefined}>
       {!!notice && <Text accessibilityLiveRegion="polite" accessibilityRole={feedback.tone === 'error' ? 'alert' : undefined} style={[ui.notice, feedback.tone === 'success' ? ui.success : feedback.tone === 'warning' ? ui.warning : feedback.tone === 'error' ? ui.error : undefined]}>{notice}</Text>}
       {expired && screen !== 'login' && <Button title="Sign in again" kind="primary" onPress={() => { setChallenge(null); setCode(''); navigate('login'); }} />}
@@ -808,7 +819,7 @@ function AppContent() {
       {screen === 'home' && session && returns.filter(value => value.launch === 'opened' || value.decision !== null || value.launch === 'opening').slice(0, 1).map(value => <Button key={value.attemptId} title="Review payment" disabled={busy} onPress={() => launch(async () => { const group = await fetchGroup(session, value.groupId); await saveGroup(await getDatabase(), owner, group, 'shared'); setGroupId(group.id); setReturnAttemptId(value.attemptId); setTransfer({ sender: value.sender, recipient: value.recipient, amount: value.amount }); navigate('settle'); })} />)}
       {screen === 'create' && session && <CreateGroupForm direct={direct} busy={busy} onCreate={values => launch(() => createGroup(values))} />}
       {screen === 'group' && selected && preview && <>{!!previewError && <Text>{previewError}</Text>}<GroupScreen noticeVisibility={noticeVisibility} key={`${owner}|${groupId}`} group={preview} accepted={selected.group} pending={pending} durable={storageIsDurable()} busy={busy} selfId={selfId} onHistoryPage={(resource, direction, query) => { void historyPage(resource, direction, query).catch(() => {}); }} onConfirmReceipt={attempt => showAlert('Confirm receipt?', `Check your bank app for ${formatMoney(attempt.recorded_amount ?? attempt.amount)}. This acknowledges a record; it does not verify the bank transfer.`, [{ text: 'Cancel', style: 'cancel' }, { text: 'Received', onPress: () => { void groupAction(`/payment-attempts/${attempt.id}/confirm`, {}).catch(() => {}); } }])} onExpense={value => { void openBill(value).catch(() => {}); }} onPayment={value => { void openPayment(value.id).catch(() => {}); }} onSettle={value => { setReturnAttemptId(null); setTransfer(value); navigate('settle'); }} onReverse={value => confirm('Reverse payment record?', 'Balances will change. No bank transfer is reversed.', () => reversePayment(value))} onSync={() => launch(() => sync())} onReview={value => launch(() => reviewChange(value))} onDiscard={value => value.path === '/groups' ? confirm('Discard unsent group?', 'This removes unsent bills and drafts for this group. Already accepted records will return when connected.', async () => { await discardUnsentGroup(await getDatabase(), owner, value.group_id); setGroupId(null); navigate('home'); }) : confirm('Discard unsent change?', 'This removes your saved change. If it already reached the server, accepted records will remain.', async () => { await discardCommand(await getDatabase(), owner, value.command_id); })} /></>}
-      {screen === 'expenseDetail' && selected && expense && <><ExpenseDetail noticeVisibility={noticeVisibility} selfId={selfId} expense={expense} group={selected.group} busy={busy} canEdit={!pending.length && !selected.group.archived} onEdit={() => launch(() => openExpense(expense))} onReverse={() => confirm('Reverse bill record?', 'Creates a reversal record and updates balances. The original bill stays in history.', () => reverseExpense(expense))} attachments={
+      {screen === 'expenseDetail' && selected && expense && <><ExpenseDetail noticeVisibility={noticeVisibility} selfId={selfId} expense={expense} group={selected.group} busy={busy} canEdit={!pending.length && !selected.group.archived} onEdit={() => launch(() => openExpense(expense))} chat={session && (selected.group.expenses.some(value => value.id === expense.id) || selected.group.focused_expense?.id === expense.id) ? <BillChatEntry key={`${owner}|${expense.id}`} session={session} groupId={selected.group.id} expenseId={expense.id} active={foreground && !expired && !authHeld} disabled={busy} onOpen={() => navigate('billChat')} /> : undefined} onReverse={() => confirm('Reverse bill record?', 'Creates a reversal record and updates balances. The original bill stays in history.', () => reverseExpense(expense))} attachments={
         !expense.deleted && (!(selected.group.expenses.some(value => value.id === expense.id) || selected.group.focused_expense?.id === expense.id) ? <Text style={ui.caption}>Pending sync</Text> : <BillAttachments key={`${owner}|${groupId}|${expense.id}`} session={session} groupId={selected.group.id} expenseId={expense.id} revision={selected.group.version} readOnly={selected.group.archived || !!pending.length} busy={busy}
           onBusyChange={value => { lock.current = value; setBusy(value); }} onChanged={async () => { if (!session) return; const scope = accountOwner(session); const updated = await fetchGroup(session, selected.group.id); await saveGroup(await getDatabase(), scope, updated, 'shared'); await load(scope); }} />)} />
       </>}
@@ -817,7 +828,8 @@ function AppContent() {
       {screen === 'settle' && selected && preview && <SettleForm key={`${owner}|${groupId}`} group={preview} initial={transfer} busy={busy} selfId={selfId} onReviewAttempt={reviewPaymentAttempt} onPrepareUPI={prepareUPI} onCancelUPI={async id => { await groupAction(`/payment-attempts/${id}/cancel`, {}); await clearPaymentReturn(await getDatabase(), owner, id); await load(); }} returnPayment={returnPayment} onArmReturn={armPaymentReturn} onReturnPaymentChange={persistPaymentReturn} onResolveReturn={finishPaymentReturn} onSave={savePayment} onCancel={() => { setReturnAttemptId(null); back(); }} />}
       {screen === 'paymentDetail' && selected && settlement && <PaymentDetail payment={settlement} group={selected.group} selfId={selfId} busy={busy} canReverse={!pending.length && !selected.group.archived} onReverse={() => confirm('Reverse payment record?', 'Balances will change. No bank transfer is reversed.', () => reversePayment(settlement))} />}
       {screen === 'members' && selected && <MembersScreen key={`${owner}|${groupId}`} group={selected.group} selfId={selfId} busy={busy} onAction={groupAction} onExport={exportGroup} onMembership={action => { if (action === 'restore') launch(() => changeMembership(action)); else confirm('Leave or remove this group?', 'Shared bills and balances stay with the group. If you are the organizer, the next eligible joined member takes over. With no eligible member, this only removes the group from your list and you remain its organizer. Your saved drafts are kept.', () => changeMembership(action)); }} addPersonRequest={addPersonRequest} />}
-      {screen === 'home' && tab === 'Activity' && session && <ActivityScreen emptyVerified={mascotEligible && activity?.firstPage === true && activityOwner.current === owner} items={activity?.items ?? []} busy={busy} error={activityError} hasMore={!!activity?.next_cursor} onRefresh={() => { void refreshActivity().catch(() => {}); }} onLoadMore={() => { void refreshActivity(true).catch(() => {}); }} onOpen={target => { void openActivityTarget(target).catch(() => {}); }} />}
+      {screen === 'home' && tab === 'Activity' && session && <ChatInbox key={owner} session={session} active={foreground && !authHeld && !expired && online} busy={busy} onEmptyChange={empty => chatInboxEmptyChanged(session, empty)} onOpen={(groupId, expenseId) => { void openActivityTarget({ kind: 'bill', groupId, expenseId }, true).catch(() => {}); }} />}
+      {screen === 'home' && tab === 'Activity' && session && <ActivityScreen emptyVerified={activityEmptyVerified} showEmpty={activityEmptyVerified} items={activity?.items ?? []} busy={busy} error={activityError} hasMore={!!activity?.next_cursor} onRefresh={() => { void refreshActivity().catch(() => {}); }} onLoadMore={() => { void refreshActivity(true).catch(() => {}); }} onOpen={target => { void openActivityTarget(target).catch(() => {}); }} />}
       {screen === 'login' && <>
         {emailRequested ? <EmailLinkSent busy={busy} resendSeconds={Math.max(0, Math.ceil((retryAt - clock) / 1000))} onResend={() => launch(sendSignInLink)} onCode={() => setEmailRequested(false)} onChangeEmail={() => { setEmailRequested(false); setChallenge(null); setCode(''); }} />
           : !challenge ? <EmailSignIn email={email} busy={busy} onEmail={setEmail} sendLabel={Platform.OS === 'web' ? 'Email me a sign-in link' : undefined} onSend={() => launch(Platform.OS === 'web' ? sendSignInLink : sendSignInCode)}>
@@ -850,11 +862,11 @@ function AppContent() {
         <View><SettingsRow label="Privacy" icon="privacy" disabled={busy} onPress={() => launch(() => Linking.openURL(`${API_URL}/privacy`))} /><SettingsRow label="Help and support" icon="help" disabled={busy} onPress={() => launch(() => Linking.openURL(`${API_URL}/support`))} /></View>
         <View>
 
-          <SettingsRow label="Sign out" icon="back" chevron={false} disabled={busy} onPress={() => confirm('Sign out?', storageIsDurable() ? 'Saved changes stay on this device for your next sign-in to this account.' : 'Export any temporary unsent changes before leaving. They will end when this tab closes.', async () => { await draftWrites.current; await endPushSession(session); await clearMediaPreviews(); await saveSession(null); changeScope(null); })} />
-          <SettingsRow label="Delete account" icon="remove" danger chevron={false} disabled={busy} onPress={() => confirm('Delete account?', 'Export first. Your account, uploads and text you added will be removed. Other members keep anonymous amounts and payment history. Unsent changes for this account will be deleted from this phone.', async () => { await push.disable().catch(() => {}); await request(session, '/account', 'DELETE'); await push.clear(); setPushTarget(null); await draftWrites.current; const db = await getDatabase(); await clearAccountMediaUploads(db, session); await wipeAccount(db, owner); await clearMediaPreviews(); await saveSession(null); changeScope(null); })} />
+          <SettingsRow label="Sign out" icon="back" chevron={false} disabled={busy} onPress={() => confirm('Sign out?', storageIsDurable() ? 'Saved changes stay on this device for your next sign-in to this account.' : 'Export any temporary unsent changes before leaving. They will end when this tab closes.', async () => { await draftWrites.current; await flushChatWrites(); await endPushSession(session); await clearMediaPreviews(); await saveSession(null); changeScope(null); })} />
+          <SettingsRow label="Delete account" icon="remove" danger chevron={false} disabled={busy} onPress={() => confirm('Delete account?', 'Export first. Your account, uploads and text you added will be removed. Other members keep anonymous amounts and payment history. Unsent changes for this account will be deleted from this phone.', async () => { await push.disable().catch(() => {}); await request(session, '/account', 'DELETE'); await push.clear(); setPushTarget(null); await draftWrites.current; await flushChatWrites(); const db = await getDatabase(); await clearAccountMediaUploads(db, session); await wipeAccount(db, owner); await clearMediaPreviews(); await saveSession(null); changeScope(null); })} />
         </View></View>
       </>}
-    </ScrollView>
+    </ScrollView>}
     {screen === 'home' && session && <AppTabs selected={tab} busy={busy} onSelect={value => { setShowArchived(false); setShowHidden(false); if (value === 'Activity') { activityOwner.current = ''; setActivityError(''); } setTab(value); setNotice(''); }} />}
   </AppFrame>;
 }

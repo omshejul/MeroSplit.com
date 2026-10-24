@@ -1,0 +1,8 @@
+You have unread messages in a bill conversation in MeroSplit.
+
+Open MeroSplit: {{ app_url }}
+
+Sign in normally. The organizer may need to invite you before you can view the bill. This notice adds no access.
+
+Stop notification emails: {{ stop_url }}
+Help: mail@merosplit.com

@@ -9,7 +9,7 @@ export type NativeLinkSource = {
 };
 const uuid = '[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}';
 const emailPath = new RegExp(`^/app/sign-in/(${uuid})/?$`);
-const groupPath = new RegExp(`^/app/groups/(${uuid})(?:/bills/(${uuid}))?/?$`);
+const groupPath = new RegExp(`^/app/groups/(${uuid})(?:/bills/(${uuid})(/chat)?)?/?$`);
 
 export function parseNativeLink(value: string | null | undefined): NativeLink | null {
   if (!value || value.length > 2048 || !value.startsWith(`${APP_ORIGIN}/`) || /[\s\\?]/.test(value)) return null;
@@ -25,7 +25,7 @@ export function parseNativeLink(value: string | null | undefined): NativeLink | 
     }
     if (hash) return null;
     const group = path.match(groupPath);
-    if (group) return { kind: 'app', target: { groupId: group[1].toLowerCase(), ...(group[2] ? { expenseId: group[2].toLowerCase() } : {}) } };
+    if (group) return { kind: 'app', target: { groupId: group[1].toLowerCase(), ...(group[2] ? { expenseId: group[2].toLowerCase(), ...(group[3] ? { chat: true as const } : {}) } : {}) } };
     const invitation = path.match(/^\/(?:app\/)?invite\/([^/]{1,1536})\/?$/);
     if (!invitation) return null;
     const inviteToken = decodeURIComponent(invitation[1]);

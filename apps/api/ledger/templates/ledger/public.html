@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
-  <title>MeroSplit · {% if page == 'privacy' %}Privacy{% elif page == 'delete' %}Delete your account{% else %}Support{% endif %}</title>
+  <title>MeroSplit · {% if page == 'privacy' %}Privacy{% elif page == 'delete' %}Delete your account{% elif page == 'chat' %}Chat policy{% else %}Support{% endif %}</title>
   <style>
     :root { font-family: system-ui, sans-serif; color-scheme: light dark; line-height: 1.6; }
     body { max-width: 44rem; margin: auto; padding: 1.5rem; }
@@ -19,7 +19,7 @@
   </style>
 </head>
 <body>
-  <header><strong>MeroSplit</strong><nav aria-label="Help pages"><a href="/support">Support</a><a href="/privacy">Privacy</a><a href="/delete-account">Delete account</a></nav></header>
+  <header><strong>MeroSplit</strong><nav aria-label="Help pages"><a href="/support">Support</a><a href="/privacy">Privacy</a><a href="/chat-policy">Chat policy</a><a href="/delete-account">Delete account</a></nav></header>
   <main>
   {% if page == 'privacy' %}
     <h1>Privacy policy</h1>
@@ -30,6 +30,8 @@
     <h2>Why we use this information</h2>
     <p>We use these records to calculate balances, sync your account, manage invitations, display bill evidence, let members acknowledge payment records, provide exports and operate the service. Group members can see the group's records. Anyone holding a valid invitation link can see the invited person's involved bills, notes, balance, repayments and involved names on the invitation page without signing in. Share links only with intended recipients. Manual share-link joining requires a request and the organizer's approval. Email invitations reveal no ledger before the intended recipient signs in with a code sent to that exact address; verified recipients can then join that shared group. Typing a contact email does not link an account or send an invitation. A new bill that financially includes an unclaimed person may send a generic notification to the supplied address. That sign-in link verifies the mailbox only. Access to the bill still requires the organizer’s explicit invitation.</p>
     <p>MeroSplit does not connect to your bank, read bank transactions or verify payments. A supported UPI link can open a separate payment app, where you review and authorize payment. UPI addresses and payment records are entered by people. Your saved UPI address is visible to linked members of your shared groups. Recording a payment does not send money. Opening or returning from a payment app never records payment automatically.</p>
+    <h2>Bill conversations</h2>
+    <p>Signed-in group members can read and post plain-text messages about a bill. We store these messages, their authors and times, unread status, chat policy acceptance, chat-only blocks and private abuse reports. Notifications go only to current people financially included in the bill, excluding the sender. Account email reminders batch unread messages after ten minutes. Generic email and push notices contain no message text. Eligible unclaimed contacts may receive an immediate generic notice that grants no access. Merely fetching a conversation does not mark it read. Blocking hides that sender's chat for you and stops future chat notices from them. It does not change shared financial records. Authorized support operators may review reports and hide abusive chat. Chat is not end-to-end encrypted. Your account export includes your chat facts, and deleting your account removes messages you authored.</p>
     <h2>Photos, files and notifications</h2>
     <p>Photo and file access begins when you choose to add a photo, attachment or import file. The API processes the file you upload, resizes images and removes image metadata before saving the optimized file in private object storage. This is not a guarantee that information visible in a photo or PDF has been redacted.</p>
     <p>We keep account-level unread bill notices and the exact bill revisions you have seen. Expense updates in Me → Notifications control expense push and email across your devices. Phone permission controls only that device's push route; we store its installation identifier and push token linked to your account and session. Unseen bills may produce a generic push after 30 seconds. Optional email reminders arrive when a new bill is still unseen after 10 minutes, even if you use another screen or have no mobile app. Viewing the current bill on web or mobile cancels its pending reminder. Updates that are due together are grouped, and an already emailed notice is not repeated. Existing accounts keep their choice. New accounts start with email reminders on only when their sign-in screen discloses this; older clients without that disclosure start with reminders off. You can turn reminders off in Me. Alerts contain no bill amounts, descriptions or names; private push routing uses account, group, bill and notice identifiers. Online opt-out suppresses pending work. An offline change waits for retry, and a request already handed to a provider can still arrive. Sign-out revokes that device's registration. Account deletion removes preferences, notices and reminder delivery records. Permission changes are checked when the app becomes active.</p>
@@ -59,6 +61,13 @@
     <p>Groups you own without another active linked member are removed. In groups with other members, your participant becomes “Deleted participant”; anonymous bill amounts, splits, dates and payment records remain so other members keep correct balances. Your authored text and uploaded attachments are removed from visible group records. If content added by someone else contains personal information you want removed, include that request in your email. Physical file deletion can remain pending if the storage provider is unavailable; new download links are blocked, existing links expire within five minutes, and physical deletion can be retried. Previously exported or downloaded copies held by other members are outside MeroSplit's control. This beta currently has no configured scheduled database backups or point-in-time recovery.</p>
     <p>For a request to remove specific personal data without closing your account, email the same address and identify the data. <a href="/privacy">Read the privacy policy</a>.</p>
   {% else %}
+    {% if page == 'chat' %}
+    <h1>Chat policy</h1>
+    <p>Version 1. Accept this policy before your first message. Bill conversations are for respectful discussion between people with access to the bill.</p>
+    <p>Do not post abuse, harassment, threats, illegal material, sexual content, private credentials or another person's sensitive information. A small automated word/phrase filter rejects obvious examples; it does not detect all harmful content.</p>
+    <p>Use a message's menu to report a message or user, or block that person in chat. Blocking is reversible and affects your chat content and chat notifications only. It never changes shared bills, balances or group membership. Authorized support operators review reports and can hide abusive chat content.</p>
+    <p>Chat is stored on our server and is not end-to-end encrypted. Reports and message content may be reviewed by authorized support operators. Contact <a href="mailto:mail@merosplit.com">mail@merosplit.com</a> for support, urgent abuse reports or personal-data requests.</p>
+    {% else %}
     <h1>Help with MeroSplit</h1>
     <p>Email <a href="mailto:mail@merosplit.com?subject=MeroSplit%20support">mail@merosplit.com</a> for help or beta feedback. Include your app version, phone model and a short description of what happened. Please use made-up bill details when sending screenshots, and never send a password or UPI PIN.</p>
     <h2>How balances work</h2>
@@ -71,7 +80,8 @@
     <p>MeroSplit records money paid outside the app. Check the recipient and their UPI details in your payment app before paying. A recipient's acknowledgment is a record, not bank verification. Reversing a record updates balances; it does not reverse a bank transfer.</p>
     <h2>Your account and data</h2>
     <p>Sign in with the four-digit code sent to your email. Request a new code if it expires. Me has import, export and account controls. For account access help, contact support. Older records saved only on a phone require your confirmation before they are added to an account. You can <a href="/delete-account">request account or personal-data deletion</a> even if the app has been uninstalled.</p>
-    <p><a href="/privacy">Privacy policy</a></p>
+    <p><a href="/privacy">Privacy policy</a> · <a href="/chat-policy">Chat policy</a></p>
+    {% endif %}
   {% endif %}
   </main>
   <footer>MeroSplit · Om Shejul · <a href="mailto:mail@merosplit.com">mail@merosplit.com</a></footer>

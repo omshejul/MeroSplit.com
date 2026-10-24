@@ -31,6 +31,13 @@ def accepted_export(actor, group_id):
             {"expense_id": str(file.expense_id), **metadata(file)}
             for file in UploadedFile.objects.filter(expense__group=group, state="active").order_by("id")
         ]
+        from .bill_chat import _names
+        from .models import BillChatBlock, BillChatMessage
+        names = _names(group)
+        state['chat_messages'] = [{'id': str(row.id), 'expense_id': str(row.expense_id), 'sender': names.get(row.sender_id, 'Unknown participant'),
+                                   'text': row.text, 'created_at': row.created_at.isoformat()}
+                                  for row in BillChatMessage.objects.filter(expense__group=group, hidden_at__isnull=True)
+                                  .exclude(sender_id__in=BillChatBlock.objects.filter(owner=actor, active=True).values('blocked_id')).order_by('id')]
         if group.owner_id != actor.pk:
             state["invites"] = []
         return {
@@ -123,11 +130,18 @@ def csv_export(export):
 
 @transaction.atomic
 def account_export(actor):
+    from .models import BillChatAcceptance, BillChatBlock, BillChatMessage, BillChatReport
     groups = groups_for_actor(Group.objects.filter(participants__user=actor, participants__removed=False), actor).order_by("id")
     return {
         "schema_version": 1,
         "account": {"id": actor.pk, "email": actor.email, "avatar": avatar_for(actor)},
         "groups": [accepted_export(actor, group.id) for group in groups],
+        'chat': {
+            'authored_messages': list(BillChatMessage.objects.filter(sender=actor).order_by('id').values('id', 'expense_id', 'client_id', 'text', 'created_at', 'hidden_at')),
+            'reports': list(BillChatReport.objects.filter(reporter=actor).order_by('created_at').values('id', 'message_id', 'kind', 'reason', 'created_at', 'reviewed_at', 'resolution')),
+            'blocks': list(BillChatBlock.objects.filter(owner=actor).values('blocked_id', 'active', 'changed_at')),
+            'policy_acceptances': list(BillChatAcceptance.objects.filter(user=actor).values('version', 'accepted_at')),
+        },
     }
 
 
@@ -282,10 +296,14 @@ def delete_account(actor):
     Settlement.objects.filter(recorded_by=actor).update(recorded_by=None)
     Change.objects.filter(actor=actor).update(actor=None)
     Invite.objects.filter(claimant=actor).update(claimant=None, revoked=True)
-    emails = [actor.email.lower(), *EmailAddress.objects.filter(user=actor).values_list("email", flat=True)]
+    emails = [email.strip().lower() for email in [actor.email, *EmailAddress.objects.filter(user=actor).values_list("email", flat=True)] if email.strip()]
     for address in emails:
         BillEmailPreference.objects.update_or_create(email_digest=mailbox_digest(address), defaults={"suppressed": True})
     BillEmailNotice.objects.filter(Q(issued_user_id=actor_id) | Q(recipient_email__in=emails)).delete()
+    from .models import BillChatDelivery, BillChatNotice
+    BillChatNotice.objects.filter(email_delivery_id__in=BillChatDelivery.objects.filter(recipient_email__in=emails).values('id')).update(email_eligible=False)
+    BillChatNotice.objects.filter(Q(issued_user_id=actor_id) | Q(recipient_email__in=emails)).delete()
+    BillChatDelivery.objects.filter(recipient_email__in=emails).delete()
     EmailLoginGrant.objects.filter(Q(issued_user_id=actor_id) | Q(recipient=actor) | Q(email__in=emails)).delete()
     Session.objects.filter(session_key__in=session_ids).delete()
     # Cascades email/auth records, payment profile, command receipts and devices;

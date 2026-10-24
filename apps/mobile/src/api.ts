@@ -18,8 +18,11 @@ export function expensePayload(expense: Expense, updating = false): Record<strin
   return { id, description, total, paid, split, date, category, notes, ...(updating ? { version: expense.version } : {}) };
 }
 
-export async function request<T>(session: Session, path: string, method = 'GET', body?: unknown, responseType: 'json' | 'text' = 'json'): Promise<T> {
+export async function request<T>(session: Session, path: string, method = 'GET', body?: unknown, responseType: 'json' | 'text' = 'json', signal?: AbortSignal): Promise<T> {
   const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 15_000);
+  const cancel = () => controller.abort();
+  if (signal?.aborted) cancel();
+  signal?.addEventListener('abort', cancel, { once: true });
   try {
     const response = await sessionRequest(session, `/api/v1${path}`, {
       method, headers: { 'Content-Type': 'application/json' },
@@ -30,7 +33,7 @@ export async function request<T>(session: Session, path: string, method = 'GET',
     const data = await response.json();
     if (!response.ok) throw new ApiError(response.status, String(data.detail ?? data.error ?? `Request failed (${response.status})`));
     return data as T;
-  } finally { clearTimeout(timer); }
+  } finally { clearTimeout(timer); signal?.removeEventListener('abort', cancel); }
 }
 
 // Never replay a command under another account or backend. GET follows the

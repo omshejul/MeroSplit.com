@@ -43,6 +43,9 @@ def update_contact(actor, group_id, participant_id, payload):
         from .bill_email import cancel_bill_emails
         from .bill_email_models import BillEmailNotice
         cancel_bill_emails(BillEmailNotice.objects.filter(participant=person), "contact_changed")
+        from .chat_notifications import cancel_chat_notices
+        from .models import BillChatNotice
+        cancel_chat_notices(BillChatNotice.objects.filter(participant=person, recipient__isnull=True), 'contact_changed')
     return record_change(group, actor, payload["command_id"], fingerprint, "contact_changed", {"participant_id": str(person.id)})
 
 

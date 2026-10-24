@@ -126,7 +126,7 @@ export function usePushNotifications(session: Session | null, callbacks: Callbac
     return () => { foreground.remove(); rotated.remove(); received.remove(); tapped.remove(); };
   }, []);
   const enabled = !!session && preferences?.owner === owner && preferences.opted_in && !!preferences.binding && permission === 'granted' && verified;
-  return { state: { ready: !!preferences, enabled, optedIn: !!preferences?.opted_in && preferences.owner === owner, pendingOff: !!preferences?.owner && preferences.owner === owner && !preferences.opted_in, permission, working, error }, enable, disable, refresh, clear };
+  return { state: { ready: !!preferences, enabled, optedIn: !!preferences?.opted_in && preferences.owner === owner, pendingOff: !!preferences?.owner && preferences.owner === owner && !preferences.opted_in, permission, working, error }, enable, disable, refresh, clear, clearReadPrompts };
 }
 export type PushControls = ReturnType<typeof usePushNotifications>;
 export default function PushSettings({ push, busy, onBusyChange }: { push: PushControls; busy: boolean; onBusyChange: (busy: boolean) => void }) {

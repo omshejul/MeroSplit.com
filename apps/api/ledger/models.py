@@ -245,6 +245,7 @@ class PushDevice(models.Model):
     token_hash = models.CharField(max_length=64)
     platform = models.CharField(max_length=7)
     revision = models.PositiveIntegerField(default=1)
+    bill_chat = models.BooleanField(default=False)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -291,6 +292,7 @@ class NotificationPreference(models.Model):
     expense_updates = models.BooleanField(default=True)
     email_reminders = models.BooleanField(default=False)
     email_enabled_at = models.DateTimeField(null=True)
+    updates_enabled_at = models.DateTimeField(null=True)
     foreground_at = models.DateTimeField(null=True)
     last_digest_at = models.DateTimeField(null=True)
 
@@ -368,6 +370,14 @@ class EmailLoginGrant(models.Model):
 
 
 # Domain models are imported here for Django migration discovery.
+from .bill_chat_models import (  # noqa: E402,F401
+    BillChatAcceptance,
+    BillChatBlock,
+    BillChatDelivery,
+    BillChatMessage,
+    BillChatNotice,
+    BillChatReport,
+)
 from .bill_email_models import BillEmailNotice, BillEmailPreference  # noqa: E402,F401
 from .mcp_models import (  # noqa: E402,F401
     McpOAuthClient,

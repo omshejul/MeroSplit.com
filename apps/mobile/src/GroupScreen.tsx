@@ -204,7 +204,7 @@ export function PaymentDetail({ payment, group, selfId, busy, canReverse, onReve
   </View>;
 }
 
-export function ExpenseDetail({ noticeVisibility, expense, group, selfId, busy, canEdit, onEdit, onReverse, attachments }: { noticeVisibility?: NoticeVisibility; expense: Expense; group: Group; selfId: string; busy: boolean; canEdit: boolean; onEdit: () => void; onReverse: () => void; attachments?: React.ReactNode }) {
+export function ExpenseDetail({ noticeVisibility, expense, group, selfId, busy, canEdit, onEdit, onReverse, attachments, chat }: { noticeVisibility?: NoticeVisibility; expense: Expense; group: Group; selfId: string; busy: boolean; canEdit: boolean; onEdit: () => void; onReverse: () => void; attachments?: React.ReactNode; chat?: React.ReactNode }) {
   const { palette: colors, ui } = useUI();
   const hasCategory = !!expense.category && !['general', 'other'].includes(expense.category);
   const change = expenseBalanceChange(expense, selfId);
@@ -219,6 +219,7 @@ export function ExpenseDetail({ noticeVisibility, expense, group, selfId, busy, 
     </RecordSummary></VisibleExpense>
     {expense.deleted ? <Text style={ui.notice}>Bill record reversed. The original and its reversal are kept in history.</Text>
       : <Button title="Edit bill" icon="bill" kind="primary" disabled={busy || !canEdit} onPress={onEdit} />}
+    {chat}
     {attachments}
     <BillPeople title="Who paid?" summary={`${payers.length} people`} inline={payers.length <= 1} disabled={busy}>
       {payers.map(person => <ParticipantAmountRow key={person.id} name={person.name} amount={expense.paid[person.id] ?? '0'} />)}

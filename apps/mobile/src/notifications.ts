@@ -4,7 +4,7 @@ import type { Expense, Group, Session } from './types.ts';
 export type PushPermission = 'ask' | 'granted' | 'denied';
 export type PushDevice = { provider: 'expo'; token: string; platform: 'ios' | 'android' };
 export type PushPreferences = { installation_id: string; owner: string | null; opted_in: boolean; binding: PushDevice | null };
-export type PushTarget = { group: Group; expenseId: string | null };
+export type PushTarget = { group: Group; expenseId: string | null; chat?: true };
 export type PushSave = (state: PushPreferences) => Promise<void>;
 export const emptyPushPreferences = (installation_id: string): PushPreferences => ({ installation_id, owner: null, opted_in: false, binding: null });
 
@@ -33,7 +33,7 @@ export async function refreshPushDevice(session: Session, state: PushPreferences
   if (!state.opted_in || permission !== 'granted') return unregisterPushDevice(session, state, save, send);
   const device = await getDevice();
   if (!/^(?:Expo|Exponent)PushToken\[[^\]]+\]$/.test(device.token) || device.provider !== 'expo' || !['ios', 'android'].includes(device.platform)) throw new Error('Notifications are unavailable on this device.');
-  const result = await send<{ id: string; enabled: boolean }>(session, `/me/push-devices/${state.installation_id}`, 'PUT', device);
+  const result = await send<{ id: string; enabled: boolean }>(session, `/me/push-devices/${state.installation_id}`, 'PUT', { ...device, bill_chat: true });
   if (result.id !== state.installation_id || result.enabled !== true) throw new Error('Could not enable notifications. Try again when connected.');
   const next = { ...state, binding: device }; await save(next); return next;
 }
@@ -41,20 +41,29 @@ export async function refreshPushDevice(session: Session, state: PushPreferences
 const uuid = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
 /** Reconcile displayed prompts only; this never acknowledges a bill as seen. */
 export async function dismissReadPushes(session: Session, shown: { identifier: string; data: unknown }[], dismiss: (id: string) => Promise<void>, send: typeof request = request): Promise<void> {
-  const owned = shown.filter(value => notificationForAccount(session, value.data) && uuid.test(String(value.data.event_id)) && uuid.test(String(value.data.expense_id))).slice(0, 100);
+  const owned = shown.filter(value => notificationForAccount(session, value.data) && value.data.type === 'new_bill' && uuid.test(String(value.data.event_id)) && uuid.test(String(value.data.expense_id))).slice(0, 100);
   const ids = [...new Set(owned.map(value => String((value.data as Record<string, unknown>).expense_id)))].slice(0, 50);
-  if (!ids.length) return;
-  const unread = await send<{ notices: { id: string }[]; has_more: boolean }>(session, `/me/notifications?limit=100&expense_ids=${encodeURIComponent(ids.join(','))}`);
-  if (unread.has_more !== false || !Array.isArray(unread.notices) || unread.notices.some(value => !value || typeof value.id !== 'string' || !uuid.test(value.id))) return;
-  const remaining = new Set(unread.notices.map(value => value.id));
-  for (const value of owned) {
-    const data = value.data as Record<string, unknown>;
-    if (ids.includes(String(data.expense_id)) && !remaining.has(String(data.event_id))) await dismiss(value.identifier);
+  if (ids.length) {
+    const unread = await send<{ notices: { id: string }[]; has_more: boolean }>(session, `/me/notifications?limit=100&expense_ids=${encodeURIComponent(ids.join(','))}`);
+    if (unread.has_more === false && Array.isArray(unread.notices) && unread.notices.every(value => value && typeof value.id === 'string' && uuid.test(value.id))) {
+      const remaining = new Set(unread.notices.map(value => value.id));
+      for (const value of owned) {
+        const data = value.data as Record<string, unknown>;
+        if (ids.includes(String(data.expense_id)) && !remaining.has(String(data.event_id))) await dismiss(value.identifier);
+      }
+    }
   }
+  const chats = shown.filter(value => notificationForAccount(session, value.data) && value.data.type === 'bill_chat' && uuid.test(value.data.event_id)).slice(0, 100);
+  if (!chats.length) return;
+  const noticeIds = [...new Set(chats.map(value => String((value.data as Record<string, unknown>).event_id)))];
+  const unread = await send<{ notices: { id: string }[] }>(session, `/me/chat-notifications?notice_ids=${encodeURIComponent(noticeIds.join(','))}`);
+  if (!Array.isArray(unread.notices) || unread.notices.some(value => !value || !uuid.test(value.id))) return;
+  const remaining = new Set(unread.notices.map(value => value.id));
+  for (const value of chats) if (!remaining.has(String((value.data as Record<string, unknown>).event_id))) await dismiss(value.identifier);
 }
 export function notificationForAccount(session: Session | null, data: unknown): data is Record<string, string> {
   return !!session && !!data && typeof data === 'object' && !Array.isArray(data)
-    && (data as Record<string, unknown>).type === 'new_bill' && (data as Record<string, unknown>).recipient_user_id === session.userId;
+    && ['new_bill', 'bill_chat'].includes(String((data as Record<string, unknown>).type)) && (data as Record<string, unknown>).recipient_user_id === session.userId;
 }
 
 export async function notificationTarget(session: Session, data: unknown, send: typeof request = request): Promise<PushTarget | null> {
@@ -69,6 +78,6 @@ export async function notificationTarget(session: Session, data: unknown, send: 
         group = { ...group, focused_expense: detail };
       } catch (error) { if (!(error instanceof ApiError && error.status === 404)) throw error; }
     }
-    return { group, expenseId: (group.expenses.some(expense => expense.id === data.expense_id && !expense.deleted) || group.focused_expense?.id === data.expense_id && !group.focused_expense.deleted) ? data.expense_id : null };
+    return { group, ...(data.type === 'bill_chat' ? { chat: true as const } : {}), expenseId: (group.expenses.some(expense => expense.id === data.expense_id && (data.type === 'bill_chat' || !expense.deleted)) || group.focused_expense?.id === data.expense_id && (data.type === 'bill_chat' || !group.focused_expense.deleted)) ? data.expense_id : null };
   } catch { return null; }
 }
