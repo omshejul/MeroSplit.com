@@ -74,6 +74,7 @@ from .schemas import (
     GroupIn,
     GroupLeaveIn,
     InviteIn,
+    LinkedWriteResult,
     NotificationPreferencesIn,
     OpeningIn,
     ParticipantIn,
@@ -86,7 +87,6 @@ from .schemas import (
     SplitwiseImportResult,
     SplitwisePreviewIn,
     WriteResult,
-    LinkedWriteResult,
 )
 from .services import (
     create_group,
