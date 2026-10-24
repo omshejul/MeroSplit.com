@@ -48,7 +48,10 @@ def test_crawler_gets_real_homepage_and_head_without_javascript_or_an_app_export
     assert response["Content-Type"].startswith("text/html")
     page = Document(response.content.decode())
     assert page.tags.count("main") == 1 and page.tags.count("h1") == 1
-    assert page.tags.count("h2") >= 2 and len(" ".join(page.text).split()) >= 100
+    assert page.tags.count("figure") == 2 and "Shared bills." in " ".join(page.text)
+    assert "Illustrative example" in " ".join(page.text)
+    assert "table" not in page.tags
+    assert len(" ".join(page.text).split()) <= 150
     assert "/app/" in page.links and {"/privacy", "/support"}.issubset(page.links)
     assert [script.get("src") for script in page.scripts if script.get("type") != "application/ld+json"] == ["/assets/install.js"]
     assert "<div id=\"root\"" not in response.content.decode()

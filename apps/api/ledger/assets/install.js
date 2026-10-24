@@ -1,5 +1,13 @@
 /* Only an explicit QR/install intent selects a platform. All links remain SSR. */
+function openAndroidSteps() {
+  document.getElementById("android-help").open = true;
+}
+document.getElementById("android-badge").addEventListener("click", openAndroidSteps);
+window.addEventListener("hashchange", () => {
+  if (window.location.hash === "#android-install") openAndroidSteps();
+});
 window.addEventListener("pageshow", () => {
+  if (window.location.hash === "#android-install") openAndroidSteps();
   if (new URLSearchParams(window.location.search).get("install") !== "1") return;
   const ua = navigator.userAgent;
   const ipad = /Macintosh|MacIntel/.test(ua + " " + navigator.platform) && navigator.maxTouchPoints > 1;
@@ -13,6 +21,7 @@ window.addEventListener("pageshow", () => {
     window.location.assign(target.href);
     return;
   }
+  if (id === "android-install") openAndroidSteps();
   target.classList.add("install-selected");
   target.focus({ preventScroll: true });
   target.scrollIntoView({ block: "center", behavior: "instant" });
