@@ -24,78 +24,49 @@
   <meta name="twitter:card" content="summary">
   <link rel="stylesheet" href="/assets/typography.css">
   <link rel="stylesheet" href="/assets/home.css">
+  {% if testing_links_ready %}<script src="/assets/install.js" defer></script>{% endif %}
   <script type="application/ld+json">{"@context": "https://schema.org", "@type": "WebSite", "name": "MeroSplit", "url": "https://merosplit.com/"}</script>
 </head>
 <body>
   <!-- Icons: Heroicons v2.1.5, 24 outline (https://heroicons.com). MIT License, Copyright (c) Tailwind Labs, Inc. -->
   <a class="skip" href="#main">Skip to content</a>
-  {% include "ledger/components/public_header.html" %}
+  {% include "ledger/components/public_header.html" with hide_nav=True %}
 
-  <main id="main">
-    <section class="wrap hero" aria-labelledby="title">
-      <div>
-        <h1 id="title">Who paid, who owes, and how to settle up.</h1>
-        <p class="lede">MeroSplit keeps the bills you share with friends, flatmates and travel groups, and works out each person's balance.</p>
-        <div class="actions">
-          <a class="open" href="/app/">Open MeroSplit<svg class="i" aria-hidden="true" focusable="false" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 19.5 15-15m0 0H8.25m11.25 0v11.25"/></svg></a>
-          <a href="#how">How it works</a>
+  <main id="main" class="wrap landing">
+    <section class="pitch" aria-labelledby="title">
+      <h1 id="title">Shared bills.<br>Clear balances.</h1>
+      <p class="lede">For flatmates, friends and trips. Add what you paid, see who owes whom, and settle up your way.</p>
+      <div class="install" id="install" tabindex="-1" aria-label="Try MeroSplit">
+        {% if testing_links_ready %}<div class="badges">
+          <a id="iphone-install" href="https://testflight.apple.com/join/7HrHqqnB"><img src="/assets/try-on-iphone.svg" alt="Try on iPhone with TestFlight" height="52"></a>
+          <a id="android-badge" href="#android-install" aria-describedby="android-prerequisite"><img src="/assets/try-on-android.svg" alt="Try on Android: see testing steps" height="52"></a>
         </div>
-      </div>
-
-      <figure class="slip" aria-label="Example group with balances and suggested payments">
-        <table>
-          <caption>Goa trip<small>Example: three people, three bills</small></caption>
-          <thead><tr><th scope="col">Bill</th><th scope="col">Paid by</th><th scope="col" class="num">Amount</th></tr></thead>
-          <tbody>
-            <tr><td>Villa<small>Split equally</small></td><td>Asha</td><td class="num">₹9,000</td></tr>
-            <tr><td>Dinner<small>Split equally</small></td><td>Ravi</td><td class="num">₹2,400</td></tr>
-            <tr><td>Scooters<small>Split equally</small></td><td>Meera ₹1,000<small>Ravi ₹500</small></td><td class="num">₹1,500</td></tr>
-          </tbody>
-        </table>
-        <p class="sub">Balances</p>
-        <ul>
-          <li><span>Asha</span><span class="owed">is owed ₹4,700</span></li>
-          <li><span>Ravi</span><span class="owes">owes ₹1,400</span></li>
-          <li><span>Meera</span><span class="owes">owes ₹3,300</span></li>
-        </ul>
-        <p class="sub">Suggested payments</p>
-        <ul>
-          <li><span>Meera pays Asha</span><span class="num">₹3,300</span></li>
-          <li><span>Ravi pays Asha</span><span class="num">₹1,400</span></li>
-        </ul>
-      </figure>
-    </section>
-
-    <section class="wrap band" id="how" aria-labelledby="how-title">
-      <h2 id="how-title">How it works</h2>
-      <ol class="flow">
-        <li><h3>Add a bill</h3><p>Enter the amount, who paid and who shared it. Split equally, by exact amounts, by percentage or by shares. One bill can have more than one payer.</p></li>
-        <li><h3>See balances</h3><p>Each group shows who is owed and who owes. Simplify suggests payments that bring everyone's balance to zero.</p></li>
-        <li><h3>Record payments</h3><p>When someone pays back outside the app, record it and the balances update. A mistaken record can be reversed.</p></li>
-      </ol>
-      <p>Keep a group for a trip or a shared flat, or a running tab with one person. Attach a photo or PDF to a bill; files are stored privately. On your phone or a supported regular browser, changes made offline sync when you reconnect. You can import a Splitwise CSV export after checking its preview, and export your account data whenever you need it.</p>
-    </section>
-
-    <section class="wrap band" aria-labelledby="upi-title">
-      <h2 id="upi-title">Paying with UPI</h2>
-      <div class="note">
-        <p>If someone has added their UPI address, MeroSplit can open your payment app with it filled in. You check the details and approve the payment there.</p>
-        <p>MeroSplit does not send money, connect to your bank or check payments. Opening or returning from a payment app never marks anything as paid. You record the payment yourself.</p>
+        <p class="install-hint" id="android-prerequisite">Android testers: join the Google Group first.</p>
+        <details class="android-install" id="android-help">
+          <summary>Android beta steps</summary>
+          <div id="android-install" tabindex="-1">
+          <ol>
+            <li><a href="https://groups.google.com/g/merosplit-beta">Join the MeroSplit beta Google Group</a></li>
+            <li><a href="https://play.google.com/apps/testing/com.omshejul.splitdumb">Open Google Play testing</a></li>
+          </ol>
+          <p>Use the same Google account for both steps. This page cannot verify group membership.</p>
+          </div>
+        </details>{% endif %}
+        <a class="web-choice" href="/app/">Continue on web</a>
+        <figure class="install-qr"><img src="/assets/install-qr.svg" width="112" height="112" alt="QR code to open MeroSplit testing options on your phone"><figcaption>Scan to try on your phone.</figcaption></figure>
       </div>
     </section>
 
-    <section class="wrap band" aria-labelledby="faq-title">
-      <h2 id="faq-title">Questions</h2>
-      <div class="faq">
-        <details><summary>Do I need to install anything?</summary><p>No. Open MeroSplit in your browser at <a href="/app/">merosplit.com/app</a> and sign in with your email.</p></details>
-        <details><summary>How are suggested payments worked out?</summary><p>Simplify looks at every balance in the group and pairs the largest amounts first until each balance reaches zero. Nobody's total changes. A suggested payment is not tied to any one bill.</p></details>
-        <details><summary>Can I fix a mistake?</summary><p>Edit the bill, or reverse it and keep the original in history. Reversing a payment record updates balances. It does not reverse a bank transfer.</p></details>
-        <details><summary>Who can see a group's bills?</summary><p>The members of that group. The <a href="/privacy">privacy policy</a> explains invitations and sharing.</p></details>
-        <details><summary>How do I delete my account?</summary><p>Choose Delete account in Me, or follow the steps on the <a href="/delete-account">account deletion page</a>.</p></details>
-      </div>
-    </section>
+    <figure class="split-example" aria-label="Illustrative example of a shared dinner split">
+      <figcaption>Illustrative example</figcaption>
+      <div class="dinner"><h2>Dinner with friends</h2><p>₹1,200</p><span>Asha paid. Split three ways.</span></div>
+      <div class="people" aria-hidden="true"><span>A</span><span>R</span><span>M</span></div>
+      <p class="share">₹400 <span>each</span></p>
+      <ul class="settle"><li><span>Ravi pays Asha</span><strong>₹400</strong></li><li><span>Meera pays Asha</span><strong>₹400</strong></li></ul>
+      <p class="receipt-note">You pay each other. MeroSplit keeps track.</p>
+    </figure>
   </main>
 
-  {% include "ledger/components/public_footer.html" %}
+  {% include "ledger/components/public_footer.html" with show_support=True %}
 </body>
 </html>

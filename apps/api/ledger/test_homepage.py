@@ -8,6 +8,7 @@ from config.associations import ANDROID_ASSOCIATION, APPLE_ASSOCIATION
 from config.web import public_asset
 from django.conf import settings
 from django.test import Client, RequestFactory
+from django.urls import resolve
 
 
 class Document(HTMLParser):
@@ -41,6 +42,7 @@ class Document(HTMLParser):
 
 
 def test_crawler_gets_real_homepage_and_head_without_javascript_or_an_app_export(tmp_path, monkeypatch):
+    monkeypatch.setitem(resolve("/").func.view_initkwargs["extra_context"], "testing_links_ready", False)
     monkeypatch.setenv("MEROSPLIT_WEB_ROOT", str(tmp_path / "absent-web-export"))
     browser = Client(HTTP_USER_AGENT="Googlebot")
     response = browser.get("/")
@@ -48,9 +50,12 @@ def test_crawler_gets_real_homepage_and_head_without_javascript_or_an_app_export
     assert response["Content-Type"].startswith("text/html")
     page = Document(response.content.decode())
     assert page.tags.count("main") == 1 and page.tags.count("h1") == 1
-    assert page.tags.count("h2") >= 2 and len(" ".join(page.text).split()) >= 100
+    assert page.tags.count("figure") == 2 and "Shared bills." in " ".join(page.text)
+    assert "Illustrative example" in " ".join(page.text)
+    assert "table" not in page.tags
+    assert len(" ".join(page.text).split()) <= 150
     assert "/app/" in page.links and {"/privacy", "/support"}.issubset(page.links)
-    assert not any(script.get("type") != "application/ld+json" for script in page.scripts)
+    assert [script.get("src") for script in page.scripts if script.get("type") != "application/ld+json"] == []
     assert "<div id=\"root\"" not in response.content.decode()
     assert page.meta["canonical"] == ["https://merosplit.com/"]
     assert page.meta["og:url"] == "https://merosplit.com/"
@@ -111,3 +116,48 @@ def test_homepage_does_not_take_over_existing_app_legal_association_or_invitatio
     assert browser.get("/.well-known/apple-app-site-association").json() == APPLE_ASSOCIATION
     assert browser.get("/.well-known/assetlinks.json").json() == ANDROID_ASSOCIATION
     assert browser.get("/api/v1/groups").status_code == 401
+
+
+def test_install_intent_is_manual_safe_and_android_group_precedes_play(monkeypatch):
+    monkeypatch.setitem(resolve("/").func.view_initkwargs["extra_context"], "testing_links_ready", True)
+    browser = Client()
+    for ua in ["Googlebot", "iPhone", "Android", "Macintosh"]:
+        response = browser.get("/?install=1", HTTP_USER_AGENT=ua)
+        assert response.status_code == 200 and "Location" not in response
+        html = response.content.decode()
+        assert "Continue on web" in html and "https://testflight.apple.com/join/7HrHqqnB" in html
+        assert html.index("https://groups.google.com/g/merosplit-beta") < html.index("https://play.google.com/apps/testing/com.omshejul.splitdumb")
+        assert "Use the same Google account" in html and "cannot verify group membership" in html
+    from hashlib import sha256
+    for name, digest in [("try-on-iphone.svg", "b01a3c83b8dcde78a3b6c66d733a87507d74db44eae84d8d0b84cd04e89cd253"), ("try-on-android.svg", "235dc98ced6141c589fc655e064479f6719935b90ad04c1a785890226c9ed6fc")]:
+        response = browser.get("/assets/" + name)
+        assert response.status_code == 200
+        assert sha256(b"".join(response.streaming_content)).hexdigest() == digest
+
+
+def test_home_header_is_logo_only_with_help_links_in_footer():
+    browser = Client()
+    html = browser.get("/").content.decode()
+    header = html.split("<header", 1)[1].split("</header>", 1)[0]
+    footer = html.split("<footer", 1)[1].split("</footer>", 1)[0]
+    assert '<a class="brand" href="/"' in header and "<nav" not in header
+    for url in ["/support", "/privacy", "/chat-policy", "/delete-account"]:
+        assert f'href="{url}"' in footer
+    for url in ["/support", "/privacy", "/chat-policy", "/delete-account"]:
+        response = browser.get(url)
+        assert response.status_code == 200
+        help_header = response.content.decode().split("<header", 1)[1].split("</header>", 1)[0]
+        assert '<nav aria-label="Help">' in help_header and 'href="/support"' in help_header
+
+
+def test_pending_testing_links_never_emit_native_links_or_handoff_script(monkeypatch):
+    monkeypatch.setitem(resolve("/").func.view_initkwargs["extra_context"], "testing_links_ready", False)
+    browser = Client()
+    for url in ["/", "/?install=1", "/?install=1#install"]:
+        for ua in ["Googlebot", "iPhone", "Android", "Macintosh"]:
+            response = browser.get(url, HTTP_USER_AGENT=ua)
+            assert response.status_code == 200 and "Location" not in response
+            html = response.content.decode()
+            assert 'href="/app/"' in html and 'src="/assets/install-qr.svg"' in html
+            for withheld in ["testflight.apple.com", "play.google.com/apps/testing", "groups.google.com", '/assets/install.js', 'class="badges"', 'id="android-help"']:
+                assert withheld not in html
