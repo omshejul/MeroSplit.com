@@ -5,6 +5,8 @@ import { readFileSync } from 'node:fs';
 import ts from 'typescript';
 import * as members from '../src/members.ts';
 import { formatMoney, integer, rupeesToPaise, validateExpense } from '../src/accounting.ts';
+import { isPersonalPayment } from '../src/personalBalances.ts';
+import { paymentReturnNeedsConfirmation } from '../src/paymentReturn.ts';
 
 type Element = { type: any; props: Record<string, any>; children: any[] };
 const React = { createElement: (type: any, props: any, ...children: any[]): Element => ({ type, props: props ?? {}, children }) };
@@ -579,4 +581,70 @@ test('balance dialog hides changed calculations, ignores late closed loads, and 
   assert.equal(nodes(tree).find(node => node.type === 'KeyboardDialog')!.props.visible, false);
   assert.ok(!nodes(tree).some(node => typeof node.type === 'function' && node.type.name === 'ExplanationBody'));
   app.unmount();
+});
+
+test('payment address stays selectable, copies the full ID and recovers from clipboard denial', async () => {
+  const copied: string[] = [];
+  let denied = false;
+  const app = harness('src/PaymentPanels.tsx', 'PaymentAddress', { copyText: async (value: string) => { if (denied) throw Error('Denied'); copied.push(value); } });
+  const props = { name: 'Asha', vpa: `${'long'.repeat(12)}@example` };
+  let tree = app.render(props);
+  assert.ok(nodes(tree).some(node => node.props.selectable && node.children.includes(props.vpa)));
+  find(tree, 'accessibilityLabel', "Copy Asha's UPI ID").props.onPress(); await tick();
+  assert.deepEqual(copied, [props.vpa]); assert.ok(find(app.render(props), 'title', 'Copied'));
+  const changed = { name: 'Noor', vpa: 'noor@example' };
+  tree = app.render(changed); assert.ok(find(tree, 'title', 'Copy'), 'copy feedback belongs to the displayed address');
+  denied = true; find(tree, 'title', 'Copy').props.onPress(); await tick();
+  tree = app.render(changed);
+  assert.ok(nodes(tree).some(node => node.type === 'ErrorText' && node.props.live));
+  assert.ok(nodes(tree).some(node => node.props.selectable && node.children.includes(changed.vpa)));
+  denied = false; find(tree, 'title', 'Copy').props.onPress(); await tick();
+  tree = app.render(changed); assert.ok(find(tree, 'title', 'Copied')); assert.ok(!nodes(tree).some(node => node.type === 'ErrorText'));
+});
+
+test('payment page shows the other person’s address in both directions and the frozen payee on return', () => {
+  const paymentGroup = { ...group, transfers: [], participants: [
+    { id: 'self', name: 'Riya', payment_profile: { vpa: 'own@example' } },
+    { id: 'other', name: 'Asha', payment_profile: { vpa: 'asha@example' } },
+  ] };
+  const env = { useMemo: (fn: () => unknown) => fn(), useUI: () => ({ ui: {}, palette: {} }), isPersonalPayment, paymentReturnNeedsConfirmation,
+    PaymentAddress: 'PaymentAddress', LoadingSpinner: 'LoadingSpinner', UPIAppChooser: 'UPIAppChooser', WebPaymentQuote: 'WebPaymentQuote' };
+  for (const incoming of [false, true]) {
+    const props = { group: paymentGroup, selfId: 'self', busy: true, returnPayment: null,
+      initial: { sender: incoming ? 'other' : 'self', recipient: incoming ? 'self' : 'other', amount: '500' } };
+    const tree = harness('src/SettleForm.tsx', 'SettleForm', env).render(props);
+    const address = nodes(tree).find(node => node.type === 'PaymentAddress')!;
+    assert.equal(address.props.name, 'Asha'); assert.equal(address.props.vpa, 'asha@example');
+    assert.equal(address.props.disabled, undefined, 'copy remains available while financial actions are busy');
+    const missing = harness('src/SettleForm.tsx', 'SettleForm', env).render({ ...props, group: { ...paymentGroup, participants: paymentGroup.participants.map(person => person.id === 'other' ? { ...person, payment_profile: null } : person) } });
+    assert.ok(!nodes(missing).some(node => node.type === 'PaymentAddress'), 'never substitutes the signed-in person’s address');
+  }
+  const tree = harness('src/SettleForm.tsx', 'SettleForm', env).render({ group: paymentGroup, selfId: 'self', busy: false,
+    returnPayment: { groupId: 'g', sender: 'self', recipient: 'other', payeeName: 'Original Asha', vpa: 'frozen@example', amount: '500', launch: 'opened', decision: null } });
+  const address = nodes(tree).find(node => node.type === 'PaymentAddress')!;
+  assert.equal(address.props.name, 'Original Asha'); assert.equal(address.props.vpa, 'frozen@example');
+});
+
+test('QR payment page uses the same address row and retains a separate copy-payment-link action', () => {
+  const links: string[] = [], quote = { recipient: 'Asha', vpa: 'frozen@example', amount: '500' };
+  const tree = harness('src/PaymentPanels.tsx', 'WebPaymentQuote', { PaymentAddress: 'PaymentAddress', QRCode: 'QRCode' }).render({ quote, url: 'upi://pay?synthetic', disabled: false, onCopy: (value: string) => links.push(value) });
+  const address = nodes(tree).find(node => typeof node.type === 'function' && node.type.name === 'PaymentAddress')!;
+  assert.equal(address.props.name, quote.recipient); assert.equal(address.props.vpa, quote.vpa);
+  find(tree, 'title', 'Copy payment link').props.onPress(); assert.deepEqual(links, ['upi://pay?synthetic']);
+  assert.ok(!find(tree, 'title', 'Copy UPI address'), 'the ID has only one copy action');
+});
+
+test('clipboard uses the native write boundary on phones and awaits browser success or failure', async () => {
+  const copied: string[] = [];
+  const native = harness('src/clipboard.ts', 'copyText', { Clipboard: { setString: (value: string) => copied.push(value) } });
+  await native.render('native@example'); assert.deepEqual(copied, ['native@example']);
+  let finish!: () => void;
+  const web = harness('src/clipboard.web.ts', 'copyText', { navigator: { clipboard: { writeText: (value: string) => new Promise<void>(resolve => { copied.push(value); finish = resolve; }) } } });
+  let complete = false; const pending = web.render('web@example').then(() => { complete = true; });
+  await tick(); assert.equal(complete, false); finish(); await pending;
+  assert.deepEqual(copied, ['native@example', 'web@example']);
+  web.env.navigator.clipboard.writeText = async () => { throw Error('Denied'); };
+  await assert.rejects(web.render('denied@example'), /Denied/);
+  web.env.navigator.clipboard = undefined;
+  await assert.rejects(web.render('unsupported@example'));
 });

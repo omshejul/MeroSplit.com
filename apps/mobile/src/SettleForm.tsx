@@ -5,11 +5,12 @@ import { Alert } from './alerts';
 import { isPersonalPayment } from './personalBalances';
 import { addSettlement, formatMoney, integer, rupeesToPaise } from './accounting';
 import type { Group } from './types';
-import { Button, Disclosure, ErrorText, Icon, useUI } from './ui';
+import { Button, ErrorText, Icon, useUI } from './ui';
 import type { Palette } from './ui';
 import { AmountField, RadioChoice } from './FormFields';
 import LoadingSpinner from './LoadingSpinner';
-import { UPIAppChooser, WebPaymentQuote } from './PaymentPanels';
+import { PaymentAddress, UPIAppChooser, WebPaymentQuote } from './PaymentPanels';
+import { copyText } from './clipboard';
 import { availableUPIApps, buildUPIUrl, openUPIPayment, validateUPIPayment } from './upi';
 import type { UPIApp, UPILaunchQuote } from './upi';
 import { openAndroidUPIChooser } from './upiHandoff';
@@ -202,7 +203,7 @@ export default function SettleForm({ group, initial, busy, selfId, onSave, onRev
     finally { lock.current = false; if (mounted.current) setSaving(false); }
   }
   async function copy(text: string) {
-    try { if (!navigator.clipboard) throw new Error('Clipboard unavailable'); await navigator.clipboard.writeText(text); setNotice('Copied.'); }
+    try { await copyText(text); setNotice('Copied.'); }
     catch { setError('Select the payment details below and copy them.'); }
   }
   function confirm() {
@@ -218,6 +219,7 @@ export default function SettleForm({ group, initial, busy, selfId, onSave, onRev
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Check the people and payment amount.'); }
   }
   const profile = group.participants.find(person => person.id === recipient)?.payment_profile;
+  const otherPerson = group.participants.find(person => person.id !== selfId && person.id === (sender === selfId ? recipient : sender));
   const debt = group.transfers.find(value => value.sender === sender && value.recipient === recipient);
   const activeAttempt = group.payment_attempts?.find(value => value.sender === sender && value.recipient === recipient && ['prepared', 'reported'].includes(value.state));
   const canPay = sender === selfId && !!debt && !!profile && !group.archived && activeAttempt?.state !== 'reported';
@@ -229,6 +231,7 @@ export default function SettleForm({ group, initial, busy, selfId, onSave, onRev
     return <View style={styles.form}>
       <Text style={ui.caption}>{group.name}</Text>
       <Text style={[ui.section, styles.returnTitle]}>{needsAnswer ? `Did you pay ${pendingReturn.payeeName} ${formatMoney(pendingReturn.amount)}?` : `${formatMoney(pendingReturn.amount)} to ${pendingReturn.payeeName}`}</Text>
+      <PaymentAddress name={pendingReturn.payeeName} vpa={pendingReturn.vpa} />
       <LoadingSpinner visible={busy || saving || reviewing} />
       {!!returnError && <ErrorText>{returnError}</ErrorText>}
       {returnReview ? <Button title="Review balance" kind="primary" onPress={onCancel} disabled={disabled} /> : pendingReturn.decision !== null ?
@@ -257,7 +260,7 @@ export default function SettleForm({ group, initial, busy, selfId, onSave, onRev
       </View>}
     </View>
     </>}
-    {profile && !webQuote && <Disclosure title="Payment address"><Text selectable style={ui.body}>{label(recipient)}'s UPI ID: {profile.vpa}</Text></Disclosure>}
+    {otherPerson?.payment_profile && !webQuote && <PaymentAddress name={label(otherPerson.id)} vpa={otherPerson.payment_profile.vpa} />}
     {sender === selfId && debt && !profile && <Text style={ui.caption}>Ask {label(recipient)} to {group.participants.find(person => person.id === recipient)?.user_id != null ? 'add a UPI address' : 'join and add a UPI address'}.</Text>}
     {canPay && !webQuote && <><Text style={ui.caption}>Pay up to {formatMoney(debt!.amount)}.</Text><Button title={saving ? 'Preparing…' : amountLabel ? `Pay ${amountLabel} with UPI` : 'Pay with UPI'} kind="primary" icon="pay" disabled={disabled || !amountLabel} onPress={() => void pay()} /></>}
     {webQuote && <WebPaymentQuote quote={webQuote.quote} url={webQuote.url} disabled={disabled}
