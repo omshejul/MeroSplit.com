@@ -820,3 +820,18 @@ test('Failed optional UPI save retains the address and never dismisses as saved'
   assert.ok(nodes(tree).some(node => node.type === 'ErrorText'));
   app.unmount();
 });
+
+test('Shared Button forwards Paper dialog spacing without changing disabled or press behavior', () => {
+  const source = ts.createSourceFile('ui.tsx', readFileSync(new URL('../src/ui.tsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const declaration = source.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === 'Button')!;
+  const code = ts.transpile(declaration.getText(source).replace(/^export /, ''), { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React });
+  const env = { React, useUI: () => ({ palette: {} }), usePressFeedback: () => ({ pressedStyle: {} }), PaperButton: 'PaperButton', Icon: 'Icon', radii: { button: 8 }, Platform: { OS: 'ios' } };
+  const Button = new Function('env', `with(env){${code};return Button;}`)(env);
+  const injected = [{ marginRight: 8 }], onPress = () => {};
+  for (const disabled of [false, true]) {
+    const element = Button({ title: 'Cancel', kind: 'text', compact: true, style: injected, disabled, onPress });
+    assert.ok(element.props.style.includes(injected), 'preserve Dialog.Actions child spacing');
+    assert.equal(element.props.onPress, onPress); assert.equal(element.props.disabled, disabled);
+    assert.equal(element.props.accessibilityLabel, 'Cancel');
+  }
+});
