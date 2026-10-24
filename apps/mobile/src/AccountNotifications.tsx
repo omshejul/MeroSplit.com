@@ -53,6 +53,7 @@ export default function AccountNotifications({ session, push, busy, onBusyChange
     finally { inFlight.current = false; if (mounted.current) { setWorking(false); setPendingEnabled(null); } onBusyChange(false); }
   }
   const emailAvailable = !!preferences?.email_reminders && preferences.email_available !== false;
+  const currentPushEnabled = push.state.enabled && (!preferences?.push_device_ids || preferences.push_device_ids.includes(push.state.installationId ?? ''));
   const pushAvailable = preferences?.push_device_ids ? preferences.push_device_ids.some(id => Platform.OS === 'web' || push.state.ready && (id !== push.state.installationId || push.state.enabled)) : push.state.enabled;
   const enabled = pendingEnabled ?? (!!preferences?.expense_updates && preferences.notifications_enabled !== false && (emailAvailable || pushAvailable));
   const disabled = busy || working || push.state.working || !preferences;
@@ -68,8 +69,8 @@ export default function AccountNotifications({ session, push, busy, onBusyChange
     <KeyboardDialog visible={open} dismissable={!busy && !working} onDismiss={() => { if (!busy && !working) close(); }}><Dialog.Title aria-level={2}>Notifications</Dialog.Title>
       <DialogScrollBody maxHeight={Platform.OS === 'web' ? Math.min(560, Math.max(0, height - 224)) : 440} gap={12}>
         {preferences && <><NotificationSwitch icon="notifications" label="Notifications" checked={enabled} disabled={!!disabled} onChange={expense_updates => void update({ ...preferences, expense_updates, email_reminders: expense_updates ? true : preferences.email_reminders }, expense_updates)} />
-            {enabled && <><PushSettings push={push} busy={!!disabled} onBusyChange={onBusyChange} onChanged={async enabled => { await update({ ...preferences, expense_updates: enabled || emailAvailable }); }} />
-            <NotificationSwitch icon="mail" label="Email notifications" checked={preferences.email_reminders} disabled={!!disabled} onChange={email_reminders => void update({ ...preferences, expense_updates: email_reminders || push.state.enabled, email_reminders })} />
+            {enabled && <><PushSettings push={{ ...push, state: { ...push.state, enabled: currentPushEnabled } }} busy={!!disabled} onBusyChange={onBusyChange} onChanged={async enabled => { await update({ ...preferences, expense_updates: enabled || emailAvailable }); }} />
+            <NotificationSwitch icon="mail" label="Email notifications" checked={preferences.email_reminders} disabled={!!disabled} onChange={email_reminders => void update({ ...preferences, expense_updates: email_reminders || currentPushEnabled, email_reminders })} />
             {open && enabled && <BalanceStatements session={session} visible={open} emailEnabled={preferences.email_reminders} busy={!!disabled} onBusyChange={onBusyChange} />}
             </>}
         </>}

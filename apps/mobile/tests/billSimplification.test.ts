@@ -934,3 +934,21 @@ test('explicit master ON refreshes server-confirmed channels after a new push re
   assert.deepEqual(panel.savedPreferences!.push_device_ids, ['this-device']);
   panel.app.unmount();
 });
+
+
+test('stale current push binding stays off in the channel view and last local Email OFF hides channels', async () => {
+  const panel = notificationPanel({ expense_updates: true, email_reminders: true, notifications_enabled: true, push_device_ids: ['other-device'] });
+  panel.props.push.state.enabled = true;
+  panel.app.render(panel.props); panel.app.commit(); await tick();
+  let tree = panel.app.render(panel.props);
+  const pushRow = nodes(tree).find(node => node.type === 'PushSettings')!;
+  assert.equal(pushRow.props.push.state.enabled, false);
+  assert.equal(pushRow.props.push.enable, panel.props.push.enable, 'existing permission and registration functions are preserved');
+  notificationToggle(tree, 'Email notifications').props.onChange(false);
+  assert.equal(panel.pending[0].value.expense_updates, false);
+  panel.saved(0); await tick(); tree = panel.app.render(panel.props);
+  assert.equal(notificationToggle(tree, 'Notifications').props.checked, false);
+  assert.equal(notificationToggle(tree, 'Email notifications'), undefined);
+  assert.ok(!nodes(tree).some(node => node.type === 'PushSettings'));
+  panel.app.unmount();
+});
