@@ -145,7 +145,7 @@ def create_chat_email():
         job = BillChatDelivery(id=uuid4(), expense=row.message.expense, notice=row, recipient_id=row.recipient_id,
             channel='email', mailbox=mailbox, recipient_email=row.recipient_email, due_at=now)
         # Ordinary protected URL, no login/enrollment/claim grant or new access.
-        url = f'{settings.PUBLIC_WEB_URL.rstrip("/")}/app/groups/{job.expense.group_id}/bills/{job.expense_id}/chat'
+        url = f'{settings.PUBLIC_WEB_URL.rstrip("/")}/app/chat/{job.expense.group_id}/{job.expense_id}'
         stop = f'{settings.PUBLIC_WEB_URL.rstrip("/")}/bill-email/opt-out/{job.id}#proof={_proof(job)}'
         text, html = email_delivery.render_message('chat_updates', {'app_url': url, 'stop_url': stop})
         job.payload = email_delivery.message_payload(job.recipient_email, 'Unread messages in MeroSplit', text, html)

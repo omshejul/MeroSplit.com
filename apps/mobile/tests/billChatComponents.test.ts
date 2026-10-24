@@ -19,12 +19,12 @@ const nodes = (value: any): Element[] => Array.isArray(value) ? value.flatMap(no
 const find = (tree: any, type: any) => nodes(tree).find(node => node.type === type)!;
 const button = (tree: any, title: string) => nodes(tree).find(node => node.props.title === title)!;
 
-function component(db: any, send: typeof request) {
+function component(db: any, send: typeof request, extra: Record<string, any> = {}) {
   let cursor = 0, states: any[] = [], effects: (() => void)[] = [], cleanups: Record<number, any> = {}, deps: Record<number, any[]> = {};
   let receive!: (value: ChatPage, older: boolean) => void, fail!: (error: unknown) => void;
   let starts = 0, stops = 0;
   const env: Record<string, any> = { ...chat, React: { createElement: (type: any, props: any, ...children: any[]) => ({ type, props: props ?? {}, children }) },
-    View: 'View', Text: 'Text', FlatList: 'FlatList', ScrollView: 'ScrollView', Button: 'Button', TextField: 'TextField', IconAction: 'IconAction', SettingsRow: 'SettingsRow', ChatControls: 'ChatControls', ChatMenu: 'ChatMenu', KeyboardDialog: 'KeyboardDialog', Dialog: Object.assign(() => {}, { Title: 'Title', Content: 'Content', Actions: 'Actions' }),
+    Platform: { OS: 'native' }, storageIsDurable: () => true, View: 'View', Text: 'Text', FlatList: 'FlatList', ScrollView: 'ScrollView', Button: 'Button', TextField: 'TextField', IconAction: 'IconAction', SettingsRow: 'SettingsRow', ChatControls: 'ChatControls', ChatMenu: 'ChatMenu', KeyboardDialog: 'KeyboardDialog', Dialog: Object.assign(() => {}, { Title: 'Title', Content: 'Content', Actions: 'Actions' }),
     Crypto: { randomUUID: () => 'synthetic-client-uuid' }, ApiError, accountOwner, request: send, getDatabase: async () => db, useUI: () => ({ ui: {}, palette: {} }), useWindowDimensions: () => ({ height: 720 }), Linking: { openURL: async () => {} },
     sendChatMessage: (...args: any[]) => chat.sendChatMessage(args[0], args[1], args[2], args[3], send),
     startChatReads: (_session: any, _path: string, _known: any, onPage: any, onError: any) => { starts++; receive = onPage; fail = onError; return { stop: () => stops++, refresh: () => {}, older: async () => {}, hasOlder: () => true }; },
@@ -32,6 +32,7 @@ function component(db: any, send: typeof request) {
     useRef: (initial: any) => { const id = cursor++; return states[id] ??= { current: initial }; },
     useEffect: (fn: () => any, values: any[]) => { const id = cursor++; if (!deps[id] || values.some((value, i) => value !== deps[id][i])) { effects.push(() => { cleanups[id]?.(); cleanups[id] = fn(); }); deps[id] = values; } },
   };
+  Object.assign(env, extra);
   const source = ts.createSourceFile('BillChatScreen.tsx', readFileSync(new URL('../src/BillChatScreen.tsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   const body = source.statements.filter(node => !ts.isImportDeclaration(node)).map(node => node.getText(source).replace(/^export (?:default )?/, '')).join('\n');
   const code = ts.transpile(body, { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React });
@@ -113,5 +114,50 @@ test('A native foreground reader recovering connection retries the saved message
     app.fail(Error('Read connection lost')); app.render(); await app.commit(); online = true;
     app.page(page([])); app.render(); await app.commit(); await tick();
     assert.equal(posts, 2); assert.deepEqual((await chat.readChatWork(db, session, chat.chatPath('group', 'bill'))).pending, []);
+  } finally { app.unmount(); await chat.flushChatWrites(); raw.close(); }
+});
+
+
+test('A failed visible ACK retries on foreground refresh with the same visible IDs and deduplicates after success', async () => {
+  const raw = new DatabaseSync(':memory:'), db = sqliteAdapter(raw), calls: any[] = []; let fail = true;
+  const send: typeof request = async <T>(_active: Session, path: string, _method?: string, body?: unknown): Promise<T> => {
+    if (path.endsWith('/seen')) { calls.push(body); if (fail) throw Error('Transient ACK failure'); }
+    return { seen: 1 } as T;
+  };
+  const app = component(db, send);
+  try {
+    await migrate(db); app.render(); await app.commit(); app.page(page([message('1'), message('2')]));
+    let tree = app.render(); await app.commit();
+    find(tree, 'FlatList').props.onViewableItemsChanged({ viewableItems: [{ isViewable: true, item: message('1') }] });
+    app.render(); await app.commit(); assert.equal(calls.length, 1);
+    fail = false; app.page(page([])); app.render(); await app.commit();
+    assert.deepEqual(calls, [{ tokens: ['visible-token-1'] }, { tokens: ['visible-token-1'] }]);
+    app.page(page([])); app.render(); await app.commit(); assert.equal(calls.length, 2);
+    // A failed ACK that is no longer visible must not be retried by a refresh.
+    fail = true; tree = app.render();
+    find(tree, 'FlatList').props.onViewableItemsChanged({ viewableItems: [{ isViewable: true, item: message('2') }] });
+    app.render(); await app.commit(); assert.equal(calls.length, 3);
+    find(tree, 'FlatList').props.onViewableItemsChanged({ viewableItems: [] });
+    app.render(); await app.commit(); fail = false; app.page(page([])); app.render(); await app.commit();
+    assert.equal(calls.length, 3);
+  } finally { app.unmount(); await chat.flushChatWrites(); raw.close(); }
+});
+
+
+test('Temporary browser chat warns only for unsent text and removes its beforeunload guard after clearing or leaving', async () => {
+  const raw = new DatabaseSync(':memory:'), db = sqliteAdapter(raw), listeners = new Set<(event: any) => void>(), changed: boolean[] = [];
+  const app = component(db, async <T>() => ({ seen: 1 }) as T, { Platform: { OS: 'web' }, storageIsDurable: () => false, window: { addEventListener: (name: string, fn: any) => { assert.equal(name, 'beforeunload'); listeners.add(fn); }, removeEventListener: (_name: string, fn: any) => listeners.delete(fn) } });
+  try {
+    await migrate(db); app.render({ online: false, onUnsentChange: (unsent: boolean) => changed.push(unsent) }); await app.commit();
+    let tree = app.render({ online: false, onUnsentChange: (unsent: boolean) => changed.push(unsent) }); await app.commit(); assert.equal(listeners.size, 0);
+    const composer = () => nodes(tree).find(node => typeof node.type === 'function' && node.type.name === 'ChatComposer')!;
+    composer().props.onChange('Temporary unsent text'); tree = app.render({ online: false, onUnsentChange: (unsent: boolean) => changed.push(unsent) }); await app.commit();
+    assert.equal(listeners.size, 1); assert.ok(nodes(tree).some(node => node.children.includes('Unsent text lasts only in this tab.')));
+    assert.ok(!nodes(tree).some(node => node.children.includes('Offline. Your draft stays here.')));
+    let prevented = false; const event = { preventDefault: () => { prevented = true; }, returnValue: undefined as unknown };
+    [...listeners][0](event); assert.equal(prevented, true); assert.equal(event.returnValue, '');
+    composer().props.onChange(''); tree = app.render({ online: false, onUnsentChange: (unsent: boolean) => changed.push(unsent) }); await app.commit(); assert.equal(listeners.size, 0);
+    composer().props.onChange('Another draft'); app.render({ online: false, onUnsentChange: (unsent: boolean) => changed.push(unsent) }); await app.commit(); assert.equal(listeners.size, 1);
+    app.unmount(); assert.equal(listeners.size, 0); assert.deepEqual(changed, [false, true, false, true]);
   } finally { app.unmount(); await chat.flushChatWrites(); raw.close(); }
 });

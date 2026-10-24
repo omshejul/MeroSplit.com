@@ -64,3 +64,38 @@ test('Me mounts Connect MCP on native and web, with current account key, session
     assert.equal(elements(render({ ...env, ...away })).some(node => node.type === MCPSettings || node.type === 'ExportData'), false);
   }
 });
+
+test('Activity discovers unread chats before a bill is opened and resolves the authorized exact conversation', async () => {
+  const expression = scroll.children.find((node): node is ts.JsxExpression => ts.isJsxExpression(node) && !!node.expression && node.expression.getText(source).startsWith("screen === 'home' && tab === 'Activity' && session && <ChatInbox"));
+  assert.ok(expression?.expression, 'Activity must mount the unread inbox');
+  const evaluate = new Function('env', `with(env){${ts.transpile('return (' + expression.expression.getText(source) + ');', { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React })}}`);
+  const selected: any[] = [];
+  const tree = evaluate({ React, ChatInbox: 'ChatInbox', screen: 'home', tab: 'Activity', session: { token: 'current' }, owner: 'one', foreground: true, authHeld: false, expired: false, online: true, busy: false, openActivityTarget: async (...args: any[]) => { selected.push(args); } });
+  const entry = elements(tree).find(node => node.type === 'ChatInbox')!;
+  assert.equal(entry.props.key, 'one'); assert.equal(entry.props.active, true); assert.equal(selected.length, 0);
+  entry.props.onOpen('g', 'b'); assert.deepEqual(selected, [[{ kind: 'bill', groupId: 'g', expenseId: 'b' }, true]]);
+  const declaration = app.body!.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === 'openActivityTarget')!;
+  const calls: string[] = [], active = { token: 'current' };
+  const scope = { session: active, activeSessionRef: { current: active }, perform: async (fn: () => Promise<void>) => fn(), fetchGroup: async () => { calls.push('group-read'); return { id: 'g' }; }, withBill: async (_session: any, group: any, id: string) => { calls.push('bill-read-' + id); return group; }, getDatabase: async () => ({}), accountOwner: () => 'one', saveGroup: async () => {}, setGroupId() {}, setExpenseId() {}, setSettlementId() {}, setScreen: (screen: string) => calls.push(screen) };
+  const open = new Function('env', `with(env){${ts.transpile(declaration.getText(source), { target: ts.ScriptTarget.ES2022 })};return openActivityTarget;}`)(scope);
+  await open(selected[0][0], true); assert.deepEqual(calls, ['group-read', 'bill-read-b', 'billChat']);
+});
+
+test('Leaving chat keeps the existing account-wide temporary-tab guard honest about all saved work', async () => {
+  let callback: ts.Expression | undefined;
+  function visit(node: ts.Node): void {
+    if (ts.isJsxSelfClosingElement(node) && node.tagName.getText(source) === 'BillChatScreen') {
+      const attr = node.attributes.properties.find(row => ts.isJsxAttribute(row) && row.name.getText(source) === 'onUnsentChange') as ts.JsxAttribute;
+      callback = (attr.initializer as ts.JsxExpression).expression;
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(main); assert.ok(callback);
+  let pending = 2, flag = false;
+  const ownerRef = { current: 'one' };
+  const handler = new Function('env', `with(env){${ts.transpile('const handler=' + callback.getText(source) + ';return handler;', { target: ts.ScriptTarget.ES2022 })}}`)({ owner: 'one', ownerRef, setHasDrafts: (value: boolean) => { flag = value; }, flushChatWrites: async () => {}, getDatabase: async () => ({ getFirstAsync: async () => ({ n: pending }) }) });
+  handler(true); assert.equal(flag, true);
+  handler(false); for (let i = 0; i < 20; i++) await Promise.resolve(); assert.equal(flag, true, 'another saved draft keeps the host guard after leaving chat');
+  pending = 0; handler(false); for (let i = 0; i < 20; i++) await Promise.resolve(); assert.equal(flag, false);
+  ownerRef.current = 'two'; handler(true); assert.equal(flag, false, 'old account cannot change the new account guard');
+});

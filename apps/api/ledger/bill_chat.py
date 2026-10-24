@@ -5,13 +5,15 @@ from datetime import timedelta
 from django.contrib.auth import get_user_model
 from django.core import signing
 from django.db import transaction
-from django.db.models import Count, Exists, OuterRef, Q
+from django.db.models import CharField, Count, DecimalField, Exists, F, Func, Max, OuterRef, Q
+from django.db.models.functions import Cast
 from django.utils import timezone
 from ninja.errors import HttpError
 
-from .models import BillChatAcceptance, BillChatBlock, BillChatMessage, BillChatNotice, BillChatReport
+from .models import BillChatAcceptance, BillChatBlock, BillChatMessage, BillChatNotice, BillChatReport, Group
 from .profiles import participant_display_name
 from .services import visible_group
+from .store_review import groups_for_actor
 
 SALT = 'merosplit.bill-chat.v1'
 POLICY_VERSION = 1
@@ -51,12 +53,39 @@ def _names(group):
     return {p.user_id: participant_display_name(p) for p in group.participants.select_related('user') if p.user_id}
 
 
-def _unread(actor, bill):
+def _unread(actor, bill=None):
     blocks = BillChatBlock.objects.filter(owner=actor, blocked_id=OuterRef('message__sender_id')).filter(Q(active=True) | Q(changed_at__gte=OuterRef('created_at')))
-    involved = [p.id for p in bill.group.participants.filter(user=actor, removed=False)
-                if int(bill.paid.get(str(p.id), '0')) > 0 or int(bill.shares.get(str(p.id), '0')) > 0]
-    return BillChatNotice.objects.filter(participant_id__in=involved, message__expense=bill, message__hidden_at__isnull=True, recipient=actor,
-                                        seen_at__isnull=True, cancelled_at__isnull=True).filter(~Exists(blocks))
+    groups = groups_for_actor(Group.objects.filter(participants__user=actor, participants__removed=False), actor)
+    query = BillChatNotice.objects.filter(recipient=actor, participant__user=actor, participant__removed=False,
+        message__expense__group_id__in=groups.values('id'), message__hidden_at__isnull=True, seen_at__isnull=True, cancelled_at__isnull=True)
+    def amount(field):
+        return Cast(Func(F('message__expense__' + field), Cast(F('participant_id'), CharField()),
+                         function='jsonb_extract_path_text', output_field=CharField()), DecimalField(max_digits=24, decimal_places=0))
+    query = query.alias(chat_paid=amount('paid'), chat_share=amount('shares')).filter(Q(chat_paid__gt=0) | Q(chat_share__gt=0)).filter(~Exists(blocks))
+    return query.filter(message__expense=bill) if bill else query
+
+
+def chat_inbox(actor, *, limit=20, before=None):
+    if not 1 <= limit <= 20 or before and len(before) > 512:
+        raise HttpError(422, 'Choose a chat page size from 1 to 20')
+    boundary = None
+    if before:
+        try:
+            user, boundary = signing.loads(before, salt=SALT + '.inbox', max_age=86400)
+            if user != str(actor.pk) or not isinstance(boundary, int) or boundary <= 0:
+                raise ValueError()
+        except (signing.BadSignature, ValueError, TypeError) as exc:
+            raise HttpError(422, 'Refresh chats and try again') from exc
+    query = _unread(actor).values('message__expense_id', 'message__expense__group_id', 'message__expense__description', 'message__expense__group__name').annotate(
+        unread=Count('id'), newest=Max('message_id'))
+    if boundary:
+        query = query.filter(newest__lt=boundary)
+    rows = list(query.order_by('-newest')[:limit + 1])
+    more = len(rows) > limit
+    rows = rows[:limit]
+    return {'conversations': [{'group_id': str(row['message__expense__group_id']), 'expense_id': str(row['message__expense_id']),
+        'group': row['message__expense__group__name'], 'bill': row['message__expense__description'], 'unread': row['unread']} for row in rows],
+        'next_cursor': signing.dumps([str(actor.pk), rows[-1]['newest']], salt=SALT + '.inbox', compress=True) if rows and more else None}
 
 
 def _visible_messages(actor, bill):

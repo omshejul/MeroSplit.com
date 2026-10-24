@@ -32,6 +32,7 @@ from .test_api import authenticated_client, expense, send, uid
 from .test_api import client as client
 from .test_api import group as group
 from .test_push import register
+from .test_web_app import exported_app as exported_app
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -162,6 +163,7 @@ def test_notification_audience_is_financial_involvement_not_authors(setup, group
     chat.send_message(bystander, gid, bill, uuid4(), 'I can join a visible conversation')
     post(setup)
     assert not BillChatNotice.objects.filter(recipient=bystander).exists()
+    assert chat.chat_inbox(bystander)['conversations'] == []
     assert set(BillChatNotice.objects.values_list('recipient_id', flat=True)) == {owner.actor.pk, recipient.actor.pk}
 
 
@@ -495,3 +497,96 @@ def test_reading_all_messages_releases_held_email_without_backlog_replay(setup, 
     clock[0] += timedelta(minutes=11)
     notices.send_chat_notifications()
     assert len(providers['email']) == 1
+
+
+def test_chat_email_uses_browser_route_outside_native_associations_with_ordinary_auth(setup, clock, settings, exported_app):
+    import fnmatch
+    import json
+    import re
+    from pathlib import Path
+    from urllib.parse import urlsplit
+
+    from config.associations import APPLE_ASSOCIATION
+    from config.web import web_app
+    from django.test import Client
+    from django.urls import resolve
+
+    from .models import EmailLoginGrant, Invite
+    from .test_web_app import body
+
+    first = post(setup, 'Private message that must never appear in email')
+    before = (EmailLoginGrant.objects.count(), Invite.objects.count())
+    clock[0] += timedelta(minutes=11)
+    job = BillChatDelivery.objects.get(pk=notices.create_chat_email())
+    links = re.findall(r'https://[^\s<]+', job.payload['text'])
+    url = next(link for link in links if '/app/chat/' in link)
+    path = urlsplit(url).path
+    assert path == f'/app/chat/{setup[2]}/{setup[3]}'
+    assert first['text'] not in str(job.payload) and 'proof=' not in url
+    apple = APPLE_ASSOCIATION['applinks']['details'][0]['components']
+    assert not any(fnmatch.fnmatchcase(path, row['/']) for row in apple)
+    app = json.loads((Path(settings.BASE_DIR).parent / 'mobile' / 'app.json').read_text())
+    prefixes = [row['pathPrefix'] for item in app['expo']['android']['intentFilters'] for row in item['data']]
+    assert not any(path.startswith(prefix) for prefix in prefixes)
+    assert resolve(path).func is web_app
+    shell = Client().get(path)
+    assert shell.status_code == 200 and first['text'].encode() not in body(shell)
+    assert send(Client(), 'get', setup[4]).status_code == 401
+    assert page(setup)['messages'][0]['id'] == first['id']
+    assert before == (EmailLoginGrant.objects.count(), Invite.objects.count())
+    print('chat email web contract: ' + json.dumps({'url': url, 'groupId': setup[2], 'expenseId': setup[3]}))
+
+
+def test_chat_inbox_discovers_exact_conversation_without_opening_bill_or_marking_seen(setup):
+    owner, recipient, gid, bill, path = setup
+    post(setup)
+    versions = (Group.objects.get(pk=gid).version, Expense.objects.get(pk=bill).version, CommandReceipt.objects.count())
+    response = send(recipient, 'get', '/me/chat-conversations')
+    assert response.status_code == 200
+    row = response.json()['conversations'][0]
+    assert row == {'group_id': gid, 'expense_id': bill, 'group': 'Functional test', 'bill': 'Test expense', 'unread': 1}
+    assert 'text' not in row
+    assert send(owner, 'get', '/me/chat-conversations').json()['conversations'] == []
+    assert not BillChatNotice.objects.get().seen_at
+    assert versions == (Group.objects.get(pk=gid).version, Expense.objects.get(pk=bill).version, CommandReceipt.objects.count())
+    assert response['Cache-Control'] == 'private, no-store'
+
+
+@pytest.mark.parametrize('change', ['blocked', 'removed', 'no_involvement', 'not_linked'])
+def test_chat_inbox_rechecks_current_recipient_access_and_blocks(setup, change):
+    owner, recipient, gid, bill, path = setup
+    post(setup)
+    if change == 'blocked':
+        chat.block_user(recipient.actor, gid, bill, owner.actor.pk, True)
+    elif change == 'removed':
+        Participant.objects.filter(group_id=gid, user=recipient.actor).update(removed=True)
+    elif change == 'no_involvement':
+        Expense.objects.filter(pk=bill).update(paid={}, shares={})
+    else:
+        Participant.objects.filter(group_id=gid, user=recipient.actor).update(user=None)
+    response = send(recipient, 'get', '/me/chat-conversations')
+    assert response.status_code == 200 and response.json()['conversations'] == []
+    assert not BillChatNotice.objects.get().seen_at
+
+
+def test_chat_inbox_pages_are_bounded_signed_account_scoped_and_do_not_ack(setup):
+    from django.test.utils import CaptureQueriesContext
+
+    owner, recipient, gid, bill, path = setup
+    person = Participant.objects.get(group_id=gid, user=recipient.actor)
+    original = Expense.objects.get(pk=bill)
+    for _ in range(23):
+        original.id = uuid4()
+        original.save(force_insert=True)
+        message = BillChatMessage.objects.create(expense=original, sender=owner.actor, client_id=uuid4(), text='Unread private body', created_at=timezone.now())
+        BillChatNotice.objects.create(message=message, participant=person, recipient=recipient.actor, created_at=timezone.now())
+    with CaptureQueriesContext(connection) as queries:
+        first = chat.chat_inbox(recipient.actor)
+    assert len(queries) <= 3 and len(first['conversations']) == 20
+    second = chat.chat_inbox(recipient.actor, before=first['next_cursor'])
+    assert len(second['conversations']) == 3 and second['next_cursor'] is None
+    ids = [row['expense_id'] for row in first['conversations'] + second['conversations']]
+    assert len(set(ids)) == 23
+    assert send(owner, 'get', '/me/chat-conversations?before=' + first['next_cursor']).status_code == 422
+    assert send(recipient, 'get', '/me/chat-conversations?limit=21').status_code == 422
+    assert not BillChatNotice.objects.filter(seen_at__isnull=False).exists()

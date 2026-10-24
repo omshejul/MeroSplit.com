@@ -350,6 +350,11 @@ def bill_chat_report(request, group_id: UUID, expense_id: UUID, body: ChatReport
     return _chat_json(bill_chat.report_message(request.auth, group_id, expense_id, body.message_id, body.kind, body.reason))
 
 
+@api.get('/me/chat-conversations')
+def chat_conversations_get(request, limit: int = 20, before: str | None = None):
+    return _chat_json(bill_chat.chat_inbox(request.auth, limit=limit, before=before))
+
+
 @api.get('/me/chat-notifications')
 def chat_notifications_get(request, notice_ids: str = ''):
     try:

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { FlatList, Linking, ScrollView, Text, View, useWindowDimensions } from 'react-native';
+import { FlatList, Linking, Platform, ScrollView, Text, View, useWindowDimensions } from 'react-native';
 import { Dialog } from 'react-native-paper';
 import * as Crypto from 'expo-crypto';
 import { accountOwner, ApiError, request } from './api';
@@ -8,7 +8,7 @@ import type { ChatMessage, ChatPage, ChatWork } from './billChat';
 import ChatControls, { ChatMenu } from './ChatControls';
 import { TextField } from './FormFields';
 import KeyboardDialog from './KeyboardDialog';
-import { getDatabase } from './native';
+import { getDatabase, storageIsDurable } from './native';
 import type { Session } from './types';
 import { Button, IconAction, SettingsRow, useUI } from './ui';
 
@@ -46,7 +46,7 @@ export function ChatComposer({ text, disabled, sendDisabled, onChange, onSend }:
     <Button title="Send" kind="primary" disabled={disabled || sendDisabled || !text.trim()} onPress={onSend} />
   </View>;
 }
-export default function BillChatScreen({ session, groupId, expenseId, active, online, onRead }: { session: Session; groupId: string; expenseId: string; active: boolean; online: boolean; onRead?: () => void }) {
+export default function BillChatScreen({ session, groupId, expenseId, active, online, onRead, onUnsentChange }: { session: Session; groupId: string; expenseId: string; active: boolean; online: boolean; onRead?: () => void; onUnsentChange?: (unsent: boolean) => void }) {
   const { ui, palette } = useUI(), { height } = useWindowDimensions(), path = chatPath(groupId, expenseId);
   const [messages, setMessages] = useState<ChatMessage[]>([]), [page, setPage] = useState<ChatPage | null>(null), [work, setWork] = useState<ChatWork>({ draft: '', pending: [] });
   const [reconnected, setReconnected] = useState(0), [ready, setReady] = useState(false), [error, setError] = useState(''), [sending, setSending] = useState(''), [olderBusy, setOlderBusy] = useState(false);
@@ -55,9 +55,18 @@ export default function BillChatScreen({ session, groupId, expenseId, active, on
   const list = useRef<FlatList<ChatMessage>>(null), rows = useRef(messages), viewable = useRef(visible), follow = useRef(true), incoming = useRef<ChatMessage[]>([]), forceFollow = useRef(false), alive = useRef(true), draft = useRef('');
   const scope = `${accountOwner(session)}|${session.token}|${path}`, currentScope = useRef(scope); currentScope.current = scope;
   rows.current = messages; viewable.current = visible;
-  const readFailed = useRef(false), reads = useRef<ReturnType<typeof startChatReads> | null>(null), sendingLock = useRef(false), composingLock = useRef(false), controlLock = useRef(false), acked = useRef(new Set<string>());
+  const ackVisible = useRef<() => void>(() => {}), readFailed = useRef(false), reads = useRef<ReturnType<typeof startChatReads> | null>(null), sendingLock = useRef(false), composingLock = useRef(false), controlLock = useRef(false), acked = useRef(new Set<string>());
   const current = () => alive.current && currentScope.current === scope;
-  const enabled = active && online && !denied;
+  const enabled = active && online && !denied, durable = storageIsDurable();
+  const hasUnsent = !!work.draft || work.pending.length > 0, temporaryUnsent = !durable && hasUnsent;
+  const unsentHandler = useRef(onUnsentChange); unsentHandler.current = onUnsentChange;
+  useEffect(() => { if (ready) unsentHandler.current?.(hasUnsent); }, [ready, hasUnsent]);
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !temporaryUnsent) return;
+    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ''; };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [temporaryUnsent]);
   const viewability = useRef({ minimumViewTime: 500, viewAreaCoveragePercentThreshold: 50 });
   const onViewable = useRef(({ viewableItems }: { viewableItems: { isViewable: boolean; item: ChatMessage }[] }) => setVisible(viewableItems.filter(row => row.isViewable).map(row => row.item.id)));
   useEffect(() => {
@@ -69,6 +78,7 @@ export default function BillChatScreen({ session, groupId, expenseId, active, on
     if (!enabled) return;
     reads.current = startChatReads(session, path, () => [...viewable.current, ...incoming.current.map(row => row.id)].slice(0, 50), (value, older) => {
       if (readFailed.current) { readFailed.current = false; setReconnected(value => value + 1); }
+      ackVisible.current();
       setError(''); setPage(previous => older && previous ? { ...value, after_cursor: previous.after_cursor } : previous ? { ...value, older_cursor: previous.older_cursor } : value);
       const unseen = value.messages.some(row => !rows.current.some(old => old.id === row.id));
       if (!older && unseen && rows.current.length && !follow.current) {
@@ -88,15 +98,20 @@ export default function BillChatScreen({ session, groupId, expenseId, active, on
   }, [enabled, session.token, path]);
   useEffect(() => {
     if (!enabled) return;
-    const unseen = visible.filter(id => !acked.current.has(id));
-    const tokens = visibleChatTokens(messages, unseen, active);
-    if (!tokens.length) return;
-    const controller = new AbortController(); let cancelled = false;
-    void request(session, path + '/seen', 'POST', { tokens }, 'json', controller.signal).then(() => {
-      if (cancelled || !current()) return;
-      unseen.forEach(id => acked.current.add(id)); onRead?.();
-    }).catch(() => {});
-    return () => { cancelled = true; controller.abort(); };
+    let controller: AbortController | undefined, running = false, cancelled = false;
+    function acknowledge() {
+      if (cancelled || running || !current()) return;
+      const unseen = viewable.current.filter(id => !acked.current.has(id));
+      const tokens = visibleChatTokens(rows.current, unseen, active);
+      if (!tokens.length) return;
+      controller = new AbortController(); running = true;
+      void request(session, path + '/seen', 'POST', { tokens }, 'json', controller.signal).then(() => {
+        if (cancelled || !current()) return;
+        unseen.forEach(id => acked.current.add(id)); onRead?.();
+      }).catch(() => { /* The next successful foreground read retries current visible IDs. */ }).finally(() => { running = false; });
+    }
+    ackVisible.current = acknowledge; acknowledge();
+    return () => { cancelled = true; controller?.abort(); if (ackVisible.current === acknowledge) ackVisible.current = () => {}; };
   }, [enabled, visible.join(',')]);
   function typed(text: string) {
     draft.current = text; setWork(previous => ({ ...previous, draft: text }));
@@ -172,9 +187,10 @@ export default function BillChatScreen({ session, groupId, expenseId, active, on
       renderItem={({ item, index }) => <ChatMessageRow message={item} own={item.sender_id === session.userId} active={enabled} showDate={index === newestFirst.length - 1 || new Date(newestFirst[index + 1].created_at).toDateString() !== new Date(item.created_at).toDateString()} onReport={kind => setReport({ message: item, kind })} onBlock={() => void control(() => block(item.sender_id, true))} />} />
     {newMessages && <Button title="New messages" kind="text" onPress={showNew} />}
     <View style={{ paddingHorizontal: 16, paddingBottom: 12, gap: 8, borderTopWidth: 0.5, borderColor: palette.line }}>
-      {!!work.pending.length && <ScrollView style={{ maxHeight: Math.min(144, height * 0.25) }} keyboardShouldPersistTaps="handled">{work.pending.filter(row => !messages.some(message => message.client_id === row.id && message.sender_id === session.userId)).map(row => <View key={row.id} style={{ gap: 4 }}><Text numberOfLines={2} style={ui.body}>{row.text}</Text><Text accessibilityRole={row.error ? 'alert' : undefined} style={row.error ? ui.error : ui.caption}>{sending === row.id ? 'Sending…' : row.error ?? 'Saved to send'}</Text><Button title={row.rejected ? 'Edit message' : 'Retry'} kind="text" disabled={!!sending || !active || (!row.rejected && (!enabled || !page?.can_send))} onPress={() => { if (row.rejected) void getDatabase().then(db => editRejectedChat(db, session, path, row.id)).then(value => { if (current()) { draft.current = value.draft; setWork(value); } }).catch(cause => setError(cause.message)); else void retry(row.id); }} /></View>)}</ScrollView>}
+      {!!work.pending.length && <ScrollView style={{ maxHeight: Math.min(144, height * 0.25) }} keyboardShouldPersistTaps="handled">{work.pending.filter(row => !messages.some(message => message.client_id === row.id && message.sender_id === session.userId)).map(row => <View key={row.id} style={{ gap: 4 }}><Text numberOfLines={2} style={ui.body}>{row.text}</Text><Text accessibilityRole={row.error ? 'alert' : undefined} style={row.error ? ui.error : ui.caption}>{sending === row.id ? 'Sending…' : row.error ?? (durable ? 'Saved to send' : 'Waiting to send')}</Text><Button title={row.rejected ? 'Edit message' : 'Retry'} kind="text" disabled={!!sending || !active || (!row.rejected && (!enabled || !page?.can_send))} onPress={() => { if (row.rejected) void getDatabase().then(db => editRejectedChat(db, session, path, row.id)).then(value => { if (current()) { draft.current = value.draft; setWork(value); } }).catch(cause => setError(cause.message)); else void retry(row.id); }} /></View>)}</ScrollView>}
       {!!error && !work.pending.some(row => row.error === error) && <Text accessibilityRole="alert" style={ui.error}>{error}</Text>}
-      {!online && <Text style={ui.caption}>Offline. Your draft stays here.</Text>}
+      {temporaryUnsent && <Text accessibilityLiveRegion="polite" style={ui.caption}>Unsent text lasts only in this tab.</Text>}
+      {!online && <Text style={ui.caption}>{durable ? 'Offline. Your draft stays here.' : 'Offline. Retry when connected.'}</Text>}
       {page && !page.can_send ? <Text style={ui.caption}>This conversation is read-only.</Text> : <ChatComposer text={work.draft} disabled={!ready || !active || denied} sendDisabled={!page?.can_send || !!sending} onChange={typed} onSend={() => void send()} />}
       {denied && <Text style={ui.caption}>This conversation is unavailable. Your unsent text is saved.</Text>}
     </View>
