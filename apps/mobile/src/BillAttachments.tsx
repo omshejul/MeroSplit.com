@@ -10,7 +10,7 @@ import LocalAttachment from './LocalAttachment';
 import PrivateMediaImage from './PrivateMediaImage';
 import RemoveMediaMenu from './RemoveMediaMenu';
 import type { Session } from './types';
-import { Button, Icon, SettingsRow, useUI } from './ui';
+import { SectionHeading, Button, Icon, SettingsRow, useUI } from './ui';
 
 export type BillAttachmentsProps = { session: Session | null; groupId: string; expenseId: string; revision?: number; readOnly?: boolean; busy: boolean; onBusyChange: (busy: boolean) => void; onChanged?: () => Promise<void> };
 function AttachmentRow({ session, item, disabled, onOpen, options }: {
@@ -104,8 +104,8 @@ export default function BillAttachments({ session, groupId, expenseId, revision,
     }) }]);
   }
   const disabled = busy || loading || working, editable = !readOnly && canModify;
-  return <View style={{ gap: 10 }}>
-    <Text style={ui.section}>Attachments{items.length ? ` (${items.length})` : ''}</Text>
+  return <View role="region" accessibilityLabel="Attachments" style={{ gap: 10 }}>
+    <SectionHeading>Attachments{items.length ? ` (${items.length})` : ''}</SectionHeading>
     {!session ? <Text style={ui.caption}>Sign in to view attachments.</Text> : <>
       {loading && <Text style={ui.caption}>Loading attachments…</Text>}
       {working && <Text accessibilityLiveRegion="polite" style={ui.caption}>Processing file…</Text>}

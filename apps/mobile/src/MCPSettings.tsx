@@ -50,7 +50,7 @@ export default function MCPSettings({ session, busy, onBusyChange }: { session: 
   return <>
     <SettingsRow rowRef={row} icon="settings" label="Connect MCP" disabled={disabled} onPress={() => { if (!disabled && !inFlight.current) { setOpen(true); void load(); } }} />
     <KeyboardDialog visible={open} dismissable={!disabled} onDismiss={close} maxHeight={Math.max(0, height - top - bottom)}>
-      <Dialog.Title>Connect MCP</Dialog.Title>
+      <Dialog.Title aria-level={2}>Connect MCP</Dialog.Title>
       <DialogScrollBody maxHeight={440} gap={12}>
         <Text style={ui.caption}>Let an assistant read your groups and record bills or payments. It cannot send money.</Text>
         <Button title="Setup instructions" kind="text" disabled={disabled} onPress={() => void Linking.openURL(setup).catch(() => setError('Could not open setup instructions. Try again.'))} />

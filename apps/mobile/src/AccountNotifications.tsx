@@ -50,7 +50,7 @@ export default function AccountNotifications({ session, push, busy, onBusyChange
     return () => document.removeEventListener('keydown', escape, true);
   }, [open, busy, working]);
   return <><SettingsRow rowRef={row} icon="notifications" label="Notifications" value={value} disabled={busy} onPress={() => { setOpen(true); void load(); }} />
-    <KeyboardDialog visible={open} dismissable={!busy && !working} onDismiss={() => { if (!busy && !working) close(); }}><Dialog.Title>Notifications</Dialog.Title>
+    <KeyboardDialog visible={open} dismissable={!busy && !working} onDismiss={() => { if (!busy && !working) close(); }}><Dialog.Title aria-level={2}>Notifications</Dialog.Title>
       <DialogScrollBody maxHeight={440} gap={12}>
         {preferences && <><NotificationSwitch label="Bill updates" checked={preferences.expense_updates} disabled={!!disabled} onChange={expense_updates => void update({ ...preferences, expense_updates })} />
           <NotificationSwitch label="Unread bill emails" checked={preferences.email_reminders} disabled={!!disabled || !preferences.expense_updates} onChange={email_reminders => void update({ ...preferences, email_reminders })} />

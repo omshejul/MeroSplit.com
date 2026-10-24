@@ -8,7 +8,7 @@ import { paymentPresentation } from './activityPresentation';
 import { VisibleExpense } from './useExpenseNotices';
 import type { NoticeVisibility } from './useExpenseNotices';
 import type { BillRow, Command, Expense, Group, GroupTransaction, Participant, Settlement, HistoryResource, HistoryWindow } from './types';
-import { AmountText, Avatar, balanceColor, Button, Disclosure, Icon, IconBadge, radii, useUI } from './ui';
+import { SectionHeading, AmountText, Avatar, balanceColor, Button, Disclosure, Icon, IconBadge, radii, useUI } from './ui';
 
 type Transfer = { sender: string; recipient: string; amount: string };
 type ReceiptAttempt = NonNullable<Group['payment_attempts']>[number];
@@ -118,7 +118,7 @@ function BillTimelineRow({ expense, group, selfId, busy, onExpense, noticeVisibi
 function RecordSummary({ title, amount, amountColor, children }: { title: string; amount: string; amountColor?: string; children: React.ReactNode }) {
   const { ui } = useUI();
   return <View style={s.summary}>
-    <Text style={ui.section}>{title}</Text>
+    <SectionHeading>{title}</SectionHeading>
     <Text style={[ui.numeric, amountColor && { color: amountColor }]}>{formatMoney(amount)}</Text>
     {children}
   </View>;
@@ -153,7 +153,7 @@ export default function GroupScreen({ noticeVisibility, group, accepted, pending
   const celebrateSettled = pending.length === 0 && accepted.balances?.[selfId] === '0';
   const rows: GroupTransaction[] = group.transactions ?? (group.read_mode === 'summary' ? expenses : [...expenses].reverse()).map(bill => ({ kind: 'bill', date: bill.date, bill }));
   const payments = personalSettlements(group, selfId);
-  return <View style={s.content}>
+  return <View role="region" accessibilityLabel={group.name} style={s.content}>
     {group.archived && <Text style={ui.notice}>Archived. Reopen in settings to make changes.{receipts.length > 0 ? ' You can still confirm money received.' : ''}</Text>}
     {pending.length > 0 && <View style={s.section}>
       <Text style={[ui.notice, ui.warning]}>{needsAttention ? 'Some changes need your attention.' : durable ? 'Waiting to sync.' : 'Not confirmed. Keep this tab open and reconnect.'}</Text>
@@ -166,15 +166,15 @@ export default function GroupScreen({ noticeVisibility, group, accepted, pending
     <HistoryPages history={group.history?.attempts} resource="attempts" busy={busy} onPage={onHistoryPage} />
     {!transfers.length && <Text style={celebrateSettled ? ui.numeric : ui.caption}>{celebrateSettled ? '🎉 All settled' : 'All settled'}</Text>}
     {transfers.map(transfer => <PersonalTransferRow key={`${transfer.sender}:${transfer.recipient}`} transfer={transfer} group={group} selfId={selfId} disabled={busy || !!group.archived || pending.length > 0} onSettle={onSettle} />)}
-    <Text style={ui.caption}>Bills and payments</Text>
+    <SectionHeading style={ui.caption}>Bills and payments</SectionHeading>
       {(rows.length >= 5 || !!(group.history?.[historyResource]?.next_cursor || group.history?.[historyResource]?.previous?.length || group.history?.[historyResource]?.query)) && <BillSearch value={search} onChange={setSearch} onSearch={() => onHistoryPage?.(historyResource, 'search', search.trim())} showSubmit={group.read_mode === 'summary'} busy={busy} />}
       {!rows.length && <View style={s.empty}>
         <Icon name="bill" size={32} />
         <Text style={ui.section}>{group.history?.[historyResource]?.query || (group.read_mode !== 'summary' && search.trim()) ? 'No matching bills' : 'No bills or payments yet'}</Text>
       </View>}
-      {rows.length > 0 && <View>{rows.map(row => row.kind === 'payment'
+      {rows.length > 0 && <View role="list" accessibilityLabel="Bills and payments">{rows.map(row => <View role="listitem" key={row.kind === 'payment' ? `payment:${row.payment.id}` : `bill:${row.bill.id}`}>{row.kind === 'payment'
         ? <PaymentRow key={`payment:${row.payment.id}`} payment={row.payment} accepted={accepted} group={group} selfId={selfId} busy={busy} onPayment={onPayment} />
-        : <BillTimelineRow key={`bill:${row.bill.id}`} expense={row.bill} group={group} selfId={selfId} busy={busy} onExpense={onExpense} noticeVisibility={group === accepted ? noticeVisibility : undefined} />)}</View>}
+        : <BillTimelineRow key={`bill:${row.bill.id}`} expense={row.bill} group={group} selfId={selfId} busy={busy} onExpense={onExpense} noticeVisibility={group === accepted ? noticeVisibility : undefined} />}</View>)}</View>}
       {group.transactions === undefined && (!!payments.length || !!group.history?.settlements?.next_cursor || !!group.history?.settlements?.previous?.length) && <Disclosure title="Payment records">
         {payments.length > 0 && <View>{payments.map(payment => <PaymentRow key={`payment:${payment.id}`} payment={payment} accepted={accepted} group={group} selfId={selfId} busy={busy} onPayment={onPayment} />)}</View>}
         <HistoryPages history={group.history?.settlements} resource="settlements" busy={busy} onPage={onHistoryPage} />
@@ -193,7 +193,7 @@ export function PaymentDetail({ payment, group, selfId, busy, canReverse, onReve
   const name = (id: string) => participantName(group.participants, selfId, id);
   const row = paymentPresentation(payment, selfId, name);
   const involved = payment.sender === selfId || payment.recipient === selfId;
-  return <View style={s.content}>
+  return <View role="region" accessibilityLabel={group.name} style={s.content}>
     <RecordSummary title={row.title} amount={payment.amount} amountColor={row.cashflow === '0' ? colors.text : balanceColor(row.cashflow, colors)}>
       <Text style={ui.caption}>{group.name} · {displayDate(payment.date)} · {row.status}</Text>
       <RecordAttribution action="Marked paid" name={payment.recorded_by_name} />
@@ -210,7 +210,7 @@ export function ExpenseDetail({ noticeVisibility, expense, group, selfId, busy, 
   const change = expenseBalanceChange(expense, selfId);
   const payers = group.participants.filter(person => BigInt(expense.paid[person.id] ?? '0') > 0n);
   const sharing = group.participants.filter(person => Object.hasOwn(expense.split.values, person.id));
-  return <View style={s.content}>
+  return <View role="region" accessibilityLabel={group.name} style={s.content}>
     <VisibleExpense groupId={group.id} expense={expense} visibility={(group.expenses.find(value => value.id === expense.id) ?? group.focused_expense) === expense ? noticeVisibility : undefined}><RecordSummary title={expense.description} amount={expense.total}>
       <Text style={[ui.body, { color: balanceColor(change, colors) }]}>{billImpact(change)}</Text>
       <Text style={ui.caption}>{group.name} · {displayDate(expense.date)}</Text>

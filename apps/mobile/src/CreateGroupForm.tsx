@@ -1,3 +1,4 @@
+import Form from './Form';
 import React, { useState } from 'react';
 import { View } from 'react-native';
 import { EmailField, TextField } from './FormFields';
@@ -7,7 +8,8 @@ export type NewGroupValues = { name: string; people: string[]; email: string };
 export default function CreateGroupForm({ direct, busy, onCreate }: { direct: boolean; busy: boolean; onCreate: (values: NewGroupValues) => void }) {
   const [name, setName] = useState(''), [people, setPeople] = useState(['']), [email, setEmail] = useState('');
   const valid = people.every(value => !!value.trim()) && (direct ? !email.trim() || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()) : !!name.trim());
-  return <>
+  const submit = () => { if (!busy && valid) onCreate({ name, people, email }); };
+  return <Form label={direct ? 'Add person' : 'New group'} onSubmit={submit}>
     {!direct && <TextField label="Group name" value={name} onChangeText={setName} autoCorrect={false} autoCapitalize="words" />}
     {people.map((person, index) => <View key={index} style={{ gap: 6 }}>
       <TextField label={direct ? 'Their name' : `Person ${index + 1}`} value={person} onChangeText={value => setPeople(rows => rows.map((row, at) => at === index ? value : row))} autoCorrect={false} autoCapitalize="words" />
@@ -15,6 +17,6 @@ export default function CreateGroupForm({ direct, busy, onCreate }: { direct: bo
     </View>)}
     {!direct && <Button title="Add person" kind="text" icon="add" disabled={busy} onPress={() => setPeople(rows => [...rows, ''])} />}
     {direct && <EmailField label="Email (optional)" value={email} onChangeText={setEmail} />}
-    <Button title={direct ? 'Add person' : 'Create group'} kind="primary" disabled={busy || !valid} onPress={() => onCreate({ name, people, email })} />
-  </>;
+    <Button title={direct ? 'Add person' : 'Create group'} kind="primary" disabled={busy || !valid} onPress={submit} />
+  </Form>;
 }

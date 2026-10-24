@@ -1,2 +1,4 @@
 # Unified patch context lines intentionally contain a single space.
 apps/mobile/patches/*.patch -whitespace
+# Preserve the original upstream license, including its trailing space.
+**/OFL-StackSansText.txt whitespace=-blank-at-eol

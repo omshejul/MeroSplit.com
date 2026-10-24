@@ -15,9 +15,11 @@ from ledger.bill_email_views import stop_bill_emails
 from ledger.mcp_setup import setup as mcp_setup
 
 from config.associations import android_association, apple_association
-from config.web import invite_app, web_app, web_media
+from config.web import invite_app, public_typography, web_app, web_media
 
 urlpatterns = [
+    path("assets/typography.css", public_typography, {"asset": "typography.css"}),
+    path("assets/fonts/StackSansText.ttf", public_typography, {"asset": "StackSansText.ttf"}),
     path("mcp/setup", mcp_setup),
     path("bill-email/opt-out/<uuid:notice_id>", stop_bill_emails),
     path(".well-known/oauth-authorization-server", mcp_oauth_views.metadata),

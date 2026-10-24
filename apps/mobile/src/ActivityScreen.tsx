@@ -22,8 +22,8 @@ export default function ActivityScreen({ items, busy, error, hasMore, emptyVerif
       {busy && <ActivityIndicator accessibilityLabel="Loading activity" />}
       <Text style={ui.caption}>{busy ? 'Loading activity…' : 'No activity yet'}</Text>
     </View>}
-    {items.map((item, index) => <ActivityRow key={item.id} item={item} busy={busy} onOpen={onOpen}
-      showDay={index === 0 || activityDay(items[index - 1].created_at) !== activityDay(item.created_at)} />)}
+    {!!items.length && <View role="list" accessibilityLabel="Activity">{items.map((item, index) => <View role="listitem" key={item.id}><ActivityRow item={item} busy={busy} onOpen={onOpen}
+      showDay={index === 0 || activityDay(items[index - 1].created_at) !== activityDay(item.created_at)} /></View>)}</View>}
     {!!hasMore && !!onLoadMore && <Button title="Older activity" disabled={busy} onPress={onLoadMore} />}
   </View>;
 }
@@ -34,7 +34,7 @@ function ActivityRow({ item, busy, showDay, onOpen }: {
   const { ui, palette } = useUI();
   const row = activityPresentation(item), day = activityDay(item.created_at);
   return <>
-    {showDay && <Text accessibilityRole="header" style={[ui.caption, s.day]}>{day}</Text>}
+    {showDay && <Text accessibilityRole="header" aria-level={2} style={[ui.caption, s.day]}>{day}</Text>}
     <Pressable accessibilityRole="button" accessibilityLabel={`${row.title}${row.amount ? `, ${formatMoney(row.amount)}` : ''}, ${item.group.name}, ${day}, ${activityTime(item.created_at)}`} disabled={busy} onPress={() => onOpen(row.target)} style={({ pressed }) => [ui.row, s.row, pressed && s.pressed]}>
       <IconBadge name={row.icon} size={21} />
       <View style={ui.rowBody}>

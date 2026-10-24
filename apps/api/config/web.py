@@ -89,3 +89,13 @@ def invite_app(request, token):
     response["Cache-Control"] = "no-store"
     response["Referrer-Policy"] = "no-referrer"
     return response
+
+
+def public_typography(request, asset):
+    files = {"typography.css": "text/css; charset=utf-8", "StackSansText.ttf": "font/ttf"}
+    if asset not in files:
+        return HttpResponse(status=404)
+    path = settings.BASE_DIR / "ledger" / "assets" / asset
+    response = FileResponse(path.open("rb"), content_type=files[asset])
+    response["Cache-Control"] = "no-cache"
+    return _headers(response)

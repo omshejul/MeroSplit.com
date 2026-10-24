@@ -23,7 +23,7 @@ export default function DeleteAccount({ email: currentEmail, busy, onDelete }: {
   return <>
     <SettingsRow label="Delete account" icon="remove" danger chevron={false} disabled={busy} onPress={() => { setConfirmation(''); setEmail(''); setError(''); setOpen(true); }} />
     <KeyboardDialog visible={open} onDismiss={() => { if (!disabled) setOpen(false); }} dismissable={!disabled} maxHeight={height}>
-      <Dialog.Title>Delete account?</Dialog.Title>
+      <Dialog.Title aria-level={2}>Delete account?</Dialog.Title>
       <Dialog.Content style={{ flexShrink: 1 }}><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: 12 }}>
         <Text style={ui.body}>Export first. Your account, files and unsent work will be deleted. Other members keep anonymous amounts and payment history.</Text>
         <TextField label="Type delete" value={confirmation} onChangeText={setConfirmation} autoCorrect={false} autoCapitalize="none" editable={!disabled} />

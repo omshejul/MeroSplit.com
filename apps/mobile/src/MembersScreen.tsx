@@ -84,7 +84,7 @@ function AddPersonDialog({ visible, disabled, working, archived, name, email, on
   onName: (value: string) => void; onEmail: (value: string) => void; onClose: () => void; onSave: () => void; feedback: Feedback;
 }) {
   return <KeyboardDialog visible={visible} onDismiss={() => { if (!disabled) onClose(); }}>
-    <Dialog.Title>Add person</Dialog.Title>
+    <Dialog.Title aria-level={2}>Add person</Dialog.Title>
     <DialogScrollBody maxHeight={280} gap={8}>
       <Field label="Name" value={name} onChange={onName} disabled={disabled} autoFocus autoCapitalize="words" />
       <Field label="Email (optional)" value={email} onChange={onEmail} disabled={disabled} keyboardType="email-address" maxLength={254} />

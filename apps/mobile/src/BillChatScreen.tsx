@@ -175,7 +175,7 @@ export default function BillChatScreen({ session, groupId, expenseId, active, on
     setMessages(previous => mergeChatMessages(previous, waiting)); list.current?.scrollToOffset({ offset: 0, animated: false });
   }
   const newestFirst = [...messages].reverse();
-  return <View style={{ flex: 1, width: '100%', maxWidth: 760, alignSelf: 'center' }}>
+  return <View role="main" style={{ flex: 1, width: '100%', maxWidth: 760, alignSelf: 'center' }}>
     <View style={{ flexDirection: 'row', paddingHorizontal: 16, alignItems: 'center' }}><Text numberOfLines={1} style={[ui.caption, { flex: 1 }]}>Messages about this bill</Text><IconAction name="settings" label="Chat settings" disabled={!active} onPress={() => setSettings(true)} /></View>
     <FlatList ref={list} inverted data={newestFirst} keyExtractor={row => row.id} style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 12 }}
       maintainVisibleContentPosition={{ minIndexForVisible: 0 }} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag"
@@ -196,7 +196,7 @@ export default function BillChatScreen({ session, groupId, expenseId, active, on
       {denied && <Text style={ui.caption}>This conversation is unavailable. Your unsent text is saved.</Text>}
     </View>
     <KeyboardDialog visible={policy} onDismiss={() => setPolicy(false)} dismissable={!working} maxHeight={height * 0.85}>
-      <Dialog.Title>Before your first message</Dialog.Title><ScrollView style={{ flexShrink: 1, paddingHorizontal: 24 }}><Text style={ui.body}>Group members can read this chat. Only people included in this bill get notifications. Keep chat respectful. No harassment, threats, illegal or sexual content. You can report messages and block chat users. Agree to send this message.</Text><Button title="Read chat policy" kind="text" onPress={() => void Linking.openURL(APP_ORIGIN + '/chat-policy')} /></ScrollView>
+      <Dialog.Title aria-level={2}>Before your first message</Dialog.Title><ScrollView style={{ flexShrink: 1, paddingHorizontal: 24 }}><Text style={ui.body}>Group members can read this chat. Only people included in this bill get notifications. Keep chat respectful. No harassment, threats, illegal or sexual content. You can report messages and block chat users. Agree to send this message.</Text><Button title="Read chat policy" kind="text" onPress={() => void Linking.openURL(APP_ORIGIN + '/chat-policy')} /></ScrollView>
       <Dialog.Actions><View style={{ flex: 1, gap: 8 }}><Button title="Agree" kind="primary" disabled={working || !online} onPress={() => void control(async () => { await request(session, '/me/chat-policy', 'PUT', { version: page?.policy_version ?? 1 }); if (current()) { setPage(previous => previous ? { ...previous, policy_accepted: true } : previous); setPolicy(false); await send(true); } })} /><Button title="Cancel" kind="text" disabled={working} onPress={() => setPolicy(false)} /></View></Dialog.Actions>
     </KeyboardDialog>
     <ChatControls key={report?.message.id ?? 'settings'} report={report} blocked={settings ? page?.blocked_users ?? [] : null} policyUrl={APP_ORIGIN + '/chat-policy'} busy={working} error={error} onClose={() => { setReport(null); setSettings(false); }} onReport={reason => void control(async () => { if (!report) return; await request(session, path + '/report', 'POST', { message_id: report.message.id, kind: report.kind, reason }); if (current()) setReport(null); })} onUnblock={id => void control(() => block(id, false))} />

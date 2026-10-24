@@ -4,7 +4,7 @@ import { formatMoney, validateExpense } from './accounting';
 import { Text } from 'react-native-paper';
 import type { Amounts, Split } from './accounting';
 import type { Command, Expense, Group } from './types';
-import { Button, radii, useUI } from './ui';
+import { SectionHeading, Button, radii, useUI } from './ui';
 import type { Palette } from './ui';
 
 type Props = {
@@ -75,12 +75,12 @@ export default function SavedChangeScreen({ command, group, busy, onDiscard, onE
     <Text style={ui.caption}>{group.name}</Text>
     {!expenseCommand && <Text style={[ui.notice, ui.warning]}>This change has not synced.</Text>}
     <View style={s.section}>
-      <Text accessibilityRole="header" style={ui.section}>Your change</Text>
+      <SectionHeading>Your change</SectionHeading>
       {saved ? <SavedBillSummary expense={saved} participants={group.participants} /> : <Text accessibilityRole="alert" style={ui.body}>{issue}</Text>}
     </View>
     {expenseCommand && <>
       <View style={s.section}>
-        <Text accessibilityRole="header" style={ui.section}>Latest</Text>
+        <SectionHeading>Latest</SectionHeading>
         {current ? <SavedBillSummary expense={current} participants={group.participants} /> : <Text style={ui.body}>This bill is not in the group's latest records.</Text>}
       </View>
       {creating && current && <Text style={[ui.notice, ui.warning]}>This bill already exists. Your saved change will not overwrite it.</Text>}

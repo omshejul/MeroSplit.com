@@ -27,7 +27,7 @@ export default function GroupList({ groups, commands, userId, busy, direct, empt
     const caption = <Text style={ui.caption}>{emptyLabel ?? (direct ? 'No people yet' : 'No groups yet')}</Text>;
     return emptyVerified && !busy && !direct && !commands.length ? <Mascot size="empty">{caption}</Mascot> : caption;
   }
-  return <View style={[styles.list, { backgroundColor: palette.surface }]}>{groups.map(row => <GroupListRow key={row.group.id} row={row} waiting={commands.filter(value => value.group_id === row.group.id)} userId={userId} busy={busy} onOpen={() => onOpen(row)} />)}</View>;
+  return <View role="list" accessibilityLabel={direct ? 'People' : 'Groups'} style={[styles.list, { backgroundColor: palette.surface }]}>{groups.map(row => <View role="listitem" key={row.group.id}><GroupListRow row={row} waiting={commands.filter(value => value.group_id === row.group.id)} userId={userId} busy={busy} onOpen={() => onOpen(row)} /></View>)}</View>;
 }
 const styles = StyleSheet.create({
   list: { borderRadius: radii.surface, paddingHorizontal: 12 },

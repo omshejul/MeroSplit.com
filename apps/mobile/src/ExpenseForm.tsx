@@ -1,3 +1,4 @@
+import Form from './Form';
 import React, { useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Checkbox, Text } from 'react-native-paper';
@@ -184,7 +185,7 @@ export default function ExpenseForm({ group, expense, selfId, busy, onSave, init
       payerStatus = difference === 0n ? 'Adds up to the bill.' : `${formatMoney((difference < 0n ? -difference : difference).toString())} ${difference > 0n ? 'still to add' : 'too much'}.`;
     }
   } catch { /* The save action keeps the existing accounting validation authoritative. */ }
-  return <View style={styles.form}>
+  return <Form label="Bill" style={styles.form} onSubmit={() => { if (!disabled && !group.archived) void save(); }}>
     <Text style={ui.caption}>{group.name}</Text>
     {group.archived && <Text style={ui.notice}>Reopen this group in settings before saving a bill.</Text>}
     {expense && expense.version !== draft.expenseVersion && <Text style={ui.notice}>A newer edit exists. Review it before saving this older draft.</Text>}
@@ -204,7 +205,7 @@ export default function ExpenseForm({ group, expense, selfId, busy, onSave, init
     {!expense && <DraftAttachment value={draft.attachment} path={`/groups/${group.id}/expenses/${draft.id}/attachments`} disabled={disabled || !!group.archived} onChange={attachment => persistChange({ attachment })} onBusy={setFileBusy} onError={setError} />}
     {!!error && <ErrorText live>{error}</ErrorText>}
     <Button title={saving ? 'Saving…' : 'Save bill'} onPress={() => void save()} disabled={disabled || group.archived} kind="primary" icon="check" />
-  </View>;
+  </Form>;
 }
 
 const styles = StyleSheet.create({

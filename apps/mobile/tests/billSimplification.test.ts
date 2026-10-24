@@ -13,7 +13,7 @@ const tick = async () => { for (let i = 0; i < 15; i++) await Promise.resolve();
 function harness(file: string, name: string, extra: Record<string, any> = {}) {
   let cursor = 0, states: any[] = [], effects: (() => void)[] = [], cleanups: Record<number, () => void> = {};
   const deps: Record<number, any[]> = {};
-  const env: Record<string, any> = { React, Dialog, View: 'View', ScrollView: 'ScrollView', KeyboardDialog: 'KeyboardDialog', Pressable: 'Pressable', Text: 'Text', Button: 'Button', Icon: 'Icon', SettingsRow: 'SettingsRow', BillPeople: 'BillPeople', DraftAttachment: 'DraftAttachment', LocalAttachment: 'LocalAttachment', AmountField: 'AmountField', TextField: 'TextField', DateField: 'DateField', ErrorText: 'ErrorText', Checkbox: { Item: 'Checkbox' }, RadioChoice: 'RadioChoice', Crypto: { randomUUID: () => 'bill-id' }, StyleSheet: { create: (value: any) => value }, Keyboard: { dismiss() {} }, useWindowDimensions: () => ({ height: 667 }), useSafeAreaInsets: () => ({ top: 20, bottom: 0 }), Platform: { OS: 'native' }, requestAnimationFrame: (fn: () => void) => fn(), useUI: () => ({ ui: {} }), formatMoney, integer, rupeesToPaise, validateExpense, ...extra,
+  const env: Record<string, any> = { React, Dialog, View: 'View', ScrollView: 'ScrollView', KeyboardDialog: 'KeyboardDialog', Pressable: 'Pressable', Text: 'Text', Form: 'Form', SectionHeading: 'SectionHeading', Button: 'Button', Icon: 'Icon', SettingsRow: 'SettingsRow', BillPeople: 'BillPeople', DraftAttachment: 'DraftAttachment', LocalAttachment: 'LocalAttachment', AmountField: 'AmountField', TextField: 'TextField', DateField: 'DateField', ErrorText: 'ErrorText', Checkbox: { Item: 'Checkbox' }, RadioChoice: 'RadioChoice', Crypto: { randomUUID: () => 'bill-id' }, StyleSheet: { create: (value: any) => value }, Keyboard: { dismiss() {} }, useWindowDimensions: () => ({ height: 667 }), useSafeAreaInsets: () => ({ top: 20, bottom: 0 }), Platform: { OS: 'native' }, requestAnimationFrame: (fn: () => void) => fn(), useUI: () => ({ ui: {} }), formatMoney, integer, rupeesToPaise, validateExpense, ...extra,
     useState: (initial: any) => { const id = cursor++; if (!(id in states)) states[id] = typeof initial === 'function' ? initial() : initial; return [states[id], (value: any) => { states[id] = typeof value === 'function' ? value(states[id]) : value; }]; },
     useRef: (initial: any) => { const id = cursor++; return states[id] ??= { current: initial }; },
     useEffect: (fn: () => any, values: any[]) => { const id = cursor++; if (!deps[id] || values.some((value, i) => value !== deps[id][i])) { effects.push(() => { cleanups[id]?.(); cleanups[id] = fn(); }); deps[id] = values; } },
@@ -132,7 +132,7 @@ test('accepted attachment action reuses one load/picker path and preserves permi
     app.render(props); app.commit(); await tick(); return app;
   };
   const app = await make(); let tree = app.render(props); app.commit();
-  assert.equal(reads, 1); assert.ok(nodes(tree).some(node => node.type === 'Text' && node.children.includes('Attachments')));
+  assert.equal(reads, 1); assert.ok(nodes(tree).some(node => node.type === 'SectionHeading' && node.children.includes('Attachments')));
   find(tree, 'label', 'Add photo or PDF').props.onPress(); await tick(); assert.equal(picks, 1); assert.equal(uploads, 0); assert.equal(reads, 1);
   tree = app.render({ ...props, busy: true }); find(tree, 'label', 'Add photo or PDF').props.onPress(); await tick(); assert.equal(picks, 1);
   assert.ok(!find(app.render({ ...props, readOnly: true }), 'label', 'Add photo or PDF'));
@@ -171,7 +171,10 @@ test('private thumbnail retries stay bounded and late results cannot replace the
   image.props.onError(); assert.equal(waiting.length, 3); waiting[2].resolve('one-refresh'); await tick();
   tree = app.render(next); nodes(tree).find(node => node.type === 'Image')!.props.onError();
   tree = app.render(next); assert.equal(waiting.length, 3);
-  find(tree, 'accessibilityLabel', 'Retry PDF preview').props.onPress(); assert.equal(waiting.length, 4);
+  assert.equal(find(tree, 'accessibilityLabel', 'PDF preview unavailable').type, 'View');
+  assert.ok(!nodes(tree).some(node => node.type === 'Pressable'), 'preview fallback must not nest a button in the file button');
+  const later = { ...next, media: { ...media, id: 'next-file' } };
+  app.render(later); app.commit(); assert.equal(waiting.length, 4);
   app.unmount(); waiting[3].resolve('after-unmount'); await tick();
 });
 
@@ -180,7 +183,7 @@ test('web PDFs use the shared private thumbnail while web photos retain the exis
   const props = { session: { userId: 'owner' }, media: { id: 'file', content_type: 'application/pdf' } };
   assert.equal(app.render(props).type, 'PrivateMediaThumbnail');
   const photo = app.render({ ...props, media: { ...props.media, content_type: 'image/jpeg' } });
-  assert.equal(photo.type, 'Image'); assert.equal(photo.props.source.uri, '/app/media/photo?v=0');
+  assert.equal(photo.type, 'Image'); assert.equal(photo.props.source.uri, '/app/media/photo');
 });
 
 test('removed payer controls stay locked and changing historical amounts is still rejected', async () => {

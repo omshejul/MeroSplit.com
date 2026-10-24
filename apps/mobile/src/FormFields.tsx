@@ -1,17 +1,19 @@
-import React from 'react';
+import React, { useId } from 'react';
 import { StyleSheet, TextInput, View } from 'react-native';
 import type { StyleProp, ViewStyle } from 'react-native';
 import { RadioButton, Text } from 'react-native-paper';
+import FieldLabel from './FieldLabel';
 import { useUI } from './ui';
 
 type TextFieldProps = React.ComponentPropsWithRef<typeof TextInput> & { label: string; containerStyle?: StyleProp<ViewStyle> };
 
 export function TextField({ label, style, containerStyle, keyboardType = 'default', ...input }: TextFieldProps) {
   const { palette, ui, inputColors } = useUI();
+  const id = useId(), nativeID = input.nativeID ?? id;
   return <View style={[styles.field, containerStyle]}>
-    <Text style={ui.label}>{label}</Text>
+    <FieldLabel nativeID={nativeID} style={ui.label}>{label}</FieldLabel>
     <TextInput {...inputColors} accessibilityLabel={label} placeholderTextColor={palette.muted}
-      keyboardType={keyboardType} {...input} style={[ui.input, style]} />
+      keyboardType={keyboardType} {...input} nativeID={nativeID} style={[ui.input, style]} />
   </View>;
 }
 

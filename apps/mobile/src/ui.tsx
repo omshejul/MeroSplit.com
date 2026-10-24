@@ -1,10 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Appearance, Platform, Pressable, StyleSheet, useColorScheme, View } from 'react-native';
-import { Button as PaperButton, IconButton as PaperIconButton, List, Tooltip, MD3DarkTheme, MD3LightTheme, PaperProvider, ThemeProvider, Text, useTheme } from 'react-native-paper';
+import { Button as PaperButton, IconButton as PaperIconButton, List, Tooltip, MD3DarkTheme, MD3LightTheme, PaperProvider, ThemeProvider, Text, useTheme, configureFonts } from 'react-native-paper';
 import type { MD3Theme } from 'react-native-paper';
 import { savedAppearance, saveAppearance } from './native';
 import type { AppearancePreference } from './native';
 export type { AppearancePreference } from './native';
+import { useFonts } from 'expo-font';
+import { appFontFamily, appFontFaces } from './typography';
+import FieldLabel from './FieldLabel';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { HugeiconsIcon } from '@hugeicons/react-native';
 import Attachment01Icon from '@hugeicons/core-free-icons/Attachment01Icon';
@@ -57,6 +60,10 @@ export function AmountText({ amount, style, ...props }: Omit<React.ComponentProp
   const { ui } = useUI();
   return <Text {...props} style={[ui.amount, style]}>{formatMoney(amount)}</Text>;
 }
+export function SectionHeading({ style, ...props }: React.ComponentProps<typeof Text>) {
+  const { ui } = useUI();
+  return <Text {...props} accessibilityRole="header" aria-level={2} style={[ui.section, style]} />;
+}
 export function ErrorText({ children, live = false }: { children: string; live?: boolean }) {
   const { ui } = useUI();
   return <Text accessibilityRole="alert" accessibilityLiveRegion={live ? 'polite' : undefined} style={ui.error}>{children}</Text>;
@@ -90,6 +97,7 @@ function LibraryIcon({ name, color, size }: { name: string; color?: string; size
   return <HugeiconsIcon icon={libraryIcons[name as keyof typeof libraryIcons] ?? CheckmarkCircle01Icon} color={color ?? palette.accent} size={size} strokeWidth={1.7} />;
 }
 export function UIProvider({ children }: { children: React.ReactNode }) {
+  const [fontsLoaded] = useFonts(appFontFaces);
   const system = useColorScheme();
   const [appearance, setAppearance] = useState<AppearancePreference>('system');
   const [motion, setMotion] = useState<MotionPreference>({ enabled: false, active: false });
@@ -116,8 +124,9 @@ export function UIProvider({ children }: { children: React.ReactNode }) {
   }, []);
   const dark = appearance === 'system' ? system === 'dark' : appearance === 'dark';
   const value = useMemo<UITheme>(() => ({ ...(dark ? darkTheme : theme), palette: dark ? darkColors : colors,
-    ui: dark ? darkUI : ui, inputColors: dark ? darkInputColors : inputColors, appearance, changeAppearance, motion, animation: { scale: 0 },
-  }), [dark, appearance, changeAppearance, motion]);
+    fonts: fontsLoaded ? configureFonts({ config: { fontFamily: appFontFamily } }) : (dark ? darkTheme : theme).fonts,
+    ui: makeUI(dark ? darkColors : colors, fontsLoaded ? appFontFamily : undefined), inputColors: dark ? darkInputColors : inputColors, appearance, changeAppearance, motion, animation: { scale: 0 },
+  }), [dark, appearance, changeAppearance, motion, fontsLoaded]);
   // PaperProvider overwrites animation.scale. Its public ThemeProvider also
   // supplies the corrected theme to Portals, without replacing their owner.
   return <PaperProvider theme={value} settings={{ icon: LibraryIcon, rippleEffectEnabled: false }}><ThemeProvider theme={value}>{children}</ThemeProvider></PaperProvider>;
@@ -152,8 +161,9 @@ const dateText = (date: Date) => `${date.getFullYear()}-${String(date.getMonth()
 export function DateField({ label, value, onChange, disabled = false }: { label: string; value: string; onChange: (value: string) => void; disabled?: boolean }) {
   const { palette: colors, ui, dark } = useUI();
   const [open, setOpen] = useState(false);
+  const fieldID = React.useId();
   const parsed = new Date(`${value}T12:00:00`), valid = !Number.isNaN(parsed.getTime()) && dateText(parsed) === value;
-  if (Platform.OS === 'web') return <View style={{ gap: 4 }}><Text style={ui.label}>{label}</Text>{React.createElement('input', { type: 'date', 'aria-label': label, value, disabled, onChange: (event: React.ChangeEvent<HTMLInputElement>) => onChange(event.target.value), style: { minHeight: 44, padding: '0 12px', borderRadius: radii.control, border: `1px solid ${colors.outline}`, backgroundColor: colors.surface, color: colors.text, font: 'inherit', colorScheme: dark ? 'dark' : 'light' } })}</View>;
+  if (Platform.OS === 'web') return <View style={{ gap: 4 }}><FieldLabel nativeID={fieldID} style={ui.label}>{label}</FieldLabel>{React.createElement('input', { id: fieldID, type: 'date', 'aria-label': label, value, disabled, onChange: (event: React.ChangeEvent<HTMLInputElement>) => onChange(event.target.value), style: { minHeight: 44, padding: '0 12px', borderRadius: radii.control, border: `1px solid ${colors.outline}`, backgroundColor: colors.surface, color: colors.text, fontFamily: ui.input.fontFamily ?? 'inherit', fontSize: 17, colorScheme: dark ? 'dark' : 'light' } })}</View>;
   return <View style={{ gap: 8 }}><Text style={ui.label}>{label}</Text>
     <PaperButton mode="outlined" accessibilityLabel={`${label}: ${value || 'Choose date'}`} disabled={disabled} onPress={() => setOpen(true)} icon={({ color, size }) => <HugeiconsIcon icon={Calendar03Icon} color={color} size={size} />} contentStyle={{ minHeight: Platform.OS === 'ios' ? 44 : 48 }} style={{ borderRadius: radii.control }}>
       {valid ? parsed.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Choose date'}
@@ -177,28 +187,27 @@ export function Disclosure({ title, children, initialOpen = false }: { title: st
     {open && <View style={ui.disclosureBody}>{children}</View>}
   </View>;
 }
-const makeUI = (colors: Palette) => StyleSheet.create({
-  section: { fontSize: 18, lineHeight: 24, fontWeight: '600', color: colors.text },
-  body: { fontSize: 16, lineHeight: 23, color: colors.text },
-  caption: { fontSize: 14, lineHeight: 20, color: colors.muted },
-  label: { fontSize: 14, lineHeight: 20, fontWeight: '500', color: colors.muted },
-  numeric: { fontSize: 32, lineHeight: 40, fontWeight: '600', color: colors.text, fontVariant: ['tabular-nums'] },
-  amount: { fontSize: 17, lineHeight: 24, fontWeight: '600', color: colors.text, fontVariant: ['tabular-nums'], flexShrink: 0, textAlign: 'right' },
-  input: { minHeight: 48, paddingHorizontal: 12, paddingVertical: 10, borderRadius: radii.control, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.outline, color: colors.text, fontSize: 17 },
+const makeUI = (colors: Palette, fontFamily?: string) => StyleSheet.create({
+  section: { fontFamily, fontSize: 18, lineHeight: 24, fontWeight: '600', color: colors.text },
+  body: { fontFamily, fontSize: 16, lineHeight: 23, color: colors.text },
+  caption: { fontFamily, fontSize: 14, lineHeight: 20, color: colors.muted },
+  label: { fontFamily, fontSize: 14, lineHeight: 20, fontWeight: '500', color: colors.muted },
+  numeric: { fontFamily, fontSize: 32, lineHeight: 40, fontWeight: '600', color: colors.text, fontVariant: ['tabular-nums'] },
+  amount: { fontFamily, fontSize: 17, lineHeight: 24, fontWeight: '600', color: colors.text, fontVariant: ['tabular-nums'], flexShrink: 0, textAlign: 'right' },
+  input: { fontFamily, minHeight: 48, paddingHorizontal: 12, paddingVertical: 10, borderRadius: radii.control, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.outline, color: colors.text, fontSize: 17 },
   row: { minHeight: 52, paddingVertical: 6, flexDirection: 'row', alignItems: 'center', gap: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
   rowBody: { flex: 1, minWidth: 0, gap: 2 },
-  rowTitle: { fontSize: 17, lineHeight: 23, fontWeight: '500', color: colors.text },
-  rowSub: { fontSize: 14, lineHeight: 20, color: colors.muted },
+  rowTitle: { fontFamily, fontSize: 17, lineHeight: 23, fontWeight: '500', color: colors.text },
+  rowSub: { fontFamily, fontSize: 14, lineHeight: 20, color: colors.muted },
   avatar: { width: 36, height: 36, borderRadius: radii.control, backgroundColor: colors.soft, alignItems: 'center', justifyContent: 'center' },
-  initials: { fontSize: 17, fontWeight: '600', color: colors.accent },
-  notice: { backgroundColor: colors.surface, borderLeftWidth: 3, borderLeftColor: colors.accent, borderRadius: radii.surface, padding: 12, color: colors.text, fontSize: 14, lineHeight: 21 },
+  initials: { fontFamily, fontSize: 17, fontWeight: '600', color: colors.accent },
+  notice: { fontFamily, backgroundColor: colors.surface, borderLeftWidth: 3, borderLeftColor: colors.accent, borderRadius: radii.surface, padding: 12, color: colors.text, fontSize: 14, lineHeight: 21 },
   success: { color: colors.positive, borderLeftColor: colors.positive },
   warning: { color: colors.warning, borderLeftColor: colors.warning },
-  error: { color: colors.error, fontSize: 15, lineHeight: 22 },
+  error: { fontFamily, color: colors.error, fontSize: 15, lineHeight: 22 },
   disclosure: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
   disclosureHeading: { minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
   disclosureBody: { gap: 10, paddingBottom: 12 },
 });
 
-const ui = makeUI(colors);
-const darkUI = makeUI(darkColors), darkInputColors = makeInputColors(darkColors);
+const darkInputColors = makeInputColors(darkColors);

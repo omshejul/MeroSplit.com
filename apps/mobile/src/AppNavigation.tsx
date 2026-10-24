@@ -19,9 +19,9 @@ export const pageContentStyle = { padding: 16, gap: 12, paddingBottom: 24, ...pa
 
 export function ScreenHeader({ title, busy, onBack, children }: { title: string; busy: boolean; onBack?: () => void; children?: React.ReactNode }) {
   const { palette } = useUI();
-  return <View style={styles.header}>
+  return <View role="banner" style={styles.header}>
     {onBack && <IconAction name="back" label="Back" disabled={busy} onPress={onBack} />}
-    <Text style={[styles.title, { color: palette.text }]} accessibilityRole="header" numberOfLines={1} ellipsizeMode="tail" accessibilityLabel={title}>{title}</Text>
+    <Text style={[styles.title, { color: palette.text }]} accessibilityRole="header" aria-level={1} numberOfLines={1} ellipsizeMode="tail" accessibilityLabel={title}>{title}</Text>
     {children}
     {busy && <ActivityIndicator accessibilityLabel="Working" color={palette.accent} />}
   </View>;
@@ -31,7 +31,7 @@ const tabs = [{ value: 'Groups', label: 'Groups', icon: 'groups' }, { value: 'Fr
 function TabButton({ item, selected, busy, onSelect }: { item: typeof tabs[number]; selected: boolean; busy: boolean; onSelect: (value: string) => void }) {
   const { palette, motion } = useUI();
   const opacity = useMotionValue(selected ? 1 : 0, motion.enabled);
-  return <Pressable accessibilityRole="tab" accessibilityState={{ selected, disabled: busy }} disabled={busy} onPress={() => onSelect(item.value)} style={styles.tab}>
+  return <Pressable accessibilityRole={Platform.OS === 'web' ? 'button' : 'tab'} aria-current={Platform.OS === 'web' && selected ? 'page' : undefined} accessibilityState={Platform.OS === 'web' ? { disabled: busy } : { selected, disabled: busy }} disabled={busy} onPress={() => onSelect(item.value)} style={styles.tab}>
     <Animated.View pointerEvents="none" accessible={false} style={[StyleSheet.absoluteFill, { borderRadius: radii.surface, backgroundColor: palette.soft, opacity }]} />
     <View style={styles.tabContent}>
       <Icon name={item.icon} color={selected ? palette.accent : palette.muted} />
@@ -41,7 +41,7 @@ function TabButton({ item, selected, busy, onSelect }: { item: typeof tabs[numbe
 }
 export function AppTabs({ selected, busy, onSelect }: { selected: string; busy: boolean; onSelect: (value: string) => void }) {
   const { palette } = useUI();
-  return <View style={pageWidthStyle}><View style={[styles.tabs, { backgroundColor: palette.surface }]} accessibilityRole="tablist">
+  return <View role="navigation" accessibilityLabel="Main navigation" style={pageWidthStyle}><View style={[styles.tabs, { backgroundColor: palette.surface }]} accessibilityRole={Platform.OS === 'web' ? undefined : 'tablist'}>
     {tabs.map(item => <TabButton key={item.value} item={item} selected={selected === item.value} busy={busy} onSelect={onSelect} />)}
   </View></View>;
 }

@@ -29,7 +29,7 @@ export function UPIAppChooser({ apps, disabled, onChoose, onDismiss }: {
 }) {
   const { ui } = useUI();
   return <KeyboardDialog visible={apps !== null} onDismiss={onDismiss}>
-    <Dialog.Title>Pay with UPI</Dialog.Title>
+    <Dialog.Title aria-level={2}>Pay with UPI</Dialog.Title>
     <Dialog.Content><Text style={ui.body}>Check the recipient and amount before paying.</Text></Dialog.Content>
     <DialogScrollBody maxHeight={360} paddingVertical={8} gap={8}>
       {apps?.map(app => <Button key={app.id} title={app.name} disabled={disabled} onPress={() => onChoose(app)} />)}
