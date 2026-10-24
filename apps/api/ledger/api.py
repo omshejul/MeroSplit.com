@@ -26,7 +26,7 @@ from .collaboration import (
     remove_participant,
     review_invite,
 )
-from .email_invites import send_person_invite, update_contact
+from .email_invites import rename_person, send_person_invite, update_contact
 from .expense_notifications import (
     foreground,
     mark_seen,
@@ -78,6 +78,7 @@ from .schemas import (
     NotificationPreferencesIn,
     OpeningIn,
     ParticipantIn,
+    ParticipantNameIn,
     ProfileIn,
     PushDeviceIn,
     Revision,
@@ -546,6 +547,11 @@ def account_delete(request, body: AccountDeleteIn):
 @api.post("/groups/{group_id}/participants", response=LinkedWriteResult)
 def participant_add(request, group_id: UUID, body: ParticipantIn):
     return add_participant(request.auth, group_id, body.model_dump(mode="json"))
+
+
+@api.post("/groups/{group_id}/participants/{participant_id}/name", response=WriteResult)
+def participant_name(request, group_id: UUID, participant_id: UUID, body: ParticipantNameIn):
+    return rename_person(request.auth, group_id, participant_id, body.model_dump(mode="json"))
 
 
 @api.post("/groups/{group_id}/participants/{participant_id}/contact", response=LinkedWriteResult)

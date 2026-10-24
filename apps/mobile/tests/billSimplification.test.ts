@@ -436,10 +436,10 @@ test('Invitation never follows unaccepted contact, unmounted account or newly ar
 test('Member email affordance excludes registered/self/removed/direct/nonorganizer/archive, preserving nonzero removal guard', () => {
   const app = harness('src/MembersScreen.tsx', 'MemberRow', { ...members, Avatar: 'Avatar', IconAction: 'IconAction' });
   const props = { group: inviteGroup, person: inviteGroup.participants[1], selfId: 'owner', organizer: true, disabled: false, working: false, feedback: null, cooldown: 0, contactChanged: false, onAddEmail() {}, onSend() {}, onRemove() {} };
-  let tree = app.render(props); assert.equal(find(tree, 'accessibilityLabel', 'Add email and invite Asha').props.accessibilityRole, 'button');
+  let tree = app.render(props); assert.equal(find(tree, 'label', 'Add email and invite Asha').props.name, 'mail');
   assert.equal(find(tree, 'label', 'Remove Asha').props.disabled, true);
   for (const patch of [{ person: { ...props.person, user_id: 2 } }, { person: { ...props.person, removed: true } }, { person: { ...props.person, email: 'saved@example.invalid' } }, { selfId: props.person.id }, { group: { ...inviteGroup, is_direct: true } }, { group: { ...inviteGroup, archived: true } }, { organizer: false }]) {
-    tree = app.render({ ...props, ...patch }); assert.ok(!nodes(tree).some(node => node.props.accessibilityLabel === 'Add email and invite Asha'));
+    tree = app.render({ ...props, ...patch }); assert.ok(!nodes(tree).some(node => node.props.label === 'Add email and invite Asha'));
   }
 });
 
@@ -544,17 +544,21 @@ test('notification body uses spare desktop height while retaining compact phones
 });
 
 
-test('member mail slot centers against the complete name/status block and matches the remove action size', () => {
-  const app = harness('src/MembersScreen.tsx', 'MemberRow', { currentEmailInvite: () => null, Avatar: 'Avatar', IconAction: 'IconAction' });
+test('member name edit and mail invite are separate aligned actions with removal guards', () => {
+  const app = harness('src/MembersScreen.tsx', 'MemberRow', { Avatar: 'Avatar', IconAction: 'IconAction' });
+  let edits = 0, invitations = 0;
   const person = { id: 'other', name: 'Asha' };
-  const props = { group: { ...group, owner_id: 1, balances: { other: '-103400' } }, person, selfId: 'self', organizer: true, disabled: false, working: false, cooldown: 0, contactChanged: false, onAddEmail() {}, onSend() {}, onRemove() {} };
-  const tree = app.render(props), name = find(tree, 'accessibilityLabel', 'Add email and invite Asha');
-  assert.equal(name.props.style.flexDirection, 'row'); assert.equal(name.props.style.alignItems, 'center'); assert.equal(name.props.style.minHeight, 44);
-  const slot = nodes(name).find(node => node.type === 'View' && node.props['aria-hidden'] === true)!;
-  assert.equal(slot.props.style.width, 44); assert.equal(slot.props.style.height, 44); assert.equal(slot.props.style.flexShrink, 0);
-  const icon = nodes(slot).find(node => node.type === 'Icon')!; assert.equal(icon.props.name, 'mail'); assert.equal(icon.props.size, 22);
+  const props = { group: { ...group, owner_id: 1, balances: { other: '-103400' } }, person, selfId: 'self', organizer: true, disabled: false, working: false, cooldown: 0, contactChanged: false, onRename() { edits++; }, onAddEmail() { invitations++; }, onSend() {}, onRemove() {} };
+  const tree = app.render(props), name = find(tree, 'accessibilityLabel', "Edit Asha's name"), mail = find(tree, 'label', 'Add email and invite Asha');
+  assert.equal(name.props.style.minHeight, 44); assert.equal(mail.props.name, 'mail');
+  name.props.onPress(); mail.props.onPress(); assert.equal(edits, 1); assert.equal(invitations, 1);
   assert.equal(find(tree, 'label', 'Remove Asha').props.disabled, true);
   assert.ok(nodes(name).some(node => node.props.accessibilityLabel === 'Settle ₹1,034.00 first'));
+  for (const patch of [{ person: { ...person, user_id: 2 } }, { person: { ...person, removed: true } }, { organizer: false }, { group: { ...props.group, archived: true } }]) {
+    const blocked = app.render({ ...props, ...patch });
+    assert.ok(!nodes(blocked).some(node => node.props.accessibilityLabel === "Edit Asha's name"));
+  }
+  assert.ok(find(app.render({ ...props, person: { ...person, email: 'saved@example.invalid' } }), 'accessibilityLabel', "Edit Asha's name"));
 });
 
 

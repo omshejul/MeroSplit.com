@@ -298,3 +298,14 @@ test('group and direct-person Pay use the same outlined icon button without chan
     assert.equal((render({ ...props, disabled: true }).children[1] as Element).props.disabled, true);
   }
 });
+
+
+test('payment attempts never add receipt confirmation cards to the group or person log', () => {
+  const render = production('GroupScreen', { ReceiptRequest: 'ReceiptRequest' });
+  const value = { ...group, name: 'Om 2', expenses: [], settlements: [], transfers: [], payment_attempts: ['cancelled', 'cancelled', 'reported', 'recorded', 'confirmed', 'prepared'].map((state, index) => ({ id: `attempt-${index}`, sender: 'other', recipient: 'self', amount: '3533', state })) };
+  const tree = render({ group: value, accepted: value, selfId: 'self', pending: [], busy: false });
+  assert.equal(elements(tree).filter(node => node.type === 'ReceiptRequest').length, 0, 'payment attempts must not become confirmation cards');
+  assert.ok(!text(tree).includes('Did you get'));
+  assert.ok(!elements(tree).some(node => node.type === 'HistoryPages' && node.props.resource === 'attempts'), 'no empty receipt-request pager');
+  assert.equal(value.payment_attempts.length, 6, 'rendering does not mutate payment history');
+});
