@@ -69,7 +69,7 @@ function AppContent() {
   const s = makeStyles(colors);
   const [session, setSession] = useState<Session | null>(null), [ready, setReady] = useState(false), [expired, setExpired] = useState(false);
   const [storageError, setStorageError] = useState(''), [hasDrafts, setHasDrafts] = useState(false);
-  const [verifiedEmptyOwner, setVerifiedEmptyOwner] = useState('');
+  const [verifiedEmptyOwner, setVerifiedEmptyOwner] = useState(''), [emptyChatScope, setEmptyChatScope] = useState('');
   const [online, setOnline] = useState(isOnline);
   const [groups, setGroups] = useState<CachedGroup[]>([]), [commands, setCommands] = useState<Command[]>([]);
   const [showArchived, setShowArchived] = useState(false), [showHidden, setShowHidden] = useState(false);
@@ -128,7 +128,7 @@ function AppContent() {
   function measureViewport() { scroll.current?.measureInWindow((x, y, width, height) => setViewport({ x, y, width, height })); }
   function navigate(value: Screen) { setNotice(''); setScreen(value); }
   function changeScope(value: Session | null) {
-    setVerifiedEmptyOwner('');
+    setVerifiedEmptyOwner(''); setEmptyChatScope('');
     ownerRef.current = value ? accountOwner(value) : '';
     activeSessionRef.current = value;
     setShowArchived(false); setShowHidden(false); setNeedsInvitation(false); setSession(value); setExpired(false); setGroups([]); setCommands([]); setLegacy([]); setRecoveries([]); setUnavailable([]); setLegacySelf({});
@@ -264,6 +264,12 @@ function AppContent() {
   useEffect(() => {
     if (ready && session && !authHeld && !expired && foreground && screen === 'home' && tab === 'Activity' && !busy && activityOwner.current !== owner && !activityError) void refreshActivity().catch(() => {});
   }, [ready, session?.token, authHeld, expired, foreground, screen, tab, busy, owner, activityError]);
+  function chatInboxEmptyChanged(active: Session, empty: boolean) {
+    const account = accountOwner(active), scope = `${account}|${active.token}`;
+    if (ownerRef.current !== account) return;
+    if (!empty) setEmptyChatScope(previous => previous === scope ? '' : previous);
+    else if (activeSessionRef.current?.token === active.token) setEmptyChatScope(scope);
+  }
   async function openActivityTarget(target: ActivityTarget, chat = false) {
     await perform(async () => {
       if (!session) return;
@@ -776,6 +782,7 @@ function AppContent() {
     authHeldRef.current = false; resumeAccountRequests(); queueCookieCheck();
   }
   const mascotEligible = online && isOnline() && !busy && !expired && !notice && !commands.length && !hasDrafts && !legacy.length && !recoveries.length && !unavailable.length && !returns.length;
+  const activityEmptyVerified = mascotEligible && !activityError && activity?.firstPage === true && activityOwner.current === owner && emptyChatScope === `${owner}|${session?.token}`;
   const direct = tab === 'Friends';
   const hiddenGroups = groups.filter(row => row.group.hidden);
   const listedGroups = groups.filter(row => !row.group.hidden || commands.some(value => value.group_id === row.group.id) || !!session && row.group.participants.some(person => !person.removed && String(person.user_id) === session.userId && BigInt(row.group.balances[person.id] ?? '0') !== 0n));
@@ -821,8 +828,8 @@ function AppContent() {
       {screen === 'settle' && selected && preview && <SettleForm key={`${owner}|${groupId}`} group={preview} initial={transfer} busy={busy} selfId={selfId} onReviewAttempt={reviewPaymentAttempt} onPrepareUPI={prepareUPI} onCancelUPI={async id => { await groupAction(`/payment-attempts/${id}/cancel`, {}); await clearPaymentReturn(await getDatabase(), owner, id); await load(); }} returnPayment={returnPayment} onArmReturn={armPaymentReturn} onReturnPaymentChange={persistPaymentReturn} onResolveReturn={finishPaymentReturn} onSave={savePayment} onCancel={() => { setReturnAttemptId(null); back(); }} />}
       {screen === 'paymentDetail' && selected && settlement && <PaymentDetail payment={settlement} group={selected.group} selfId={selfId} busy={busy} canReverse={!pending.length && !selected.group.archived} onReverse={() => confirm('Reverse payment record?', 'Balances will change. No bank transfer is reversed.', () => reversePayment(settlement))} />}
       {screen === 'members' && selected && <MembersScreen key={`${owner}|${groupId}`} group={selected.group} selfId={selfId} busy={busy} onAction={groupAction} onExport={exportGroup} onMembership={action => { if (action === 'restore') launch(() => changeMembership(action)); else confirm('Leave or remove this group?', 'Shared bills and balances stay with the group. If you are the organizer, the next eligible joined member takes over. With no eligible member, this only removes the group from your list and you remain its organizer. Your saved drafts are kept.', () => changeMembership(action)); }} addPersonRequest={addPersonRequest} />}
-      {screen === 'home' && tab === 'Activity' && session && <ChatInbox key={owner} session={session} active={foreground && !authHeld && !expired && online} busy={busy} onOpen={(groupId, expenseId) => { void openActivityTarget({ kind: 'bill', groupId, expenseId }, true).catch(() => {}); }} />}
-      {screen === 'home' && tab === 'Activity' && session && <ActivityScreen emptyVerified={mascotEligible && activity?.firstPage === true && activityOwner.current === owner} items={activity?.items ?? []} busy={busy} error={activityError} hasMore={!!activity?.next_cursor} onRefresh={() => { void refreshActivity().catch(() => {}); }} onLoadMore={() => { void refreshActivity(true).catch(() => {}); }} onOpen={target => { void openActivityTarget(target).catch(() => {}); }} />}
+      {screen === 'home' && tab === 'Activity' && session && <ChatInbox key={owner} session={session} active={foreground && !authHeld && !expired && online} busy={busy} onEmptyChange={empty => chatInboxEmptyChanged(session, empty)} onOpen={(groupId, expenseId) => { void openActivityTarget({ kind: 'bill', groupId, expenseId }, true).catch(() => {}); }} />}
+      {screen === 'home' && tab === 'Activity' && session && <ActivityScreen emptyVerified={activityEmptyVerified} showEmpty={activityEmptyVerified} items={activity?.items ?? []} busy={busy} error={activityError} hasMore={!!activity?.next_cursor} onRefresh={() => { void refreshActivity().catch(() => {}); }} onLoadMore={() => { void refreshActivity(true).catch(() => {}); }} onOpen={target => { void openActivityTarget(target).catch(() => {}); }} />}
       {screen === 'login' && <>
         {emailRequested ? <EmailLinkSent busy={busy} resendSeconds={Math.max(0, Math.ceil((retryAt - clock) / 1000))} onResend={() => launch(sendSignInLink)} onCode={() => setEmailRequested(false)} onChangeEmail={() => { setEmailRequested(false); setChallenge(null); setCode(''); }} />
           : !challenge ? <EmailSignIn email={email} busy={busy} onEmail={setEmail} sendLabel={Platform.OS === 'web' ? 'Email me a sign-in link' : undefined} onSend={() => launch(Platform.OS === 'web' ? sendSignInLink : sendSignInCode)}>

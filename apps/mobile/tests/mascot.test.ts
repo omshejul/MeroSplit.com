@@ -35,9 +35,11 @@ test('Groups and Activity decorate only verified true empty states while retaini
   for (const changed of [{ direct: true }, { busy: true }, { commands: [{ group_id: 'pending' }] }, { groups: [{ group: { id: 'existing' } }] }]) assert.equal(count(groups({ ...base, emptyVerified: true, ...changed })), 0);
   const feed = { items: [], busy: false, onRefresh() {}, onOpen() {} };
   assert.equal(count(activity(feed)), 0);
+  const suppressed = activity({ ...feed, emptyVerified: true, showEmpty: false });
+  assert.ok(!elements(suppressed).some(value => value.type === 'Text' && value.children.includes('No activity yet')));
   const empty = activity({ ...feed, emptyVerified: true }); assert.equal(count(empty), 1);
   assert.ok(elements(empty).some(value => value.type === 'Text' && value.children.includes('No activity yet')));
-  for (const changed of [{ busy: true }, { error: 'Offline' }, { hasMore: true }, { items: [{ id: 'existing' }] }]) assert.equal(count(activity({ ...feed, emptyVerified: true, ...changed })), 0);
+  for (const changed of [{ showEmpty: false }, { busy: true }, { error: 'Offline' }, { hasMore: true }, { items: [{ id: 'existing' }] }]) assert.equal(count(activity({ ...feed, emptyVerified: true, ...changed })), 0);
 });
 
 test('approved PNG is unchanged and the image is decorative, contained and absent on short screens or keyboard', () => {
@@ -117,9 +119,20 @@ test('an exhausted older Activity page never becomes a verified empty first page
   let displayed: Record<string, any> | null = null;
   const env = { session, activity: { next_cursor: 'older', revision: 'current' }, perform: async (run: () => Promise<void>) => run(), setActivityError() {}, request: async () => ({ read_mode: 'activity', items: [], next_cursor: null, revision: 'current' }), activeSessionRef: { current: session }, activityOwner, accountOwner: () => 'owner', setActivity: (page: Record<string, any>) => { displayed = page; }, requestAnimationFrame() {}, ApiError: class extends Error {} };
   const refresh = productionFunction('App.tsx', 'refreshActivity', env);
-  const eligible = () => renderCondition({ mascotEligible: true, activity: displayed, activityOwner, owner: 'owner' }, condition);
+  const eligible = () => {
+    const scope = { mascotEligible: true, activityError: '', activity: displayed, activityOwner, owner: 'owner', session, emptyChatScope: 'owner|current' };
+    return renderCondition({ ...scope, activityEmptyVerified: renderCondition(scope, expressionFor('activityEmptyVerified')) }, condition);
+  };
   assert.equal(eligible(), false, 'not loaded yet');
   await refresh(true); assert.equal(eligible(), false, 'older page is empty, earlier history still exists');
   await refresh(false); assert.equal(eligible(), true, 'fresh canonical first page is empty');
   activityOwner.current = 'another-owner'; assert.equal(eligible(), false, 'previous account page is ineligible');
+});
+
+
+test('Activity genuine-empty verification requires the current chat session and existing financial verification', () => {
+  const base = { mascotEligible: true, activityError: '', activity: { firstPage: true }, activityOwner: { current: 'owner1' }, owner: 'owner1', emptyChatScope: 'owner1|session1', session: { token: 'session1' } };
+  const expression = expressionFor('activityEmptyVerified');
+  assert.equal(renderCondition(base, expression), true);
+  for (const changed of [{ activityError: 'Unavailable' }, { emptyChatScope: '' }, { emptyChatScope: 'owner1|oldsession' }, { emptyChatScope: 'owner2|session1' }, { mascotEligible: false }, { activity: null }, { activity: { firstPage: false } }, { activityOwner: { current: 'owner2' } }]) assert.equal(renderCondition({ ...base, ...changed }, expression), false);
 });

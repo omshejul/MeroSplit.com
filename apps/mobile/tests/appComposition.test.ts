@@ -99,3 +99,16 @@ test('Leaving chat keeps the existing account-wide temporary-tab guard honest ab
   pending = 0; handler(false); for (let i = 0; i < 20; i++) await Promise.resolve(); assert.equal(flag, false);
   ownerRef.current = 'two'; handler(true); assert.equal(flag, false, 'old account cannot change the new account guard');
 });
+
+
+test('Chat empty verification is scoped to the current account and session and cannot be restored by an old response', () => {
+  const declaration = app.body!.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === 'chatInboxEmptyChanged')!;
+  let verified = '';
+  const ownerRef = { current: 'one' }, activeSessionRef = { current: { token: 'fresh' } };
+  const change = new Function('env', `with(env){${ts.transpile(declaration.getText(source), { target: ts.ScriptTarget.ES2022 })};return chatInboxEmptyChanged;}`)({ ownerRef, activeSessionRef, accountOwner: (active: any) => active.owner, setEmptyChatScope: (value: any) => { verified = typeof value === 'function' ? value(verified) : value; } });
+  change({ owner: 'one', token: 'fresh' }, true); assert.equal(verified, 'one|fresh');
+  change({ owner: 'one', token: 'old' }, false); assert.equal(verified, 'one|fresh');
+  change({ owner: 'one', token: 'old' }, true); assert.equal(verified, 'one|fresh');
+  change({ owner: 'two', token: 'fresh' }, true); assert.equal(verified, 'one|fresh');
+  change({ owner: 'one', token: 'fresh' }, false); assert.equal(verified, '');
+});
