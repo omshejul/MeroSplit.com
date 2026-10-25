@@ -9,6 +9,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Keyboard, Platform, Pressable, Share, StyleSheet, View } from 'react-native';
 import type { TextInputProps } from 'react-native';
 import { Dialog, Text } from 'react-native-paper';
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import * as Crypto from 'expo-crypto';
 import { Alert } from './alerts';
 import { formatMoney } from './accounting';
@@ -17,6 +18,8 @@ import { addPerson, currentEmailInvite, emailInvitationRequest, personRequest, s
 import type { AddPersonRequest, EmailInviteRequest } from './members';
 import { EmailField, TextField } from './FormFields';
 import { Avatar, Button, Disclosure, IconAction, useUI } from './ui';
+
+const CopyLinkIcon = (props: { size: number; color: string }) => <MaterialCommunityIcons {...props} name="content-copy" accessible={false} />;
 
 type Props = {
   group: Group;
@@ -92,7 +95,7 @@ function AddPersonDialog({ visible, disabled, working, archived, name, email, on
     <DialogScrollBody maxHeight={280} gap={8}>
       <Field label="Name" value={name} onChange={onName} disabled={disabled} autoFocus autoCapitalize="words" />
       <Field label="Email (optional)" value={email} onChange={onEmail} disabled={disabled} keyboardType="email-address" maxLength={254} />
-      <Button title="Copy link" kind="text" disabled={disabled || archived} onPress={onLink} />
+      <Button title="Copy link" icon={CopyLinkIcon} kind="text" disabled={disabled || archived} onPress={onLink} />
       <FeedbackNote section="add-person" feedback={feedback} />
     </DialogScrollBody>
     <CancelDialogActions disabled={disabled} onCancel={onClose}>
@@ -352,7 +355,7 @@ function MemberSettings({ group, selfId, busy, addPersonRequest = 0, onAction, o
 
   return <View style={s.content}>
     {organizer && !group.is_direct && <View style={s.section}>
-      <Button title="Copy link" disabled={disabled || !!group.archived} onPress={() => void createGroupLink()} />
+      <Button title="Copy link" icon={CopyLinkIcon} disabled={disabled || !!group.archived} onPress={() => void createGroupLink()} />
       <FeedbackNote section="group-link" feedback={feedback} />
     </View>}
     <View>
