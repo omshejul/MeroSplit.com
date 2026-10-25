@@ -344,3 +344,14 @@ test('saved local payment is readable with an explicit pending label, never a se
  assert.equal(tree.type,'LogRow');assert.match(tree.props.label,/Pending sync/);assert.match(text(tree),/Pending sync/);
  tree.props.onPress();assert.deepEqual(opened,[payment]);assert.ok(!/confirmed/i.test(tree.props.label));
 });
+
+
+test('pending bill stays editable but cannot request server history or reversal before confirmation', () => {
+ const expense=billRow({split:{mode:'equal',values:{self:'1',other:'1'}}});
+ const tree=production('ExpenseDetail')({expense,group:{...group,expenses:[expense]},selfId:'self',busy:false,canEdit:true,pending:true,onHistory(){}});
+ const buttons=elements(tree).filter(node=>node.type==='Button');
+ assert.equal(buttons.find(node=>node.props.title==='Edit bill')?.props.disabled,false);
+ assert.equal(buttons.find(node=>node.props.title==='Reverse record')?.props.disabled,true);
+ assert.equal(buttons.find(node=>node.props.title==='Version history')?.props.disabled,true);
+ assert.ok(!elements(tree).some(node=>node.type==='RecordAttribution'&&node.props.action==='Added'));
+});

@@ -254,7 +254,7 @@ export function PaymentDetail({ payment, group, selfId, busy, canReverse, onReve
   </View>;
 }
 
-export function ExpenseDetail({ categoryIcons = {}, noticeVisibility, expense, group, selfId, busy, canEdit, onEdit, onReverse, onHistory, attachments, chat }: { categoryIcons?: ExpenseIcons; noticeVisibility?: NoticeVisibility; header?: React.ReactNode; expense: Expense; group: Group; selfId: string; busy: boolean; canEdit: boolean; onEdit: () => void; onReverse: () => void; onHistory?: () => void; attachments?: React.ReactNode; chat?: React.ReactNode }) {
+export function ExpenseDetail({ categoryIcons = {}, noticeVisibility, expense, group, selfId, busy, canEdit, pending = false, onEdit, onReverse, onHistory, attachments, chat }: { categoryIcons?: ExpenseIcons; noticeVisibility?: NoticeVisibility; header?: React.ReactNode; expense: Expense; group: Group; selfId: string; busy: boolean; canEdit: boolean; pending?: boolean; onEdit: () => void; onReverse: () => void; onHistory?: () => void; attachments?: React.ReactNode; chat?: React.ReactNode }) {
   const { palette: colors, ui } = useUI();
   const hasCategory = !!expense.category && !['general', 'other'].includes(expense.category);
   const change = expenseBalanceChange(expense, selfId);
@@ -264,7 +264,7 @@ export function ExpenseDetail({ categoryIcons = {}, noticeVisibility, expense, g
     <VisibleExpense groupId={group.id} expense={expense} visibility={(group.expenses.find(value => value.id === expense.id) ?? group.focused_expense) === expense ? noticeVisibility : undefined}><RecordSummary categoryText={hasCategory} category={expense.deleted ? null : expenseCategory({ ...expense, groupId: group.id, title: expense.description }, categoryIcons) ?? null} reversed={!!expense.deleted} title={expense.description} amount={expense.total}>
       <Text style={[ui.body, { color: balanceColor(change, colors) }]}>{billImpact(change)}</Text>
       <Text style={ui.caption}>{group.name} · {displayDate(expense.date)}</Text>
-      <RecordAttribution action="Added" name={expense.added_by} />
+      {pending ? <Text style={ui.caption}>Saved on device. Pending sync.</Text> : <RecordAttribution action="Added" name={expense.added_by} />}
       {expense.deleted && <RecordAttribution action="Reversed" name={expense.reversal?.actor_name} />}
     </RecordSummary></VisibleExpense>
     {expense.deleted ? <Text style={ui.notice}>Bill record reversed. The original and its reversal are kept in history.</Text>
@@ -282,8 +282,8 @@ export function ExpenseDetail({ categoryIcons = {}, noticeVisibility, expense, g
       {!!expense.notes && <Text style={ui.body}>{expense.notes}</Text>}
       {hasCategory && <Text style={ui.caption}>Category: {expense.category}</Text>}
     </View>}
-    {onHistory && <Button title="Version history" icon="history" kind="outlined" onPress={onHistory} />}
-    {!expense.deleted && <Button title="Reverse record" kind="danger" disabled={busy || !canEdit} onPress={onReverse} />}
+    {onHistory && <Button title="Version history" icon="history" kind="outlined" disabled={busy || pending} onPress={onHistory} />}
+    {!expense.deleted && <Button title="Reverse record" kind="danger" disabled={busy || !canEdit || pending} onPress={onReverse} />}
     {!canEdit && <Text style={ui.caption}>{group.archived ? 'Reopen this group in settings before changing a bill.' : 'Send or discard saved changes before changing this bill.'}</Text>}
   </View>;
 }
