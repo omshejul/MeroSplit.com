@@ -6,7 +6,7 @@ from threading import Barrier, Event, Lock, get_ident
 
 import pytest
 from django.contrib.auth import get_user_model
-from django.db import close_old_connections, connection, connections
+from django.db import close_old_connections, connection, connections, transaction
 from django.db.migrations.executor import MigrationExecutor
 from django.utils import timezone
 
@@ -339,3 +339,77 @@ def test_finish_uses_immutable_claim_raw_title_even_if_binding_was_changed(clien
     categories.process_category_decisions(evaluate=evaluate)
     assert ExpenseCategoryCache.objects.get().state == "uncertain"
     assert ExpenseCategoryDecision.objects.get().last_error == "scope_changed"
+
+
+@pytest.mark.parametrize("operation", ["claim", "finish", "cleanup"])
+def test_account_deletion_does_not_deadlock_revoked_source_worker(client, group, monkeypatch, operation):
+    """Deletion holds the binding while the actual revoked-source worker holds its cache."""
+    from django.db.models.query import QuerySet
+
+    from .group_membership import leave_group
+    from .portability import delete_account
+
+    reader = get_user_model().objects.create_user(username=uid())
+    reader_id = reader.pk
+    Participant.objects.filter(pk=group[1][1]).update(user=reader)
+    body = bill(client, group, split={"mode": "equal", "values": {group[1][0]: "1"}})
+    icons(authenticated_client(reader), body)
+    binding = ExpenseCategoryDecision.objects.get()
+    claim = categories._claim(binding.pk)[0] if operation != "claim" else None
+    if operation == "cleanup":
+        categories._finish(claim, "food", "ready", "")
+        old = timezone.now() - timedelta(days=100)
+        ExpenseCategoryDecision.objects.update(last_used_at=old)
+        ExpenseCategoryCache.objects.update(last_used_at=old)
+    assert leave_group(reader, group[0], {"command_id": uid(), "remove_membership": True})["disposition"] == "left"
+    with transaction.atomic():
+        assert categories._available(reader_id, body["id"]) is None
+    before = list(Expense.objects.values())
+    binding_deleted, cache_locked = Event(), Event()
+    original_delete = QuerySet.delete
+
+    def delete(query, *args, **kwargs):
+        result = original_delete(query, *args, **kwargs)
+        if query.model is ExpenseCategoryDecision:
+            # Still inside portability's real transaction, before actor.delete() cascades the cache.
+            binding_deleted.set()
+            assert cache_locked.wait(5)
+        return result
+
+    monkeypatch.setattr(QuerySet, "delete", delete)
+
+    def worker():
+        assert binding_deleted.wait(5)
+
+        def execute(execute, sql, params, many, context):
+            result = execute(sql, params, many, context)
+            if sql.startswith("SELECT") and '"ledger_expensecategorycache"' in sql and "FOR UPDATE" in sql:
+                cache_locked.set()
+            return result
+
+        with connection.cursor() as cursor:
+            cursor.execute("SET lock_timeout = '5s'")
+            cursor.execute("SET statement_timeout = '8s'")
+        with connection.execute_wrapper(execute):
+            if operation == "claim":
+                return categories._claim(binding.pk)
+            if operation == "finish":
+                return categories._finish(claim, "food", "ready", "")
+            return categories.cleanup_category_cache()
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        deletion = pool.submit(isolated, lambda: delete_account(get_user_model().objects.get(pk=reader_id)))
+        work = pool.submit(isolated, worker)
+        # Await both even on failure, so the local test never leaves a blocked transaction behind.
+        outcomes, errors = [], []
+        for job in [deletion, work]:
+            try:
+                outcomes.append(job.result(10))
+            except Exception as error:
+                errors.append(error)
+    assert not errors, errors
+    assert outcomes[0] == {"deleted": True}
+    assert not get_user_model().objects.filter(pk=reader_id).exists()
+    assert not ExpenseCategoryCache.objects.filter(owner_id=reader_id).exists()
+    assert not ExpenseCategoryDecision.objects.filter(requested_by_id=reader_id).exists()
+    assert before == list(Expense.objects.values())

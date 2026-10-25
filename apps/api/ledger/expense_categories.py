@@ -175,7 +175,8 @@ def _claim(identifier):
     cache = ExpenseCategoryCache.objects.select_for_update(skip_locked=True).filter(pk=candidate.cache_id, state="pending").first()
     if not cache:
         return None
-    row = ExpenseCategoryDecision.objects.select_for_update().filter(pk=identifier, state="pending").first()
+    # Deletion may hold the binding before its cache; never wait in that reverse lock order.
+    row = ExpenseCategoryDecision.objects.select_for_update(skip_locked=True).filter(pk=identifier, state="pending").first()
     if not row or row.requested_by_id != candidate.requested_by_id or row.cache_id != candidate.cache_id:
         return None
     if not _matches(row, expense, cache):
@@ -195,7 +196,7 @@ def _finish(claim, category, state, error):
     cache = ExpenseCategoryCache.objects.select_for_update().filter(pk=claim.cache_id, state="claimed").first()
     if not cache:
         return
-    row = ExpenseCategoryDecision.objects.select_for_update().filter(pk=claim.pk, state="claimed").first()
+    row = ExpenseCategoryDecision.objects.select_for_update(skip_locked=True).filter(pk=claim.pk, state="claimed").first()
     if not row or row.cache_id != claim.cache_id:
         cache.state, cache.category, cache.last_error, cache.lease_until = "uncertain", "", "scope_changed", None
         cache.save(update_fields=["state", "category", "last_error", "lease_until"])
@@ -229,7 +230,7 @@ def cleanup_category_cache(limit=100):
             cache = ExpenseCategoryCache.objects.select_for_update().filter(pk=row.cache_id).first() if row.cache_id else None
             if cache and (cache.state == "claimed" or cache.state == "pending" and row.state != "stale" or cache.last_error in UNRESOLVED):
                 continue
-            row = ExpenseCategoryDecision.objects.select_for_update().filter(pk=identifier, state__in=retired, lease_until__isnull=True, last_used_at__lt=cutoff).exclude(last_error__in=UNRESOLVED).first()
+            row = ExpenseCategoryDecision.objects.select_for_update(skip_locked=True).filter(pk=identifier, state__in=retired, lease_until__isnull=True, last_used_at__lt=cutoff).exclude(last_error__in=UNRESOLVED).first()
             if not row:
                 continue
             if (expense is not None and automatic(expense) and title_digest(expense.description) == row.title_digest
