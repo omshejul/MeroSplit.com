@@ -12,8 +12,8 @@ export interface Database {
 
 export async function migrate(db: Database): Promise<void> {
   const row = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
-  if ((row?.user_version ?? 0) > 4) throw new Error('This database needs a newer app.');
-  if (row?.user_version === 4) return;
+  if ((row?.user_version ?? 0) > 5) throw new Error('This database needs a newer app.');
+  if (row?.user_version === 5) return;
   await db.withExclusiveTransactionAsync(async tx => {
     await tx.execAsync(`
       CREATE TABLE IF NOT EXISTS groups_cache (
@@ -35,10 +35,12 @@ export async function migrate(db: Database): Promise<void> {
         owner TEXT NOT NULL, id TEXT NOT NULL, kind TEXT NOT NULL,
         snapshot TEXT NOT NULL, PRIMARY KEY(owner, id)
       );
-      PRAGMA user_version = 4;
+      CREATE TABLE IF NOT EXISTS sync_state (owner TEXT PRIMARY KEY, confirmed_at TEXT NOT NULL);
+      PRAGMA user_version = 5;
     `);
     const columns = await tx.getAllAsync<{ name: string }>('PRAGMA table_info(outbox)');
     if (!columns.some(column => column.name === 'base_version')) await tx.execAsync('ALTER TABLE outbox ADD COLUMN base_version INTEGER;');
+    if (!columns.some(column => column.name === 'attempted')) await tx.execAsync('ALTER TABLE outbox ADD COLUMN attempted INTEGER NOT NULL DEFAULT 0;');
   });
 }
 
@@ -46,7 +48,11 @@ export async function saveGroup(db: Database, owner: string, group: Group, kind:
   const table = group.read_mode === 'summary' ? 'group_summaries' : 'groups_cache';
   await db.runAsync(`INSERT INTO ${table}(owner,id,kind,snapshot) VALUES(?,?,?,?) ON CONFLICT(owner,id) DO UPDATE SET kind=excluded.kind,snapshot=excluded.snapshot WHERE json_extract(${table}.snapshot,'$.version') <= json_extract(excluded.snapshot,'$.version') AND (${table}.kind<>excluded.kind OR ${table}.snapshot<>excluded.snapshot)`, owner, group.id, kind, JSON.stringify(group));
   // A newer authoritative version invalidates all old history, including redacted text.
-  if (group.read_mode === 'summary') await db.runAsync("DELETE FROM groups_cache WHERE owner=? AND id=? AND json_extract(snapshot,'$.version') < ?", owner, group.id, group.version);
+  if (group.read_mode === 'summary') {
+    const complete = await db.getFirstAsync<{ id: string }>("SELECT id FROM groups_cache WHERE owner=? AND id=? AND kind='shared' AND json_extract(snapshot,'$.version') >= ?", owner, group.id, group.version);
+    if (!complete) await db.runAsync('DELETE FROM sync_state WHERE owner=?', owner);
+    await db.runAsync("DELETE FROM groups_cache WHERE owner=? AND id=? AND json_extract(snapshot,'$.version') < ?", owner, group.id, group.version);
+  }
 }
 
 export async function saveDraft(db: Database, owner: string, groupId: string, draft: unknown): Promise<void> {
@@ -139,8 +145,8 @@ export async function enqueue(db: Database, owner: string, command: Command): Pr
 }
 
 export async function pendingCommands(db: Database, owner: string): Promise<Command[]> {
-  const rows = await db.getAllAsync<Omit<Command, 'body'> & { body: string }>('SELECT command_id,group_id,method,path,body,state,error,base_version FROM outbox WHERE owner=? ORDER BY ordinal', owner);
-  return rows.map(({ base_version, ...row }) => ({ ...row, body: JSON.parse(row.body) as Command['body'], ...(base_version == null ? {} : { base_version }) }));
+  const rows = await db.getAllAsync<Omit<Command, 'body'> & { body: string }>('SELECT command_id,group_id,method,path,body,state,error,base_version,attempted FROM outbox WHERE owner=? ORDER BY ordinal', owner);
+  return rows.map(({ base_version, attempted, ...row }) => ({ ...row, ...(attempted ? { attempted: true } : {}), body: JSON.parse(row.body) as Command['body'], ...(base_version == null ? {} : { base_version }) }));
 }
 
 export async function markCommand(db: Database, owner: string, id: string, state: Command['state'], error: string): Promise<void> {
@@ -251,5 +257,27 @@ export async function wipeAccount(db: Database, owner: string): Promise<void> {
     await tx.runAsync('DELETE FROM groups_cache WHERE owner=?', owner);
     await tx.runAsync('DELETE FROM group_summaries WHERE owner=?', owner);
     await tx.runAsync('DELETE FROM drafts WHERE owner=?', owner);
+    await tx.runAsync('DELETE FROM sync_state WHERE owner=?', owner);
   });
+}
+
+// Only an unattempted bill can be edited in place. An uncertain write retains
+// its immutable ID/body until its server result is reconciled.
+export async function enqueueBill(db: Database, owner: string, command: Command): Promise<void> {
+  await db.withExclusiveTransactionAsync(async tx => {
+    const previous = (await pendingCommands(tx, owner)).find(row => row.group_id === command.group_id && row.body.id === command.body.id && /\/expenses(?:\/[^/]+)?$/.test(row.path));
+    if (!previous) { await enqueue(tx, owner, command); return; }
+    if (previous.attempted || previous.state !== 'pending') throw new Error('Reconnect and review this bill before editing an unconfirmed change. Its original saved change is kept.');
+    const body: Record<string, unknown> = { ...command.body, command_id: previous.command_id };
+    if (previous.method === 'POST') delete body.version;
+    else body.version = previous.body.version;
+    await tx.runAsync('UPDATE outbox SET body=? WHERE owner=? AND command_id=? AND attempted=0', JSON.stringify(body), owner, previous.command_id);
+  });
+}
+
+export async function confirmedSync(db: Database, owner: string): Promise<string | null> {
+  return (await db.getFirstAsync<{ confirmed_at: string }>('SELECT confirmed_at FROM sync_state WHERE owner=?', owner))?.confirmed_at ?? null;
+}
+export async function confirmSync(db: Database, owner: string): Promise<void> {
+  await db.runAsync('INSERT INTO sync_state(owner,confirmed_at) VALUES(?,?) ON CONFLICT(owner) DO UPDATE SET confirmed_at=excluded.confirmed_at', owner, new Date().toISOString());
 }

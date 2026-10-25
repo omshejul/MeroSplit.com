@@ -1,3 +1,4 @@
+import { serverReachable } from './connectivity';
 import * as SQLite from 'expo-sqlite';
 import { migrate } from './storage';
 import { serializedDatabase } from './webDatabase';
@@ -10,7 +11,7 @@ import { isColorFamily, type ColorFamily } from './theme';
 let database: Promise<Database> | undefined;
 let durable = true;
 export function storageIsDurable(): boolean { return durable; }
-export function isOnline(): boolean { return navigator.onLine; }
+export function isOnline(): boolean { return navigator.onLine && serverReachable(); }
 export function getDatabase(): Promise<Database> {
   database ??= (async () => {
     if (!window.crossOriginIsolated || typeof SharedArrayBuffer === 'undefined') throw new Error('This browser cannot open MeroSplit storage. Use a current Safari, Chrome, Edge or Firefox browser.');

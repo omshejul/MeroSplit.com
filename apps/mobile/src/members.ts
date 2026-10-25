@@ -3,7 +3,7 @@ import type { Group } from './types.ts';
 type Action = (suffix: string, body: Record<string, unknown>) => Promise<Record<string, unknown>>;
 export type AddPersonRequest = { command_id: string; id: string; name: string; email: string };
 export type EmailInviteRequest = { personId: string; email: string; id: string };
-export type PersonLinkResult = { linked: boolean; linkedParticipantIds: string[] };
+export type PersonLinkResult = { linked: boolean; linkedParticipantIds: string[]; pending?: boolean };
 
 export function personRequest(name: string, email: string, previous: AddPersonRequest | null, newId: () => string): AddPersonRequest {
   name = name.trim(); email = email.trim().toLowerCase();
@@ -30,6 +30,7 @@ function personLinkResult(result: Record<string, unknown>, personId: string): Pe
 
 export async function addPerson(groupId: string, request: AddPersonRequest, onAction: Action): Promise<PersonLinkResult> {
   const result = await onAction('/participants', request);
+  if (result.pending === true && result.id === groupId && result.participant_id === request.id) return { linked: false, linkedParticipantIds: [], pending: true };
   acceptedGroup(result, groupId);
   return personLinkResult(result, request.id);
 }

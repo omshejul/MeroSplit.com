@@ -1,0 +1,51 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import ts from 'typescript';
+import { DatabaseSync } from 'node:sqlite';
+import { sqliteAdapter } from './sqlite.ts';
+import { migrate, enqueue, pendingCommands } from '../src/storage.ts';
+import { addPerson } from '../src/members.ts';
+const file = ts.createSourceFile('App.tsx', readFileSync(new URL('../App.tsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+function declarations(name: string): ts.FunctionDeclaration[] { const result: ts.FunctionDeclaration[]=[]; function visit(node: ts.Node) { if(ts.isFunctionDeclaration(node) && node.name?.text===name) result.push(node); ts.forEachChild(node,visit); } visit(file); return result; }
+function production(name: string, env: object) { const node=declarations(name)[0]; assert.ok(node); return new Function('env', `with(env) { ${ts.transpile(node.getText(file),{target:ts.ScriptTarget.ES2022})}; return ${name}; }`)(env); }
+
+test('actual App portal siblings have stable distinct account-scoped identities', () => {
+ const keys:string[]=[];
+ function visit(node:ts.Node) {
+  if(ts.isJsxSelfClosingElement(node) && ['UPISetupDialog','FeedbackDialog','OAuthContinuation'].includes(node.tagName.getText(file))) {
+   const attr=node.attributes.properties.find(value=>ts.isJsxAttribute(value)&&value.name.getText(file)==='key') as ts.JsxAttribute;
+   assert.ok(attr?.initializer && ts.isJsxExpression(attr.initializer));
+   const code=(attr.initializer as ts.JsxExpression).expression!.getText(file);
+   const key=new Function('owner','session',`return ${code};`)('backend|1',{token:'generation'});
+   assert.match(key,/backend\|1/);assert.match(key,/generation/);keys.push(key);
+  }
+  ts.forEachChild(node,visit);
+ }
+ visit(file);assert.equal(keys.length,3);assert.equal(new Set(keys).size,3,'separate sibling portal types must never share React keys');
+});
+
+test('actual App groupAction persists offline member once and returns pending, never a forged server/link acknowledgement', async () => {
+ const raw=new DatabaseSync(':memory:'),db=sqliteAdapter(raw);let sends=0;let id=0;
+ try {
+  await migrate(db);
+  const env={session:{userId:'1'},owner:'server|1',groupId:'trip',pending:[],load:async()=>{},setSyncing(){},ownerRef:{current:'server|1'},requireConnectionForTemporaryStorage(){},perform:async(work:()=>unknown)=>work(),getDatabase:async()=>db,enqueue,pendingCommands,isOnline:()=>false,syncOutbox:async()=>{sends++;return[]},command:(method:string,path:string,body:object)=>({command_id:(body as any).command_id??`command-${id++}`,group_id:'trip',method,path,body,state:'pending',error:null}),ApiError:class extends Error{}};
+  const action=production('groupAction',env);
+  const input={command_id:'same-command',id:'john',name:'John',email:'test@example.invalid'};
+  const result=await addPerson('trip',input,action);
+  assert.deepEqual(result,{linked:false,linkedParticipantIds:[],pending:true});assert.equal(sends,0);
+  assert.equal((await pendingCommands(db,'server|1')).length,1);
+  await addPerson('trip',input,action);assert.equal((await pendingCommands(db,'server|1')).length,1,'same exact retry preserves one command');
+  await assert.rejects(action('/participants/john/email-invite',{command_id:'mail'}),/connection/i);assert.equal(sends,0);
+  assert.equal((await pendingCommands(db,'server|1')).length,1,'server-dependent actions are not silently queued offline');
+ } finally {raw.close();}
+});
+
+test('actual syncAccount releases the UI action before the complete-history download finishes', async () => {
+ let downloads=0;
+ const active={userId:'1',token:'generation'},scope='server|1';
+ const env={accountOwner:()=>scope,ownerRef:{current:scope},activeSessionRef:{current:active},activeGroupRef:{current:null},setSyncing(){},setSyncProblem(){},setVerifiedEmptyOwner(){},getDatabase:async()=>({}),readProfile:async()=>({}),request:async()=>({needs_invitation:false}),setNeedsInvitation(){},syncOutbox:async()=>[],ApiError:class extends Error{},retryAccountMediaUploads:async()=>0,setNotice(){},refreshGroups:async()=>[],load:async()=>{},setGroupId(){},setScreen(){},downloadOffline:()=>{downloads++;return new Promise(()=>{});}};
+ const sync=production('syncAccount',env);
+ await Promise.race([sync(active),new Promise((_,reject)=>setTimeout(()=>reject(new Error('History download held the UI action')),100))]);
+ assert.equal(downloads,1);
+});
