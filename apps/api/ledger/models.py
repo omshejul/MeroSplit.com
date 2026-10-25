@@ -35,6 +35,7 @@ class Participant(models.Model):
     removed = models.BooleanField(default=False)
     hidden = models.BooleanField(default=False, db_default=False)
     contact_email = models.EmailField(blank=True, default="")
+    display_name_override = models.CharField(max_length=120, blank=True, default="", db_default="")
 
     class Meta:
         constraints = [

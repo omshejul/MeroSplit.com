@@ -310,7 +310,7 @@ def delete_account(actor):
             },
         )
     PaymentAttempt.objects.filter(recipient__user=actor).update(payee="")
-    Participant.objects.filter(user=actor).update(name="Deleted participant", user=None, contact_email="")
+    Participant.objects.filter(user=actor).update(name="Deleted participant", user=None, contact_email="", display_name_override="")
     Settlement.objects.filter(recorded_by=actor).update(recorded_by=None)
     Change.objects.filter(actor=actor).update(actor=None)
     Invite.objects.filter(claimant=actor).update(claimant=None, revoked=True)

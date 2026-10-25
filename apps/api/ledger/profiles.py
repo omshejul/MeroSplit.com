@@ -14,6 +14,8 @@ def display_name(user):
 
 
 def participant_display_name(person):
+    if person.display_name_override:
+        return person.display_name_override
     if person.user_id and not person.removed:
         return display_name(person.user) or person.name
     return person.name

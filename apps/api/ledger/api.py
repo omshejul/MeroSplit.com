@@ -1,3 +1,4 @@
+from typing import Annotated
 from urllib.parse import quote
 from uuid import UUID
 
@@ -11,7 +12,7 @@ from ninja import File, Form, NinjaAPI
 from ninja.errors import HttpError, ValidationError
 from ninja.files import UploadedFile as RequestFile
 from ninja.security import django_auth
-from pydantic import Field
+from pydantic import Field, StrictInt, StrictStr
 
 from . import balance_statements, bill_chat, feedback, group_invites
 from .accounting import AccountingError
@@ -209,6 +210,10 @@ def group_get(request, group_id: UUID):
         group = visible_group(request.auth, group_id, lock=True)
         state = snapshot(group)
         state["hidden"] = group.participants.filter(user=request.auth, removed=False).values_list("hidden", flat=True).get()
+        accounts = {str(p.id): p.user.email if p.user_id and p.user.is_active and not p.removed else None
+                    for p in group.participants.select_related("user")}
+        for person in state["participants"]:
+            person["account_email"] = accounts[person["id"]]
         if group.owner_id == request.auth.pk:
             emails = dict(group.participants.values_list("id", "contact_email"))
             for person in state["participants"]:
@@ -462,6 +467,9 @@ class GroupLinkToken(Input):
 
 class GroupLinkJoin(Command):
     token: str = Field(min_length=1, max_length=128)
+    participant_id: UUID | None = None
+    preview_version: Annotated[StrictInt, Field(ge=0)] | None = None
+    display_name: Annotated[StrictStr, Field(min_length=1, max_length=120, pattern=r"\S")] | None = None
 
 
 @api.post("/group-invite-links/preview")

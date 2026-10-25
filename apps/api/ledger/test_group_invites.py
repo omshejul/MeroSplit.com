@@ -39,7 +39,7 @@ def test_reusable_new_members_no_guest_takeover(client, group):
     for name in ["B", "New friend"]:
         person = account(name)
         preview = send(person, "post", "/group-invite-links/preview", {"token": token})
-        assert preview.status_code == 200 and preview.json() == {"name": "Functional test", "already_member": False}
+        assert preview.status_code == 200 and preview.json() == {"name": "Functional test", "already_member": False, "version": Group.objects.get(pk=gid).version, "people": [{"id": p, "name": n} for p, n in sorted(zip(ids[1:], ["B", "C"]))]}
         assert Participant.objects.filter(user=person.actor).count() == 0
         command = uid()
         r = join(person, token, command)

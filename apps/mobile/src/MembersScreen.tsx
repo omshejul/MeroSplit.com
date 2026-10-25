@@ -71,6 +71,7 @@ function MemberRow({ group, person, selfId, organizer, disabled, working, feedba
     <View style={ui.rowBody}>
       <Pressable accessibilityRole={canRename ? 'button' : undefined} accessibilityLabel={canRename ? `Edit ${person.name}'s name` : undefined} disabled={disabled || !canRename} onPress={onRename} style={{ minHeight: canRename ? 44 : undefined, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
         <View style={ui.rowBody}><Text numberOfLines={1} ellipsizeMode="tail" accessibilityLabel={displayName} style={ui.rowTitle}>{displayName}</Text>
+          {!!person.account_email && person.user_id != null && !person.removed && <Text style={ui.rowSub} accessibilityLabel={person.account_email}>{person.account_email}</Text>}
           {!!(reason || status) && <Text style={ui.rowSub} accessibilityLabel={[status, reason].filter(Boolean).join('. ')}>{[status, reason].filter(Boolean).join(' · ')}</Text>}
         </View>
       </Pressable>
