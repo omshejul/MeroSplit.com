@@ -127,7 +127,7 @@ def test_install_intent_is_manual_safe_and_android_group_precedes_play(monkeypat
         html = response.content.decode()
         assert "Continue on web" in html and "https://testflight.apple.com/join/7HrHqqnB" in html
         assert html.index("https://groups.google.com/g/merosplit-beta") < html.index("https://play.google.com/apps/testing/com.omshejul.splitdumb")
-        assert "Use the same Google account" in html and "cannot verify group membership" in html
+        assert "Use the same Google account" in html and "Finish each step before opening the next." in html
     from hashlib import sha256
     for name, digest in [("try-on-iphone.svg", "b01a3c83b8dcde78a3b6c66d733a87507d74db44eae84d8d0b84cd04e89cd253"), ("try-on-android.svg", "235dc98ced6141c589fc655e064479f6719935b90ad04c1a785890226c9ed6fc")]:
         response = browser.get("/assets/" + name)
@@ -140,6 +140,7 @@ def test_home_header_is_logo_only_with_help_links_in_footer():
     html = browser.get("/").content.decode()
     header = html.split("<header", 1)[1].split("</header>", 1)[0]
     footer = html.split("<footer", 1)[1].split("</footer>", 1)[0]
+    assert "made by Om Shejul" not in footer and "mail@merosplit.com" in footer
     assert '<a class="brand" href="/"' in header and "<nav" not in header
     for url in ["/support", "/privacy", "/chat-policy", "/delete-account"]:
         assert f'href="{url}"' in footer
@@ -147,6 +148,7 @@ def test_home_header_is_logo_only_with_help_links_in_footer():
         response = browser.get(url)
         assert response.status_code == 200
         help_header = response.content.decode().split("<header", 1)[1].split("</header>", 1)[0]
+        assert "MeroSplit is made by Om Shejul" in response.content.decode()
         assert '<nav aria-label="Help">' in help_header and 'href="/support"' in help_header
 
 
@@ -161,3 +163,14 @@ def test_pending_testing_links_never_emit_native_links_or_handoff_script(monkeyp
             assert 'href="/app/"' in html and 'src="/assets/install-qr.svg"' in html
             for withheld in ["testflight.apple.com", "play.google.com/apps/testing", "groups.google.com", '/assets/install.js', 'class="badges"', 'id="android-help"']:
                 assert withheld not in html
+
+
+def test_android_guide_is_modal_with_manual_nojs_fallback(monkeypatch):
+    monkeypatch.setitem(resolve("/").func.view_initkwargs["extra_context"], "testing_links_ready", True)
+    html = Client().get("/").content.decode()
+    assert '<dialog id="android-guide"' in html and 'method="dialog"' in html
+    assert 'aria-haspopup="dialog"' in html and '<noscript><section' in html
+    assert '<details' not in html and 'Android testers:' not in html
+    assert 'Become a tester' in html and 'tap Install on your phone' in html
+    assert 'src="/assets/play-become-tester.png"' in html
+    assert Client().get('/assets/play-become-tester.png')["Content-Type"] == 'image/png'

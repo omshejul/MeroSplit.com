@@ -39,19 +39,9 @@
       <div class="install" id="install" tabindex="-1" aria-label="Try MeroSplit">
         {% if testing_links_ready %}<div class="badges">
           <a id="iphone-install" href="https://testflight.apple.com/join/7HrHqqnB"><img src="/assets/try-on-iphone.svg" alt="Try on iPhone with TestFlight" height="52"></a>
-          <a id="android-badge" href="#android-install" aria-describedby="android-prerequisite"><img src="/assets/try-on-android.svg" alt="Try on Android: see testing steps" height="52"></a>
+          <a id="android-badge" href="#android-install" aria-haspopup="dialog" aria-controls="android-guide"><img src="/assets/try-on-android.svg" alt="Try on Android: see testing steps" height="52"></a>
         </div>
-        <p class="install-hint" id="android-prerequisite">Android testers: join the Google Group first.</p>
-        <details class="android-install" id="android-help">
-          <summary>Android beta steps</summary>
-          <div id="android-install" tabindex="-1">
-          <ol>
-            <li><a href="https://groups.google.com/g/merosplit-beta">Join the MeroSplit beta Google Group</a></li>
-            <li><a href="https://play.google.com/apps/testing/com.omshejul.splitdumb">Open Google Play testing</a></li>
-          </ol>
-          <p>Use the same Google account for both steps. This page cannot verify group membership.</p>
-          </div>
-        </details>{% endif %}
+        {% endif %}
         <a class="web-choice" href="/app/">Continue on web</a>
         <figure class="install-qr"><img src="/assets/install-qr.svg" width="112" height="112" alt="QR code to open MeroSplit testing options on your phone"><figcaption>Scan to try on your phone.</figcaption></figure>
       </div>
@@ -67,6 +57,19 @@
     </figure>
   </main>
 
-  {% include "ledger/components/public_footer.html" with show_support=True %}
+  {% if testing_links_ready %}
+  <dialog id="android-guide" class="android-guide" aria-labelledby="android-title" aria-describedby="android-account">
+    <div class="guide-heading"><h2 id="android-title">Try MeroSplit on Android</h2><form method="dialog"><button autofocus aria-label="Close Android guide">Close</button></form></div>
+    <p id="android-account">Use the same Google account as your phone’s Play Store.</p>
+    <ol class="guide-steps">
+      <li><h3>Join the group</h3><p>Open the group. Sign in if asked, then choose Join group.</p><a href="https://groups.google.com/g/merosplit-beta" target="_blank" rel="noopener">Open Google Group ↗</a></li>
+      <li><h3>Become a tester</h3><p>After joining, open the testing page and tap Become a tester.</p><figure><img src="/assets/play-become-tester.png" width="390" height="120" alt="Google Play testing page: blue Become a tester button"><figcaption>Actual Google Play testing button.</figcaption></figure><a href="https://play.google.com/apps/testing/com.omshejul.splitdumb" target="_blank" rel="noopener">Open testing page ↗</a></li>
+      <li><h3>Install</h3><p>After becoming a tester, open Google Play and tap Install on your phone.</p><a href="https://play.google.com/store/apps/details?id=com.omshejul.splitdumb" target="_blank" rel="noopener">Open Google Play ↗</a></li>
+    </ol>
+    <p class="guide-note">Finish each step before opening the next.</p>
+  </dialog>
+  <noscript><section class="wrap android-fallback" id="android-install" tabindex="-1" aria-labelledby="fallback-title"><h2 id="fallback-title">Try on Android</h2><p>Use the same Google account as your phone’s Play Store.</p><ol><li><a href="https://groups.google.com/g/merosplit-beta">Join the Google Group first</a>.</li><li><a href="https://play.google.com/apps/testing/com.omshejul.splitdumb">Become a tester</a>.</li><li><a href="https://play.google.com/store/apps/details?id=com.omshejul.splitdumb">Open Google Play and install</a>.</li></ol></section></noscript>
+  {% endif %}
+  {% include "ledger/components/public_footer.html" with show_support=True hide_author=True %}
 </body>
 </html>

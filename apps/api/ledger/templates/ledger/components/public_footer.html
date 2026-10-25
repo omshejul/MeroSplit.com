@@ -1,5 +1,5 @@
   <footer class="wrap foot">
-    <p>MeroSplit is made by Om Shejul. Write to <a href="mailto:mail@merosplit.com">mail@merosplit.com</a>.</p>
+    <p>{% if not hide_author %}MeroSplit is made by Om Shejul. {% endif %}Write to <a href="mailto:mail@merosplit.com">mail@merosplit.com</a>.</p>
     <nav aria-label="Account and policies">
       <ul>
         {% if show_support %}<li><a href="/support">Support</a></li>{% endif %}

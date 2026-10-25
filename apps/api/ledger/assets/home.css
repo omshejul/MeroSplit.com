@@ -98,12 +98,6 @@ p { margin: 0; max-width: 62ch; }
 .badges { display: flex; flex-wrap: wrap; gap: .75rem; align-items: center; }
 .badges a { display: inline-flex; min-height: 3.25rem; border-radius: 10px; }
 .badges img { height: 3.25rem; width: auto; max-width: 100%; }
-.install-hint { margin-top: .9rem; color: var(--quiet); font-size: .875rem; }
-.android-install { margin-top: .25rem; max-width: 39ch; font-size: .875rem; scroll-margin-block: 1rem; }
-.android-install summary { cursor: pointer; color: var(--blue); min-height: 2.75rem; padding-block: .65rem; }
-.android-install ol { margin: .5rem 0; padding-left: 1.5rem; }
-.android-install a { display: inline-flex; align-items: center; min-height: 2.75rem; }
-.android-install p { color: var(--quiet); }
 .web-choice { display: inline-flex; align-items: center; min-height: 2.75rem; margin-top: .75rem; font-weight: 500; }
 .install-qr { margin: 1.5rem 0 0; display: flex; align-items: center; gap: 1rem; color: var(--quiet); font-size: .875rem; }
 .install-qr img { width: 7rem; height: 7rem; flex-shrink: 0; background: white; }
@@ -129,3 +123,22 @@ p { margin: 0; max-width: 62ch; }
 }
 @media (max-width: 40rem) { .top nav { order: 3; width: 100%; } }
 @media (forced-colors: active) { .split-example, .people span { border: 1px solid CanvasText; } .open { border: 1px solid ButtonText; } }
+
+.guide-open { overflow: hidden; }
+.android-guide { color: var(--ink); background: var(--page); border: 1px solid var(--rule); border-radius: 18px; padding: 1.5rem; width: min(35rem, calc(100% - 2rem)); max-height: calc(100dvh - 2rem); overflow-y: auto; overscroll-behavior: contain; }
+.android-guide::backdrop { background: #0009; }
+.guide-heading { display: flex; align-items: start; gap: 1rem; justify-content: space-between; }
+.guide-heading h2 { font-size: 1.5rem; line-height: 1.2; }
+.guide-heading button { font: inherit; color: var(--ink); background: var(--paper); border: 1px solid var(--rule); border-radius: 8px; padding: .6rem .8rem; min-height: 44px; cursor: pointer; }
+#android-account { margin-top: 1rem; color: var(--quiet); }
+.guide-steps { padding-left: 1.6rem; margin: 1.5rem 0 0; }
+.guide-steps li { padding-left: .4rem; margin-top: 1.5rem; }
+.guide-steps li::marker { font-weight: 650; color: var(--blue); }
+.guide-steps h3 { font-size: 1.125rem; margin: 0 0 .35rem; }
+.guide-steps p, .guide-note { color: var(--quiet); font-size: .9375rem; }
+.guide-steps a, .android-fallback a { display: inline-flex; align-items: center; min-height: 44px; }
+.guide-steps figure { margin: .5rem 0; }
+.guide-steps img { display: block; max-width: 100%; height: auto; border-radius: 10px; background: white; }
+.guide-steps figcaption { color: var(--quiet); font-size: .75rem; margin-top: .3rem; }
+.guide-note { border-top: 1px solid var(--rule); padding-top: 1rem; margin-top: 1rem; }
+.android-fallback { padding-block: 2rem; }
