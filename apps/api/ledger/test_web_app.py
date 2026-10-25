@@ -35,6 +35,7 @@ def test_same_origin_shell_deep_links_csrf_and_isolated_sqlite_assets(exported_a
         assert response["Cross-Origin-Opener-Policy"] == "same-origin"
         assert response["Cross-Origin-Embedder-Policy"] == "require-corp"
         assert response["Cache-Control"] == "no-cache"
+        assert response["Referrer-Policy"] == "same-origin"
     assert "csrftoken" in browser.cookies
     script = browser.get("/app/bundle-0123456789abcdef.js")
     assert script.status_code == 200 and script["Cache-Control"].endswith("immutable")
@@ -115,7 +116,7 @@ def test_email_entry_get_head_and_prefetch_only_serve_uncached_private_shell(exp
         assert response.status_code == 200
         assert response["Content-Type"] == "text/html; charset=utf-8"
         assert response["Cache-Control"] == "no-store"
-        assert response["Referrer-Policy"] == "no-referrer"
+        assert response["Referrer-Policy"] == "same-origin"
         assert "Location" not in response
         response.close()
     assert "csrftoken" in browser.cookies
