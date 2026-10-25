@@ -5,7 +5,7 @@ import pytest
 from django.contrib.auth import get_user_model
 from django.db import close_old_connections
 
-from .models import Change, Expense, Group, OpeningBalance, Participant, Settlement
+from .models import Change, Expense, Group, OpeningBalance, Participant, PaymentAttempt, Settlement
 from .test_api import authenticated_client, expense, send, uid
 from .test_api import client as client
 from .test_api import group as group
@@ -48,6 +48,14 @@ def test_selected_person_preserves_all_money_ids_and_account_name(client, group)
     }).status_code == 200
     OpeningBalance.objects.create(group_id=gid, balances={ids[0]: '0', ids[1]: '-100', ids[2]: '100'},
                                   source='Local fixture', cutoff='2026-10-01', accepted=False)
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    PaymentAttempt.objects.create(group_id=gid, sender_id=ids[1], recipient_id=ids[0], amount=222,
+                                  payee="local-fixture@upi", payee_version=1, group_version=Group.objects.get(pk=gid).version,
+                                  expires_at=timezone.now()+timedelta(minutes=10))
+    original_attempts = list(PaymentAttempt.objects.values())
     before = list(Expense.objects.values()), list(Settlement.objects.values()), list(OpeningBalance.objects.values()), list(Change.objects.values())
     state = send(client, 'get', f'/groups/{gid}').json()
     guest = account('Global account name')
@@ -70,6 +78,7 @@ def test_selected_person_preserves_all_money_ids_and_account_name(client, group)
         assert row['account_email'] == guest.actor.email
         assert after['balances'] == state['balances']
     assert (list(Expense.objects.values()), list(Settlement.objects.values()), list(OpeningBalance.objects.values())) == before[:3]
+    assert list(PaymentAttempt.objects.values()) == original_attempts
     assert list(Change.objects.filter(pk__in=[row['id'] for row in before[3]]).values()) == before[3]
     assert claim(guest, token, ids[1], data['version'], name='Different', command=command).status_code == 409
 
