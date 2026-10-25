@@ -20,9 +20,9 @@ function productionFunction(file: string, name: string, env: Record<string, any>
 function elements(tree: unknown): Element[] {
   if (Array.isArray(tree)) return tree.flatMap(elements);
   if (!tree || typeof tree !== 'object' || !('children' in tree)) return [];
-  const element = tree as Element; return [element, ...element.children.flatMap(elements)];
+  const element = tree as Element; return [element, ...element.children.flatMap(elements), ...elements(element.props.ListHeaderComponent), ...elements(element.props.ListFooterComponent), ...elements(element.props.data?.length ? undefined : element.props.ListEmptyComponent)];
 }
-const uiEnv = { Mascot, Text: 'Text', ErrorText: 'ErrorText', View: 'View', ActivityIndicator: 'Spinner', Button: 'Button', GroupListRow: 'GroupListRow', ActivityRow: 'ActivityRow', styles: {}, s: {}, useUI: () => ({ ui: {}, palette: {} }) };
+const uiEnv = { FlatList: 'FlatList', pageContentStyle: {}, useRef: () => ({ current: null }), useScrollPagination: () => ({ events: {}, loading: false, failed: false }), LoadingSpinner: 'LoadingSpinner', Mascot, Text: 'Text', ErrorText: 'ErrorText', View: 'View', ActivityIndicator: 'Spinner', Button: 'Button', GroupListRow: 'GroupListRow', ActivityRow: 'ActivityRow', styles: {}, s: {}, useUI: () => ({ ui: {}, palette: {} }) };
 
 test('Groups and Activity decorate only verified true empty states while retaining their existing copy', () => {
   const groups = productionFunction('src/GroupList.tsx', 'GroupList', uiEnv);
@@ -52,7 +52,7 @@ test('Groups and Activity decorate only verified true empty states while retaini
 
 test('App keeps the Activity empty region during refresh but claims emptiness only when verified', () => {
   const app = readFileSync(new URL('../App.tsx', import.meta.url), 'utf8');
-  assert.match(app, /<ActivityScreen emptyVerified=\{activityEmptyVerified\} showEmpty=\{activityEmptyVerified \|\| busy\}/);
+  assert.match(app, /emptyVerified=\{activityEmptyVerified\} showEmpty=\{activityEmptyVerified \|\| busy\}/);
   assert.match(app, /decorated=\{!showArchived && !showHidden && !archivedGroups\.length && !hiddenGroups\.length\}/);
 });
 
@@ -139,7 +139,7 @@ test('an exhausted older Activity page never becomes a verified empty first page
   visit(app); assert.ok(condition);
   const session = { token: 'current' }, activityOwner = { current: '' };
   let displayed: Record<string, any> | null = null;
-  const env = { session, activity: { next_cursor: 'older', revision: 'current' }, perform: async (run: () => Promise<void>) => run(), setActivityError() {}, request: async () => ({ read_mode: 'activity', items: [], next_cursor: null, revision: 'current' }), activeSessionRef: { current: session }, activityOwner, accountOwner: () => 'owner', setActivity: (page: Record<string, any>) => { displayed = page; }, requestAnimationFrame() {}, ApiError: class extends Error {} };
+  const env = { session, browseCurrent: { current: 'scope' }, activity: { items: [], next_cursor: 'older', revision: 'current' }, perform: async (run: () => Promise<void>) => run(), setActivityError() {}, request: async () => ({ read_mode: 'activity', items: [], next_cursor: null, revision: 'current' }), activeSessionRef: { current: session }, activityOwner, accountOwner: () => 'owner', setActivity: (page: Record<string, any>) => { displayed = page; }, requestAnimationFrame() {}, ApiError: class extends Error {} };
   const refresh = productionFunction('App.tsx', 'refreshActivity', env);
   const eligible = () => {
     const scope = { mascotEligible: true, activityError: '', activity: displayed, activityOwner, owner: 'owner', session, emptyChatScope: 'owner|current' };

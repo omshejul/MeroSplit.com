@@ -33,6 +33,10 @@ function component(db: any, send: typeof request, extra: Record<string, any> = {
     useRef: (initial: any) => { const id = cursor++; return states[id] ??= { current: initial }; },
     useEffect: (fn: () => any, values: any[]) => { const id = cursor++; if (!deps[id] || values.some((value, i) => value !== deps[id][i])) { effects.push(() => { cleanups[id]?.(); cleanups[id] = fn(); }); deps[id] = values; } },
   };
+  const pagingSource = ts.createSourceFile('useScrollPagination.ts', readFileSync(new URL('../src/useScrollPagination.ts', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true);
+  const pagingBody = pagingSource.statements.filter(node => !ts.isImportDeclaration(node)).map(node => node.getText(pagingSource).replace(/^export /, '')).join('\n');
+  env.useScrollPagination = new Function('env', `with(env){${ts.transpile(pagingBody, { target: ts.ScriptTarget.ES2022 })};return useScrollPagination;}`)(env);
+  env.LoadingSpinner = 'LoadingSpinner';
   Object.assign(env, extra);
   const source = ts.createSourceFile('BillChatScreen.tsx', readFileSync(new URL('../src/BillChatScreen.tsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   const body = source.statements.filter(node => !ts.isImportDeclaration(node)).map(node => node.getText(source).replace(/^export (?:default )?/, '')).join('\n');
@@ -68,7 +72,7 @@ test('Older-history reader receives a New messages action and keeps rendered dat
   try {
     await migrate(db); app.render(); await app.commit(); app.page(page([message('1'), message('2')]));
     let tree = app.render(); await app.commit();
-    const flat = find(tree, 'FlatList'); flat.props.onScroll({ nativeEvent: { contentOffset: { y: 200 } } });
+    const flat = find(tree, 'FlatList'); flat.props.onScroll({ nativeEvent: { contentOffset: { y: 200 }, contentSize: { height: 1000 }, layoutMeasurement: { height: 500 } } });
     app.page(page([message('3')])); tree = app.render(); await app.commit();
     assert.ok(button(tree, 'New messages')); assert.deepEqual(find(tree, 'FlatList').props.data.map((row: ChatMessage) => row.id), ['2', '1']);
     button(tree, 'New messages').props.onPress(); tree = app.render(); await app.commit();

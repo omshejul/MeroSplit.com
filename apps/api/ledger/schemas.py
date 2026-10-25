@@ -81,6 +81,7 @@ class ExpenseIn(Command):
     split: Split
     date: Date
     category: Annotated[str, Field(max_length=40)] = "other"
+    category_auto: bool | None = None
     notes: Annotated[str, Field(max_length=2000)] = ""
     version: int | None = Field(default=None, ge=1)
 

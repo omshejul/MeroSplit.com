@@ -226,7 +226,7 @@ def import_splitwise(actor, payload: dict) -> dict:
                 expense = Expense(
                     group=group, description=record["description"], total=record["amount"],
                     paid=paid, shares=shares, split=split, date=date.fromisoformat(record["date"]),
-                    category=record["category"], notes="Imported from Splitwise CSV; payer and exact shares reconstructed from net amounts.",
+                    category=record["category"], category_auto=False, notes="Imported from Splitwise CSV; payer and exact shares reconstructed from net amounts.",
                 )
                 expenses.append(expense)
                 kind, data = "expense_saved", expense_dict(expense)

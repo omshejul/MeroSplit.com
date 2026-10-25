@@ -4,17 +4,17 @@ export type Participant = { id: string; name: string; recorded_name?: string; em
 export type Expense = {
   id: string; version: number; description: string; total: string;
   added_by?: string | null; reversal?: { actor_name?: string | null };
-  paid: Amounts; shares: Amounts; split: Split; date: string; category: string; notes: string; deleted: boolean;
+  paid: Amounts; shares: Amounts; split: Split; date: string; category: string; category_auto?: boolean | null; notes: string; deleted: boolean;
 };
 export type Settlement = { id: string; sender: string; recipient: string; amount: string; provenance?: string; method?: string; recorded_by?: number; recorded_by_name?: string | null; reversal?: { actor_name?: string | null }; date?: string | null; attempt_id?: string | null; reversed?: boolean };
-export type BillRow = Pick<Expense, 'id' | 'version' | 'description' | 'total' | 'paid' | 'shares' | 'date' | 'category' | 'deleted'>;
+export type BillRow = Pick<Expense, 'id' | 'version' | 'description' | 'total' | 'paid' | 'shares' | 'date' | 'category' | 'category_auto' | 'deleted'>;
 export type GroupTransaction = { kind: 'bill'; date: string | null; bill: BillRow } | { kind: 'payment'; date: string | null; payment: Settlement };
 export type ActivityTarget = { kind: 'bill'; groupId: string; expenseId: string } | { kind: 'payment'; groupId: string; settlementId: string } | { kind: 'group'; groupId: string };
 export type ActivityPerson = { id: string; name: string; is_self: boolean };
 export type ActivityItem = {
   id: string; kind: 'bill_added' | 'bill_edited' | 'bill_deleted' | 'bill_restored' | 'bill_reversed' | 'payment_recorded' | 'payment_reversed' | 'member_added' | 'member_joined' | 'member_removed' | 'group_created' | 'group_archived' | 'group_unarchived';
   created_at: string; group: { id: string; name: string }; actor: { name: string; is_self: boolean } | null;
-  bill?: { id: string; description: string; deleted: boolean };
+  bill?: { id: string; description: string; deleted: boolean; category?: string; category_auto?: boolean | null };
   payment?: { id: string; sender: ActivityPerson; recipient: ActivityPerson; amount: string; reversed: boolean };
   person?: ActivityPerson;
 };

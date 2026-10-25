@@ -484,3 +484,69 @@ def test_mcp_railway_http_upstream_matches_django_networks_and_trust_boundary(se
         status, django_network = await probe('198.51.100.19')
         assert status == 204 and networks[-1] == django_network == '10.44.0.0/24'
     asyncio.run(check())
+
+
+def test_authenticated_mcp_history_origin_is_durable_and_request_scoped(ledger, bearer):
+    from .expense_history import expense_version_history, verified_mcp_history
+    from .services import save_expense
+
+    body = {"id": str(uuid4()), "command_id": str(uuid4()), "description": "MCP provenance bill", "total": "101",
+            "paid": {str(ledger[4].id): "101"}, "split": {"mode": "equal", "values": {str(ledger[4].id): "1", str(ledger[5].id): "1"}},
+            "date": "2026-10-21"}
+
+    async def check():
+        async with running_app(MeroSplitApplication(), bearer[0]) as http:
+            async with sdk(http) as client:
+                arguments = {"group_id": str(ledger[3].id), "payload": body}
+                created = await client.call_tool("save_expense", arguments)
+                assert not created.is_error
+                replay = await client.call_tool("save_expense", arguments)
+                assert replay.structured_content == created.structured_content
+                edited = {**body, "command_id": str(uuid4()), "version": 1, "description": "Edited through MCP"}
+                assert not (await client.call_tool("save_expense", {"group_id": str(ledger[3].id), "expense_id": body["id"], "payload": edited})).is_error
+                stale = {**edited, "command_id": str(uuid4()), "description": "Rejected stale edit"}
+                assert (await client.call_tool("save_expense", {"group_id": str(ledger[3].id), "expense_id": body["id"], "payload": stale})).is_error
+                assert not (await client.call_tool("reverse_expense", {"group_id": str(ledger[3].id), "bill_id": body["id"], "payload": {"command_id": str(uuid4()), "version": 2}})).is_error
+    asyncio.run(check())
+    history = expense_version_history(ledger[0], ledger[3].id, body['id'])['items']
+    assert len(history) == 3 and all(item['via_mcp'] for item in history)
+    assert all(item['actor_name'] == 'Canonical owner' for item in history)
+    assert not verified_mcp_history.get()
+    # Calling the plain command with the same person is not authenticated MCP provenance.
+    plain = {**body, 'id': str(uuid4()), 'command_id': str(uuid4())}
+    save_expense(ledger[0], ledger[3].id, plain | {'category': 'other', 'notes': ''})
+    assert not expense_version_history(ledger[0], ledger[3].id, plain['id'])['items'][0]['via_mcp']
+    from django.db import transaction
+    from ninja.errors import HttpError
+
+    from .mcp_server import invoke_tool
+    doomed = {**plain, 'id': str(uuid4()), 'command_id': str(uuid4())}
+    count = Change.objects.count()
+    def rolled_back(actor):
+        with transaction.atomic():
+            save_expense(actor, ledger[3].id, doomed | {'category': 'other', 'notes': ''})
+            raise HttpError(409, 'Synthetic rollback')
+    assert invoke_tool(bearer[0], rolled_back).is_error
+    assert Change.objects.count() == count and not Expense.objects.filter(pk=doomed['id']).exists()
+    assert not verified_mcp_history.get()
+    data = json.dumps(history)
+    assert bearer[0] not in data and 'client_id' not in data and 'access_token' not in data
+
+
+def test_actual_oauth_mcp_same_generic_edit_without_auto_flag_is_manual(ledger, bearer):
+    from . import expense_categories
+    body = {"id": str(uuid4()), "command_id": str(uuid4()), "description": "Synthetic dinner", "date": "2026-10-21", "total": "100", "paid": {str(ledger[3].participants.first().id): "100"}, "split": {"mode": "equal", "values": {str(person.id): "1" for person in ledger[3].participants.all()}}, "category": "general", "category_auto": True}
+    async def check():
+        async with running_app(MeroSplitApplication(), bearer[0]) as http:
+            async with sdk(http) as client:
+                assert not (await client.call_tool("save_expense", {"group_id": str(ledger[3].id), "payload": body})).is_error
+                def ready():
+                    expense_categories.expense_icons(ledger[0], body["id"])
+                    expense_categories.process_category_decisions(evaluate=lambda *args: "food")
+                await sync_to_async(ready, thread_sensitive=False)()
+                edited = body | {"command_id": str(uuid4()), "version": 1}
+                edited.pop("category_auto")
+                assert not (await client.call_tool("save_expense", {"group_id": str(ledger[3].id), "expense_id": body["id"], "payload": edited})).is_error
+    asyncio.run(check())
+    assert Expense.objects.get(pk=body["id"]).category_auto is False
+    assert expense_categories.expense_icons(ledger[0], body["id"])["items"][0]["state"] == "manual"

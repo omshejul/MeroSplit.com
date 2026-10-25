@@ -54,6 +54,7 @@ class Expense(models.Model):
     split = models.JSONField()
     date = models.DateField()
     category = models.CharField(max_length=40, default="other")
+    category_auto = models.BooleanField(null=True, default=None)
     notes = models.TextField(blank=True, max_length=2000)
     deleted = models.BooleanField(default=False)
 
@@ -481,3 +482,21 @@ class GroupInviteLink(models.Model):
     group = models.OneToOneField(Group, on_delete=models.CASCADE, related_name="invite_link")
     public_code = models.CharField(max_length=32, unique=True, null=True, editable=False)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+
+
+class ExpenseCategoryDecision(models.Model):
+    """A title-only cosmetic decision, independent of the financial ledger."""
+    expense = models.ForeignKey(Expense, on_delete=models.CASCADE, related_name="category_decisions")
+    title_digest = models.CharField(max_length=64)
+    definition_revision = models.CharField(max_length=64)
+    requested_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL)
+    state = models.CharField(max_length=12, default="pending")
+    category = models.CharField(max_length=24, blank=True)
+    lease_until = models.DateTimeField(null=True)
+    last_error = models.CharField(max_length=40, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["expense", "title_digest", "definition_revision"], name="expense_category_title_once"),
+                       models.CheckConstraint(condition=Q(state__in=["pending", "claimed", "ready", "uncertain", "failed", "stale"]), name="expense_category_state")]
+        indexes = [models.Index(fields=["state", "id"], name="expense_category_pending")]

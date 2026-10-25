@@ -168,6 +168,11 @@ def _remove_authored_text(group, actor_id):
     own_people = {str(pk) for pk in group.participants.filter(user_id=actor_id).values_list("id", flat=True)}
     created_here = any(c.actor_id == actor_id and c.kind == "group_created" for c in changes)
     guest_names = {}
+    authored_guests = {c.data.get("id"): c.data.get("name") for c in changes if c.kind == "participant_added" and c.actor_id == actor_id}
+    scrub_names = {**{pk: "Deleted participant" for pk in own_people}, **{
+        str(p.id): "Participant" for p in group.participants.filter(user__isnull=True)
+        if authored_guests.get(str(p.id)) == p.name or (created_here and not any(
+            c.kind == "participant_added" and c.data.get("id") == str(p.id) for c in changes))}}
     for change in changes:
         original = change.data
         data = _remove_user_ids(original, actor_id)
@@ -175,6 +180,16 @@ def _remove_authored_text(group, actor_id):
         bill = change.kind in {"expense_saved", "expense_deleted", "expense_restored", "expense_reversed"}
         if bill and expense_id:
             last, provenance = previous.setdefault(expense_id, {}), authors.setdefault(expense_id, {})
+            history = data.get("_history")
+            if isinstance(history, dict):
+                history["names"] = {pk: scrub_names.get(pk, name) for pk, name in history.get("names", {}).items()}
+                if change.actor_id == actor_id:
+                    history["actor_name"] = None
+                checkpoint = history.get("before")
+                if isinstance(checkpoint, dict):
+                    for field, placeholder in placeholders.items():
+                        if field in checkpoint and (provenance.get(field) == actor_id or (field not in provenance and created_here)):
+                            checkpoint[field] = placeholder
             for field, placeholder in placeholders.items():
                 if field not in original:
                     continue
@@ -205,6 +220,8 @@ def _remove_authored_text(group, actor_id):
         fields = {key: value for key, value in placeholders.items()
                   if provenance.get(key) == actor_id or (not provenance and created_here)}
         if fields:
+            from .models import ExpenseCategoryDecision
+            ExpenseCategoryDecision.objects.filter(expense=expense).delete()
             Expense.objects.filter(pk=expense.pk).update(**fields, version=F("version") + 1)
     if created_here:
         group.name = "Shared group"
@@ -309,6 +326,8 @@ def delete_account(actor):
     Session.objects.filter(session_key__in=session_ids).delete()
     # Cascades email/auth records, payment profile, command receipts and devices;
     # shared participant/payment/change FKs above remain anonymous numeric history.
+    from .models import ExpenseCategoryDecision
+    ExpenseCategoryDecision.objects.filter(requested_by=actor).delete()
     actor.delete()
     if media_ids:
         transaction.on_commit(lambda: purge_files(media_ids))

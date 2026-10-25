@@ -101,32 +101,37 @@ export function startChatReads(session: Session, path: string, known: () => stri
   let stopped = false, running = false, again = false, resetRequested = false, failures = 0, after: string | null = null, before: string | null = null;
   let timer: ReturnType<typeof setTimeout> | undefined, controller: AbortController | undefined;
   function plan(delay: number) { if (!stopped) { if (timer) timers.clear(timer); timer = timers.set(() => void read(false), delay); } }
-  async function read(older: boolean): Promise<void> {
-    if (stopped) return;
-    if (running) { if (!older) again = true; return; }
-    if (older && !before) return;
+  async function read(older: boolean, signal?: AbortSignal): Promise<ChatPage | null> {
+    if (stopped || signal?.aborted) return null;
+    if (running) { if (!older) again = true; return null; }
+    if (older && !before) return null;
     if (timer) timers.clear(timer);
     if (resetRequested) { after = null; before = null; resetRequested = false; }
     running = true; controller = new AbortController();
+    const activeController = controller, abort = () => activeController.abort(); signal?.addEventListener('abort', abort, { once: true });
     try {
       const params = new URLSearchParams({ limit: '50' });
       if (older && before) params.set('before', before); else if (after) params.set('after', after);
       const visible = known().slice(0, 50); if (visible.length) params.set('known', visible.join(','));
       const page = await send<ChatPage>(session, `${path}?${params}`, 'GET', undefined, 'json', controller.signal);
-      if (stopped) return;
+      if (stopped || signal?.aborted) return null;
       failures = 0;
       if (older || !after) before = page.older_cursor;
       if (!older) after = page.after_cursor;
       onPage(page, older);
+      return page;
     } catch (error) {
-      if (stopped) return;
+      if (stopped || signal?.aborted) return null;
       failures = Math.min(failures + 1, 4); onError(error);
-      if (error instanceof ApiError && [401, 403, 404].includes(error.status)) { stopped = true; return; }
+      if (error instanceof ApiError && [401, 403, 404].includes(error.status)) { stopped = true; if (older) throw error; return null; }
+      if (older) throw error;
+      return null;
     } finally {
+      signal?.removeEventListener('abort', abort);
       running = false;
       if (!stopped) { const delay = again ? 100 : Math.min(60_000, 5_000 * 2 ** failures); again = false; plan(delay); }
     }
   }
   void read(false);
-  return { refresh: (reset = false) => { if (reset) resetRequested = true; void read(false); }, older: () => read(true), stop: () => { stopped = true; if (timer) timers.clear(timer); controller?.abort(); }, hasOlder: () => !!before };
+  return { refresh: (reset = false) => { if (reset) resetRequested = true; void read(false); }, older: (signal?: AbortSignal) => read(true, signal), stop: () => { stopped = true; if (timer) timers.clear(timer); controller?.abort(); }, hasOlder: () => !!before };
 }

@@ -26,6 +26,7 @@ from starlette.responses import JSONResponse
 
 from . import mcp_tools
 from .accounting import AccountingError
+from .expense_history import verified_mcp_history
 from .mcp_oauth import MCP_SCOPE, OAuthError, authenticate_access_token, issuer_url, rate_limit, resource_url
 from .otp import client_network
 from .schemas import Command, ExpenseIn, Revision
@@ -59,6 +60,7 @@ def invoke_tool(raw, function, *args, **kwargs):
     identity = authenticate_access_token(raw, enforce_limits=False)
     if identity is None:
         return tool_failure(401, "unauthorized", "Reconnect MeroSplit to this client")
+    marker = verified_mcp_history.set(True)
     try:
         return function(identity[0], *args, **kwargs)
     except HttpError as exc:
@@ -75,6 +77,8 @@ def invoke_tool(raw, function, *args, **kwargs):
         if name not in {"actor_command_once", "one_user_per_group", "one_active_payment_attempt"} and not name.endswith("_pkey"):
             raise
         return tool_failure(409, "conflict", "This identifier or command was already used; review before retrying")
+    finally:
+        verified_mcp_history.reset(marker)
 
 
 async def call_tool(function, *args, **kwargs):
