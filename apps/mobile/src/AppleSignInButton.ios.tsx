@@ -13,7 +13,7 @@ export default function AppleSignInButton({ baseUrl, process, current, busy, onA
   return <View style={{ opacity: busy ? 0.5 : 1 }} pointerEvents={busy ? 'none' : 'auto'}>
     <AppleAuthentication.AppleAuthenticationButton buttonType={AppleAuthentication.AppleAuthenticationButtonType.CONTINUE}
       buttonStyle={dark ? AppleAuthentication.AppleAuthenticationButtonStyle.WHITE : AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
-      cornerRadius={8} style={{ width: 312, height: 48 }} onPress={() => { if (busy) return; onAuthenticate(async stillCurrent => {
+      cornerRadius={8} style={{ width: 216, height: 48 }} onPress={() => { if (busy) return; onAuthenticate(async stillCurrent => {
         const attempt = await prepareGoogle(baseUrl, process, 'app', current, 'apple');
         if (!stillCurrent()) return null;
         let result;

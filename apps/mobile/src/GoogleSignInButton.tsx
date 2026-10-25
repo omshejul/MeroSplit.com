@@ -1,17 +1,18 @@
 import React from 'react';
 import { View } from 'react-native';
 import { Text } from 'react-native-paper';
-import { GoogleOneTapSignIn, GoogleSignInButton as NativeGoogleButton } from 'react-native-nitro-google-signin';
+import { GoogleOneTapSignIn } from 'react-native-nitro-google-signin';
 import { finishGoogle, prepareGoogle, GOOGLE_WEB_CLIENT_ID, GOOGLE_IOS_CLIENT_ID, type GoogleAuthenticate, type GoogleProcess } from './googleSignIn';
+import GoogleBrandButton from './GoogleBrandButton';
 import type { Session } from './types';
 import { useUI } from './ui';
 
 export type GoogleButtonProps = { baseUrl: string; process: GoogleProcess; current?: Session; busy: boolean; onAuthenticate: (authenticate: GoogleAuthenticate) => void };
 export default function GoogleSignInButton({ baseUrl, process, current, busy, onAuthenticate }: GoogleButtonProps) {
-  const { ui, dark } = useUI();
+  const { ui } = useUI();
   return <View style={{ gap: 8 }}>
     {process === 'connect' && <Text style={ui.caption}>Connect Google to {current?.email}.</Text>}
-    <NativeGoogleButton disabled={busy} colorScheme={dark ? 'dark' : 'light'} size="wide" signInBehavior="none" onPress={() => onAuthenticate(async stillCurrent => {
+    <GoogleBrandButton disabled={busy} onPress={() => onAuthenticate(async stillCurrent => {
       const attempt = await prepareGoogle(baseUrl, process, 'app', current);
       if (!stillCurrent()) return null;
       let result;
