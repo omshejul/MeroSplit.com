@@ -1,6 +1,6 @@
 import type { Amounts, Split, Transfer } from './accounting';
 
-export type Participant = { id: string; name: string; recorded_name?: string; email?: string; user_id?: number | null; removed?: boolean; payment_profile?: { vpa: string; version: number; bank_verified: false } | null };
+export type Participant = { id: string; name: string; recorded_name?: string; email?: string; account_email?: string | null; user_id?: number | null; removed?: boolean; payment_profile?: { vpa: string; version: number; bank_verified: false } | null };
 export type Expense = {
   id: string; version: number; description: string; total: string;
   added_by?: string | null; reversal?: { actor_name?: string | null };

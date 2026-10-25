@@ -58,3 +58,16 @@ test('A failed partial refresh never writes or prunes records, drafts or pending
     assert.equal((await pendingCommands(db, owner)).length, 1);
   } finally { raw.close(); globalThis.fetch = original; }
 });
+
+
+test('old equal-version member caches refresh once for authoritative account email metadata', async () => {
+  const raw=new DatabaseSync(':memory:'),db=sqliteAdapter(raw),original=globalThis.fetch,calls:string[]=[];
+  const old={...group('a',1),participants:[{id:'p',name:'John',recorded_name:'John',user_id:2}]};
+  const current={...old,participants:[{...old.participants[0],account_email:'actual@example.invalid'}]};
+  try{
+    await migrate(db);await saveGroup(db,owner,old,'shared');
+    globalThis.fetch=async url=>{calls.push(String(url));return Response.json(String(url).endsWith('/groups')?{groups:[{id:'a',version:1}]}:current);};
+    await refreshGroups(db,session);assert.equal(calls.length,2);assert.equal((await readGroup(db,owner,'a'))?.group.participants[0].account_email,'actual@example.invalid');
+    calls.length=0;await refreshGroups(db,session);assert.equal(calls.length,1);
+  }finally{raw.close();globalThis.fetch=original;}
+});

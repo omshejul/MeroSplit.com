@@ -435,6 +435,7 @@ def group_summary(actor, group_id, *, limit=50):
         "archived": group.archived, "is_direct": group.is_direct, "owner_id": group.owner_id,
         "participants": [{"id": str(person.id), "name": participant_display_name(person), "recorded_name": person.name,
                           "user_id": person.user_id, "removed": person.removed,
+                          "account_email": person.user.email if person.user_id and person.user.is_active and not person.removed else None,
                           "payment_profile": profiles.get(person.user_id), **({"email": person.contact_email} if group.owner_id == actor.pk else {})}
                          for person in participants],
         **finance, "expenses": pages["bills"]["items"], "activity": pages["activity"]["items"],

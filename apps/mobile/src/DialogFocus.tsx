@@ -1,10 +1,10 @@
 import React, { useEffect, useRef } from 'react';
-import { Platform, View } from 'react-native';
+import { Platform, View, type StyleProp, type ViewStyle } from 'react-native';
 
 // Paper portals can overlap. Only the latest dialog owns browser keyboard focus.
 const dialogs: HTMLElement[] = [];
-export default function DialogFocus({ active = true, busy = false, onEscape, children }: {
-  active?: boolean; busy?: boolean; onEscape?: () => void; children: React.ReactNode;
+export default function DialogFocus({ active = true, busy = false, onEscape, children, style }: {
+  active?: boolean; busy?: boolean; onEscape?: () => void; children: React.ReactNode; style?: StyleProp<ViewStyle>;
 }) {
   const body = useRef<React.ComponentRef<typeof View>>(null), actions = useRef({ busy, onEscape });
   actions.current = { busy, onEscape };
@@ -44,5 +44,5 @@ export default function DialogFocus({ active = true, busy = false, onEscape, chi
       if (trigger?.isConnected && (!dialogs.length || dialogs.at(-1)!.contains(trigger))) trigger.focus({ preventScroll: true });
     };
   }, [active]);
-  return <View ref={body} tabIndex={-1} style={{ flexShrink: 1 }}>{children}</View>;
+  return <View ref={body} tabIndex={-1} style={[{ flexShrink: 1 }, style]}>{children}</View>;
 }

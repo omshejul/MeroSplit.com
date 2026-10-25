@@ -89,7 +89,7 @@ export async function refreshGroups(db: Database, session: Session, mode: 'full'
   for (const row of index.groups) {
     const cached = await (mode === 'summary' ? readVisibleGroup : readGroup)(db, owner, row.id);
     // An older or filtered browsing page is not the unfiltered first page.
-    if (cached?.kind === 'shared' && complete(cached.group) && cached.group.id === row.id && cached.group.version === row.version && (mode === 'summary' ? cached.group.read_mode === 'summary' && Array.isArray(cached.group.transactions) && !!cached.group.history?.transactions && !cached.group.history.transactions.cursor && !cached.group.history.transactions.query && cached.group.participants.every(person => typeof person.recorded_name === 'string') : !cached.group.read_mode)) snapshots.push(withVisibility(cached.group, row.hidden === true));
+    if (cached?.kind === 'shared' && complete(cached.group) && cached.group.id === row.id && cached.group.version === row.version && cached.group.participants.every(person => typeof person.recorded_name === 'string' && person.account_email !== undefined) && (mode === 'summary' ? cached.group.read_mode === 'summary' && Array.isArray(cached.group.transactions) && !!cached.group.history?.transactions && !cached.group.history.transactions.cursor && !cached.group.history.transactions.query : !cached.group.read_mode)) snapshots.push(withVisibility(cached.group, row.hidden === true));
     else {
       const group = await fetchGroup(session, row.id, mode);
       if (!complete(group) || group.id !== row.id || group.version < row.version) throw new Error('The group refresh was incomplete. Try again.');

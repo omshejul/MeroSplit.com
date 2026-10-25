@@ -6,9 +6,10 @@ from uuid import UUID
 from django.contrib.auth import get_user_model
 from django.core import signing
 from django.db import transaction
+from django.utils import timezone
 from ninja.errors import HttpError
 
-from .models import CommandReceipt, Group, GroupInviteLink, Participant
+from .models import CommandReceipt, Group, GroupInviteLink, Invite, Participant
 from .profiles import display_name
 from .services import previous_result, record_change, visible_group, writable
 from .store_review import require_group_scope
@@ -79,6 +80,12 @@ def create_link(actor, group_id, payload):
     return result, ensure_public_code(link)
 
 
+def claimable_people(group):
+    pending = Invite.objects.filter(participant__group=group, revoked=False, approved=False,
+                                    claimant__isnull=False, expires_at__gt=timezone.now()).values("participant_id")
+    return group.participants.filter(user__isnull=True, contact_email="", removed=False).exclude(id__in=pending)
+
+
 @transaction.atomic
 def preview_link(actor, token):
     _, group = resolve_link(token, lock=True)
@@ -86,8 +93,12 @@ def preview_link(actor, token):
     person = group.participants.filter(user=actor).first()
     if person and person.removed:
         raise HttpError(403, "Ask the organizer to add you again")
-    # No ledger, emails or membership list is disclosed before explicit joining.
-    return {"name": group.name, "already_member": bool(person)}
+    choices = list(claimable_people(group).order_by("id")[:101]) if not person else []
+    if len(choices) > 100:
+        raise HttpError(409, "This group has too many unlinked people. Ask the organizer to review them.")
+    # Only authenticated capability holders see eligible labels, never emails or money.
+    return {"name": group.name, "already_member": bool(person), "version": group.version,
+            "people": [] if person else [{"id": str(p.id), "name": p.name} for p in choices]}
 
 
 @transaction.atomic
@@ -101,15 +112,33 @@ def join_link(actor, payload):
     person = group.participants.filter(user=actor).first()
     if person and person.removed:
         raise HttpError(403, "Ask the organizer to add you again")
+    # Absent new defaults must retain the original legacy command fingerprint.
+    payload = {key: value for key, value in payload.items() if key not in {"participant_id", "preview_version", "display_name"} or value is not None and value != ""}
     previous, fingerprint = previous_result(actor, payload["command_id"], f"group_join:{group.id}", payload)
     if previous:
         return previous
     if person:
+        if payload.get("participant_id"):
+            raise HttpError(409, "Your account already belongs to this group. Refresh the invitation.")
         result = {"id": str(group.id), "version": group.version}
         CommandReceipt.objects.create(actor=actor, command_id=payload["command_id"], fingerprint=fingerprint, result=result)
         return result
+    target_id = payload.get("participant_id")
+    label = payload.get("display_name", "").strip()
+    if "display_name" in payload and not label:
+        raise HttpError(422, "Enter your name in this group")
+    if target_id:
+        person = claimable_people(group).select_for_update().filter(id=target_id).first()
+        if not person or payload.get("preview_version") != group.version:
+            raise HttpError(409, "This person or invitation changed. Refresh and choose again.")
+        person.user = user
+        person.display_name_override = label or person.name
+        person.save(update_fields=["user", "display_name_override"])
+        Invite.objects.filter(participant=person, approved=False).update(revoked=True)
+        return record_change(group, actor, payload["command_id"], fingerprint, "participant_claim_approved",
+                             {"participant_id": str(person.id), "linked_participant_ids": [str(person.id)]})
     # Never auto-match a guest name/email or take over an existing financial identity.
     name = (display_name(user) or "Member")[:120]
-    person = Participant.objects.create(group=group, user=user, name=name)
+    person = Participant.objects.create(group=group, user=user, name=name, display_name_override=label)
     return record_change(group, actor, payload["command_id"], fingerprint, "participant_added",
                          {"id": str(person.id), "name": person.name, "linked_participant_ids": [str(person.id)]})
