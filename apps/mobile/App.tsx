@@ -1022,7 +1022,7 @@ function AppContent() {
       forgetGroupInvite(); void saveGroupInvite(null).catch(() => {}); setAppLink(null); setGroupId(group.id); setTab('Groups'); setScreen('group'); await load(accountOwner(active));
     }} />}
     {newPersonInvite && <SendInviteDialog visible={showNewPersonInvite && !authHeld} email={newPersonInvite.email} busy={busy} error={newPersonInviteError} onSend={() => void sendNewPersonInvite()} onCancel={() => { if (!busy) { setNewPersonInvite(null); setNewPersonInviteError(''); } }} />}
-    {authHeld && (emailEntry?.phase === 'switch' ? emailContent : <EmailLinkDialog title={emailEntry?.phase === 'name' ? 'Name' : 'Sign in'}>{emailContent}</EmailLinkDialog>)}
+    {authHeld && !!emailEntry && (emailEntry.phase === 'switch' ? emailContent : <EmailLinkDialog title={emailEntry.phase === 'name' ? 'Name' : 'Sign in'}>{emailContent}</EmailLinkDialog>)}
   </>;
 }
 export default function App() { return <SafeAreaProvider><UIProvider><AppContent /></UIProvider></SafeAreaProvider>; }

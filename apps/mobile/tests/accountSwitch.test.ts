@@ -13,6 +13,18 @@ function productionFunction(name: string, env: Record<string, unknown>) {
   const code = ts.transpileModule(found.getText(file), {compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;
   return Function(...Object.keys(env), `${code}; return ${name};`)(...Object.values(env));
 }
+function productionAuthDialog(authHeld: boolean, emailEntry: { phase: string } | null) {
+  let expression: ts.Expression | undefined;
+  const visit = (node: ts.Node) => {
+    if (ts.isJsxExpression(node) && node.expression?.getText(file).startsWith('authHeld &&') && node.getText(file).includes('<EmailLinkDialog')) expression = node.expression;
+    ts.forEachChild(node, visit);
+  };
+  visit(file); assert.ok(expression);
+  const code = ts.transpileModule(`const result = (${expression.getText(file)});`, {compilerOptions:{target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.React}}).outputText;
+  return Function('authHeld', 'emailEntry', 'emailContent', 'EmailLinkDialog', 'React', `${code}; return result;`)(
+    authHeld, emailEntry, 'email-link-content', 'EmailLinkDialog', {createElement:(type: string, props: Record<string, unknown>)=>({type,props})},
+  );
+}
 const session = {baseUrl:'https://merosplit.test',userId:'1',email:'one@example.invalid',token:'a'.repeat(32)};
 const inspection = {email:'two@example.invalid',userId:2,purpose:'invite',currentUserId:1,currentEmail:session.email};
 const grant = '01234567-89ab-cdef-0123-456789abcdef', proof = 'p'.repeat(43);
@@ -27,6 +39,26 @@ function preview(extra: Record<string, unknown> = {}) {
     resolveNativeEmailLink:async(...args:unknown[])=>{checked.push(args);calls.push('resolve');return null;},...extra};
   return {env,calls,epoch,entry,emailEntryRef,checked,run:productionFunction('finishEmailLink',env)};
 }
+
+test('returning to an authenticated browser tab rechecks cookies without opening a sign-in dialog',()=>{
+  const authHeldRef={current:false},activeSessionRef={current:session as typeof session|null},cookieCheck={current:false};
+  let checkingCookie=false,pauses=0;
+  const recheck=productionFunction('queueCookieCheck',{Platform:{OS:'web'},authHeldRef,activeSessionRef,cookieCheck,
+    setCheckingCookie:(value:boolean)=>{checkingCookie=value;},pauseAccountRequests:()=>{pauses++;return Promise.resolve();}});
+  recheck();
+  assert.equal(checkingCookie,true);assert.equal(cookieCheck.current,true);assert.equal(authHeldRef.current,true);
+  assert.equal(activeSessionRef.current,null);assert.equal(pauses,1);
+  assert.equal(productionAuthDialog(authHeldRef.current,null),false);
+});
+
+test('actual email-link sign-in, name, error and account-switch dialogs remain visible while auth is held',()=>{
+  for(const phase of ['opening','target','error','name']) {
+    const rendered=productionAuthDialog(true,{phase});
+    assert.equal(rendered.type,'EmailLinkDialog');assert.equal(rendered.props.title,phase==='name'?'Name':'Sign in');
+  }
+  assert.equal(productionAuthDialog(true,{phase:'switch'}),'email-link-content');
+  assert.equal(productionAuthDialog(false,{phase:'opening'}),false);
+});
 
 test('actual App opening another account link only inspects and shows both accounts before any exchange',async()=>{
   const app=preview(); await app.run(app.entry,1);
