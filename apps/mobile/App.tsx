@@ -53,6 +53,8 @@ import CreateGroupForm from './src/CreateGroupForm';
 import type { NewGroupValues } from './src/CreateGroupForm';
 import { SavedChanges, LegacyRecovery as LegacyRecords } from './src/AccountRecovery';
 import ProfileSettings from './src/ProfileSettings';
+import AppUpdates from './src/AppUpdates';
+import { restartForUpdate } from './src/appUpdate';
 import { usePushNotifications } from './src/PushSettings';
 import AccountNotifications from './src/AccountNotifications';
 import MCPSettings from './src/MCPSettings';
@@ -153,6 +155,18 @@ function AppContent() {
     onRefresh: async () => { if (authHeldRef.current || lock.current || !session || activeSessionRef.current?.token !== session.token) return; await perform(() => syncAccount(session), false).catch(() => {}); } });
   suppressPush.current = notices.shouldSuppress;
   const noticeVisibility = { notices: notices.notices, enabled: !authHeld && foreground && !expired && !alertOpen && !pending.length && (screen === 'group' || screen === 'expenseDetail'), viewport, scrollEpoch, onVisible: notices.acknowledgeVisible };
+  const updateSafe = useRef(false);
+  updateSafe.current = ready && !!session && !expired && !authHeld && foreground && screen === 'home' && tab === 'Account'
+    && !busy && !pulling && !storageError && !appLink && !emailEntry && !feedbackOpen && !alertOpen && !upiSetup
+    && !returnAttemptId && !returns.length && !reviewCommand && !newPersonInvite && !pushTarget;
+  async function restartUpdate(reload: () => Promise<void>) {
+    const active = activeSessionRef.current, epoch = authEpoch.current;
+    await restartForUpdate({ lock, reload,
+      safe: () => updateSafe.current && AppState.currentState === 'active' && !authHeldRef.current
+        && !!active && activeSessionRef.current?.token === active.token && authEpoch.current === epoch,
+      flushWrites: async () => { await draftWrites.current; await flushChatWrites(accountOwner(active!)); },
+    });
+  }
   function measureViewport() { scroll.current?.measureInWindow((x, y, width, height) => setViewport({ x, y, width, height })); }
   function navigate(value: Screen) { setNotice(''); setScreen(value); }
   function changeScope(value: Session | null) {
@@ -964,6 +978,7 @@ function AppContent() {
         <AccountHeader key={owner} session={session} name={myName} busy={busy} onBusyChange={value => { lock.current = value; setBusy(value); }} />
         <View><ProfileSettings key={owner} name={myName} vpa={vpa} busy={busy} onSaveName={saveName} onSaveUPI={saveUPI} onAppearance={value => perform(() => changeAppearance(value), false)} onColorFamily={value => perform(() => changeColorFamily(value), false)} />
           <AccountNotifications key={owner} session={session} push={push} busy={busy} onBusyChange={value => { lock.current = value; setBusy(value); }} />
+          <AppUpdates key={owner} busy={busy} online={online} onRestart={restartUpdate} />
           <MCPSettings key={owner} session={session} busy={busy} onBusyChange={value => { lock.current = value; setBusy(value); }} />
         <View><SettingsRow label="Import from Splitwise" icon="import" disabled={busy} onPress={() => navigate('import')} />
           <ExportData key={owner} busy={busy} onExport={() => perform(exportData)} /></View>

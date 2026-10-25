@@ -37,7 +37,7 @@ test('Me mounts Connect MCP on native and web, with current account key, session
     session: { email: 'one@example.invalid', token: 'synthetic-one' }, busy: false, lock: { current: false },
     myName: 'One', vpa: '', push: {}, unavailable: [], commands: [], groups: [], expired: false,
     legacy: [], legacySelf: {}, recoveries: [], ui: {}, saveName() {}, saveUPI() {},
-    AccountHeader: 'AccountHeader', View: 'View', ProfileSettings: 'ProfileSettings', AccountNotifications: 'AccountNotifications',
+    AppUpdates: 'AppUpdates', restartUpdate() {}, online: true, AccountHeader: 'AccountHeader', View: 'View', ProfileSettings: 'ProfileSettings', AccountNotifications: 'AccountNotifications',
     DeleteAccount: 'DeleteAccount', ExportData: 'ExportData', SettingsRow: 'SettingsRow', Disclosure: 'Disclosure', Button: 'Button', Text: 'Text', SavedChanges: 'SavedChanges', LegacyRecords: 'LegacyRecords' };
   const busyChanges: boolean[] = [];
   env.setBusy = (value: boolean) => busyChanges.push(value);
@@ -47,6 +47,8 @@ test('Me mounts Connect MCP on native and web, with current account key, session
       env.busy = busy;
       const mounted = elements(render(env)).filter(node => node.type === MCPSettings);
       assert.equal(mounted.length, 1, `${os} Me must mount Connect MCP, not merely import it`);
+      const updates = elements(render(env)).filter(node => node.type === 'AppUpdates');
+      assert.equal(updates.length, 1); assert.equal(updates[0].props.key, env.owner); assert.equal(updates[0].props.busy, busy); assert.equal(updates[0].props.onRestart, env.restartUpdate);
       const exports = elements(render(env)).filter(node => node.type === 'ExportData');
       assert.equal(exports.length, 1); assert.equal(exports[0].props.key, env.owner); assert.equal(exports[0].props.busy, busy);
       const settings = mounted[0];
@@ -115,4 +117,19 @@ test('Chat empty verification is scoped to the current account and session and c
   change({ owner: 'one', token: 'old' }, true); assert.equal(verified, 'one|fresh');
   change({ owner: 'two', token: 'fresh' }, true); assert.equal(verified, 'one|fresh');
   change({ owner: 'one', token: 'fresh' }, false); assert.equal(verified, '');
+});
+
+test('Me mounts the shared update control and App owns the live restart gate and durable-write checkpoint', async () => {
+ const declaration=app.body!.statements.find(node=>ts.isFunctionDeclaration(node)&&node.name?.text==='restartUpdate')!;
+ const {restartForUpdate}=await import('../src/appUpdate.ts');
+ const calls:string[]=[], active={token:'current',baseUrl:'https://example.invalid',userId:'1'};
+ let finish!:()=>void;
+ const scope:any={restartForUpdate,lock:{current:false},updateSafe:{current:true},AppState:{currentState:'active'},authHeldRef:{current:false},activeSessionRef:{current:active},authEpoch:{current:1},
+  draftWrites:{current:new Promise<void>(r=>{finish=r;})},flushChatWrites:async(owner:string)=>{assert.equal(owner,'one');calls.push('chat-write-check');},accountOwner:()=> 'one'};
+ const restart=new Function('env',`with(env){${ts.transpile(declaration.getText(source),{target:ts.ScriptTarget.ES2022})};return restartUpdate;}`)(scope);
+ const waiting=restart(async()=>{calls.push('reload');});
+ assert.equal(scope.lock.current,true);assert.deepEqual([...calls],[]);
+ scope.activeSessionRef.current={...active,token:'changed'};finish();
+ await assert.rejects(waiting,/Finish what's in progress/);assert.deepEqual([...calls],['chat-write-check']);assert.equal(scope.lock.current,false);
+ scope.activeSessionRef.current=active;await restart(async()=>{calls.push('reload');});assert.deepEqual([...calls],['chat-write-check','chat-write-check','reload']);assert.equal(scope.lock.current,true);
 });

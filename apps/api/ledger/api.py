@@ -444,8 +444,8 @@ def profile_update(request, body: ProfileIn):
 
 @api.post("/groups/{group_id}/invite-link")
 def group_invite_link_create(request, group_id: UUID, body: Command):
-    result, token = group_invites.create_link(request.auth, group_id, body.model_dump(mode="json"))
-    response = JsonResponse({**result, "url": settings.PUBLIC_WEB_URL.rstrip("/") + "/app/invite/join#token=" + quote(token, safe="")})
+    result, code = group_invites.create_link(request.auth, group_id, body.model_dump(mode="json"))
+    response = JsonResponse({**result, "url": "https://merosplit.com/j/" + code})
     response["Cache-Control"] = "private, no-store"
     return response
 

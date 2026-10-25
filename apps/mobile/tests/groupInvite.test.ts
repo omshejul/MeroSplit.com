@@ -39,7 +39,15 @@ test('browser link subscription removes both listeners on cleanup', () => {
 });
 
 test('sharing requires a confirmed matching group receipt and an exact owned capability URL', () => {
- const good={id:'g',version:2,url:APP_ORIGIN+'/app/invite/join#token='+encodeURIComponent(token)};
+ const good={id:'g',version:2,url:APP_ORIGIN+'/j/'+'a'.repeat(32)};
  assert.equal(confirmedGroupInvite('g',good),good.url);
  for(const value of [{},{...good,url:undefined},{...good,url:''},{...good,id:'other'},{...good,version:0},{...good,url:'https://other.invalid/app/invite/join#token='+token},{...good,url:APP_ORIGIN+'/undefined'},{...good,url:APP_ORIGIN+'/app/invite/join#token=bad'}])assert.throws(()=>confirmedGroupInvite('g',value),/Could not confirm/);
+});
+
+
+test('short native capabilities are exact canonical paths, including cold and warm intake', () => {
+ const code='aB0_-'.repeat(6)+'ab', url=APP_ORIGIN+'/j/'+code;
+ assert.deepEqual(parseNativeLink(url),{kind:'app',target:{groupInviteToken:code}});
+ for(const bad of [url+'/',url+'?x=1',url+'#x',url+'/card.png',url+'a',url.slice(0,-1),url.replace('/j/','/J/'),url.replace('merosplit.com','merosplit.omshejul.com'),url.replace('/j/a','/j/%61')])assert.equal(parseNativeLink(bad),null);
+ for(const bad of [url+'/',url+'?x=1',url+'#x',APP_ORIGIN+'/app/invite/join#token='+encodeURIComponent(token)]) assert.throws(()=>confirmedGroupInvite('g',{id:'g',version:2,url:bad}));
 });

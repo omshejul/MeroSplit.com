@@ -8,7 +8,7 @@ APPLE_ASSOCIATION = {
         "details": [
             {"appIDs": ["M4K84L4TKR.com.omshejul.splitdumb"], "components": [
                 {"/": "/app/sign-in/*"}, {"/": "/app/groups/*"},
-                {"/": "/app/invite/*"}, {"/": "/invite/*"},
+                {"/": "/app/invite/*"}, {"/": "/invite/*"}, {"/": "/j/*"},
             ]}
         ]
     }

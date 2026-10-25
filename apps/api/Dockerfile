@@ -9,5 +9,5 @@ RUN test -s web-dist/index.html
 RUN useradd --create-home app
 USER app
 ENV PATH="/app/.venv/bin:$PATH" PYTHONUNBUFFERED=1
-# Access logs stay off because OAuth request queries can contain short-lived codes.
+# Access logs stay off: OAuth queries and /j/ invite paths contain bearer capabilities.
 CMD ["sh", "-c", "uvicorn config.asgi:application --host 0.0.0.0 --port ${PORT:-8000} --workers 2 --no-access-log --timeout-keep-alive 5"]

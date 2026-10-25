@@ -1,4 +1,5 @@
 import { confirmedGroupInvite, publicAppUrl } from './appLinks';
+import { copyText } from './clipboard';
 import { DialogScrollBody, CancelDialogActions } from './DialogParts';
 import KeyboardDialog from './KeyboardDialog';
 import SendInviteDialog from './SendInviteDialog';
@@ -91,7 +92,7 @@ function AddPersonDialog({ visible, disabled, working, archived, name, email, on
     <DialogScrollBody maxHeight={280} gap={8}>
       <Field label="Name" value={name} onChange={onName} disabled={disabled} autoFocus autoCapitalize="words" />
       <Field label="Email (optional)" value={email} onChange={onEmail} disabled={disabled} keyboardType="email-address" maxLength={254} />
-      <Button title="Invite with a link" kind="text" disabled={disabled || archived} onPress={onLink} />
+      <Button title="Copy link" kind="text" disabled={disabled || archived} onPress={onLink} />
       <FeedbackNote section="add-person" feedback={feedback} />
     </DialogScrollBody>
     <CancelDialogActions disabled={disabled} onCancel={onClose}>
@@ -176,7 +177,7 @@ function MemberSettings({ group, selfId, busy, addPersonRequest = 0, onAction, o
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const emailPerson = group.participants.find(person => person.id === emailPersonId);
   function closePersonEmail() { Keyboard.dismiss(); setEmailPersonId(null); requestAnimationFrame(() => emailTrigger.current?.focus()); }
-  const [groupLink, setGroupLink] = useState(''), groupLinkCommand = useRef<string | null>(null);
+  const groupLinkCommand = useRef<string | null>(null);
   const [inviteLink, setInviteLink] = useState<InviteLink | null>(null);
   const [invitePerson, setInvitePerson] = useState<Participant | null>(null);
   const [working, setWorking] = useState(false);
@@ -192,7 +193,6 @@ function MemberSettings({ group, selfId, busy, addPersonRequest = 0, onAction, o
   const savedEmail = directPerson?.email ?? '', email = contactEmail ?? savedEmail;
   const emailChanged = email.trim().toLowerCase() !== savedEmail.trim().toLowerCase();
   const disabled = busy || working;
-  useEffect(() => { if (!organizer || group.archived || group.is_direct) setGroupLink(''); }, [organizer, group.archived, group.is_direct]);
   useEffect(() => {
     if (lastAddRequest.current === addPersonRequest) return;
     lastAddRequest.current = addPersonRequest;
@@ -342,19 +342,14 @@ function MemberSettings({ group, selfId, busy, addPersonRequest = 0, onAction, o
       groupLinkCommand.current ??= Crypto.randomUUID();
       const result = await onAction('/invite-link', { command_id: groupLinkCommand.current });
       const url = confirmedGroupInvite(group.id, result);
-      if (mounted.current && latestGroup.current.id === group.id && latestGroup.current.owner_id === self?.user_id && !latestGroup.current.archived) setGroupLink(url);
-    });
+      if (!mounted.current || latestGroup.current.id !== group.id || latestGroup.current.owner_id !== self?.user_id || latestGroup.current.archived) throw new Error('This invite link is unavailable.');
+      try { await copyText(url); } catch { throw new Error('Could not copy link. Try again.'); }
+    }, 'Link copied');
   }
 
   return <View style={s.content}>
     {organizer && !group.is_direct && <View style={s.section}>
-      <Button title="Invite with a link" disabled={disabled || !!group.archived} onPress={() => void createGroupLink()} />
-      {!!groupLink && !group.archived && <>
-        <Text style={ui.caption}>Anyone with this link can join. It is reusable and does not expire.</Text>
-        <Text selectable style={ui.body}>{groupLink}</Text>
-        {Platform.OS === 'web' ? <Button title="Copy link" disabled={disabled} onPress={() => void perform('group-link', async () => { await navigator.clipboard.writeText(groupLink); }, 'Link copied.')} />
-          : <Button title="Share link" disabled={disabled} onPress={() => void perform('group-link', async () => { await Share.share({ message: `Join ${group.name}: ${groupLink}` }); })} />}
-      </>}
+      <Button title="Copy link" disabled={disabled || !!group.archived} onPress={() => void createGroupLink()} />
       <FeedbackNote section="group-link" feedback={feedback} />
     </View>}
     <View>

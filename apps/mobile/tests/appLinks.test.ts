@@ -114,7 +114,18 @@ test('unsubscribe drops queued proofs and ignores delayed cold resolution', asyn
 test('Expo associations stay on exact canonical HTTPS routes, preserving custom and seven UPI schemes', () => {
   const { expo } = JSON.parse(readFileSync(new URL('../app.json', import.meta.url), 'utf8'));
   assert.deepEqual(expo.ios.associatedDomains, ['applinks:merosplit.com', 'applinks:merosplit.omshejul.com']);
-  assert.deepEqual(expo.android.intentFilters, [{ action: 'VIEW', autoVerify: true, category: ['BROWSABLE', 'DEFAULT'], data: ['merosplit.com', 'merosplit.omshejul.com'].flatMap(host => ['/app/sign-in/', '/app/groups/', '/app/invite/', '/invite/'].map(pathPrefix => ({ scheme: 'https', host, pathPrefix }))) }]);
+  assert.deepEqual(expo.android.intentFilters, [{ action: 'VIEW', autoVerify: true, category: ['BROWSABLE', 'DEFAULT'], data: ['merosplit.com', 'merosplit.omshejul.com'].flatMap(host => [...['/app/sign-in/', '/app/groups/', '/app/invite/', '/invite/'], ...(host === 'merosplit.com' ? ['/j/'] : [])].map(pathPrefix => ({ scheme: 'https', host, pathPrefix }))) }]);
   assert.equal(expo.scheme, 'splitdumb'); assert.equal(expo.version, '1.1'); assert.equal(expo.ios.buildNumber, '22'); assert.equal(expo.android.versionCode, 21);
   assert.deepEqual(expo.ios.infoPlist.LSApplicationQueriesSchemes, ['upi', 'gpay', 'phonepe', 'paytmmp', 'credpay', 'bhim', 'amazonpay']);
+});
+
+
+test('canonical short group links enter the same cold and warm auth-hydration queue', async () => {
+ const url=APP_ORIGIN+'/j/'+'A_b-'.repeat(8), target={kind:'app',target:{groupInviteToken:'A_b-'.repeat(8)}};
+ for(const warm of [false,true]) {
+  const native=source(), seen:NativeLink[]=[], events:string[]=[];
+  const stop=startNativeLinks(native.linking,value=>{seen.push(value);events.push('link');},()=>events.push('ready'));
+  if(warm){native.emit(url);native.resolve(null);}else native.resolve(url);
+  await tick();assert.deepEqual(seen,[target]);assert.deepEqual(events,['link','ready']);stop();
+ }
 });

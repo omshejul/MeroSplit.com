@@ -479,4 +479,5 @@ class GroupInviteLink(models.Model):
     """Reusable group capability, distinct from invitations claiming a participant."""
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     group = models.OneToOneField(Group, on_delete=models.CASCADE, related_name="invite_link")
+    public_code = models.CharField(max_length=32, unique=True, null=True, editable=False)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)

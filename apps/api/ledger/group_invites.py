@@ -1,4 +1,6 @@
-"""Explicit authenticated group joining. Bearer capabilities never appear in paths."""
+"""Reusable group capabilities. Joining always requires an authenticated action."""
+import re
+import secrets
 from uuid import UUID
 
 from django.contrib.auth import get_user_model
@@ -19,13 +21,16 @@ def link_token(link):
 
 
 def resolve_link(token, *, lock=False):
-    try:
-        if len(token) > 128:
-            raise ValueError()
-        link_id = UUID(signing.Signer(salt="merosplit.group-join.v1").unsign(token))
-    except (ValueError, signing.BadSignature):
-        raise HttpError(404, "This invite link is unavailable") from None
-    link = GroupInviteLink.objects.filter(pk=link_id).first()
+    if re.fullmatch(r"[A-Za-z0-9_-]{32}", token):
+        link = GroupInviteLink.objects.filter(public_code=token).first()
+    else:
+        try:
+            if len(token) > 128:
+                raise ValueError()
+            link_id = UUID(signing.Signer(salt="merosplit.group-join.v1").unsign(token))
+        except (ValueError, signing.BadSignature):
+            raise HttpError(404, "This invite link is unavailable") from None
+        link = GroupInviteLink.objects.filter(pk=link_id).first()
     if not link:
         raise HttpError(404, "This invite link is unavailable")
     query = Group.objects.filter(pk=link.group_id)
@@ -36,6 +41,14 @@ def resolve_link(token, *, lock=False):
     if not group or group.archived or group.is_direct or group.owner_id != link.created_by_id or not group.participants.filter(user_id=link.created_by_id, removed=False, user__is_active=True).exists():
         raise HttpError(404, "This invite link is unavailable")
     return link, group
+
+
+def ensure_public_code(link):
+    # Called only under the group's write lock, never by public GET/HEAD.
+    if not link.public_code:
+        link.public_code = secrets.token_urlsafe(24)
+        link.save(update_fields=["public_code"])
+    return link.public_code
 
 
 @transaction.atomic
@@ -49,7 +62,7 @@ def create_link(actor, group_id, payload):
         link = GroupInviteLink.objects.filter(group=group, created_by=actor).first()
         if not link or previous.get("invite_link_id") != str(link.id):
             raise HttpError(409, "The invitation changed; create a new link")
-        return previous, link_token(link)
+        return previous, ensure_public_code(link)
     link, created = GroupInviteLink.objects.get_or_create(group=group, defaults={"created_by": actor})
     if link.created_by_id != actor.pk:
         # A successor gets a new capability; the departed organizer's URL stays invalid.
@@ -63,7 +76,7 @@ def create_link(actor, group_id, payload):
         CommandReceipt.objects.create(actor=actor, command_id=payload["command_id"], fingerprint=fingerprint, result=result)
     result = {**result, "invite_link_id": str(link.id)}
     CommandReceipt.objects.filter(actor=actor, command_id=payload["command_id"]).update(result=result)
-    return result, link_token(link)
+    return result, ensure_public_code(link)
 
 
 @transaction.atomic

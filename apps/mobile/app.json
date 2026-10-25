@@ -65,6 +65,11 @@
             },
             {
               "scheme": "https",
+              "host": "merosplit.com",
+              "pathPrefix": "/j/"
+            },
+            {
+              "scheme": "https",
               "host": "merosplit.omshejul.com",
               "pathPrefix": "/app/sign-in/"
             },
@@ -134,6 +139,16 @@
     "extra": {
       "eas": {
         "projectId": "7b058184-31a7-41e9-96e1-5a752b7bf14f"
+      }
+    },
+    "runtimeVersion": {
+      "policy": "fingerprint"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/7b058184-31a7-41e9-96e1-5a752b7bf14f",
+      "checkAutomatically": "NEVER",
+      "requestHeaders": {
+        "expo-channel-name": "merosplit-1-1-testing"
       }
     }
   }

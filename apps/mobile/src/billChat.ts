@@ -11,7 +11,11 @@ export const chatPath = (group: string, bill: string) => `/groups/${encodeURICom
 const key = (path: string) => `chat:${path}`;
 let writes = Promise.resolve();
 const sends = new Set<Promise<void>>();
-export async function flushChatWrites(): Promise<void> { await Promise.allSettled([...sends]); await writes; }
+const failedWrites = new Map<string, Set<string>>();
+export async function flushChatWrites(owner?: string): Promise<void> {
+  await Promise.allSettled([...sends]); await writes;
+  if (owner && failedWrites.get(owner)?.size) throw Error('Save your chat work before restarting.');
+}
 async function storedChatWork(db: Database, owner: string, path: string): Promise<ChatWork> {
   const value = await readDraft<ChatWork>(db, owner, key(path)) ?? { draft: '', pending: [] };
   if (typeof value.draft !== 'string' || value.draft.length > 2000 || !Array.isArray(value.pending) || value.pending.length > 20
@@ -36,7 +40,10 @@ export function changeChatWork(db: Database, session: Session, path: string, upd
     });
     return result;
   });
-  writes = job.then(() => {}, () => {});
+  writes = job.then(() => { failedWrites.get(scope)?.delete(path); }, () => {
+    const paths = failedWrites.get(scope) ?? new Set<string>();
+    paths.add(path); failedWrites.set(scope, paths);
+  });
   return job;
 }
 export function queueChatMessage(db: Database, session: Session, path: string, id: string, text: string): Promise<ChatWork> {

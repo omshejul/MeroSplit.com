@@ -39,6 +39,8 @@ export function parseNativeLink(value: string | null | undefined): NativeLink | 
       return token ? { kind: 'app', target: { groupInviteToken: token } } : null;
     }
     if (hash) return null;
+    const short = origin === APP_ORIGIN && path.match(/^\/j\/([A-Za-z0-9_-]{32})$/);
+    if (short) return { kind: 'app', target: { groupInviteToken: short[1] } };
     const group = path.match(groupPath);
     if (group) return { kind: 'app', target: { groupId: group[1].toLowerCase(), ...(group[2] ? { expenseId: group[2].toLowerCase(), ...(group[3] ? { chat: true as const } : {}) } : {}) } };
     const invitation = path.match(/^\/(?:app\/)?invite\/([^/]{1,1536})\/?$/);
@@ -80,7 +82,7 @@ export function startNativeLinks(source: NativeLinkSource, onLink: (link: Native
 // A receipt must prove both the accepted group write and the exact capability URL.
 export function confirmedGroupInvite(groupId: string, value: Record<string, unknown>): string {
   const url = value.url;
-  const parsed = typeof url === 'string' && url.startsWith(`${APP_ORIGIN}/app/invite/join#token=`) ? parseNativeLink(url) : null;
+  const parsed = typeof url === 'string' && url.startsWith(`${APP_ORIGIN}/j/`) ? parseNativeLink(url) : null;
   if (value.id !== groupId || !Number.isSafeInteger(value.version) || Number(value.version) < 1 || !parsed || parsed.kind !== 'app' || !('groupInviteToken' in parsed.target)) throw new Error('Could not confirm the invite link. Try again.');
   return url as string;
 }

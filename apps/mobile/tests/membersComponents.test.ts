@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import ts from 'typescript';
 import { confirmedGroupInvite } from '../src/appLinks.ts';
+import { restartForUpdate } from '../src/appUpdate.ts';
 import * as members from '../src/members.ts';
 import type { Group } from '../src/types.ts';
 
@@ -17,8 +18,8 @@ function production(file: string, extra: Record<string, any> = {}) {
   const states: any[] = [], dependencies: Record<number, any[]> = {}, cleanups: Record<number, any> = {}, timers = new Map<number, () => void>();
   let effects: (() => void)[] = [];
   const env: Record<string, any> = {
-    ...members, confirmedGroupInvite, React: { Fragment: 'Fragment', createElement: (type: any, props: any, ...children: any[]) => ({ type, props: props ?? {}, children }) },
-    Platform: { OS: 'native' }, View: 'View', Text: 'Text', Pressable: 'Pressable', Button: 'Button', Avatar: 'Avatar', Icon: 'Icon', IconAction: 'IconAction',
+    ...members, confirmedGroupInvite, copyText: async () => {}, React: { Fragment: 'Fragment', createElement: (type: any, props: any, ...children: any[]) => ({ type, props: props ?? {}, children }) },
+    __DEV__: false, SettingsRow: 'SettingsRow', Platform: { OS: 'native' }, View: 'View', Text: 'Text', Pressable: 'Pressable', Button: 'Button', Avatar: 'Avatar', Icon: 'Icon', IconAction: 'IconAction',
     Disclosure: 'Disclosure', EmailField: 'EmailField', TextField: 'TextField', GroupMembershipActions: 'GroupMembershipActions', KeyboardDialog: 'KeyboardDialog', SendInviteDialog: 'SendInviteDialog',
     LoadingSpinner: 'LoadingSpinner', DialogFocus: 'DialogFocus', DialogScrollBody: 'DialogScrollBody', CancelDialogActions: 'CancelDialogActions', ErrorText: 'ErrorText', Dialog: Object.assign(() => {}, { Title: 'Dialog.Title' }),
     Keyboard: { dismiss() {} }, StyleSheet: { create: (value: any) => value, hairlineWidth: 1 }, Crypto: { randomUUID: () => `id-${++nextId}` }, useUI: () => ({ ui: {}, palette: {} }),
@@ -228,12 +229,12 @@ test('group join completion after account-scope unmount cannot open another acco
 
 test('uncertain group link receipt is not shareable and retries the same command', async () => {
  let accepted=false;
- const token='01234567-89ab-cdef-0123-456789abcdef:'+ 's'.repeat(43);
- const panel=settings(false,async(path,body)=>path==='/invite-link'&&accepted?{id:'group',version:2,url:'https://merosplit.com/app/invite/join#token='+encodeURIComponent(token)}:{});
- let tree=panel.render();button(tree,'Invite with a link').props.onPress();await tick();tree=panel.render();
+ const panel=settings(false,async(path,body)=>path==='/invite-link'&&accepted?{id:'group',version:2,url:'https://merosplit.com/j/'+'a'.repeat(32)}:{});
+ let tree=panel.render();button(tree,'Copy link').props.onPress();await tick();tree=panel.render();
  assert.equal(nodes(tree).some(n=>n.props.title==='Share link'),false);
- accepted=true;button(tree,'Invite with a link').props.onPress();await tick();
- assert.ok(button(panel.render(),'Share link'));
+ accepted=true;button(tree,'Copy link').props.onPress();await tick();
+ assert.equal(nodes(panel.render()).some(n=>n.props.title==='Share link'),false);
+ assert.equal(component(panel.render(),'FeedbackNote').props.feedback.text,'Link copied');
  const calls=panel.calls.filter(c=>c.path==='/invite-link');assert.equal(calls.length,2);assert.equal(calls[0].body.command_id,calls[1].body.command_id);
  panel.unmount();
 });
@@ -248,8 +249,8 @@ test('group link and join command IDs are lazy and retained through uncertain re
   const props = { group, selfId: 'self', busy: false, onMembership() {}, onAction: async (_path: string, body: any) => { writes.push(body); throw Error('Unknown response'); } };
   for (let i = 0; i < 3; i++) members.render('MemberSettings', props);
   assert.equal(ids, 0, 'ordinary renders do not consume command IDs');
-  button(members.render('MemberSettings', props), 'Invite with a link').props.onPress(); await tick();
-  button(members.render('MemberSettings', props), 'Invite with a link').props.onPress(); await tick();
+  button(members.render('MemberSettings', props), 'Copy link').props.onPress(); await tick();
+  button(members.render('MemberSettings', props), 'Copy link').props.onPress(); await tick();
   assert.equal(ids, 1); assert.deepEqual(writes.map(v => v.command_id), ['lazy-1', 'lazy-1']); members.unmount();
   const joins: any[] = [];
   const dialog = production('GroupJoinDialog.tsx', { Crypto: crypto, request: async (_session: any, path: string, _method: string, body: any) => { if (path.endsWith('preview')) return { name: 'Trip', already_member: false }; joins.push(body); throw Error('Unknown response'); } });
@@ -257,4 +258,109 @@ test('group link and join command IDs are lazy and retained through uncertain re
   dialog.render('GroupJoinDialog', joinProps); await dialog.commit(); dialog.render('GroupJoinDialog', joinProps); assert.equal(ids, 1);
   for (let i = 0; i < 2; i++) { button(dialog.render('GroupJoinDialog', joinProps), 'Join group').props.onPress(); await tick(); }
   assert.equal(ids, 2); assert.deepEqual(joins.map(v => v.command_id), ['lazy-2', 'lazy-2']); dialog.unmount();
+});
+
+
+test('Copy link uses the platform helper, exposes no URL and reports clipboard failure truthfully', async () => {
+ for(const platform of ['native','web']) {
+  let fail=true; const copied:string[]=[], commands:string[]=[];
+  const url='https://merosplit.com/j/'+'b'.repeat(32);
+  const app=production('MembersScreen.tsx',{Platform:{OS:platform},copyText:async(value:string)=>{copied.push(value);if(fail)throw Error(url);}});
+  const group:Group={id:'group',name:'Trip',owner_id:1,version:2,participants:[{id:'self',name:'You',user_id:1}],expenses:[],settlements:[],balances:{},transfers:[],activity:[]};
+  const props={group,selfId:'self',busy:false,onMembership(){},onAction:async(_path:string,body:any)=>{commands.push(body.command_id);return{id:'group',version:2,url};}};
+  button(app.render('MemberSettings',props),'Copy link').props.onPress();await tick();
+  let tree=app.render('MemberSettings',props);
+  assert.equal(component(tree,'FeedbackNote').props.feedback.text,'Could not copy link. Try again.');
+  assert.ok(!JSON.stringify(tree).includes(url));
+  fail=false;button(tree,'Copy link').props.onPress();await tick();tree=app.render('MemberSettings',props);
+  assert.deepEqual(copied,[url,url]);assert.equal(commands[0],commands[1]);
+  assert.equal(component(tree,'FeedbackNote').props.feedback.text,'Link copied');
+  assert.ok(!JSON.stringify(tree).includes(url));assert.equal(nodes(tree).some(n=>n.props.title==='Share link'),false);
+  app.unmount();
+ }
+});
+
+
+function updateModule() {
+ const calls:string[]=[], state:any={currentlyRunning:{isEmergencyLaunch:false},isUpdatePending:false,isUpdateAvailable:false};
+ const module:any={isEnabled:true,runtimeVersion:'native-fingerprint',channel:'merosplit-1-1-testing',UpdateInfoType:{ROLLBACK:'rollback'},useUpdates:()=>state,
+  checkForUpdateAsync:async()=>{calls.push('check');return{isAvailable:true,isRollBackToEmbedded:false};},
+  fetchUpdateAsync:async()=>{calls.push('download');return{isNew:true,isRollBackToEmbedded:false};},reloadAsync:async()=>{calls.push('reload');}};
+ return {module,state,calls};
+}
+
+test('updates never check on mount; Check, Download and Restart are separate explicit actions', async () => {
+ const native=updateModule(), lock={current:false};
+ const app=production('AppUpdates.tsx',{Updates:native.module});
+ const props={busy:false,online:true,onRestart:(reload:()=>Promise<void>)=>restartForUpdate({lock,safe:()=>true,flushWrites:async()=>{native.calls.push('flush');},reload})};
+ let tree=app.render('AppUpdates',props);await app.commit();assert.deepEqual(native.calls,[]);
+ button(tree,'Check').props.onPress();button(tree,'Check').props.onPress();await tick();
+ assert.deepEqual(native.calls,['check']);tree=app.render('AppUpdates',props);assert.ok(button(tree,'Download'));
+ button(tree,'Download').props.onPress();await tick();assert.deepEqual(native.calls,['check','download']);
+ tree=app.render('AppUpdates',props);assert.ok(JSON.stringify(tree).includes('may also apply the next time'));
+ button(tree,'Restart').props.onPress();await tick();assert.deepEqual(native.calls,['check','download','flush','reload']);
+ assert.equal(lock.current,true,'successful reload retains lock until native replaces JS');
+ app.unmount();
+});
+
+test('update checks and downloads report failures, preserve retry, and block offline or unsupported builds', async () => {
+ for(const extra of [{Platform:{OS:'web'}},{__DEV__:true}]) {
+  const native=updateModule(), app=production('AppUpdates.tsx',{Updates:native.module,...extra});
+  const tree=app.render('AppUpdates',{busy:false,online:true,onRestart:async()=>{assert.fail();}});
+  assert.equal(button(tree,'Check'),undefined);assert.deepEqual(native.calls,[]);app.unmount();
+ }
+ const native=updateModule(), app=production('AppUpdates.tsx',{Updates:native.module});
+ let online=false;
+ const props=()=>({busy:false,online,onRestart:async()=>{throw Error('Finish the payment first.');}});
+ button(app.render('AppUpdates',props()),'Check').props.onPress();await tick();assert.deepEqual(native.calls,[]);
+ assert.ok(JSON.stringify(app.render('AppUpdates',props())).includes('Connect to the internet'));
+ online=true;native.module.checkForUpdateAsync=async()=>{throw Error('provider details should stay private');};
+ button(app.render('AppUpdates',props()),'Check').props.onPress();await tick();
+ assert.ok(JSON.stringify(app.render('AppUpdates',props())).includes("Couldn't check"));
+ native.module.checkForUpdateAsync=async()=>({isAvailable:true,isRollBackToEmbedded:false});
+ button(app.render('AppUpdates',props()),'Check').props.onPress();await tick();
+ native.module.fetchUpdateAsync=async()=>{throw Error('download-provider');};
+ button(app.render('AppUpdates',props()),'Download').props.onPress();await tick();
+ assert.ok(button(app.render('AppUpdates',props()),'Download'));assert.ok(JSON.stringify(app.render('AppUpdates',props())).includes('Download failed'));
+ native.state.isUpdatePending=true;
+ button(app.render('AppUpdates',props()),'Restart').props.onPress();await tick();
+ assert.ok(JSON.stringify(app.render('AppUpdates',props())).includes('Finish the payment first.'));assert.ok(button(app.render('AppUpdates',props()),'Restart'));
+ app.unmount();
+});
+
+test('downloaded native state survives component remount, including embedded rollback and emergency launch', async () => {
+ const native=updateModule();native.state.isUpdatePending=true;native.state.downloadedUpdate={type:'rollback'};
+ const app=production('AppUpdates.tsx',{Updates:native.module});
+ let tree=app.render('AppUpdates',{busy:false,online:false,onRestart:async()=>{}});
+ assert.ok(button(tree,'Restart'));assert.ok(JSON.stringify(tree).includes('built-in version is ready'));
+ assert.deepEqual(native.calls,[]);app.unmount();
+ native.state.isUpdatePending=false;native.state.downloadedUpdate=undefined;native.state.currentlyRunning.isEmergencyLaunch=true;
+ const remount=production('AppUpdates.tsx',{Updates:native.module});
+ tree=remount.render('AppUpdates',{busy:false,online:true,onRestart:async()=>{}});
+ assert.ok(JSON.stringify(tree).includes('after an update problem'));assert.ok(!JSON.stringify(tree).includes('latest version'));remount.unmount();
+});
+
+test('update restart waits for writes and rechecks live account, route, auth, foreground and payment safety', async () => {
+ for(const reason of ['account changed','route changed','auth started','background','payment started']) {
+  const lock={current:false};let safe=true, resolve!:()=>void, reloads=0;
+  const writes=new Promise<void>(r=>{resolve=r;});
+  const operation=restartForUpdate({lock,safe:()=>safe,flushWrites:()=>writes,reload:async()=>{reloads++;}});
+  assert.equal(lock.current,true);safe=false;resolve();
+  await assert.rejects(operation,/Finish what's in progress/,reason);assert.equal(reloads,0);assert.equal(lock.current,false);
+ }
+ const lock={current:false};let reloads=0;
+ await assert.rejects(restartForUpdate({lock,safe:()=>true,flushWrites:async()=>{throw Error('draft write failed');},reload:async()=>{reloads++;}}),/draft write failed/);
+ assert.equal(lock.current,false);assert.equal(reloads,0);
+ await assert.rejects(restartForUpdate({lock,safe:()=>true,flushWrites:async()=>{},reload:async()=>{throw Error('native reload failed');}}),/native reload failed/);assert.equal(lock.current,false);
+ lock.current=true;await assert.rejects(restartForUpdate({lock,safe:()=>true,flushWrites:async()=>{assert.fail();},reload:async()=>{assert.fail();}}),/Finish what's in progress/);
+});
+
+
+test('an empty download clears the stale available action and permits an explicit recheck', async () => {
+ const native=updateModule();native.state.isUpdateAvailable=true;native.module.fetchUpdateAsync=async()=>({isNew:false,isRollBackToEmbedded:false});
+ const app=production('AppUpdates.tsx',{Updates:native.module});
+ const props={busy:false,online:true,onRestart:async()=>{assert.fail();}};
+ button(app.render('AppUpdates',props),'Download').props.onPress();await tick();
+ const tree=app.render('AppUpdates',props);assert.ok(button(tree,'Check'));assert.equal(button(tree,'Restart'),undefined);
+ assert.ok(JSON.stringify(tree).includes('No update was downloaded.'));app.unmount();
 });

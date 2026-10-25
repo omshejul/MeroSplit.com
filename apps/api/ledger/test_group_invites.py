@@ -1,6 +1,6 @@
 import json
 from concurrent.futures import ThreadPoolExecutor
-from urllib.parse import unquote, urlsplit
+from urllib.parse import urlsplit
 from uuid import uuid4
 
 import pytest
@@ -24,8 +24,8 @@ def link(owner, gid):
     assert r.status_code == 200, r.content
     assert r["Cache-Control"] == "private, no-store"
     url = r.json()["url"]
-    assert urlsplit(url).path == "/app/invite/join" and not urlsplit(url).query
-    return unquote(urlsplit(url).fragment.removeprefix("token="))
+    assert urlsplit(url).path.startswith("/j/") and not urlsplit(url).query and not urlsplit(url).fragment
+    return urlsplit(url).path.removeprefix("/j/")
 
 def join(actor, token, command=None):
     return send(actor, "post", "/group-invite-links/join", {"command_id": command or uid(), "token": token})

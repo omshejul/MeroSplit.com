@@ -159,3 +159,17 @@ test('Account cleanup waits for an already-started send before wiping its saved 
     assert.equal(wiped, true); assert.equal(await db.getFirstAsync('SELECT body FROM drafts WHERE owner=?', accountOwner(session)), null);
   } finally { raw.close(); }
 });
+
+test('update restart checkpoint blocks a failed chat write only for its account until the same work is saved', async () => {
+ const raw=new DatabaseSync(':memory:'), db=sqliteAdapter(raw), active={...session,userId:'ota-write-test'}, other={...session,userId:'ota-other'};
+ try {
+  await migrate(db);
+  const broken={...db,withExclusiveTransactionAsync:async()=>{throw Error('Synthetic disk failure');}};
+  await assert.rejects(changeChatWork(broken,active,path,work=>({...work,draft:'Keep this draft'})),/disk failure/);
+  await assert.rejects(flushChatWrites(accountOwner(active)),/Save your chat work/);
+  await flushChatWrites(accountOwner(other));
+  await changeChatWork(db,active,path,work=>({...work,draft:'Keep this draft'}));
+  await flushChatWrites(accountOwner(active));
+  assert.equal((await readChatWork(db,active,path)).draft,'Keep this draft');
+ } finally {await flushChatWrites();raw.close();}
+});

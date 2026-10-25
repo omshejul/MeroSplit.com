@@ -1,4 +1,4 @@
-const capability = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}:[A-Za-z0-9_-]{43}$/i;
+const capability = /^(?:[A-Za-z0-9_-]{32}|[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}:[A-Za-z0-9_-]{43})$/i;
 const pendingKey = 'merosplit.pendingGroupInvite';
 export function groupInviteToken(hash: string): string | null {
   try { const value = decodeURIComponent(hash.match(/^#token=([^&]+)$/)?.[1] ?? ''); return capability.test(value) ? value : null; } catch { return null; }

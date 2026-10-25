@@ -124,8 +124,13 @@ LANGUAGE_CODE = "en-in"
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
-    "handlers": {"console": {"class": "logging.StreamHandler"}},
-    "loggers": {"django.request": {"handlers": ["console"], "level": "ERROR", "propagate": False}},
+    "filters": {"invite_path": {"()": "config.logging.RedactInvitePath"}},
+    "handlers": {"console": {"class": "logging.StreamHandler", "filters": ["invite_path"]}},
+    "loggers": {
+        name: {"handlers": ["console"], "level": level, "propagate": False}
+        for name, level in [("django.request", "ERROR"), ("django.security", "ERROR"),
+                            ("django.server", "INFO"), ("uvicorn.access", "INFO"), ("uvicorn.error", "INFO")]
+    },
 }
 TEMPLATES = [
     {

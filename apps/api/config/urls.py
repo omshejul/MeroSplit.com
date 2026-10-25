@@ -13,6 +13,7 @@ from ledger.auth_views import (
     ResumeEmailLinkView,
 )
 from ledger.bill_email_views import stop_bill_emails
+from ledger.group_invite_views import group_invite_preview
 from ledger.mcp_setup import setup as mcp_setup
 
 from config.associations import android_association, apple_association
@@ -22,6 +23,8 @@ from config.web import invite_app, public_asset, web_app, web_media
 TESTING_LINKS_READY = True
 
 urlpatterns = [
+    re_path(r"^j/(?P<code>[A-Za-z0-9_-]{32})$", group_invite_preview),
+    re_path(r"^j/(?P<code>[A-Za-z0-9_-]{32})/card\.png$", group_invite_preview, {"card": True}),
     path("assets/typography.css", public_asset, {"asset": "typography.css"}),
     path("assets/fonts/StackSansText.ttf", public_asset, {"asset": "StackSansText.ttf"}),
     path("assets/home.css", public_asset, {"asset": "home.css"}),
