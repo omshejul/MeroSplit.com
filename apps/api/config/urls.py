@@ -25,6 +25,7 @@ urlpatterns = [
     path("assets/typography.css", public_asset, {"asset": "typography.css"}),
     path("assets/fonts/StackSansText.ttf", public_asset, {"asset": "StackSansText.ttf"}),
     path("assets/home.css", public_asset, {"asset": "home.css"}),
+    path("assets/group-join.png", public_asset, {"asset": "group-join.png"}),
     path("assets/play-become-tester.png", public_asset, {"asset": "play-become-tester.png"}),
     path("assets/install.js", public_asset, {"asset": "install.js"}),
     path("assets/install-qr.svg", public_asset, {"asset": "install-qr.svg"}),

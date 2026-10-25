@@ -172,5 +172,7 @@ def test_android_guide_is_modal_with_manual_nojs_fallback(monkeypatch):
     assert 'aria-haspopup="dialog"' in html and '<noscript><section' in html
     assert '<details' not in html and 'Android testers:' not in html
     assert 'Become a tester' in html and 'tap Install on your phone' in html
+    assert 'src="/assets/group-join.png"' in html
+    assert Client().get("/assets/group-join.png")["Content-Type"] == "image/png"
     assert 'src="/assets/play-become-tester.png"' in html
     assert Client().get('/assets/play-become-tester.png')["Content-Type"] == 'image/png'
