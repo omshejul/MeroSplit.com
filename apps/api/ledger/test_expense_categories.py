@@ -9,7 +9,15 @@ from django.utils import timezone
 
 from . import expense_categories as categories
 from .category_gateway import CategoryUnavailable
-from .models import Change, Expense, ExpenseCategoryDecision, ExpenseNotice, Group, Participant
+from .models import (
+    Change,
+    Expense,
+    ExpenseCategoryCache,
+    ExpenseCategoryDecision,
+    ExpenseNotice,
+    Group,
+    Participant,
+)
 from .services import expense_dict
 from .test_api import authenticated_client, expense, send, uid
 from .test_api import client as client
@@ -135,12 +143,13 @@ def test_terminal_uncertainty_and_provider_failures_never_retry_on_visits(client
     assert "Private" not in ExpenseCategoryDecision.objects.get().last_error
 
 
-def test_exact_title_and_definition_revision_are_the_cache_identity(client, group, monkeypatch):
+def test_raw_title_binding_preserves_normalized_cache_and_definition_revision_identity(client, group, monkeypatch):
     body = bill(client, group)
     icons(client, body)
     categories.process_category_decisions(evaluate=lambda *args: "food")
     edit(client, group, body, description="  synthetic   DINNER  ")
-    assert icons(client, body).json()["items"][0]["state"] == "pending"
+    assert icons(client, body).json()["items"][0]["category"] == "food"
+    assert ExpenseCategoryCache.objects.count() == 1
     assert ExpenseCategoryDecision.objects.count() == 2
     monkeypatch.setattr(categories, "DEFINITION_REVISION", "a" * 64)
     assert icons(client, body).json()["items"][0]["state"] == "pending"
@@ -271,6 +280,7 @@ def test_deleted_account_purges_its_cosmetic_metadata_and_redacted_titles_do_not
     peer = get_user_model().objects.create_user(username=uid())
     Participant.objects.filter(pk=group[1][1]).update(user=peer)
     delete_account(client.actor)
+    assert not ExpenseCategoryCache.objects.exists()
     assert not ExpenseCategoryDecision.objects.exists()
     assert icons(authenticated_client(peer), body).json()["items"][0]["state"] == "manual"
     assert not ExpenseCategoryDecision.objects.exists()

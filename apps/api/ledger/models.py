@@ -5,6 +5,7 @@ from django.db import models
 from django.db.models import Q
 from django.db.models.fields.json import KeyTextTransform
 from django.db.models.functions import Coalesce
+from django.utils import timezone
 
 
 class Group(models.Model):
@@ -484,19 +485,38 @@ class GroupInviteLink(models.Model):
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
 
 
+class ExpenseCategoryCache(models.Model):
+    """One title-only classification per authenticated account and normalized title."""
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    title_digest = models.CharField(max_length=64)
+    definition_revision = models.CharField(max_length=64)
+    state = models.CharField(max_length=12, default="pending")
+    category = models.CharField(max_length=24, blank=True)
+    lease_until = models.DateTimeField(null=True)
+    last_error = models.CharField(max_length=40, blank=True)
+    last_used_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["owner", "title_digest", "definition_revision"], name="account_category_title_once"),
+                       models.CheckConstraint(condition=Q(state__in=["pending", "claimed", "ready", "uncertain", "failed"]), name="account_category_state")]
+        indexes = [models.Index(fields=["state", "last_used_at"], name="account_category_retention")]
+
+
 class ExpenseCategoryDecision(models.Model):
     """A title-only cosmetic decision, independent of the financial ledger."""
     expense = models.ForeignKey(Expense, on_delete=models.CASCADE, related_name="category_decisions")
     title_digest = models.CharField(max_length=64)
     definition_revision = models.CharField(max_length=64)
     requested_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL)
+    cache = models.ForeignKey(ExpenseCategoryCache, null=True, on_delete=models.SET_NULL, related_name="bindings")
     state = models.CharField(max_length=12, default="pending")
     category = models.CharField(max_length=24, blank=True)
     lease_until = models.DateTimeField(null=True)
     last_error = models.CharField(max_length=40, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    last_used_at = models.DateTimeField(default=timezone.now)
 
     class Meta:
-        constraints = [models.UniqueConstraint(fields=["expense", "title_digest", "definition_revision"], name="expense_category_title_once"),
+        constraints = [models.UniqueConstraint(fields=["expense", "requested_by", "title_digest", "definition_revision"], name="actor_expense_category_once"),
                        models.CheckConstraint(condition=Q(state__in=["pending", "claimed", "ready", "uncertain", "failed", "stale"]), name="expense_category_state")]
         indexes = [models.Index(fields=["state", "id"], name="expense_category_pending")]
