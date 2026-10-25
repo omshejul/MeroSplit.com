@@ -1,9 +1,15 @@
+import TransactionIcon from './TransactionIcon';
+import { categoryIcon, categoryMeaning, expenseCategory } from './categoryIcons';
+import type { ExpenseIcons } from './categoryIcons';
 import React, { useRef, useState } from 'react';
 import BillPeople from './BillPeople';
 import BalanceExplanation, { type BalanceSelection } from './BalanceExplanationDialog';
 import { balanceKey } from './balanceExplanation';
 import type { BalanceSource } from './balanceExplanationStorage';
-import { Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { FlatList, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { useScrollPagination } from './useScrollPagination';
+import LoadingSpinner from './LoadingSpinner';
+import { pageContentStyle } from './AppNavigation';
 import { expenseBalanceChange, formatMoney } from './accounting';
 import { Text } from 'react-native-paper';
 import { personalSettlements, personalTransfers } from './personalBalances';
@@ -15,10 +21,11 @@ import { SectionHeading, AmountText, Avatar, balanceColor, Button, Disclosure, I
 
 type Transfer = { sender: string; recipient: string; amount: string };
 type Props = {
-  noticeVisibility?: NoticeVisibility;
+  categoryIcons?: ExpenseIcons; noticeVisibility?: NoticeVisibility; header?: React.ReactNode;
   group: Group; accepted: Group; durable?: boolean; pending: Command[]; busy: boolean; selfId: string;
   onLoadBalanceGroup?: (expected: Group) => Promise<BalanceSource>;
-  onHistoryPage?: (resource: HistoryResource, direction: 'next' | 'previous' | 'search', query?: string) => void;
+  onHistoryPage?: (resource: HistoryResource, direction: 'next' | 'previous' | 'search', query?: string, signal?: AbortSignal) => Promise<boolean>;
+  pagingScope?: string; active?: boolean; online?: boolean; onRefresh?: () => void; refreshing?: boolean; onVisibleBills?: (ids: string[]) => void;
   onExpense: (expense: BillRow) => void; onPayment: (payment: Settlement) => void; onSettle: (transfer?: Transfer) => void;
   onReverse: (settlement: Settlement) => void;
   onSync: () => void; onDiscard: (command: Command) => void;
@@ -32,14 +39,22 @@ const displayDate = (value?: string | null) => {
 };
 const billImpact = (value: string) => BigInt(value) === 0n ? 'No balance impact' : `Balance ${BigInt(value) > 0n ? '+' : '−'}${formatMoney((BigInt(value) < 0n ? -BigInt(value) : BigInt(value)).toString())}`;
 const participantName = (participants: Participant[], selfId: string, id: string) => id === selfId ? 'You' : participants.find(person => person.id === id)?.name ?? 'Former member';
-const pageNames = { bills: 'bills', transactions: 'bills & payments', activity: 'changes', settlements: 'payments', attempts: 'receipt requests' };
+function PagingFooter({ paging }: { paging: ReturnType<typeof useScrollPagination> }) {
+  return <View style={{ paddingVertical: 12, gap: 8 }}>{paging.loading && <LoadingSpinner visible />}{paging.failed && <><Text>Could not load earlier records.</Text><Button title="Retry" kind="text" onPress={paging.retry} /></>}</View>;
+}
 
-function HistoryPages({ history, resource, busy, onPage }: { history?: HistoryWindow; resource: HistoryResource; busy: boolean; onPage: Props['onHistoryPage'] }) {
-  if (!history) return null;
-  return <View style={historyPageStyle}>
-    {!!history.previous?.length && <Button title={`Newer ${pageNames[resource]}`} icon="back" disabled={busy} onPress={() => onPage?.(resource, 'previous')} />}
-    {!!history.next_cursor && <Button title={`Older ${pageNames[resource]}`} icon="next" disabled={busy} onPress={() => onPage?.(resource, 'next')} />}
-  </View>;
+function LegacyPayments({ group, selfId, accepted, busy, onPayment, onPage, scope, enabled }: {
+  group: Group; selfId: string; accepted: Group; busy: boolean; onPayment: Props['onPayment']; onPage: Props['onHistoryPage']; scope: string; enabled: boolean;
+}) {
+  const ref = useRef<React.ComponentRef<typeof ScrollView>>(null), payments = personalSettlements(group, selfId);
+  const paging = useScrollPagination({ scope: scope + '|payments', cursor: group.history?.settlements?.next_cursor,
+    enabled: enabled && !busy, scrollRef: ref, load: signal => onPage?.('settlements', 'next', undefined, signal) ?? Promise.resolve(false) });
+  const { onEndReached, ...events } = paging.events;
+  return <ScrollView ref={ref} {...events} nestedScrollEnabled scrollEventThrottle={100} style={{ maxHeight: 320 }}>
+    {payments.map(payment => <PaymentRow key={payment.id} payment={payment} accepted={accepted} group={group} selfId={selfId} busy={busy} onPayment={onPayment} />)}
+    {!payments.length && <Text>{group.history?.settlements?.next_cursor ? 'No payments on this page.' : 'No payments recorded.'}</Text>}
+    <PagingFooter paging={paging} />
+  </ScrollView>;
 }
 
 function PendingChangeRow({ command, busy, onReview, onDiscard }: { command: Command; busy: boolean; onReview: Props['onReview']; onDiscard: Props['onDiscard'] }) {
@@ -80,10 +95,11 @@ function LogDate({ date }: { date?: string | null }) {
 }
 
 // One compact log row for bills and payments: date, what happened, and (for bills) your balance effect.
-function LogRow({ date, label, busy, onPress, trailing, children, payment = false }: { date?: string | null; label: string; busy: boolean; onPress: () => void; trailing?: React.ReactNode; children: React.ReactNode; payment?: boolean }) {
+function LogRow({ leading, date, label, busy, onPress, trailing, children, payment = false }: { leading?: React.ReactNode; date?: string | null; label: string; busy: boolean; onPress: () => void; trailing?: React.ReactNode; children: React.ReactNode; payment?: boolean }) {
   const { ui, palette } = useUI();
   return <Pressable accessibilityRole="button" accessibilityLabel={label} disabled={busy} style={({ pressed }) => [ui.row, s.edgeRow, { borderBottomColor: `${palette.line}80` }, payment && { backgroundColor: palette.soft }, pressed && s.pressed]} onPress={onPress}>
     <LogDate date={date} />
+    {leading}
     <View style={ui.rowBody}>{children}</View>
     {trailing}
   </Pressable>;
@@ -95,9 +111,8 @@ function PaymentRow({ payment, accepted, group, selfId, busy, onPayment }: Pick<
   if (!isAccepted) return null;
   const presentation = paymentPresentation(payment, selfId, id => participantName(group.participants, selfId, id));
   const status = presentation.status;
-  return <LogRow payment date={payment.date} busy={busy} onPress={() => onPayment(payment)} label={`Payment, ${presentation.title}, ${formatMoney(payment.amount)}${status ? `, ${status}` : ''}, ${displayDate(payment.date)}`}>
+  return <LogRow payment leading={<TransactionIcon name={payment.reversed ? 'refresh' : 'payment'} />} date={payment.date} busy={busy} onPress={() => onPayment(payment)} label={`Payment, ${presentation.title}, ${formatMoney(payment.amount)}${status ? `, ${status}` : ''}, ${displayDate(payment.date)}`}>
     <View style={s.paymentLine}>
-      <Icon name={payment.reversed ? 'refresh' : 'payment'} size={18} color={colors.muted} />
       <Text style={[ui.rowSub, s.logCaption, s.paymentSentence, { color: colors.text }]}>{presentation.title} <Text style={{ color: presentation.cashflow === '0' ? colors.text : balanceColor(presentation.cashflow, colors) }}>{formatMoney(payment.amount)}</Text>{!!status && <Text style={[ui.rowSub, s.logCaption]}> · {status}</Text>}</Text>
     </View>
   </LogRow>;
@@ -114,26 +129,31 @@ function BillEffect({ change, involved, reversed }: { change: string; involved: 
   </View>;
 }
 
-function BillTimelineRow({ expense, group, selfId, busy, onExpense, noticeVisibility }: Pick<Props, 'group' | 'selfId' | 'busy' | 'onExpense' | 'noticeVisibility'> & { expense: BillRow }) {
+function BillTimelineRow({ expense, group, selfId, busy, onExpense, noticeVisibility, categoryIcons = {} }: Pick<Props, 'group' | 'selfId' | 'busy' | 'onExpense' | 'noticeVisibility' | 'categoryIcons'> & { expense: BillRow }) {
   const { ui } = useUI();
+  const category = expense.deleted ? null : expenseCategory({ ...expense, groupId: group.id, title: expense.description }, categoryIcons);
+  const meaning = categoryMeaning(category);
   const change = expenseBalanceChange(expense, selfId), name = (id: string) => participantName(group.participants, selfId, id);
   const paidBy = Object.entries(expense.paid).filter(([, amount]) => BigInt(amount) > 0n);
   const involved = BigInt(expense.shares[selfId] ?? '0') > 0n || BigInt(expense.paid[selfId] ?? '0') > 0n;
   const who = paidBy.length === 1 ? name(paidBy[0][0]) : paidBy.length === 2 ? `${name(paidBy[0][0])} and ${name(paidBy[1][0])}` : `${paidBy.length} people`;
   const payers = paidBy.map(([id, amount]) => `${name(id)} paid ${formatMoney(amount)}`).join(', ');
   return <VisibleExpense groupId={group.id} expense={expense} visibility={noticeVisibility}>
-    <LogRow date={expense.date} busy={busy} onPress={() => onExpense(expense)} trailing={<BillEffect change={change} involved={involved} reversed={!!expense.deleted} />}
-      label={`Bill, ${expense.description}, total ${formatMoney(expense.total)}, ${expense.deleted ? 'reversed, no balance impact' : billImpact(change)}, ${payers || 'no payer recorded'}, Your share ${formatMoney(expense.shares[selfId] ?? '0')}, ${displayDate(expense.date)}`}>
+    <LogRow leading={<TransactionIcon name={expense.deleted ? 'refresh' : categoryIcon(category)} />} date={expense.date} busy={busy} onPress={() => onExpense(expense)} trailing={<BillEffect change={change} involved={involved} reversed={!!expense.deleted} />}
+      label={`Bill, ${expense.description}, ${meaning ? meaning + ', ' : ''}total ${formatMoney(expense.total)}, ${expense.deleted ? 'reversed, no balance impact' : billImpact(change)}, ${payers || 'no payer recorded'}, Your share ${formatMoney(expense.shares[selfId] ?? '0')}, ${displayDate(expense.date)}`}>
       <Text numberOfLines={2} ellipsizeMode="tail" style={[ui.rowTitle, s.logTitle]}>{expense.description}</Text>
       <Text style={[ui.rowSub, s.logCaption]}>{paidBy.length ? `${who} paid ${formatMoney(expense.total)}` : `Total ${formatMoney(expense.total)}`}</Text>
     </LogRow>
   </VisibleExpense>;
 }
 
-function RecordSummary({ title, amount, amountColor, children }: { title: string; amount: string; amountColor?: string; children: React.ReactNode }) {
+function RecordSummary({ title, amount, amountColor, children, category, categoryText = false, reversed }: { categoryText?: boolean; reversed?: boolean; category?: string | null; title: string; amount: string; amountColor?: string; children: React.ReactNode }) {
   const { ui } = useUI();
   return <View style={s.summary}>
-    <SectionHeading>{title}</SectionHeading>
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+      {category !== undefined && <TransactionIcon name={reversed ? 'refresh' : categoryIcon(category)} />}
+      <SectionHeading accessibilityLabel={!categoryText && categoryMeaning(category) ? `${title}, ${categoryMeaning(category)}` : title}>{title}</SectionHeading>
+    </View>
     <Text style={[ui.numeric, amountColor && { color: amountColor }]}>{formatMoney(amount)}</Text>
     {children}
   </View>;
@@ -154,7 +174,7 @@ function BillSearch({ value, onChange, onSearch, showSubmit, busy, autoFocus }: 
   </View>;
 }
 
-export default function GroupScreen({ noticeVisibility, group, accepted, pending, durable = true, busy, selfId, onLoadBalanceGroup, onHistoryPage, onExpense, onPayment, onSettle, onSync, onDiscard, onReview }: Props) {
+export default function GroupScreen({ categoryIcons, header, noticeVisibility, group, accepted, pending, durable = true, busy, selfId, pagingScope = group.id, active = true, online = true, onRefresh, refreshing = false, onVisibleBills, onLoadBalanceGroup, onHistoryPage, onExpense, onPayment, onSettle, onSync, onDiscard, onReview }: Props) {
   const { ui } = useUI();
   const [explanation, setExplanation] = useState<BalanceSelection | null>(null);
   const historyResource = group.transactions ? 'transactions' : 'bills';
@@ -168,7 +188,24 @@ export default function GroupScreen({ noticeVisibility, group, accepted, pending
   const payments = personalSettlements(group, selfId);
   const searchable = rows.length >= 5 || !!(historyWindow?.next_cursor || historyWindow?.previous?.length || historyWindow?.query);
   const showSearch = searching || !!historyWindow?.query || !!search;
-  return <View role="region" accessibilityLabel={group.name} style={s.content}>
+  const list = useRef<FlatList<GroupTransaction>>(null), frame = useRef<React.ComponentRef<typeof View>>(null);
+  const [viewport, setViewport] = useState<{ x: number; y: number; width: number; height: number } | null>(null), [scrollEpoch, setScrollEpoch] = useState(0);
+  const visible = useRef(onVisibleBills); visible.current = onVisibleBills;
+  const viewable = useRef(({ viewableItems }: { viewableItems: { isViewable: boolean; item: GroupTransaction }[] }) => visible.current?.(viewableItems.filter(row => row.isViewable && row.item.kind === 'bill').map(row => row.item.kind === 'bill' ? row.item.bill.id : '')));
+  const paging = useScrollPagination({ scope: `${pagingScope}|${group.version}|${historyResource}|${historyWindow?.query || ''}`,
+    cursor: historyWindow?.next_cursor, enabled: active && online && !busy, scrollRef: list,
+    load: signal => onHistoryPage?.(historyResource, 'next', undefined, signal) ?? Promise.resolve(false) });
+  const visibility = noticeVisibility ? { ...noticeVisibility, viewport, scrollEpoch } : undefined;
+  return <View ref={frame} role="region" accessibilityLabel={group.name} style={{ flex: 1 }}>
+    <FlatList ref={list} data={rows} {...paging.events} nestedScrollEnabled scrollEventThrottle={100} onEndReachedThreshold={0.3}
+      onLayout={event => { paging.events.onLayout(event); frame.current?.measureInWindow((x, y, width, height) => setViewport({ x, y, width, height })); }}
+      onScroll={event => { paging.events.onScroll(event); setScrollEpoch(value => value + 1); }}
+      onViewableItemsChanged={viewable.current} onRefresh={onRefresh} refreshing={refreshing}
+      keyExtractor={row => row.kind === 'bill' ? `bill:${row.bill.id}` : `payment:${row.payment.id}`}
+      contentContainerStyle={[pageContentStyle, { gap: 0, paddingBottom: 104 }]} renderItem={({ item: row }) => row.kind === 'payment'
+        ? <PaymentRow payment={row.payment} accepted={accepted} group={group} selfId={selfId} busy={busy} onPayment={onPayment} />
+        : <BillTimelineRow categoryIcons={categoryIcons} expense={row.bill} group={group} selfId={selfId} busy={busy} onExpense={onExpense} noticeVisibility={group === accepted ? visibility : undefined} />}
+      ListHeaderComponent={<View style={s.content}>{header}
     {group.archived && <Text style={ui.notice}>Archived. Reopen in settings to make changes.</Text>}
     {pending.length > 0 && <View style={s.section}>
       <Text style={[ui.notice, ui.warning]}>{needsAttention ? 'Some changes need your attention.' : durable ? 'Waiting to sync.' : 'Not confirmed. Keep this tab open and reconnect.'}</Text>
@@ -184,23 +221,18 @@ export default function GroupScreen({ noticeVisibility, group, accepted, pending
       <SectionHeading style={[ui.caption, s.logCaption, s.flex]}>Bills and payments</SectionHeading>
       {searchable && !showSearch && <Button title="Search" kind="text" accessibilityLabel="Search bills" onPress={() => setSearching(true)} />}
     </View>
-      {showSearch && <BillSearch value={search} onChange={setSearch} onSearch={() => onHistoryPage?.(historyResource, 'search', search.trim())} showSubmit={group.read_mode === 'summary'} busy={busy} autoFocus={searching} />}
-      {!rows.length && <View style={s.empty}>
-        <Icon name="bill" size={32} />
-        <Text style={ui.section}>{group.history?.[historyResource]?.query || (group.read_mode !== 'summary' && search.trim()) ? 'No matching bills' : 'No bills or payments yet'}</Text>
-      </View>}
-      {rows.length > 0 && <View role="list" accessibilityLabel="Bills and payments">{rows.map(row => <View role="listitem" key={row.kind === 'payment' ? `payment:${row.payment.id}` : `bill:${row.bill.id}`}>{row.kind === 'payment'
-        ? <PaymentRow key={`payment:${row.payment.id}`} payment={row.payment} accepted={accepted} group={group} selfId={selfId} busy={busy} onPayment={onPayment} />
-        : <BillTimelineRow key={`bill:${row.bill.id}`} expense={row.bill} group={group} selfId={selfId} busy={busy} onExpense={onExpense} noticeVisibility={group === accepted ? noticeVisibility : undefined} />}</View>)}</View>}
-      {group.transactions === undefined && (!!payments.length || !!group.history?.settlements?.next_cursor || !!group.history?.settlements?.previous?.length) && <Disclosure title="Payment records">
-        {payments.length > 0 && <View>{payments.map(payment => <PaymentRow key={`payment:${payment.id}`} payment={payment} accepted={accepted} group={group} selfId={selfId} busy={busy} onPayment={onPayment} />)}</View>}
-        <HistoryPages history={group.history?.settlements} resource="settlements" busy={busy} onPage={onHistoryPage} />
-      </Disclosure>}
-      <HistoryPages history={group.history?.[historyResource]} resource={historyResource} busy={busy} onPage={onHistoryPage} />
+      {showSearch && <BillSearch value={search} onChange={setSearch} onSearch={() => { void onHistoryPage?.(historyResource, 'search', search.trim()).then(() => list.current?.scrollToOffset({ offset: 0, animated: false })).catch(() => {}); }} showSubmit={group.read_mode === 'summary'} busy={busy} autoFocus={searching} />}
+</View>}
+      ListEmptyComponent={<View style={s.empty}><Icon name="bill" size={32} /><Text style={ui.section}>{historyWindow?.next_cursor ? 'No matching records on this page.' : historyWindow?.query || search.trim() ? 'No matching bills' : 'No bills or payments yet'}</Text></View>}
+      ListFooterComponent={<>
+        <PagingFooter paging={paging} />
+        {group.transactions === undefined && (!!payments.length || !!group.history?.settlements?.next_cursor) && <Disclosure title="Payment records">
+          <LegacyPayments group={group} accepted={accepted} selfId={selfId} busy={busy} onPayment={onPayment} onPage={onHistoryPage} scope={pagingScope} enabled={active && online} />
+        </Disclosure>}
+      </>} />
     <BalanceExplanation selection={explanation} currentKey={balanceKey(group, pending)} onClose={() => setExplanation(null)} />
   </View>;
 }
-
 function RecordAttribution({ action, name }: { action: string; name?: string | null }) {
   const { ui } = useUI();
   return <Text style={ui.caption}>{action} by {name || 'unknown'}</Text>;
@@ -222,14 +254,14 @@ export function PaymentDetail({ payment, group, selfId, busy, canReverse, onReve
   </View>;
 }
 
-export function ExpenseDetail({ noticeVisibility, expense, group, selfId, busy, canEdit, onEdit, onReverse, attachments, chat }: { noticeVisibility?: NoticeVisibility; expense: Expense; group: Group; selfId: string; busy: boolean; canEdit: boolean; onEdit: () => void; onReverse: () => void; attachments?: React.ReactNode; chat?: React.ReactNode }) {
+export function ExpenseDetail({ categoryIcons = {}, noticeVisibility, expense, group, selfId, busy, canEdit, onEdit, onReverse, onHistory, attachments, chat }: { categoryIcons?: ExpenseIcons; noticeVisibility?: NoticeVisibility; header?: React.ReactNode; expense: Expense; group: Group; selfId: string; busy: boolean; canEdit: boolean; onEdit: () => void; onReverse: () => void; onHistory?: () => void; attachments?: React.ReactNode; chat?: React.ReactNode }) {
   const { palette: colors, ui } = useUI();
   const hasCategory = !!expense.category && !['general', 'other'].includes(expense.category);
   const change = expenseBalanceChange(expense, selfId);
   const payers = group.participants.filter(person => BigInt(expense.paid[person.id] ?? '0') > 0n);
   const sharing = group.participants.filter(person => Object.hasOwn(expense.split.values, person.id));
   return <View role="region" accessibilityLabel={group.name} style={s.content}>
-    <VisibleExpense groupId={group.id} expense={expense} visibility={(group.expenses.find(value => value.id === expense.id) ?? group.focused_expense) === expense ? noticeVisibility : undefined}><RecordSummary title={expense.description} amount={expense.total}>
+    <VisibleExpense groupId={group.id} expense={expense} visibility={(group.expenses.find(value => value.id === expense.id) ?? group.focused_expense) === expense ? noticeVisibility : undefined}><RecordSummary categoryText={hasCategory} category={expense.deleted ? null : expenseCategory({ ...expense, groupId: group.id, title: expense.description }, categoryIcons)} reversed={!!expense.deleted} title={expense.description} amount={expense.total}>
       <Text style={[ui.body, { color: balanceColor(change, colors) }]}>{billImpact(change)}</Text>
       <Text style={ui.caption}>{group.name} · {displayDate(expense.date)}</Text>
       <RecordAttribution action="Added" name={expense.added_by} />
@@ -250,11 +282,11 @@ export function ExpenseDetail({ noticeVisibility, expense, group, selfId, busy, 
       {!!expense.notes && <Text style={ui.body}>{expense.notes}</Text>}
       {hasCategory && <Text style={ui.caption}>Category: {expense.category}</Text>}
     </View>}
+    {onHistory && <Button title="Version history" icon="history" kind="outlined" onPress={onHistory} />}
     {!expense.deleted && <Button title="Reverse record" kind="danger" disabled={busy || !canEdit} onPress={onReverse} />}
     {!canEdit && <Text style={ui.caption}>{group.archived ? 'Reopen this group in settings before changing a bill.' : 'Send or discard saved changes before changing this bill.'}</Text>}
   </View>;
 }
-const historyPageStyle = { flexDirection: 'row', flexWrap: 'wrap', gap: 8 } as const;
 const s = StyleSheet.create({
   content: { gap: 10 },
   summary: { gap: 4, paddingVertical: 8 },
@@ -264,7 +296,7 @@ const s = StyleSheet.create({
   balanceAmount: { fontSize: 16, lineHeight: 22 },
   logTitle: { fontSize: 14, lineHeight: 20 },
   logCaption: { fontSize: 12, lineHeight: 17 },
-  edgeRow: { minHeight: 44, marginHorizontal: -16, paddingHorizontal: 16 },
+  edgeRow: { gap: 8, minHeight: 44, marginHorizontal: -16, paddingHorizontal: 16 },
   date: { minWidth: 40, flexShrink: 0, alignItems: 'center' },
   dateMonth: { fontSize: 11, lineHeight: 14 },
   dateDay: { fontSize: 14, lineHeight: 18 },

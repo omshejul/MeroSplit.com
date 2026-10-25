@@ -95,6 +95,7 @@ def expense_dict(expense):
         "split": expense.split,
         "date": expense.date.isoformat(),
         "category": expense.category,
+        "category_auto": expense.category_auto,
         "notes": expense.notes,
         "deleted": expense.deleted,
     }
@@ -168,9 +169,10 @@ def snapshot(group):
             for p in settlements
         ],
         **finance,
-        "activity": list(
-            group.changes.order_by("sequence").values("sequence", "actor_id", "kind", "data", "created_at")
-        ),
+        "activity": [
+            {**row, "data": {key: value for key, value in row["data"].items() if key != "_history"}}
+            for row in group.changes.order_by("sequence").values("sequence", "actor_id", "kind", "data", "created_at")
+        ],
     }
     profiles = {
         profile.user_id: {"vpa": profile.vpa, "version": profile.version, "bank_verified": False}
@@ -291,7 +293,11 @@ def clean_contact_email(value):
 
 
 @transaction.atomic
-def save_expense(actor, group_id, payload, expense_id=None):
+def save_expense(actor, group_id, payload, expense_id=None, *, category_supplied=None):
+    # Omitted additive metadata must preserve frozen-client command fingerprints.
+    payload = dict(payload)
+    if payload.get("category_auto") is None:
+        payload.pop("category_auto", None)
     group = visible_group(actor, group_id, lock=True)
     operation = f"expense:{group_id}:{expense_id or 'new'}"
     previous, fingerprint = previous_result(actor, payload["command_id"], operation, payload)
@@ -308,6 +314,7 @@ def save_expense(actor, group_id, payload, expense_id=None):
     fields.update(
         total=int(payload["total"]), paid=paid, shares=shares, date=date.fromisoformat(payload["date"])
     )
+    before = None
     if expense_id:
         expense = group.expenses.filter(id=expense_id).first()
         if not expense:
@@ -320,6 +327,16 @@ def save_expense(actor, group_id, payload, expense_id=None):
                 expense.paid.get(key, "0"), expense.shares.get(key, "0")
             ):
                 raise HttpError(409, "Keep the removed person's historical paid amount and share unchanged")
+        before = expense_dict(expense)
+        if category_supplied is False:
+            fields["category"] = expense.category
+        fields["category_auto"] = expense.category_auto
+        if "category_auto" in payload:
+            fields["category_auto"] = payload["category_auto"]
+        elif category_supplied is True or expense.category != fields["category"]:
+            fields["category_auto"] = False
+        if fields["category"].strip().casefold() not in {"", "general", "other"}:
+            fields["category_auto"] = False
         for key, value in fields.items():
             setattr(expense, key, value)
         expense.version += 1
@@ -329,6 +346,9 @@ def save_expense(actor, group_id, payload, expense_id=None):
             raise HttpError(409, "Expense ID already used")
         if group.expenses.count() >= 10_000:
             raise HttpError(409, "Group reached its tested expense limit")
+        fields["category_auto"] = payload.get("category_auto", category_supplied is False)
+        if fields["category"].strip().casefold() not in {"", "general", "other"}:
+            fields["category_auto"] = False
         expense = Expense.objects.create(id=payload["id"], group=group, **fields)
     if expense_id is not None:
         from .bill_email import cancel_bill_emails
@@ -339,8 +359,10 @@ def save_expense(actor, group_id, payload, expense_id=None):
         from .models import BillChatNotice
         cancel_chat_notices(BillChatNotice.objects.filter(message__expense=expense).exclude(participant_id__in=involved), 'involvement_removed')
     keep_removed_balances_zero(group)
+    from .expense_history import history_details
     result = record_change(
-        group, actor, payload["command_id"], fingerprint, "expense_saved", expense_dict(expense)
+        group, actor, payload["command_id"], fingerprint, "expense_saved",
+        {**expense_dict(expense), "_history": history_details(group, actor, before)},
     )
     if expense_id is None:
         from .push import queue_new_bill
@@ -362,7 +384,9 @@ def reverse_expense(actor, group_id, expense_id, payload):
         raise HttpError(404, "Expense not found")
     if expense.version != payload["version"] or expense.deleted:
         raise HttpError(409, "Bill changed or was already reversed")
-    original = expense_dict(expense) | {"reversal_of": str(expense.id)}
+    from .expense_history import history_details
+    original = expense_dict(expense) | {"reversal_of": str(expense.id),
+                                         "_history": history_details(group, actor, expense_dict(expense))}
     expense.deleted = True  # Existing balance-exclusion projection; the record is retained.
     expense.version += 1
     expense.save(update_fields=["deleted", "version"])

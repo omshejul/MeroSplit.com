@@ -268,7 +268,7 @@ def transaction_page(actor, group, limit=50, cursor=None, q=""):
     for key in keys:
         if key["kind_order"] == 0:
             bill = expense_dict(bills[key["id"]])
-            items.append({"kind": "bill", "date": bill["date"], "bill": {field: bill[field] for field in ("id", "version", "description", "total", "paid", "shares", "date", "category", "deleted")}})
+            items.append({"kind": "bill", "date": bill["date"], "bill": {field: bill[field] for field in ("id", "version", "description", "total", "paid", "shares", "date", "category", "category_auto", "deleted")}})
         else:
             payment = settlement_dict(payments[key["id"]])
             items.append({"kind": "payment", "date": payment["date"], "payment": payment})
@@ -360,7 +360,7 @@ def account_activity(actor, *, limit=50, cursor=None):
             if not bill or bill.group_id != row.group_id:
                 continue
             item["kind"] = {"expense_deleted": "bill_deleted", "expense_restored": "bill_restored", "expense_reversed": "bill_reversed"}.get(row.kind, "bill_added" if row.data.get("version") == 1 else "bill_edited")
-            item["bill"] = {"id": str(bill.id), "description": bill.description, "deleted": bill.deleted}
+            item["bill"] = {"id": str(bill.id), "description": bill.description, "deleted": bill.deleted, "category": bill.category, "category_auto": bill.category_auto}
         elif row.kind in ("manual_settlement", "payment_confirm", "settlement_reversed"):
             payment = payments.get(row.data.get("settlement_id") if row.kind == "payment_confirm" else row.data.get("id"))
             if not payment or payment.group_id != row.group_id:

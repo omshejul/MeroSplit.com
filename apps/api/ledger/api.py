@@ -28,6 +28,7 @@ from .collaboration import (
     review_invite,
 )
 from .email_invites import rename_person, send_person_invite, update_contact
+from .expense_history import expense_version_history
 from .expense_notifications import (
     foreground,
     mark_seen,
@@ -219,7 +220,7 @@ def group_get(request, group_id: UUID):
 
 @api.post("/groups/{group_id}/expenses", response=WriteResult)
 def expense_create(request, group_id: UUID, body: ExpenseIn):
-    return save_expense(request.auth, group_id, body.model_dump(mode="json"))
+    return save_expense(request.auth, group_id, body.model_dump(mode="json"), category_supplied="category" in body.model_fields_set)
 
 
 @api.get("/groups/{group_id}/summary")
@@ -241,9 +242,14 @@ def expense_get(request, group_id: UUID, expense_id: UUID, version: int | None =
     return expense_detail(request.auth, group_id, expense_id, version=version)
 
 
+@api.get("/groups/{group_id}/expenses/{expense_id}/versions")
+def expense_versions(request, group_id: UUID, expense_id: UUID, before: int | None = None, limit: int = 50):
+    return expense_version_history(request.auth, group_id, expense_id, before=before, limit=limit)
+
+
 @api.put("/groups/{group_id}/expenses/{expense_id}", response=WriteResult)
 def expense_update(request, group_id: UUID, expense_id: UUID, body: ExpenseIn):
-    return save_expense(request.auth, group_id, body.model_dump(mode="json"), expense_id)
+    return save_expense(request.auth, group_id, body.model_dump(mode="json"), expense_id, category_supplied="category" in body.model_fields_set)
 
 
 @api.post("/groups/{group_id}/expenses/{expense_id}/reverse", response=WriteResult)
@@ -651,3 +657,10 @@ def personal_group_leave(request, group_id: UUID, body: GroupLeaveIn):
 def personal_group_restore(request, group_id: UUID, body: Command):
     from .group_membership import restore_group
     return restore_group(request.auth, group_id, body.model_dump(mode="json"))
+
+
+@api.get("/expense-icons")
+def expense_icons_get(request, ids: str):
+    from .expense_categories import expense_icons
+
+    return expense_icons(request.auth, ids)

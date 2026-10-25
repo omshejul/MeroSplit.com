@@ -162,3 +162,6 @@ EXPO_ACCESS_TOKEN = os.environ.get("EXPO_ACCESS_TOKEN", "")
 MCP_SERVER_URL = os.environ.get("MCP_SERVER_URL", "https://merosplit.com/mcp")
 MCP_ALLOWED_HOSTS = list(dict.fromkeys([_urlsplit(MCP_SERVER_URL).netloc, *ALLOWED_HOSTS]))
 MCP_ALLOWED_ORIGINS = list(dict.fromkeys([f"https://{_urlsplit(MCP_SERVER_URL).netloc}", PUBLIC_WEB_URL.rstrip("/")]))
+
+# Private API/worker only. Never supplied to the mobile/web export environment.
+AI_GATEWAY_API_KEY = os.environ.get("AI_GATEWAY_API_KEY", "")

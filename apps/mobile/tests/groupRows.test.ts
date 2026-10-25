@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import ts from 'typescript';
+import { categoryIcon, categoryMeaning, expenseCategory } from '../src/categoryIcons.ts';
 import { expenseBalanceChange, formatMoney } from '../src/accounting.ts';
 import { paymentPresentation } from '../src/activityPresentation.ts';
 import { personalSettlements, personalTransfers } from '../src/personalBalances.ts';
@@ -13,16 +14,16 @@ function production(name: string, overrides: Record<string, any> = {}) {
   const helpers = source.statements.filter(node => ts.isVariableStatement(node) && node.declarationList.declarations.some(d => ['billImpact', 'participantName', 'displayDate', 's'].includes(d.name.getText(source)))).map(node => node.getText(source)).join('\n');
   const node = source.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === name); assert.ok(node);
   const code = ts.transpile(`${helpers}\n${node.getText(source).replace(/^export (?:default )?/, '')}\nreturn ${name};`, { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React });
-  return new Function('env', `with(env) { ${code} }`)({ React, expenseBalanceChange, formatMoney, paymentPresentation, personalSettlements, personalTransfers, BalanceExplanation: 'BalanceExplanation', balanceKey: () => '', useRef: () => ({ current: null }), useState: (initial: unknown) => [initial, () => {}], Avatar: 'Avatar', AmountText: 'AmountText', Text: 'Text', SectionHeading: 'SectionHeading', View: 'View', Pressable: 'Pressable', Icon: 'Icon', Button: 'Button', RecordSummary: 'RecordSummary', ParticipantAmountRow: 'ParticipantAmountRow', LogRow: 'LogRow', LogDate: 'LogDate', BillEffect: 'BillEffect', VisibleExpense: 'VisibleExpense', HistoryPages: 'HistoryPages', BillSearch: 'BillSearch', PaymentRow: 'PaymentRow', BillTimelineRow: 'BillTimelineRow', Disclosure: 'Disclosure', BillPeople: 'BillPeople', RecordAttribution: 'RecordAttribution', PersonalTransferRow: 'PersonalTransferRow', PendingChangeRow: 'PendingChangeRow', StyleSheet: { create: (styles: unknown) => styles }, radii: { surface: 16 }, balanceColor: (amount: string) => BigInt(amount) < 0n ? 'negative' : 'positive', useUI: () => ({ ui: { numeric: { fontSize: 32, fontWeight: '600' }, caption: { fontSize: 14 }, row: { minHeight: 52, paddingVertical: 6 } }, palette: { muted: 'muted', line: '#334455', surface: 'surface', text: 'text' } }), ...overrides });
+  return new Function('env', `with(env) { ${code} }`)({ React, categoryIcon, categoryMeaning, expenseCategory, TransactionIcon: 'TransactionIcon', PagingFooter: 'PagingFooter', LegacyPayments: 'LegacyPayments', FlatList: 'FlatList', ScrollView: 'ScrollView', pageContentStyle: {}, LoadingSpinner: 'LoadingSpinner', useScrollPagination: () => ({ events: {}, loading: false, failed: false }), expenseBalanceChange, formatMoney, paymentPresentation, personalSettlements, personalTransfers, BalanceExplanation: 'BalanceExplanation', balanceKey: () => '', useRef: () => ({ current: null }), useState: (initial: unknown) => [initial, () => {}], Avatar: 'Avatar', AmountText: 'AmountText', Text: 'Text', SectionHeading: 'SectionHeading', View: 'View', Pressable: 'Pressable', Icon: 'Icon', Button: 'Button', RecordSummary: 'RecordSummary', ParticipantAmountRow: 'ParticipantAmountRow', LogRow: 'LogRow', LogDate: 'LogDate', BillEffect: 'BillEffect', VisibleExpense: 'VisibleExpense', HistoryPages: 'HistoryPages', BillSearch: 'BillSearch', PaymentRow: 'PaymentRow', BillTimelineRow: 'BillTimelineRow', Disclosure: 'Disclosure', BillPeople: 'BillPeople', RecordAttribution: 'RecordAttribution', PersonalTransferRow: 'PersonalTransferRow', PendingChangeRow: 'PendingChangeRow', StyleSheet: { create: (styles: unknown) => styles }, radii: { surface: 16 }, balanceColor: (amount: string) => BigInt(amount) < 0n ? 'negative' : 'positive', useUI: () => ({ ui: { numeric: { fontSize: 32, fontWeight: '600' }, caption: { fontSize: 14 }, row: { minHeight: 52, paddingVertical: 6 } }, palette: { muted: 'muted', line: '#334455', surface: 'surface', text: 'text' } }), ...overrides });
 }
 function elements(tree: unknown): Element[] {
   if (Array.isArray(tree)) return tree.flatMap(elements);
   if (!tree || typeof tree !== 'object' || !('children' in tree)) return [];
-  const node = tree as Element; return [node, ...node.children.flatMap(elements)];
+  const node = tree as Element; return [node, ...node.children.flatMap(elements), ...elements(node.props.ListHeaderComponent), ...elements(node.props.ListFooterComponent), ...(node.props.data && node.props.renderItem ? node.props.data.flatMap((item: any, index: number) => elements(node.props.renderItem({ item, index }))) : [])];
 }
 function text(tree: unknown): string {
   if (Array.isArray(tree)) return tree.map(text).join('');
-  if (tree && typeof tree === 'object' && 'children' in tree) return text((tree as Element).children);
+  if (tree && typeof tree === 'object' && 'children' in tree) { const node = tree as Element; return text(node.children) + text(node.props.ListHeaderComponent) + text(node.props.ListFooterComponent); }
   return typeof tree === 'string' || typeof tree === 'number' ? String(tree) : '';
 }
 const group = { id: 'g', participants: [{ id: 'self', name: 'Actual self name' }, { id: 'other', name: 'Noor' }] };
@@ -84,7 +85,7 @@ test('log row keeps a 44px+ button target with a date column and the full spoken
   assert.equal(tree.type, 'Pressable'); assert.equal(tree.props.accessibilityRole, 'button'); assert.equal(tree.props.accessibilityLabel, 'Bill, Lunch');
   const styles = Object.assign({}, ...tree.props.style({ pressed: false }).filter(Boolean));
   assert.ok(styles.minHeight >= 44);
-  assert.deepEqual(tree.children.flat().map((node: any) => node?.type ?? node), ['LogDate', 'View', 'Effect']);
+  assert.deepEqual(tree.children.flat().filter((node: any) => node != null).map((node: any) => node?.type ?? node), ['LogDate', 'View', 'Effect']);
   const date = production('LogDate');
   const current = date({ date: `${new Date().getFullYear()}-10-18` });
   assert.equal(current.props['aria-hidden'], true); assert.equal(current.props.importantForAccessibility, 'no-hide-descendants');
@@ -104,7 +105,7 @@ test('accepted payment is a compact, wrapping sentence with an unboxed icon and 
   assert.equal(tree.props.label, `Payment, You paid Noor, ${formatMoney('334')}, Date unavailable`);
   const nodes = elements(tree), sentence = nodes.find(node => node.type === 'Text')!;
   assert.equal(text(sentence), `You paid Noor ${formatMoney('334')}`);
-  assert.ok(nodes.some(node => node.type === 'Icon' && node.props.name === 'payment' && node.props.size === 18));
+  assert.equal(tree.props.leading.type, 'TransactionIcon'); assert.equal(tree.props.leading.props.name, 'payment');
   assert.ok(!nodes.some(node => ['IconBadge', 'AmountText'].includes(String(node.type))));
   assert.ok(nodes.filter(node => node.type === 'Text').every(node => !node.props.numberOfLines && !node.props.ellipsizeMode));
   tree.props.onPress(); assert.equal(opened[0], payment);
@@ -125,7 +126,7 @@ test('compact payments retain exact confirmation and reversal truth in text and 
     if (status) { assert.ok(text(tree).includes(status)); assert.ok(tree.props.label.includes(status)); }
     assert.ok(!`${text(tree)} ${tree.props.label}`.includes('Receipt unconfirmed'));
     assert.ok(tree.props.label.includes('18 Oct 2026')); assert.equal(tree.props.date, '2026-10-18');
-    assert.ok(elements(tree).some(node => node.type === 'Icon' && node.props.name === (reversed ? 'refresh' : 'payment')));
+    assert.equal(tree.props.leading.type, 'TransactionIcon'); assert.equal(tree.props.leading.props.name, reversed ? 'refresh' : 'payment');
     assert.ok(!elements(tree).some(node => node.type === 'RecordAttribution'));
     assert.ok(!/bank verified|bank confirmed|refunded/i.test(text(tree)));
   }
@@ -144,34 +145,25 @@ test('long names and exact large payment amounts remain in the same unconstraine
   assert.equal(sentence.props.allowFontScaling, undefined);
 });
 
-test('timeline and fallback rows share contiguous list parents, preserve order and leave pagination outside', () => {
+test('virtualized timeline and legacy bill/payment lists preserve server order', () => {
   const render = production('GroupScreen');
   const bill = { id: 'bill', description: 'Lunch', date: '2026-10-18' };
   const first = { id: 'first', sender: 'self', recipient: 'other', amount: '334' };
   const second = { ...first, id: 'second', reversed: true };
   const value = { ...group, expenses: [bill], settlements: [first, second], transfers: [], transactions: [{ kind: 'bill', bill }, { kind: 'payment', payment: first }, { kind: 'payment', payment: second }] };
   const props = { group: value, accepted: value, selfId: 'self', pending: [], busy: true, onPayment() {}, onExpense() {} };
-  const children = (node: Element) => node.children.flat(Infinity).filter((child): child is Element => !!child && typeof child === 'object' && 'type' in child);
-  const rowParent = (tree: Element) => elements(tree).find(node => node.type === 'View' && children(node).some(child => ['PaymentRow', 'BillTimelineRow'].includes(String(child.type))));
-  const tree = render(props), list = elements(tree).find(node => node.props.role === 'list' && node.props.accessibilityLabel === 'Bills and payments')!;
-  const rows = children(list).flatMap(children);
-  assert.ok(children(list).every(node => node.props.role === 'listitem'));
-  assert.ok(list); assert.equal(list.props.style, undefined);
-  assert.deepEqual(rows.map(node => node.props.expense?.id ?? node.props.payment.id), ['bill', 'first', 'second']);
-  assert.ok(rows.every(node => node.props.busy === true));
-  assert.ok(rows.filter(node => node.type === 'PaymentRow').every(node => node.props.accepted === value && node.props.onPayment === props.onPayment));
-  assert.ok(!elements(list).some(node => node.type === 'HistoryPages'));
+  const list = elements(render(props)).find(node => node.type === 'FlatList')!;
+  assert.deepEqual(list.props.data.map((row: any) => row.bill?.id ?? row.payment.id), ['bill', 'first', 'second']);
+  const rows = list.props.data.map((item: any) => list.props.renderItem({ item }));
+  assert.ok(rows.every((row: any) => row.props.busy));
+  assert.ok(rows.filter((row: any) => row.type === 'PaymentRow').every((row: any) => row.props.accepted === value && row.props.onPayment === props.onPayment));
   const fallback = { ...value, transactions: undefined };
   const history = render({ ...props, group: fallback, accepted: fallback });
-  const disclosure = elements(history).find(node => node.type === 'Disclosure' && node.props.title === 'Payment records')!;
-  const payments = rowParent(disclosure)!;
-  assert.deepEqual(children(payments).map(node => node.props.payment.id), ['first', 'second']);
-  assert.equal(payments.props.style, undefined);
-  assert.ok(children(disclosure).some(node => node.type === 'HistoryPages'));
-  const empty = render({ ...props, group: { ...fallback, expenses: [], settlements: [], history: { settlements: { next_cursor: 'older' } } } });
-  assert.equal(rowParent(empty), undefined);
-  const olderPayments = elements(empty).find(node => node.type === 'Disclosure' && node.props.title === 'Payment records')!;
-  assert.deepEqual(children(olderPayments).map(node => node.type), ['HistoryPages']);
+  assert.deepEqual(elements(history).find(node => node.type === 'FlatList')!.props.data.map((row: any) => row.bill.id), ['bill']);
+  const payments = elements(history).find(node => node.type === 'LegacyPayments')!;
+  assert.equal(payments.props.group, fallback);
+  assert.ok(elements(history).some(node => node.type === 'Disclosure' && node.props.title === 'Payment records'));
+  assert.ok(!elements(history).some(node => node.type === 'HistoryPages'));
 });
 
 test('search opens from the heading line, stays open for an active query, and partial pages still offer it', () => {
@@ -183,7 +175,7 @@ test('search opens from the heading line, stays open for an active query, and pa
   const closed = view(base);
   assert.ok(closed.some(node => node.type === 'Button' && node.props.title === 'Search' && node.props.accessibilityLabel === 'Search bills'));
   assert.ok(!closed.some(node => node.type === 'BillSearch'));
-  assert.ok(closed.filter(node => node.type === 'BillTimelineRow').every(node => node.props.noticeVisibility === notice), 'notice hooks stay on the displayed accepted bills');
+  assert.ok(closed.filter(node => node.type === 'BillTimelineRow').every(node => node.props.noticeVisibility?.notices === notice.notices), 'notice hooks stay on the displayed accepted bills');
   assert.ok(view(base, { ...base }).filter(node => node.type === 'BillTimelineRow').every(node => node.props.noticeVisibility === undefined), 'previews never mark bills seen');
   const queried = view({ ...base, history: { transactions: { query: 'rent', next_cursor: null } } });
   const field = queried.find(node => node.type === 'BillSearch')!;
@@ -191,7 +183,8 @@ test('search opens from the heading line, stays open for an active query, and pa
   assert.ok(!queried.some(node => node.type === 'Button' && node.props.title === 'Search'));
   const partial = view({ ...base, expenses: bills.slice(0, 1), transactions: base.transactions.slice(0, 1), history: { transactions: { next_cursor: 'older' } } });
   assert.ok(partial.some(node => node.type === 'Button' && node.props.title === 'Search'));
-  assert.ok(partial.some(node => node.type === 'HistoryPages' && node.props.resource === 'transactions'));
+  assert.ok(partial.some(node => node.type === 'PagingFooter'));
+  assert.ok(!partial.some(node => node.type === 'HistoryPages'));
   const few = view({ ...base, expenses: bills.slice(0, 2), transactions: base.transactions.slice(0, 2) });
   assert.ok(!few.some(node => node.type === 'BillSearch' || node.type === 'Button' && node.props.title === 'Search'));
 });
@@ -308,4 +301,23 @@ test('payment attempts never add receipt confirmation cards to the group or pers
   assert.ok(!text(tree).includes('Did you get'));
   assert.ok(!elements(tree).some(node => node.type === 'HistoryPages' && node.props.resource === 'attempts'), 'no empty receipt-request pager');
   assert.equal(value.payment_attempts.length, 6, 'rendering does not mutate payment history');
+});
+
+
+test('category slot announces accepted meaning once, honors manual General and preserves reversal icon', () => {
+  const render = production('BillTimelineRow');
+  const icons = { [JSON.stringify(['g', 'bill', 'Lunch'])]: 'food' };
+  const base = { group, selfId: 'self', busy: false, categoryIcons: icons };
+  const row = (expense: any) => elements(render({ ...base, expense })).find(node => node.type === 'LogRow')!;
+  let value = row(billRow({ category: 'general', category_auto: true }));
+  assert.equal(value.props.leading.props.name, 'food'); assert.equal(value.props.label.match(/Food category/g)?.length, 1);
+  value = row(billRow({ category: 'general', category_auto: false }));
+  assert.equal(value.props.leading.props.name, 'bill'); assert.ok(!value.props.label.includes('Food category'));
+  value = row(billRow({ category: 'water', category_auto: true })); assert.equal(value.props.leading.props.name, 'water');
+  value = row(billRow({ category: 'water', deleted: true })); assert.equal(value.props.leading.props.name, 'refresh'); assert.ok(!value.props.label.includes('category'));
+  const summary = production('RecordSummary');
+  const shown = elements(summary({ title: 'Lunch', amount: '100', category: 'food' })).find(node => node.type === 'SectionHeading')!;
+  assert.equal(shown.props.accessibilityLabel, 'Lunch, Food category');
+  const named = elements(summary({ title: 'Lunch', amount: '100', category: 'food', categoryText: true })).find(node => node.type === 'SectionHeading')!;
+  assert.equal(named.props.accessibilityLabel, 'Lunch');
 });

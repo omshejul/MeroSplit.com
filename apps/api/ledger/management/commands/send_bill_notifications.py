@@ -8,6 +8,7 @@ from django.utils import timezone
 from ledger.balance_statements import send_balance_statements
 from ledger.bill_email import send_pending_bill_emails
 from ledger.chat_notifications import send_chat_notifications
+from ledger.expense_categories import process_category_decisions
 from ledger.expense_notifications import send_pending_digests
 from ledger.feedback import send_feedback_notifications
 from ledger.membership_notifications import send_membership_notifications
@@ -54,6 +55,8 @@ class Command(BaseCommand):
                     self.stdout.write(f'Processed {feedback} feedback notifications')
                 if count or receipts or digests or mailbox_notices or chat or statements or memberships or not options["loop"]:
                     self.stdout.write(f"Processed {count} bill notifications, {receipts} receipts and {digests} unread digests and {mailbox_notices} mailbox notices and {chat} chat deliveries and {statements} balance statements and {memberships} membership deliveries")
+                # One short cosmetic request AFTER delivery work, never a catch-up drain.
+                process_category_decisions()
                 if not options["loop"]:
                     return
                 time.sleep(options["interval"])

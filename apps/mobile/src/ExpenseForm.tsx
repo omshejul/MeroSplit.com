@@ -161,7 +161,7 @@ export default function ExpenseForm({ group, expense, selfId, busy, onSave, init
       lock.current = true; setSaving(true);
       await onDraftChange?.(draft);
       await onSave({ id: draft.id, version: draft.expenseVersion, description: draft.description.trim(), total, ...vectors, split,
-        date: draft.date, notes: draft.notes, category: expense?.category ?? 'general', deleted: false }, draft.attachment);
+        date: draft.date, notes: draft.notes, category: expense?.category ?? 'general', category_auto: expense?.category_auto ?? ['', 'general', 'other'].includes((expense?.category ?? '').trim().toLowerCase()), deleted: false }, draft.attachment);
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : 'Could not save the expense. Try again.';
       setError(message);

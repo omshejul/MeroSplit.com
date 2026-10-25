@@ -14,8 +14,8 @@ export class ApiError extends Error {
 export function accountOwner(session: Session): string { return `${session.baseUrl}|${session.userId}`; }
 
 export function expensePayload(expense: Expense, updating = false): Record<string, unknown> {
-  const { id, description, total, paid, split, date, category, notes } = expense;
-  return { id, description, total, paid, split, date, category, notes, ...(updating ? { version: expense.version } : {}) };
+  const { id, description, total, paid, split, date, category, category_auto, notes } = expense;
+  return { id, description, total, paid, split, date, category, notes, ...(typeof category_auto === 'boolean' ? { category_auto } : {}), ...(updating ? { version: expense.version } : {}) };
 }
 
 export async function request<T>(session: Session, path: string, method = 'GET', body?: unknown, responseType: 'json' | 'text' = 'json', signal?: AbortSignal): Promise<T> {

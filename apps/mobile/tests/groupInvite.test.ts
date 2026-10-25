@@ -4,7 +4,7 @@ import vm from 'node:vm';
 import { readFileSync } from 'node:fs';
 import { groupInviteToken, captureGroupInvite, forgetGroupInvite } from '../src/groupInvite.ts';
 import { parseNativeLink, APP_ORIGIN, confirmedGroupInvite } from '../src/appLinks.ts';
-import { readAppLink, subscribeAppLinks } from '../src/browserLinks.web.ts';
+import { readAppLink, subscribeAppLinks, writeAppLink } from '../src/browserLinks.web.ts';
 const token = '01234567-89ab-cdef-0123-456789abcdef:' + 's'.repeat(43);
 const source = readFileSync(new URL('../scripts/email-link-bootstrap.js', import.meta.url), 'utf8');
 test('native cold/warm parsing accepts only canonical fragment group capabilities', () => {
@@ -50,4 +50,11 @@ test('short native capabilities are exact canonical paths, including cold and wa
  assert.deepEqual(parseNativeLink(url),{kind:'app',target:{groupInviteToken:code}});
  for(const bad of [url+'/',url+'?x=1',url+'#x',url+'/card.png',url+'a',url.slice(0,-1),url.replace('/j/','/J/'),url.replace('merosplit.com','merosplit.omshejul.com'),url.replace('/j/a','/j/%61')])assert.equal(parseNativeLink(bad),null);
  for(const bad of [url+'/',url+'?x=1',url+'#x',APP_ORIGIN+'/app/invite/join#token='+encodeURIComponent(token)]) assert.throws(()=>confirmedGroupInvite('g',{id:'g',version:2,url:bad}));
+});
+
+test('expense version URL round-trips and Back replaces only the history suffix', () => {
+ const prior=globalThis.window,groupId='a2a9cc5d-1a0d-4c90-8f6c-7b8d8c492b88',expenseId='b91a23e1-13bf-40d2-aa23-1f1abb177040';
+ const location={pathname:`/app/groups/${groupId}/bills/${expenseId}/versions`,search:'',hash:''};const writes:any[]=[];
+ globalThis.window={location,history:{replaceState:(_a:any,_b:any,path:string)=>writes.push(path),pushState:(_a:any,_b:any,path:string)=>writes.push(path)}} as any;
+ try {assert.deepEqual(readAppLink(),{groupId,expenseId,versions:true});writeAppLink({groupId,expenseId},{replace:true});assert.deepEqual(writes,[`/app/groups/${groupId}/bills/${expenseId}`]);location.pathname=`/app/groups/${groupId}/bills/${expenseId}/versions/other`;assert.equal(readAppLink(),null);}finally{globalThis.window=prior;}
 });

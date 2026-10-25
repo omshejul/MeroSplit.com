@@ -72,7 +72,9 @@ test('Me mounts Connect MCP on native and web, with current account key, session
 });
 
 test('Activity discovers unread chats before a bill is opened and resolves the authorized exact conversation', async () => {
-  const expression = scroll.children.find((node): node is ts.JsxExpression => ts.isJsxExpression(node) && !!node.expression && node.expression.getText(source).startsWith("screen === 'home' && tab === 'Activity' && session && <ChatInbox"));
+  let expression: ts.JsxExpression | undefined;
+  function visit(node: ts.Node) { if (ts.isJsxExpression(node) && node.expression?.getText(source).startsWith("screen === 'home' && tab === 'Activity' && session && <ChatInbox")) expression = node; ts.forEachChild(node, visit); }
+  visit(source);
   assert.ok(expression?.expression, 'Activity must mount the unread inbox');
   const evaluate = new Function('env', `with(env){${ts.transpile('return (' + expression.expression.getText(source) + ');', { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React })}}`);
   const selected: any[] = [];

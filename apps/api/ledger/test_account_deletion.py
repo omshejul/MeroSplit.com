@@ -127,7 +127,8 @@ def test_deletion_redacts_cross_author_bill_reversal_without_erasing_financial_h
     assert send(other, "post", f"/groups/{group_id}/expenses/{body['id']}/reverse", reversal).status_code == 200
     reversed_change = Change.objects.get(group_id=group_id, kind="expense_reversed")
     assert reversed_change.actor_id == other.actor.pk
-    assert reversed_change.data == original.data | {"reversal_of": body["id"]}
+    assert {k: v for k, v in reversed_change.data.items() if k != "_history"} == {k: v for k, v in original.data.items() if k != "_history"} | {"reversal_of": body["id"]}
+    assert reversed_change.data["_history"]["actor_name"] == "B"
     history = list(Change.objects.filter(group_id=group_id).order_by("sequence").values_list(
         "pk", "kind", "sequence", "created_at"
     ))

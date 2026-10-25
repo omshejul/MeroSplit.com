@@ -1,6 +1,11 @@
-import React from 'react';
+import { categoryIcon, categoryMeaning, expenseCategory } from './categoryIcons';
+import type { ExpenseIcons, ExpenseIconRef } from './categoryIcons';
+import React, { useRef } from 'react';
 import Mascot from './Mascot';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { useScrollPagination } from './useScrollPagination';
+import LoadingSpinner from './LoadingSpinner';
+import { pageContentStyle } from './AppNavigation';
+import { FlatList, Pressable, StyleSheet, View } from 'react-native';
 import { Text } from 'react-native-paper';
 import { formatMoney } from './accounting';
 import { activityDay, activityPresentation, activityTime } from './activityPresentation';
@@ -8,34 +13,38 @@ import type { ActivityItem, ActivityTarget } from './types';
 import { AmountText, balanceColor, Button, ErrorText, Icon, IconBadge, useUI } from './ui';
 
 type Props = {
-  items: ActivityItem[]; busy: boolean; emptyVerified?: boolean; showEmpty?: boolean; error?: string | null; hasMore?: boolean;
-  onRefresh: () => void; onLoadMore?: () => void; onOpen: (target: ActivityTarget) => void;
+  categoryIcons?: ExpenseIcons; onVisibleExpenses?: (refs: ExpenseIconRef[]) => void; header?: React.ReactNode; footer?: React.ReactNode; items: ActivityItem[]; busy: boolean; emptyVerified?: boolean; showEmpty?: boolean; error?: string | null; hasMore?: boolean;
+  cursor?: string | null; pagingScope?: string; active?: boolean; online?: boolean;
+  onRefresh: () => void; onLoadMore?: (signal?: AbortSignal) => Promise<boolean>; onOpen: (target: ActivityTarget) => void;
 };
 
 /** This is an event feed. Only canonical bill content in its destination can mark a bill seen. */
-export default function ActivityScreen({ items, busy, error, hasMore, emptyVerified = false, showEmpty = true, onRefresh, onLoadMore, onOpen }: Props) {
+export default function ActivityScreen({ categoryIcons = {}, onVisibleExpenses, header, footer, items, busy, error, hasMore, cursor, pagingScope = 'activity', active = true, online = true, emptyVerified = false, showEmpty = true, onRefresh, onLoadMore, onOpen }: Props) {
   const { ui } = useUI();
-  return <View style={s.content}>
-    {!!error && <View style={s.message}><ErrorText live>{error}</ErrorText><Button title="Try again" disabled={busy} onPress={onRefresh} /></View>}
-    {showEmpty && !items.length && !hasMore && !error && <View style={s.empty}>
-      <Mascot size="empty" visible={emptyVerified && !busy} />
-      <Text accessibilityLiveRegion="polite" style={ui.caption}>{busy ? 'Loading activity…' : 'No activity yet'}</Text>
-    </View>}
-    {!!items.length && <View role="list" accessibilityLabel="Activity">{items.map((item, index) => <View role="listitem" key={item.id}><ActivityRow item={item} busy={busy} onOpen={onOpen}
-      showDay={index === 0 || activityDay(items[index - 1].created_at) !== activityDay(item.created_at)} /></View>)}</View>}
-    {!!hasMore && !!onLoadMore && <Button title="Older activity" disabled={busy} onPress={onLoadMore} />}
-  </View>;
+  const list = useRef<FlatList<ActivityItem>>(null);
+  const visible = useRef(onVisibleExpenses); visible.current = onVisibleExpenses;
+  const viewable = useRef(({ viewableItems }: { viewableItems: { isViewable: boolean; item: ActivityItem }[] }) => visible.current?.(viewableItems.filter(row => row.isViewable && row.item.bill && !row.item.bill.deleted).map(({ item }) => ({ ...item.bill!, id: item.bill!.id, title: item.bill!.description, groupId: item.group.id }))));
+  const paging = useScrollPagination({ scope: pagingScope, cursor, enabled: active && online && !busy && !error,
+    scrollRef: list, load: signal => onLoadMore?.(signal) ?? Promise.resolve(false) });
+  return <FlatList onViewableItemsChanged={viewable.current} ref={list} {...paging.events} data={items} keyExtractor={item => item.id} scrollEventThrottle={100} onEndReachedThreshold={0.3}
+    contentContainerStyle={[pageContentStyle, { gap: 0 }]} onRefresh={onRefresh} refreshing={busy}
+    ListHeaderComponent={<>{header}{error ? <View style={s.message}><ErrorText live>{error}</ErrorText><Button title="Try again" disabled={busy} onPress={onRefresh} /></View> : null}</>}
+    ListEmptyComponent={showEmpty && !hasMore && !error ? <View style={s.empty}><Mascot size="empty" visible={emptyVerified && !busy} /><Text accessibilityLiveRegion="polite" style={ui.caption}>{busy ? 'Loading activity…' : 'No activity yet'}</Text></View> : undefined}
+    renderItem={({ item, index }) => <ActivityRow categoryIcons={categoryIcons} item={item} busy={busy} onOpen={onOpen} showDay={index === 0 || activityDay(items[index - 1].created_at) !== activityDay(item.created_at)} />}
+    ListFooterComponent={<>{footer}<View style={s.message}>{paging.loading && <LoadingSpinner visible />}{paging.failed && <><ErrorText live>Could not load earlier activity.</ErrorText><Button title="Retry" kind="text" onPress={paging.retry} /></>}</View></>} />;
 }
 
-function ActivityRow({ item, busy, showDay, onOpen }: {
-  item: ActivityItem; busy: boolean; showDay: boolean; onOpen: Props['onOpen'];
+function ActivityRow({ categoryIcons = {}, item, busy, showDay, onOpen }: {
+  categoryIcons?: ExpenseIcons; item: ActivityItem; busy: boolean; showDay: boolean; onOpen: Props['onOpen'];
 }) {
   const { ui, palette } = useUI();
+  const category = item.bill && !item.bill.deleted && !['bill_reversed', 'bill_deleted'].includes(item.kind) ? expenseCategory({ ...item.bill, id: item.bill.id, title: item.bill.description, groupId: item.group.id }, categoryIcons) : null;
+  const meaning = categoryMeaning(category);
   const row = activityPresentation(item), day = activityDay(item.created_at);
   return <>
     {showDay && <Text accessibilityRole="header" aria-level={2} style={[ui.caption, s.day]}>{day}</Text>}
-    <Pressable accessibilityRole="button" accessibilityLabel={`${row.title}${row.amount ? `, ${formatMoney(row.amount)}` : ''}, ${item.group.name}, ${day}, ${activityTime(item.created_at)}`} disabled={busy} onPress={() => onOpen(row.target)} style={({ pressed }) => [ui.row, s.row, pressed && s.pressed]}>
-      <IconBadge name={row.icon} size={21} />
+    <Pressable accessibilityRole="button" accessibilityLabel={`${row.title}${meaning ? ', ' + meaning : ''}${row.amount ? `, ${formatMoney(row.amount)}` : ''}, ${item.group.name}, ${day}, ${activityTime(item.created_at)}`} disabled={busy} onPress={() => onOpen(row.target)} style={({ pressed }) => [ui.row, s.row, pressed && s.pressed]}>
+      <IconBadge name={item.bill && !item.bill.deleted && !['bill_reversed', 'bill_deleted'].includes(item.kind) ? categoryIcon(category) : row.icon} size={21} />
       <View style={ui.rowBody}>
         <Text numberOfLines={1} ellipsizeMode="tail" style={ui.rowTitle}>{row.title}</Text>
         <Text numberOfLines={1} ellipsizeMode="tail" style={ui.rowSub}>{item.group.name} · {activityTime(item.created_at)}</Text>

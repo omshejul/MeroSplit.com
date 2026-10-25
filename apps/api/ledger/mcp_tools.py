@@ -142,7 +142,7 @@ def save_expense(actor, group_id, payload, *, expense_id=None):
             raise HttpError(422, "Editing requires the matching expense ID and version")
     elif body.version is not None:
         raise HttpError(422, "Omit version when creating a new expense")
-    return services.save_expense(actor, _uuid(group_id), body.model_dump(mode="json"), expense_id)
+    return services.save_expense(actor, _uuid(group_id), body.model_dump(mode="json"), expense_id, category_supplied="category" in body.model_fields_set)
 
 
 def reverse_expense(actor, group_id, bill_id, payload):
