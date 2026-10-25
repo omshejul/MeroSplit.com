@@ -44,18 +44,21 @@ def valid_process(request, process):
 
 class GoogleAccountAdapter(DefaultSocialAccountAdapter):
     def pre_social_login(self, request, sociallogin):
-        if not getattr(request, "google_proof_consumed", False) or sociallogin.account.provider != "google":
-            raise ImmediateHttpResponse(error(request))
+        from .apple_signin import apple_error
+
+        provider = sociallogin.account.provider
+        if provider not in {"google", "apple"} or not getattr(request, f"{provider}_proof_consumed", False):
+            raise ImmediateHttpResponse(error(request) if provider == "google" else apple_error(request))
         if sociallogin.state["process"] == "login" and not sociallogin.is_existing:
             email = sociallogin.user.email
-            if (not request.google_email_authoritative or get_user_model().objects.filter(email__iexact=email).exists()
+            if (not getattr(request, f"{provider}_email_authoritative", False) or get_user_model().objects.filter(email__iexact=email).exists()
                     or EmailAddress.objects.filter(email__iexact=email).exists()):
-                raise ImmediateHttpResponse(error(request, "google_email_conflict", 409))
+                raise ImmediateHttpResponse(error(request, "google_email_conflict", 409) if provider == "google" else apple_error(request, "apple_email_conflict", 409))
         if sociallogin.is_existing and (not sociallogin.user.is_active or entry_for_email(sociallogin.user.email)):
-            raise ImmediateHttpResponse(error(request))
+            raise ImmediateHttpResponse(error(request) if provider == "google" else apple_error(request))
 
     def is_open_for_signup(self, request, sociallogin):
-        return bool(getattr(request, "google_proof_consumed", False))
+        return sociallogin.account.provider in {"google", "apple"} and bool(getattr(request, f"{sociallogin.account.provider}_proof_consumed", False))
 
 
 class GoogleChallengeView(APIView):
@@ -82,33 +85,35 @@ class GoogleChallengeView(APIView):
 
 
 @sensitive_variables()
-def consume_challenge(request, claims, process):
+def consume_challenge(request, claims, process, provider="google", state=None):
+    challenge_key = f"merosplit_{provider}_signin"
     with transaction.atomic():
         row = Session.objects.select_for_update().filter(session_key=request.session.session_key).first()
         stored = row.get_decoded() if row else {}
-        challenge = stored.get(CHALLENGE, {})
+        challenge = stored.get(challenge_key, {})
         actor = request.user.pk if request.user.is_authenticated else None
         if (not challenge or challenge.get("process") != process or challenge.get("actor") != actor
                 or challenge.get("expires_at", 0) <= time.time()
+                or (provider == "apple" and (not isinstance(state, str) or not secrets.compare_digest(challenge.get("state", ""), state)))
                 or not isinstance(claims.get("nonce"), str)
                 or not secrets.compare_digest(challenge.get("nonce", ""), claims["nonce"])):
             raise ValidationError("Google sign-in expired")
         # A concurrent request could later save its stale session copy. Keep a
         # one-use fence in the existing rate table until this proof expires.
-        key = salted_hmac("merosplit.google-proof", claims["nonce"], algorithm="sha256").hexdigest()
+        key = salted_hmac(f"merosplit.{provider}-proof", claims["nonce"], algorithm="sha256").hexdigest()
         EmailRateBucket.objects.get_or_create(key=key, defaults={"expires_at": datetime.fromtimestamp(challenge["expires_at"], timezone.utc)})
         used = EmailRateBucket.objects.select_for_update().get(key=key)
         if used.count:
             raise ValidationError("Google sign-in already used")
         used.count = 1
         used.save(update_fields=["count"])
-        stored.pop(CHALLENGE)
+        stored.pop(challenge_key)
         row.session_data = request.session.encode(stored)
         row.save(update_fields=["session_data"])
     # Remove the successful proof from the request copy too. A rejected stale
     # token must not erase a newer challenge from the same browser/session.
-    request.session.pop(CHALLENGE, None)
-    request.google_proof_consumed = True
+    request.session.pop(challenge_key, None)
+    setattr(request, f"{provider}_proof_consumed", True)
 
 
 class GoogleTokenView(APIView):

@@ -30,6 +30,7 @@ INSTALLED_APPS = [
     "allauth.account",
     "allauth.socialaccount",
     "allauth.socialaccount.providers.google",
+    "allauth.socialaccount.providers.apple",
     "allauth.headless",
     "ledger",
 ]
@@ -74,6 +75,12 @@ HEADLESS_ONLY = True
 HEADLESS_CLIENTS = ("app", "browser")
 GOOGLE_SIGN_IN_ENABLED = os.environ.get("GOOGLE_SIGN_IN_ENABLED", "false").lower() == "true"
 GOOGLE_OAUTH_WEB_CLIENT_ID = os.environ.get("GOOGLE_OAUTH_WEB_CLIENT_ID", "1091299527858-dmjm6sosrpqc7054m5nv6drpkgd03sma.apps.googleusercontent.com")
+APPLE_SIGN_IN_ENABLED = os.environ.get("APPLE_SIGN_IN_ENABLED", "false").lower() == "true"
+APPLE_SIGN_IN_CLIENT_ID = os.environ.get("APPLE_SIGN_IN_CLIENT_ID", "com.omshejul.splitdumb")
+APPLE_SIGN_IN_TEAM_ID = os.environ.get("APPLE_SIGN_IN_TEAM_ID", "M4K84L4TKR")
+APPLE_SIGN_IN_KEY_ID = os.environ.get("APPLE_SIGN_IN_KEY_ID", "")
+APPLE_SIGN_IN_PRIVATE_KEY = os.environ.get("APPLE_SIGN_IN_PRIVATE_KEY", "").replace("\\n", "\n")
+APPLE_SIGN_IN_TOKEN_ENCRYPTION_KEY = os.environ.get("APPLE_SIGN_IN_TOKEN_ENCRYPTION_KEY", "")
 SOCIALACCOUNT_ADAPTER = "ledger.google_signin.GoogleAccountAdapter"
 SOCIALACCOUNT_EMAIL_AUTHENTICATION = False
 SOCIALACCOUNT_EMAIL_AUTHENTICATION_AUTO_CONNECT = False
@@ -82,6 +89,7 @@ SOCIALACCOUNT_PROVIDERS = {"google": {
     "APPS": [{"client_id": GOOGLE_OAUTH_WEB_CLIENT_ID, "secret": "", "key": ""}],
     "ID_TOKEN_ISSUER": ["https://accounts.google.com", "accounts.google.com"],
 }}
+SOCIALACCOUNT_PROVIDERS["apple"] = {"APPS": [{"client_id": APPLE_SIGN_IN_CLIENT_ID, "secret": "", "key": ""}]}
 SOCIALACCOUNT_REQUESTS_TIMEOUT = 5
 EMAIL_BACKEND = "django.core.mail.backends.dummy.EmailBackend"
 RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")

@@ -1,0 +1,135 @@
+{
+  "sourceURL": "https://developers.google.com/static/identity/images/signin-assets.zip",
+  "guidelinesURL": "https://developers.google.com/identity/branding-guidelines",
+  "guidelinesUpdated": "2026-07-07",
+  "archiveSHA256": "ba884069e12093b06bcfd776915081254a7c95094b80d50be2c5dc6bac1c1da1",
+  "assetBodiesUnchanged": true,
+  "assets": [
+    {
+      "path": "assets/oauth/google-ios-light.png",
+      "officialZipMember": "iOS/PNG @1x/Neutral/Theme=Light, Show text=Yes, Shape=Square, Platform=iOS.png",
+      "sha256": "c30c61e97cf6bcea620ba59e63077e9ced1936a67297613393c3ed547a662f0a",
+      "dimensions": [
+        188,
+        44
+      ]
+    },
+    {
+      "path": "assets/oauth/google-ios-light@2x.png",
+      "officialZipMember": "iOS/PNG @2x/Light/Theme=Light, Show text=Yes, Shape=Square, Platform=iOS@2x.png",
+      "sha256": "13cd8a896195c12332cdfa74135f7075339a23482210c4f484098cf7e77ff631",
+      "dimensions": [
+        376,
+        88
+      ]
+    },
+    {
+      "path": "assets/oauth/google-ios-light@3x.png",
+      "officialZipMember": "iOS/PNG @3x/Light/Theme=Light, Show text=Yes, Shape=Square, Platform=iOS@3x.png",
+      "sha256": "260c3d8ff289f091a430e6b28e50ad8c36615df0b34c92883bcb6a593c1fc6da",
+      "dimensions": [
+        564,
+        132
+      ]
+    },
+    {
+      "path": "assets/oauth/google-ios-dark.png",
+      "officialZipMember": "iOS/PNG @1x/Dark/Theme=Dark, Show text=Yes, Shape=Square, Platform=iOS.png",
+      "sha256": "0de91fba38b0258b8205dc6e64301b3a745b39cf957974665019c4ffb22feb2a",
+      "dimensions": [
+        188,
+        44
+      ]
+    },
+    {
+      "path": "assets/oauth/google-ios-dark@2x.png",
+      "officialZipMember": "iOS/PNG @2x/Dark/Theme=Dark, Show text=Yes, Shape=Square, Platform=iOS@2x.png",
+      "sha256": "69c26744f4931fa10d2c4a8b13e1a11c36835bc3fcd398bdf01c9644e69d657a",
+      "dimensions": [
+        376,
+        88
+      ]
+    },
+    {
+      "path": "assets/oauth/google-ios-dark@3x.png",
+      "officialZipMember": "iOS/PNG @3x/Dark/Theme=Dark, Show text=Yes, Shape=Square, Platform=iOS@3x.png",
+      "sha256": "a400a28f4df30d158c75347fedea65fec897aae84942aca04b9d24e27921776b",
+      "dimensions": [
+        564,
+        132
+      ]
+    },
+    {
+      "path": "assets/oauth/google-android-light.png",
+      "officialZipMember": "Android + Web/PNG @1x/Light/Theme=Light, Show text=Yes, Shape=Square, Platform=Android+Web.png",
+      "sha256": "42a5750ee95926ca5410404ee5a34f8b6d58d290317200bf7e33e126873f4b83",
+      "dimensions": [
+        180,
+        40
+      ]
+    },
+    {
+      "path": "assets/oauth/google-android-light@2x.png",
+      "officialZipMember": "Android + Web/PNG @2x/Light/Theme=Light, Show text=Yes, Shape=Square, Platform=Android+Web@2x.png",
+      "sha256": "fdd355abc194d6acc0837c9b5e8a3170d6ae07dfeb85a63d3eb4b7fbfc2bb63f",
+      "dimensions": [
+        360,
+        80
+      ]
+    },
+    {
+      "path": "assets/oauth/google-android-light@3x.png",
+      "officialZipMember": "Android + Web/PNG @3x/Light/Theme=Light, Show text=Yes, Shape=Square, Platform=Android+Web@3x.png",
+      "sha256": "8a053b4c34e0dcb58079b84e08414a8b2de78b6b8c2f54d61aed64a89ab7aa7b",
+      "dimensions": [
+        540,
+        120
+      ]
+    },
+    {
+      "path": "assets/oauth/google-android-dark.png",
+      "officialZipMember": "Android + Web/PNG @1x/Dark/Theme=Dark, Show text=Yes, Shape=Square, Platform=Android+Web.png",
+      "sha256": "64cbfc1f786effc40f449e4b3c1fcd104825bfc087704e453cd8c9d70396f957",
+      "dimensions": [
+        180,
+        40
+      ]
+    },
+    {
+      "path": "assets/oauth/google-android-dark@2x.png",
+      "officialZipMember": "Android + Web/PNG @2x/Dark/Theme=Dark, Show text=Yes, Shape=Square, Platform=Android+Web@2x.png",
+      "sha256": "38949b075b40a4ad8a8aff7dd5f549b2d24864699ddcca7fe24aa25ad38ad6df",
+      "dimensions": [
+        360,
+        80
+      ]
+    },
+    {
+      "path": "assets/oauth/google-android-dark@3x.png",
+      "officialZipMember": "Android + Web/PNG @3x/Dark/Theme=Dark, Show text=Yes, Shape=Square, Platform=Android+Web@3x.png",
+      "sha256": "d57c6d39c458fabea0f4150393c5a2ff4a967e13bee6f174d0bb995d309a7a62",
+      "dimensions": [
+        540,
+        120
+      ]
+    },
+    {
+      "path": "assets/oauth/google-web-light.svg",
+      "officialZipMember": "Android + Web/SVG/Light/Theme=Light, Show text=Yes, Shape=Square, Platform=Android+Web.svg",
+      "sha256": "9dbc9beb1660ca4de76a724cae014be02b22ecdd8124282318f9f0362579474c",
+      "dimensions": [
+        180,
+        40
+      ]
+    },
+    {
+      "path": "assets/oauth/google-web-dark.svg",
+      "officialZipMember": "Android + Web/SVG/Dark/Theme=Dark, Show text=Yes, Shape=Square, Platform=Android+Web.svg",
+      "sha256": "790f35a6cea01d512d8c0cbf51d6277219a17206a67471fc3329dfffa0ede293",
+      "dimensions": [
+        180,
+        40
+      ]
+    }
+  ]
+}
