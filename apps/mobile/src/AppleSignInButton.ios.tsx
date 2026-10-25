@@ -10,10 +10,10 @@ export default function AppleSignInButton({ baseUrl, process, current, busy, onA
   const [available, setAvailable] = useState(false);
   useEffect(() => { let active = true; void AppleAuthentication.isAvailableAsync().then(value => { if (active) setAvailable(value); }).catch(() => {}); return () => { active = false; }; }, []);
   if (!available) return null;
-  return <View style={{ opacity: busy ? 0.5 : 1 }} pointerEvents={busy ? 'none' : 'auto'}>
+  return <View style={{ width: '100%', maxWidth: 400, opacity: busy ? 0.5 : 1 }} pointerEvents={busy ? 'none' : 'auto'}>
     <AppleAuthentication.AppleAuthenticationButton buttonType={AppleAuthentication.AppleAuthenticationButtonType.CONTINUE}
       buttonStyle={dark ? AppleAuthentication.AppleAuthenticationButtonStyle.WHITE : AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
-      cornerRadius={8} style={{ width: 216, height: 48 }} onPress={() => { if (busy) return; onAuthenticate(async stillCurrent => {
+      cornerRadius={12} style={{ width: '100%', height: 48 }} onPress={() => { if (busy) return; onAuthenticate(async stillCurrent => {
         const attempt = await prepareGoogle(baseUrl, process, 'app', current, 'apple');
         if (!stillCurrent()) return null;
         let result;

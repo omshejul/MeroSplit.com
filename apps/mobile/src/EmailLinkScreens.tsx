@@ -37,9 +37,9 @@ export function EmailLinkStatus({ opening, error, sent, canRenew, busy, onRetry,
 export function EmailLinkSent({ busy, resendSeconds, onResend, onCode, onChangeEmail }: { busy: boolean; resendSeconds: number; onResend: () => void; onCode: () => void; onChangeEmail: () => void }) {
   const { ui } = useUI();
   return <View style={{ gap: 12 }}><Text style={ui.body}>Open the sign-in link in your email.</Text>
-    <Button title={resendSeconds > 0 ? `Resend in ${resendSeconds}s` : 'Send new link'} disabled={busy || resendSeconds > 0} onPress={onResend} />
-    <Button title="Use a code instead" kind="text" disabled={busy} onPress={onCode} />
-    <Button title="Use another email" kind="text" disabled={busy} onPress={onChangeEmail} />
+    <Button contentStyle={{ minHeight: 48 }} title={resendSeconds > 0 ? `Resend in ${resendSeconds}s` : 'Send new link'} disabled={busy || resendSeconds > 0} onPress={onResend} />
+    <Button contentStyle={{ minHeight: 48 }} title="Use a code instead" kind="text" disabled={busy} onPress={onCode} />
+    <Button contentStyle={{ minHeight: 48 }} title="Use another email" kind="text" disabled={busy} onPress={onChangeEmail} />
   </View>;
 }
 export function NameOnlyForm({ busy, onSave }: { busy: boolean; onSave: (name: string) => Promise<void> }) {

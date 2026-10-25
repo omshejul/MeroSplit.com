@@ -1,19 +1,23 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Image, Platform, Pressable } from 'react-native';
+import { Text } from 'react-native-paper';
 import { useUI } from './ui';
+import { googleFontFamily } from './typography';
 
 export type GoogleBrandButtonProps = { disabled: boolean; onPress: () => void };
 
-// Unmodified, preapproved Google assets. Metro selects the native density variant.
 export default function GoogleBrandButton({ disabled, onPress }: GoogleBrandButtonProps) {
-  const { dark } = useUI();
+  const { dark, palette, ui } = useUI(), [focused, setFocused] = useState(false);
   const ios = Platform.OS === 'ios';
-  const source = ios
-    ? dark ? require('../assets/oauth/google-ios-dark.png') : require('../assets/oauth/google-ios-light.png')
-    : dark ? require('../assets/oauth/google-android-dark.png') : require('../assets/oauth/google-android-light.png');
-  return <Pressable accessibilityRole="button" accessibilityLabel="Sign in with Google" accessibilityState={{ disabled }}
-    disabled={disabled} onPress={onPress} style={({ pressed }) => ({ width: 216, height: 48, alignItems: 'center', justifyContent: 'center', opacity: disabled ? 0.5 : pressed ? 0.7 : 1 })}>
-    <Image source={source} accessible={false} importantForAccessibility="no" resizeMode="contain"
-      style={{ width: ios ? 188 / 44 * 48 : 216, height: 48 }} />
+  return <Pressable accessibilityRole="button" accessibilityLabel="Continue with Google" accessibilityState={{ disabled }}
+    disabled={disabled} onPress={onPress} onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
+    style={({ pressed }) => ({ width: '100%', maxWidth: 400, minHeight: 48, paddingVertical: 10, paddingHorizontal: ios ? 16 : 12,
+      flexDirection: 'row', alignItems: 'center', gap: ios ? 12 : 10, borderRadius: 12, borderWidth: 1,
+      backgroundColor: dark ? '#131314' : '#FFFFFF', borderColor: focused ? palette.accent : dark ? '#8E918F' : '#747775',
+      outlineWidth: focused ? 2 : 0, outlineStyle: 'solid', outlineColor: palette.accent, outlineOffset: 3, opacity: disabled ? 0.5 : pressed ? 0.8 : 1 })}>
+    <Image source={dark ? require('../assets/oauth/google-g-dark.png') : require('../assets/oauth/google-g-light.png')}
+      accessible={false} importantForAccessibility="no" resizeMode="contain" style={{ width: 20, height: 20, flexShrink: 0 }} />
+    <Text style={{ flex: 1, marginRight: ios ? 32 : 30, textAlign: 'center', fontFamily: ui.body.fontFamily ? googleFontFamily : undefined,
+      fontSize: 14, lineHeight: 20, fontWeight: '500', color: dark ? '#E3E3E3' : '#1F1F1F' }}>Continue with Google</Text>
   </Pressable>;
 }
