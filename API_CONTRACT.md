@@ -172,3 +172,14 @@ Membership email contains only a generic notice and normal protected `/app/` des
 ## Feedback
 
 `POST /api/v1/me/feedback` requires the normal signed-in session and browser CSRF. Body `{id: UUID, text: string}` accepts1–2,000 characters after trimming and returns `{id, saved: true}` only after storage. Retrying the same author/UUID/text returns the original acknowledgment; changed or another author's UUID returns409. Limit20 new messages per rolling day; replays remain valid. Feedback is in account export and cascades on account deletion. Existing worker notification delivery is asynchronous; gateway uncertainty never changes successful storage or automatically resends. The app's one-field dialog retains the same ID/text across uncertain retries and clears only after acknowledged success.
+
+
+## Expense category hints
+
+`GET /api/v1/expense-icons?ids=...` accepts1–20 visible expense IDs. Manual categories, including explicitly chosen General/Other, always win. Unknown legacy General/Other may infer. Hints never change bill text, categories, financial versions, events or notification outboxes.
+
+The authenticated advisory reader owns the cache, including bills created by another shared-group member. Different accounts never reuse each other's results. Within one account, NFC normalization, casefolding and collapsed Unicode whitespace reuse a title-only classification across different bills. Accents, digits, punctuation, superscripts and fractions remain distinct. Cache identity includes normalization and model/rule/category-definition revisions. Stored keys are HMAC digests; raw titles remain unchanged. Per-bill bindings retain separate exact raw-title/account/revision fences. Every read, claim and finish rechecks access and automatic/manual mode. Batch cache locks use digest order after sorted group locks.
+
+The existing worker claims one normalized title at a time using PostgreSQL uniqueness and a committed lease. API reads only queue work; the worker-only Gateway key and title-only evaluator are unchanged. HTTP occurs outside transactions. Terminal failures and uncertain outcomes do not retry on visits. Expired or missing leases become abandoned uncertainty; unresolved dispatch fences survive cleanup. Migration0029 adds cache metadata and account-scopes existing bindings without financial backfill. Old same-account decisions are adopted only after an authorized raw-title read.
+
+Each existing worker tick examines at most100 old bindings and100 unreferenced caches after90 days of inactivity. It removes unused terminal/stale metadata and never-dispatched pending caches with no bindings. Active/recent bindings, genuinely queued work, claimed jobs and unresolved dispatch fences stay. Removing shared cache metadata cannot cascade-delete per-bill fences. Account deletion removes its cache. There is no financial, history or outbox garbage collection and no new scheduler.
