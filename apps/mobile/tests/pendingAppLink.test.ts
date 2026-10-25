@@ -19,7 +19,7 @@ function effect(marker: string) {
   return (productionNode(node => ts.isCallExpression(node) && node.expression.getText(file) === 'useEffect' && !!node.arguments[0]?.getText(file).includes(marker)) as ts.CallExpression).arguments[0];
 }
 const openLink = effect('const active = session, target = appLink;');
-const syncURL = effect("if (screen === 'group' || screen === 'expenseDetail'");
+const syncURL = effect("['group', 'expenseDetail', 'billChat', 'expenseVersions'].includes(screen)");
 const queueCheck = productionNode(node => ts.isFunctionDeclaration(node) && node.name?.text === 'queueCookieCheck');
 const groupId = '11111111-1111-4111-8111-111111111111';
 const groupURL = `https://merosplit.test/app/groups/${groupId}`;
