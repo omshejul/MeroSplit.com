@@ -1,0 +1,48 @@
+{
+  "listingLanguage": "en-US",
+  "marketingVersion": "1.0",
+  "androidVersionCode": 20,
+  "sealedReleaseSource": "e70d8c9a1188304c2c567b7289629d3e9783ce4f",
+  "files": {
+    "google-play-copy.json": {
+      "sha256": "097d534cb5b61edf75e726378eb649f971059198c8881ef67c96f0b7eacb78c1",
+      "bytes": 1653
+    },
+    "icon-512.png": {
+      "sha256": "90429be9877b046dd7f47469265f7b285af8e3b13e3d33de268e9db5ce7dbd75",
+      "bytes": 17530
+    },
+    "feature-graphic-1024x500.png": {
+      "sha256": "8d6cf1e4766071c0cf7848d149889df560efbd94c79ffd5b8fd196d9e9c6ae4b",
+      "bytes": 26964
+    },
+    "screenshots/production-1.0/01.png": {
+      "sha256": "9795c1cc6b790e2b0472bd647930a5caad54d6f0728e7b7e68b3bfbd63fcd8e3",
+      "bytes": 112678
+    },
+    "screenshots/production-1.0/02.png": {
+      "sha256": "af89adb8ee7ff444790647474114e17d58e0fc05e94a67df4ebe57fb68cebeaf",
+      "bytes": 106331
+    },
+    "screenshots/production-1.0/03.png": {
+      "sha256": "e48eda1d76e0aa70a84eb6aa986cee3a830a4fa60ca7279c383271000b17c7b0",
+      "bytes": 184589
+    },
+    "screenshots/production-1.0/04.png": {
+      "sha256": "421ff88f06611d6c76d94b4c04f18e8547a295b31e9c4ee82faefdcccb0ce3f8",
+      "bytes": 128674
+    },
+    "screenshots/production-1.0/05.png": {
+      "sha256": "3cf75385c4d1cf795d6c1aef8e47bc80110238fa358a8bf6d3fb76fd96c452c7",
+      "bytes": 178472
+    }
+  },
+  "screenshotProvenance": {
+    "basis": "Actual shared sealed-release feature screens from cached native component/app QA, composed in platform-neutral graphic frames. Not physical Android captures.",
+    "simplifyFrame": "03",
+    "simplifyExample": "Accepted source proposeTransfers fixture has three bills and two suggested transfers. Caption is example-specific.",
+    "nextAppVersionChangesIncluded": false
+  },
+  "legacyAssets": "Older screenshot files and google-play-copy.txt are preserved as historical inputs, not used by this manifest.",
+  "providerState": "Metadata draft validated; commit/review requires separate approval. Production access remains blocked by tester requirement."
+}
