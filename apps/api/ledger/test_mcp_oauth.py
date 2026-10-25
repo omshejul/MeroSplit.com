@@ -255,7 +255,7 @@ def test_consent_escapes_client_names_and_name_onboarding_stays_before_consent()
     response, _ = authorize_browser(client, registered(client_name="<script>alert('x')</script>")["client_id"])
     page = client.get(response["Location"])
     assert b"&lt;script&gt;" in page.content and b"<script>" not in page.content
-    assert page["Cache-Control"] == "no-store" and page["Referrer-Policy"] == "no-referrer"
+    assert page["Cache-Control"] == "no-store" and page["Referrer-Policy"] == "same-origin"
     unnamed = browser(user(""))
     response, _ = authorize_browser(unnamed)
     assert unnamed.get(response["Location"])["Location"] == "/app/"
@@ -534,3 +534,63 @@ def test_pending_legacy_authorization_survives_domain_change_without_accepting_o
     assert oauth.authenticate_access_token(tokens["access_token"])[0].pk == actor.pk
     settings.MCP_SERVER_URL = "https://unrelated.example.invalid/mcp"
     assert oauth.authenticate_access_token(tokens["access_token"]) is None
+
+@pytest.mark.parametrize('host', ['merosplit.com', 'merosplit.omshejul.com'])
+@pytest.mark.parametrize('decision', ['allow', 'cancel'])
+def test_https_consent_uses_hidden_form_csrf_without_header(settings, host, decision):
+    import re
+    settings.ALLOWED_HOSTS = [host, 'testserver']
+    client = browser(csrf=True)
+    response, request_id = authorize_browser(client)
+    page = client.get(response['Location'], HTTP_HOST=host, HTTP_X_FORWARDED_PROTO='https')
+    assert page.status_code == 200
+    assert page['Referrer-Policy'] == 'same-origin'
+    assert b'name="referrer" content="same-origin"' in page.content
+    hidden = re.search(r'name="csrfmiddlewaretoken" value="([^"]+)"', page.content.decode()).group(1)
+    data = {'request': request_id, 'expected_user_id': client.session['_auth_user_id'], 'decision': decision, 'csrfmiddlewaretoken': hidden}
+    result = post(client, '/oauth/authorize', data, HTTP_HOST=host, HTTP_X_FORWARDED_PROTO='https', HTTP_ORIGIN='https://' + host, HTTP_REFERER='https://' + host + response['Location'])
+    assert result.status_code == 302
+    assert result['Referrer-Policy'] == 'no-referrer'  # No selector/code Referer to the external client.
+    assert not McpOAuthGrant.objects.exists()
+
+@pytest.mark.parametrize('failure', ['missing', 'mismatch', 'null_origin', 'untrusted_origin', 'wrong_account', 'wrong_request', 'other_browser'])
+def test_hidden_consent_form_keeps_csrf_account_and_request_fences(settings, failure):
+    import re
+    settings.ALLOWED_HOSTS = ['merosplit.com', 'testserver']
+    client = browser(csrf=True)
+    response, request_id = authorize_browser(client)
+    page = client.get(response['Location'], HTTP_HOST='merosplit.com', HTTP_X_FORWARDED_PROTO='https')
+    token = re.search(r'name="csrfmiddlewaretoken" value="([^"]+)"', page.content.decode()).group(1)
+    data = {'request': request_id, 'expected_user_id': client.session['_auth_user_id'], 'decision': 'allow', 'csrfmiddlewaretoken': token}
+    origin = 'https://merosplit.com'
+    if failure == 'missing':
+        data.pop('csrfmiddlewaretoken')
+    if failure == 'mismatch':
+        data['csrfmiddlewaretoken'] = 'x' * 64
+    if failure == 'null_origin':
+        origin = 'null'
+    if failure == 'untrusted_origin':
+        origin = 'https://evil.example.invalid'
+    if failure == 'wrong_account':
+        data['expected_user_id'] = str(int(data['expected_user_id']) + 1)
+    if failure == 'wrong_request':
+        data['request'] = str(uuid4())
+    if failure == 'other_browser':
+        client = browser(csrf=True)
+    result = post(client, '/oauth/authorize', data, HTTP_HOST='merosplit.com', HTTP_X_FORWARDED_PROTO='https', HTTP_ORIGIN=origin)
+    assert result.status_code in {400, 403}
+    row = McpOAuthPendingAuthorization.objects.get(pk=request_id)
+    assert row.approved_at is None and row.denied_at is None and not row.code_digest
+    assert not McpOAuthGrant.objects.exists()
+
+
+def test_public_setup_verifies_without_financial_reads_or_manual_keys():
+    response = Client().get('/mcp/setup')
+    assert response.status_code == 200
+    text = response.content.decode()
+    assert 'get_account_context</code> with <code>{}</code>' in text
+    assert 'No group or transaction lookup is needed.' in text
+    assert 'claude mcp add --transport http --scope user merosplit' in text
+    assert 'claude mcp login' not in text
+    assert '"mcpServers":{"merosplit":{"url":' in text
+    assert 'Other Streamable HTTP clients' in text

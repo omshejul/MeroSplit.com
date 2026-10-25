@@ -12,11 +12,11 @@ export function DialogScrollBody({ maxHeight, gap, paddingVertical = 12, padding
   </Dialog.ScrollArea>;
 }
 
-export function CancelDialogActions({ disabled, onCancel, children }: {
-  disabled: boolean; onCancel: () => void; children?: React.ReactNode;
+export function CancelDialogActions({ disabled, onCancel, children, cancelTitle = 'Cancel' }: {
+  cancelTitle?: string; disabled: boolean; onCancel: () => void; children?: React.ReactNode;
 }) {
   return <Dialog.Actions>
-    <Button title="Cancel" kind="text" disabled={disabled} onPress={onCancel} />
+    <Button title={cancelTitle} kind="text" disabled={disabled} onPress={onCancel} />
     {children}
   </Dialog.Actions>;
 }
