@@ -199,3 +199,126 @@ def test_server_code_response_wrong_signing_key_is_rejected(google_code, signer,
     response = callback(client, params)
     assert response.status_code == 302 and "google_error" in response["Location"]
     assert google_code["exchanges"] == 1 and not SocialAccount.objects.exists()
+
+
+@pytest.fixture
+def secure_form(google_code, settings, monkeypatch, tmp_path):
+    """The browser sends a hidden body token, never the synthetic header helper."""
+    settings.DEBUG = False
+    settings.SECURE_SSL_REDIRECT = True
+    settings.ALLOWED_HOSTS = ["merosplit.com", "merosplit.omshejul.com"]
+    settings.PUBLIC_WEB_URL = "https://merosplit.com"
+    settings.SESSION_COOKIE_SECURE = True
+    settings.CSRF_COOKIE_SECURE = True
+    (tmp_path / "index.html").write_text("<!doctype html><title>Local OAuth test</title>")
+    monkeypatch.setenv("MEROSPLIT_WEB_ROOT", str(tmp_path))
+
+    def prepare(host, user=None):
+        client = Client(enforce_csrf_checks=True)
+        if user:
+            client.force_login(user, backend="django.contrib.auth.backends.ModelBackend")
+        headers = {"HTTP_HOST": host, "HTTP_X_FORWARDED_PROTO": "https",
+                   "HTTP_ORIGIN": "https://" + host, "HTTP_REFERER": "https://" + host + "/app/"}
+        shell = client.get("/app/", **headers)
+        assert shell.status_code == 200 and shell.wsgi_request.is_secure()
+        assert shell["Referrer-Policy"] == "same-origin"
+        assert shell["Cross-Origin-Opener-Policy"] == "same-origin"
+        assert shell["Cross-Origin-Embedder-Policy"] == "require-corp"
+        assert client.cookies["csrftoken"]["secure"]
+        b"".join(shell.streaming_content)
+        body = {"process": "connect" if user else "login", "csrfmiddlewaretoken": client.cookies["csrftoken"].value}
+        if user:
+            body["account"] = str(user.pk)
+        return client, body, headers
+
+    return prepare
+
+
+def form_post(client, body, headers):
+    from urllib.parse import urlencode
+    return client.post("/auth/google", urlencode(body), content_type="application/x-www-form-urlencoded", **headers)
+
+
+@pytest.mark.parametrize("host", ["merosplit.com", "merosplit.omshejul.com"])
+@pytest.mark.parametrize("process", ["login", "connect"])
+def test_secure_hidden_form_reaches_google_without_csrf_header(secure_form, google_code, host, process):
+    user = get_user_model().objects.create_user(username="local", email="local@example.invalid") if process == "connect" else None
+    client, body, headers = secure_form(host, user)
+    response = form_post(client, body, headers)
+    assert response.status_code == 302
+    params = parse_qs(urlsplit(response["Location"]).query)
+    assert urlsplit(response["Location"]).netloc == "accounts.google.com"
+    assert params["redirect_uri"] == ["https://" + host + "/auth/google/callback"]
+    assert params["code_challenge_method"] == ["S256"] and params["nonce"] and params["state"]
+    assert response.wsgi_request.is_secure() and "HTTP_X_CSRFTOKEN" not in response.wsgi_request.META
+    assert response.cookies["sessionid"]["secure"] and response.cookies["sessionid"]["httponly"]
+    assert client.session["merosplit_google_signin"]["actor"] == (user.pk if user else None)
+    assert google_code["exchanges"] == 0
+
+
+@pytest.mark.parametrize("host", ["merosplit.com", "merosplit.omshejul.com"])
+@pytest.mark.parametrize("invalid", ["null-origin", "untrusted-origin", "missing-token", "malformed-token", "mismatched-token", "missing-cookie", "wrong-proxy-scheme", "missing-origin-and-referer"])
+def test_secure_form_still_rejects_invalid_csrf(secure_form, google_code, host, invalid):
+    client, body, headers = secure_form(host)
+    if invalid == "null-origin":
+        headers["HTTP_ORIGIN"] = "null"
+    elif invalid == "untrusted-origin":
+        headers["HTTP_ORIGIN"] = "https://evil.invalid"
+    elif invalid == "missing-token":
+        del body["csrfmiddlewaretoken"]
+    elif invalid == "malformed-token":
+        body["csrfmiddlewaretoken"] = "not-a-token"
+    elif invalid == "mismatched-token":
+        body["csrfmiddlewaretoken"] = "x" * 32
+    elif invalid == "missing-cookie":
+        del client.cookies["csrftoken"]
+    elif invalid == "wrong-proxy-scheme":
+        headers["HTTP_X_FORWARDED_PROTO"] = "http"
+    else:
+        del headers["HTTP_ORIGIN"], headers["HTTP_REFERER"]
+    response = form_post(client, body, headers)
+    assert response.status_code == (301 if invalid == "wrong-proxy-scheme" else 403)
+    assert "merosplit_google_signin" not in client.session
+    assert google_code["exchanges"] == 0
+
+
+def test_secure_form_accepts_same_origin_referer_when_origin_absent(secure_form):
+    client, body, headers = secure_form("merosplit.com")
+    del headers["HTTP_ORIGIN"]
+    assert urlsplit(form_post(client, body, headers)["Location"]).netloc == "accounts.google.com"
+
+
+def test_secure_connect_rejects_stale_form_account_and_callback_actor(secure_form, google_code, monkeypatch):
+    from unittest.mock import Mock
+
+    from django.utils.crypto import salted_hmac
+
+    from . import google_browser
+    from .models import Change, EmailRateBucket, Expense, Group, Settlement
+
+    consume = Mock(wraps=google_browser.consume_challenge)
+    monkeypatch.setattr(google_browser, "consume_challenge", consume)
+    models = [Group, Expense, Settlement, Change]
+    before = [model.objects.count() for model in models]
+    a = get_user_model().objects.create_user(username="first", email="first@example.invalid")
+    b = get_user_model().objects.create_user(username="second", email="second@example.invalid")
+    client, body, headers = secure_form("merosplit.com", b)
+    body["account"] = str(a.pk)
+    assert "google_error=unavailable" in form_post(client, body, headers)["Location"]
+    assert "merosplit_google_signin" not in client.session
+    body["account"] = str(b.pk)
+    started = form_post(client, body, headers)
+    assert urlsplit(started["Location"]).netloc == "accounts.google.com"
+    params = {key: values[0] for key, values in parse_qs(urlsplit(started["Location"]).query).items()}
+    proof_key = salted_hmac("merosplit.google-proof", params["nonce"], algorithm="sha256").hexdigest()
+    client.force_login(a, backend="django.contrib.auth.backends.ModelBackend")
+    result = client.get("/auth/google/callback", {"state": params["state"], "code": "local-only"}, **headers)
+    returned = urlsplit(result["Location"])
+    assert not returned.netloc and returned.path == "/app/"
+    assert parse_qs(returned.query)["google_error"][0] in {"account_changed", "unavailable"}
+    consume.assert_not_called()
+    assert not EmailRateBucket.objects.filter(key=proof_key).exists()
+    assert client.session["_auth_user_id"] == str(a.pk)
+    assert get_user_model().objects.count() == 2
+    assert [model.objects.count() for model in models] == before
+    assert google_code["exchanges"] == 0 and not SocialAccount.objects.exists()

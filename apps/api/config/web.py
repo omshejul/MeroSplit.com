@@ -28,7 +28,7 @@ def _headers(response):
 def _shell(request, index):
     response = FileResponse(index.open("rb"), content_type="text/html; charset=utf-8")
     response["Cache-Control"] = "no-store" if request.path.startswith("/app/sign-in/") else "no-cache"
-    response["Referrer-Policy"] = "no-referrer"
+    response["Referrer-Policy"] = "same-origin"
     return _headers(response)
 
 
