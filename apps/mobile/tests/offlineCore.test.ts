@@ -103,3 +103,45 @@ test('an account change during offline download cannot save the old response or 
   assert.equal(await db.getFirstAsync('SELECT id FROM groups_cache WHERE owner=?',owner),null);
  } finally {globalThis.fetch=original;raw.close();}
 });
+
+test('v4 persisted pending bills remain immutable after upgrade; new v5 bills remain editable', async () => {
+ const dir = mkdtempSync(join(tmpdir(), 'merosplit-v4-')); const file = join(dir, 'cache.db'); let raw = new DatabaseSync(file);
+ try {
+  raw.exec("CREATE TABLE outbox (ordinal INTEGER PRIMARY KEY AUTOINCREMENT,owner TEXT NOT NULL,command_id TEXT NOT NULL,group_id TEXT NOT NULL,method TEXT NOT NULL,path TEXT NOT NULL,body TEXT NOT NULL,state TEXT NOT NULL DEFAULT 'pending',error TEXT,base_version INTEGER,UNIQUE(owner,command_id)); PRAGMA user_version=4;");
+  raw.prepare('INSERT INTO outbox(owner,command_id,group_id,method,path,body,state,error,base_version) VALUES(?,?,?,?,?,?,?,?,?)').run('server|1', bill.command_id, bill.group_id, bill.method, bill.path, JSON.stringify(bill.body), 'pending', null, 3);
+  raw.close(); raw = new DatabaseSync(file); const db = sqliteAdapter(raw); await migrate(db);
+  const before = await pendingCommands(db, 'server|1'); assert.equal(before[0].attempted, true, 'v4 network failures could already have reached the server');
+  await assert.rejects(enqueueBill(db, 'server|1', { ...bill, command_id: 'edit-old', body: { ...bill.body, description: 'Must not replace uncertain payload' } }), /unconfirmed/);
+  assert.deepEqual(await pendingCommands(db, 'server|1'), before);
+  const fresh = { ...bill, command_id: 'fresh', body: { ...bill.body, id: 'fresh-bill', command_id: 'fresh' } };
+  await enqueueBill(db, 'server|1', fresh);
+  await enqueueBill(db, 'server|1', { ...fresh, command_id: 'edit-fresh', body: { ...fresh.body, description: 'Fresh edit' } });
+  const rows = await pendingCommands(db, 'server|1'); assert.deepEqual(rows[0], before[0]); assert.equal(rows[1].attempted, undefined); assert.equal(rows[1].command_id, 'fresh'); assert.equal(rows[1].body.description, 'Fresh edit');
+ } finally { raw.close(); rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('confirmation atomically rechecks newer summaries, pending work and account generation after download', async () => {
+ const raw = new DatabaseSync(':memory:'), db = sqliteAdapter(raw), owner = 'server|1';
+ try {
+  await migrate(db); await saveGroup(db, owner, accepted, 'shared'); await saveGroup(db, owner, { ...accepted, read_mode: 'summary' }, 'shared');
+  const confirming = { ...db, withExclusiveTransactionAsync: async (task: Parameters<typeof db.withExclusiveTransactionAsync>[0]) => {
+   await saveGroup(db, owner, { ...accepted, version: 4, read_mode: 'summary' }, 'shared');
+   await db.withExclusiveTransactionAsync(task);
+  } };
+  assert.equal(await confirmSync(confirming, owner), false, 'summary advances after download but before final atomic confirmation');
+  assert.equal(await confirmedSync(db, owner), null);
+  await saveGroup(db, owner, { ...accepted, version: 4 }, 'shared');
+  await enqueue(db, owner, bill); assert.equal(await confirmSync(db, owner), false); await db.runAsync('DELETE FROM outbox WHERE owner=?', owner);
+  await db.runAsync('INSERT INTO drafts(owner,group_id,body) VALUES(?,?,?)', owner, 'media-upload:test', '{"pending":true}'); assert.equal(await confirmSync(db, owner), false);
+  await db.runAsync('DELETE FROM drafts WHERE owner=?', owner); assert.equal(await confirmSync(db, owner, () => false), false); assert.equal(await confirmedSync(db, owner), null);
+  assert.equal(await confirmSync(db, owner), true); assert.ok(await confirmedSync(db, owner));
+ } finally { raw.close(); }
+});
+
+test('auth-held and revoked access require attention even with pending work; offline pending remains saved', () => {
+ const base = { commands: [bill], confirmedAt: null, durable: true, syncing: false, problem: true };
+ assert.equal(syncStatus(base).label, 'Saved on device');
+ assert.equal(syncStatus({ ...base, reviewRequired: true }).label, 'Needs attention');
+ assert.equal(syncStatus({ ...base, commands: [], reviewRequired: true }).label, 'Needs attention');
+ assert.equal(syncStatus({ ...base, reviewRequired: false, problem: false }).label, 'Saved on device');
+});

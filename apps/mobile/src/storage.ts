@@ -41,6 +41,8 @@ export async function migrate(db: Database): Promise<void> {
     const columns = await tx.getAllAsync<{ name: string }>('PRAGMA table_info(outbox)');
     if (!columns.some(column => column.name === 'base_version')) await tx.execAsync('ALTER TABLE outbox ADD COLUMN base_version INTEGER;');
     if (!columns.some(column => column.name === 'attempted')) await tx.execAsync('ALTER TABLE outbox ADD COLUMN attempted INTEGER NOT NULL DEFAULT 0;');
+    // Older queues did not distinguish unsent writes from lost server responses.
+    await tx.runAsync('UPDATE outbox SET attempted=1');
   });
 }
 
@@ -278,6 +280,19 @@ export async function enqueueBill(db: Database, owner: string, command: Command)
 export async function confirmedSync(db: Database, owner: string): Promise<string | null> {
   return (await db.getFirstAsync<{ confirmed_at: string }>('SELECT confirmed_at FROM sync_state WHERE owner=?', owner))?.confirmed_at ?? null;
 }
-export async function confirmSync(db: Database, owner: string): Promise<void> {
-  await db.runAsync('INSERT INTO sync_state(owner,confirmed_at) VALUES(?,?) ON CONFLICT(owner) DO UPDATE SET confirmed_at=excluded.confirmed_at', owner, new Date().toISOString());
+export async function confirmSync(db: Database, owner: string, current: () => boolean = () => true): Promise<boolean> {
+  let confirmed = false;
+  await db.withExclusiveTransactionAsync(async tx => {
+    if (!current() || (await pendingCommands(tx, owner)).length) return;
+    const waiting = await tx.getFirstAsync<{ n: number }>("SELECT count(*) AS n FROM drafts WHERE owner=? AND group_id LIKE 'media-upload:%' AND body<>?", owner, 'null');
+    if (waiting?.n) return;
+    for (const row of await listGroups(tx, owner)) {
+      const full = await tx.getFirstAsync<{ version: number }>("SELECT json_extract(snapshot,'$.version') AS version FROM groups_cache WHERE owner=? AND id=? AND kind='shared' AND json_extract(snapshot,'$.read_mode') IS NULL", owner, row.group.id);
+      if (!full || full.version < row.group.version) return;
+    }
+    if (!current()) return;
+    await tx.runAsync('INSERT INTO sync_state(owner,confirmed_at) VALUES(?,?) ON CONFLICT(owner) DO UPDATE SET confirmed_at=excluded.confirmed_at', owner, new Date().toISOString());
+    confirmed = true;
+  });
+  return confirmed;
 }
