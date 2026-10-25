@@ -134,6 +134,9 @@ test('confirmation atomically rechecks newer summaries, pending work and account
   await enqueue(db, owner, bill); assert.equal(await confirmSync(db, owner), false); await db.runAsync('DELETE FROM outbox WHERE owner=?', owner);
   await db.runAsync('INSERT INTO drafts(owner,group_id,body) VALUES(?,?,?)', owner, 'media-upload:test', '{"pending":true}'); assert.equal(await confirmSync(db, owner), false);
   await db.runAsync('DELETE FROM drafts WHERE owner=?', owner); assert.equal(await confirmSync(db, owner, () => false), false); assert.equal(await confirmedSync(db, owner), null);
+  let current = true;
+  const switched = { ...db, withExclusiveTransactionAsync: (task: Parameters<typeof db.withExclusiveTransactionAsync>[0]) => db.withExclusiveTransactionAsync(tx => task({ ...tx, runAsync: async (sql, ...params) => { const result = await tx.runAsync(sql, ...params); if (sql.startsWith('INSERT INTO sync_state')) current = false; return result; } })) };
+  await assert.rejects(confirmSync(switched, owner, () => current), /account changed/); assert.equal(await confirmedSync(db, owner), null, 'generation change rolls checkpoint back');
   assert.equal(await confirmSync(db, owner), true); assert.ok(await confirmedSync(db, owner));
  } finally { raw.close(); }
 });

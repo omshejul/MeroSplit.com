@@ -292,6 +292,7 @@ export async function confirmSync(db: Database, owner: string, current: () => bo
     }
     if (!current()) return;
     await tx.runAsync('INSERT INTO sync_state(owner,confirmed_at) VALUES(?,?) ON CONFLICT(owner) DO UPDATE SET confirmed_at=excluded.confirmed_at', owner, new Date().toISOString());
+    if (!current()) throw new Error('The signed-in account changed.');
     confirmed = true;
   });
   return confirmed;
