@@ -18,7 +18,7 @@ function production(file: string, extra: Record<string, any> = {}) {
   const states: any[] = [], dependencies: Record<number, any[]> = {}, cleanups: Record<number, any> = {}, timers = new Map<number, () => void>();
   let effects: (() => void)[] = [];
   const env: Record<string, any> = {
-    ...members, confirmedGroupInvite, copyText: async () => {}, React: { Fragment: 'Fragment', createElement: (type: any, props: any, ...children: any[]) => ({ type, props: props ?? {}, children }) },
+    ...members, confirmedGroupInvite, copyText: async (value: string | Promise<string>) => { await value; }, React: { Fragment: 'Fragment', createElement: (type: any, props: any, ...children: any[]) => ({ type, props: props ?? {}, children }) },
     __DEV__: false, SettingsRow: 'SettingsRow', Platform: { OS: 'native' }, View: 'View', Text: 'Text', Pressable: 'Pressable', Button: 'Button', Avatar: 'Avatar', Icon: 'Icon', IconAction: 'IconAction',
     Disclosure: 'Disclosure', EmailField: 'EmailField', TextField: 'TextField', GroupMembershipActions: 'GroupMembershipActions', KeyboardDialog: 'KeyboardDialog', SendInviteDialog: 'SendInviteDialog',
     LoadingSpinner: 'LoadingSpinner', DialogFocus: 'DialogFocus', DialogScrollBody: 'DialogScrollBody', CancelDialogActions: 'CancelDialogActions', ErrorText: 'ErrorText', Dialog: Object.assign(() => {}, { Title: 'Dialog.Title' }),
@@ -36,6 +36,7 @@ function production(file: string, extra: Record<string, any> = {}) {
   const code = ts.transpile(body, { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React });
   const functions = new Function('env', `with(env){${code}; return {${names.join(',')}};}`)(env);
   return {
+    invoke(name: string, argument: any): any { return functions[name](argument); },
     render(name: string, props: any): Element { cursor = 0; return functions[name](props); },
     async commit() { const pending = effects; effects = []; pending.forEach(fn => fn()); await tick(); },
     timer() { const pending = [...timers.values()]; timers.clear(); pending.forEach(fn => fn()); },
@@ -265,7 +266,7 @@ test('Copy link uses the platform helper, exposes no URL and reports clipboard f
  for(const platform of ['native','web']) {
   let fail=true; const copied:string[]=[], commands:string[]=[];
   const url='https://merosplit.com/j/'+'b'.repeat(32);
-  const app=production('MembersScreen.tsx',{Platform:{OS:platform},copyText:async(value:string)=>{copied.push(value);if(fail)throw Error(url);}});
+  const app=production('MembersScreen.tsx',{Platform:{OS:platform},copyText:async(value:string|Promise<string>)=>{copied.push(await value);if(fail)throw Error(url);}});
   const group:Group={id:'group',name:'Trip',owner_id:1,version:2,participants:[{id:'self',name:'You',user_id:1}],expenses:[],settlements:[],balances:{},transfers:[],activity:[]};
   const props={group,selfId:'self',busy:false,onMembership(){},onAction:async(_path:string,body:any)=>{commands.push(body.command_id);return{id:'group',version:2,url};}};
   button(app.render('MemberSettings',props),'Copy link').props.onPress();await tick();
@@ -363,4 +364,83 @@ test('an empty download clears the stale available action and permits an explici
  button(app.render('AppUpdates',props),'Download').props.onPress();await tick();
  const tree=app.render('AppUpdates',props);assert.ok(button(tree,'Check'));assert.equal(button(tree,'Restart'),undefined);
  assert.ok(JSON.stringify(tree).includes('No update was downloaded.'));app.unmount();
+});
+
+
+test('group link starts the real browser clipboard write inside the click, before deferred API completion', async () => {
+  let gesture = false, resolve!: (value: any) => void;
+  const events: string[] = [], copied: string[] = [];
+  const response = new Promise<any>(value => { resolve = value; });
+  const url = 'https://merosplit.com/j/' + 'c'.repeat(32);
+  class Item { data: Record<string, Promise<Blob>>; constructor(data: Record<string, Promise<Blob>>) { this.data = data; } }
+  const web = production('clipboard.web.ts', { Blob, ClipboardItem: Item, navigator: { clipboard: {
+    writeText: async (value: string) => { events.push('writeText'); if (!gesture) throw Error('NotAllowedError'); copied.push(value); },
+    write: (items: Item[]) => { events.push('write'); if (!gesture) return Promise.reject(Error('NotAllowedError')); return Promise.all(items.map(async item => { copied.push(await (await item.data['text/plain']).text()); })).then(() => {}); },
+  } } });
+  const app = production('MembersScreen.tsx', { copyText: (value: string | Promise<string>) => web.invoke('copyText', value) });
+  const group: Group = { id: 'group', name: 'Trip', owner_id: 1, version: 2, participants: [{ id: 'self', name: 'You', user_id: 1 }], expenses: [], settlements: [], balances: {}, transfers: [], activity: [] };
+  const props = { group, selfId: 'self', busy: false, onMembership() {}, onAction: () => { events.push('api'); return response; } };
+  gesture = true;
+  button(app.render('MemberSettings', props), 'Copy link').props.onPress();
+  gesture = false;
+  const initiatedBeforeResponse = events.includes('write');
+  resolve({ id: 'group', version: 2, url }); await tick();
+  try {
+    assert.equal(initiatedBeforeResponse, true, 'clipboard.write must start before the API resolves and the click gesture expires');
+    assert.deepEqual(events, ['api', 'write']); assert.deepEqual(copied, [url]);
+    assert.equal(component(app.render('MemberSettings', props), 'FeedbackNote').props.feedback.text, 'Link copied');
+  } finally { app.unmount(); }
+});
+
+
+test('clipboard helpers preserve synchronous UPI copies and native behavior, and observe rejected deferred data', async () => {
+  const calls: string[] = [];
+  const native = production('clipboard.ts', { Clipboard: { setString: (value: string) => calls.push(value) } });
+  const first = native.invoke('copyText', 'person@upi');
+  assert.deepEqual(calls, ['person@upi']); await first;
+  let resolve!: (value: string) => void;
+  const pending = native.invoke('copyText', new Promise<string>(value => { resolve = value; }));
+  assert.deepEqual(calls, ['person@upi']); resolve('later@upi'); await pending;
+  assert.deepEqual(calls, ['person@upi', 'later@upi']);
+  await assert.rejects(native.invoke('copyText', Promise.reject(Error('API failed'))), /API failed/);
+  assert.deepEqual(calls, ['person@upi', 'later@upi']);
+  let writes = 0;
+  class Item { constructor(_data: any) {} }
+  const web = production('clipboard.web.ts', { Blob, ClipboardItem: Item, navigator: { clipboard: {
+    writeText: (value: string) => { calls.push(value); return Promise.resolve(); },
+    write: () => { writes++; return Promise.reject(Error('denied')); },
+  } } });
+  const upi = web.invoke('copyText', 'browser@upi');
+  assert.equal(calls.at(-1), 'browser@upi'); assert.equal(writes, 0); await upi;
+  let reject!: (error: Error) => void;
+  const data = new Promise<string>((_resolve, fail) => { reject = fail; });
+  await assert.rejects(web.invoke('copyText', data), /denied/);
+  reject(Error('late API failure')); await tick();
+  assert.equal(writes, 1, 'denial must not trigger a second clipboard attempt');
+});
+
+test('deferred clipboard data never resolves for a rejected receipt or changed owner/group', async () => {
+  for (const condition of ['api', 'receipt', 'owner', 'group', 'archived', 'unmount']) {
+    let resolve!: (value: any) => void, reject!: (error: Error) => void;
+    const response = new Promise<any>((ok, fail) => { resolve = ok; reject = fail; });
+    const copied: string[] = []; let writes = 0;
+    class Item { data: Record<string, Promise<Blob>>; constructor(data: Record<string, Promise<Blob>>) { this.data = data; } }
+    const web = production('clipboard.web.ts', { Blob, ClipboardItem: Item, navigator: { clipboard: {
+      write: (items: Item[]) => { writes++; return Promise.all(items.map(async item => copied.push(await (await item.data['text/plain']).text()))).then(() => {}); },
+    } } });
+    const app = production('MembersScreen.tsx', { copyText: (value: string | Promise<string>) => web.invoke('copyText', value) });
+    const group: Group = { id: 'group', name: 'Trip', owner_id: 1, version: 2, participants: [{ id: 'self', name: 'You', user_id: 1 }], expenses: [], settlements: [], balances: {}, transfers: [], activity: [] };
+    const props = { group, selfId: 'self', busy: false, onMembership() {}, onAction: () => response };
+    button(app.render('MemberSettings', props), 'Copy link').props.onPress();
+    assert.equal(writes, 1, 'clipboard initialization precedes response validation');
+    if (condition === 'owner') app.render('MemberSettings', { ...props, group: { ...group, owner_id: 2 } });
+    if (condition === 'group') app.render('MemberSettings', { ...props, group: { ...group, id: 'other' } });
+    if (condition === 'archived') app.render('MemberSettings', { ...props, group: { ...group, archived: true } });
+    if (condition === 'unmount') { await app.commit(); app.unmount(); }
+    if (condition === 'api') reject(Error('API unavailable'));
+    else resolve({ id: 'group', version: 2, url: condition === 'receipt' ? 'https://untrusted.invalid/j/secret' : 'https://merosplit.com/j/' + 'd'.repeat(32) });
+    await tick(); assert.deepEqual(copied, [], condition);
+    if (condition === 'api') assert.equal(component(app.render('MemberSettings', props), 'FeedbackNote').props.feedback.text, 'API unavailable');
+    app.unmount();
+  }
 });

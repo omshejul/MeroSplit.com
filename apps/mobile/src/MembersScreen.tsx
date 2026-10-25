@@ -340,10 +340,13 @@ function MemberSettings({ group, selfId, busy, addPersonRequest = 0, onAction, o
     closeAddPerson();
     await perform('group-link', async () => {
       groupLinkCommand.current ??= Crypto.randomUUID();
-      const result = await onAction('/invite-link', { command_id: groupLinkCommand.current });
-      const url = confirmedGroupInvite(group.id, result);
-      if (!mounted.current || latestGroup.current.id !== group.id || latestGroup.current.owner_id !== self?.user_id || latestGroup.current.archived) throw new Error('This invite link is unavailable.');
-      try { await copyText(url); } catch { throw new Error('Could not copy link. Try again.'); }
+      const url = onAction('/invite-link', { command_id: groupLinkCommand.current }).then(result => {
+        const url = confirmedGroupInvite(group.id, result);
+        if (!mounted.current || latestGroup.current.id !== group.id || latestGroup.current.owner_id !== self?.user_id || latestGroup.current.archived) throw new Error('This invite link is unavailable.');
+        return url;
+      });
+      // Preserve API/validation errors when the browser rejects the clipboard write.
+      try { await copyText(url); } catch { await url; throw new Error('Could not copy link. Try again.'); }
     }, 'Link copied');
   }
 
