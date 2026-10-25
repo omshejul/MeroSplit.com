@@ -104,6 +104,12 @@
     "plugins": [
       "expo-sqlite",
       "expo-secure-store",
+      [
+        "react-native-nitro-google-signin",
+        {
+          "iosUrlScheme": "com.googleusercontent.apps.1091299527858-189bnq3gr66tm2a1jsecvmd93n1s150a"
+        }
+      ],
       "expo-sharing",
       "@react-native-community/datetimepicker",
       "expo-font",

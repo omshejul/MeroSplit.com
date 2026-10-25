@@ -42,6 +42,8 @@ import { groupListRows } from './src/groupListRows';
 import Mascot from './src/Mascot';
 import { AddExpenseButton, AppFrame, pageContentStyle, ScreenHeader, AppTabs } from './src/AppNavigation';
 import { EmailSignIn, CodeSignIn } from './src/SignInForms';
+import GoogleSignInButton from './src/GoogleSignInButton';
+import type { GoogleAuthenticate, GoogleProcess } from './src/googleSignIn';
 import { captureEmailLink, forgetEmailProof, subscribeEmailLinks, type EmailLink, type EmailTarget, type EmailLinkInspection } from './src/emailLink';
 import { inspectEmailLink, resolveEmailLink, renewEmailLink, requestEmailLink, EmailLinkError } from './src/emailLinkApi';
 import { inspectNativeEmailLink, resolveNativeEmailLink, renewNativeEmailLink, NativeEmailLinkError } from './src/nativeEmailLinkApi';
@@ -778,6 +780,29 @@ function AppContent() {
       if (Platform.OS === 'web' && epoch === authEpoch.current && !emailEntryRef.current) { authHeldRef.current = false; setCheckingCookie(false); resumeAccountRequests(); }
     }
   }
+  async function finishGoogleSignIn(process: GoogleProcess, authenticate: GoogleAuthenticate) {
+    const active = activeSessionRef.current;
+    if (process === 'connect' && !active) throw new Error('Your signed-in account changed. Try again.');
+    const epoch = process === 'login' ? ++authEpoch.current : authEpoch.current;
+    const current = () => epoch === authEpoch.current && activeSessionRef.current?.token === active?.token;
+    if (process === 'login' && Platform.OS === 'web') { authHeldRef.current = true; setCheckingCookie(true); await pauseAccountRequests(); }
+    try {
+      await draftWrites.current;
+      if (!current()) return;
+      const value = await authenticate(current);
+      if (!value || !current()) return;
+      if (process === 'connect') { setNotice('Google connected.', 'success'); return; }
+      await saveSession(value);
+      if (!current()) return;
+      if (active && active.token !== value.token) { if (Platform.OS !== 'web') await endPushSession(active); else await push.clear(); await clearMediaPreviews(); }
+      if (!current()) return;
+      validatedBrowserSession.current = value.token; changeScope(value); setChallenge(null); setCode('');
+      if (Platform.OS === 'web') { resumeAccountRequests(); setCheckingCookie(false); authHeldRef.current = false; }
+      await syncAccount(value);
+    } finally {
+      if (Platform.OS === 'web' && process === 'login' && epoch === authEpoch.current && !emailEntryRef.current) { authHeldRef.current = false; setCheckingCookie(false); resumeAccountRequests(); }
+    }
+  }
   async function createGroup(values: NewGroupValues) {
     if (!session) throw new Error('Sign in first.');
     requireConnectionForTemporaryStorage();
@@ -1033,6 +1058,7 @@ function AppContent() {
         {emailRequested ? <EmailLinkSent busy={busy} resendSeconds={Math.max(0, Math.ceil((retryAt - clock) / 1000))} onResend={() => launch(sendSignInLink)} onCode={() => setEmailRequested(false)} onChangeEmail={() => { setEmailRequested(false); setChallenge(null); setCode(''); }} />
           : !challenge ? <EmailSignIn email={email} busy={busy} onEmail={setEmail} sendLabel={Platform.OS === 'web' ? 'Email me a sign-in link' : undefined} onSend={() => launch(Platform.OS === 'web' ? sendSignInLink : sendSignInCode)}>
             {Platform.OS === 'web' && <Button title="Use a code instead" kind="text" disabled={busy} onPress={() => launch(sendSignInCode)} />}
+            <GoogleSignInButton baseUrl={API_URL} process="login" busy={busy} onAuthenticate={authenticate => launch(() => finishGoogleSignIn('login', authenticate))} />
           </EmailSignIn>
           : <CodeSignIn email={email} code={code} busy={busy} resendSeconds={Math.max(0, Math.ceil((retryAt - clock) / 1000))} onCode={setCode} onConfirm={() => launch(finishSignIn)} onResend={() => launch(sendSignInCode)} onChangeEmail={() => { setChallenge(null); setCode(''); }} />}
         <Button title="Help" kind="text" onPress={() => launch(() => Linking.openURL(`${APP_ORIGIN}/support`))} />
@@ -1045,6 +1071,7 @@ function AppContent() {
         <View><ProfileSettings key={owner} name={myName} vpa={vpa} busy={busy} onSaveName={saveName} onSaveUPI={saveUPI} onAppearance={value => perform(() => changeAppearance(value), false)} onColorFamily={value => perform(() => changeColorFamily(value), false)} />
           <AccountNotifications key={owner} session={session} push={push} busy={busy} onBusyChange={value => { lock.current = value; setBusy(value); }} />
           <AppUpdates key={owner} busy={busy} online={online} onRestart={restartUpdate} />
+          <GoogleSignInButton key={`google-${owner}`} baseUrl={API_URL} process="connect" current={session} busy={busy || expired} onAuthenticate={authenticate => launch(() => finishGoogleSignIn('connect', authenticate))} />
           <MCPSettings key={owner} session={session} busy={busy} onBusyChange={value => { lock.current = value; setBusy(value); }} />
         <View><SettingsRow label="Import from Splitwise" icon="import" disabled={busy} onPress={() => navigate('import')} />
           <ExportData key={owner} busy={busy} onExport={() => perform(exportData)} /></View>

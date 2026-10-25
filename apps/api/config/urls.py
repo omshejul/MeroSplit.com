@@ -14,6 +14,8 @@ from ledger.auth_views import (
 )
 from ledger.bill_email_views import stop_bill_emails
 from ledger.group_invite_views import group_invite_preview
+from ledger.google_signin import GoogleChallengeView, GoogleTokenView
+from ledger import google_browser
 from ledger.mcp_setup import setup as mcp_setup
 
 from config.associations import android_association, apple_association
@@ -23,6 +25,8 @@ from config.web import invite_app, public_asset, web_app, web_media
 TESTING_LINKS_READY = True
 
 urlpatterns = [
+    path("auth/google", google_browser.start),
+    path("auth/google/callback", google_browser.callback),
     re_path(r"^j/(?P<code>[A-Za-z0-9_-]{32})$", group_invite_preview),
     re_path(r"^j/(?P<code>[A-Za-z0-9_-]{32})/card\.png$", group_invite_preview, {"card": True}),
     path("assets/typography.css", public_asset, {"asset": "typography.css"}),
@@ -58,6 +62,9 @@ urlpatterns = [
     path("_allauth/app/v1/auth/code/confirm", ConfirmEmailCodeView.as_api_view(client=Client.APP)),
     path("_allauth/browser/v1/auth/code/request", RequestEmailCodeView.as_api_view(client=Client.BROWSER)),
     path("_allauth/browser/v1/auth/code/confirm", ConfirmEmailCodeView.as_api_view(client=Client.BROWSER)),
+    *[path(f"_allauth/{client}/v1/auth/google/{action}", view.as_api_view(client=kind))
+      for client, kind in [("browser", Client.BROWSER), ("app", Client.APP)]
+      for action, view in [("challenge", GoogleChallengeView), ("token", GoogleTokenView)]],
     *[path(f"_allauth/{client}/v1/auth/link/{action}", view.as_api_view(client=kind))
       for client, kind in [("browser", Client.BROWSER), ("app", Client.APP)]
       for action, view in [("request", RequestEmailLinkView), ("inspect", InspectEmailLinkView), ("exchange", ExchangeEmailLinkView),
