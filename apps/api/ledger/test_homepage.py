@@ -1,6 +1,8 @@
 """The public root must work for a crawler before the Expo app is exported."""
 
+from hashlib import sha256
 from html.parser import HTMLParser
+from struct import unpack
 from xml.etree import ElementTree
 
 import pytest
@@ -181,11 +183,15 @@ def test_android_guide_is_modal_with_manual_nojs_fallback(monkeypatch):
 def test_guide_screenshots_are_keyboard_links_to_the_matching_step(monkeypatch):
     monkeypatch.setitem(resolve("/").func.view_initkwargs["extra_context"], "testing_links_ready", True)
     html = Client().get("/").content.decode()
-    for image, url in [
-        ("group-join.png", "https://groups.google.com/g/merosplit-beta"),
-        ("play-become-tester.png", "https://play.google.com/apps/testing/com.omshejul.splitdumb"),
+    for image, url, digest in [
+        ("group-join.png", "https://groups.google.com/g/merosplit-beta", "e025fdf4ca3dab74f4eaa1eec640c2dcf66c4c8811d8aaa018c287ee18c82f94"),
+        ("play-become-tester.png", "https://play.google.com/apps/testing/com.omshejul.splitdumb", "8d0431131b613e9c6d876216b7423a1d3de6c0418a6ddf1b71b2c9cfd5607b21"),
     ]:
-        assert f'<a class="guide-shot" href="{url}" target="_blank" rel="noopener"><img src="/assets/{image}"' in html
+        assert f'<a class="guide-shot" href="{url}" target="_blank" rel="noopener"><img src="/assets/{image}" width="254" height="137"' in html
+        response = Client().get("/assets/" + image)
+        data = b"".join(response.streaming_content)
+        assert sha256(data).hexdigest() == digest
+        assert data[:8] == b"\x89PNG\r\n\x1a\n" and unpack(">II", data[16:24]) == (254, 137)
 
 
 def test_android_wizard_has_one_initial_step_and_manual_unverified_progress(monkeypatch):
