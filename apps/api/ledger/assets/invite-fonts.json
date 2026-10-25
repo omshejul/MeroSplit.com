@@ -1,0 +1,39 @@
+{
+  "purpose": "Server-rendered group invite images. No fonts added to the native app.",
+  "upstream_commit": "47d54ca1ebb14fd864695f1d39dc734f39017c33",
+  "files": [
+    {
+      "file": "NotoSansDevanagari.ttf",
+      "url": "https://raw.githubusercontent.com/google/fonts/47d54ca1ebb14fd864695f1d39dc734f39017c33/ofl/notosansdevanagari/NotoSansDevanagari%5Bwdth%2Cwght%5D.ttf",
+      "upstream_git_blob": "163f04bddc5a96fc523e4080466cac5c588f6594",
+      "size": 641944,
+      "sha256": "14ec4af41f27482216d1c2229f417ff9b1425e1babb014e57d1d40d03229853e",
+      "license": "SIL Open Font License1.1"
+    },
+    {
+      "file": "OFL-NotoSansDevanagari.txt",
+      "url": "https://raw.githubusercontent.com/google/fonts/47d54ca1ebb14fd864695f1d39dc734f39017c33/ofl/notosansdevanagari/OFL.txt",
+      "upstream_git_blob": "cd2cc5c94b4151933eba6ee508e3975274d6fa07",
+      "size": 4386,
+      "sha256": "a216f6f8d85c7228093e0ee5e258d9d377e6671f68acb4db1930b29583d0f331",
+      "license": "SIL Open Font License1.1"
+    },
+    {
+      "file": "NotoEmoji.ttf",
+      "url": "https://raw.githubusercontent.com/google/fonts/47d54ca1ebb14fd864695f1d39dc734f39017c33/ofl/notoemoji/NotoEmoji%5Bwght%5D.ttf",
+      "upstream_git_blob": "c2c26ab612a88a8610ff9cfbb89299bf2aea6c7a",
+      "size": 1982596,
+      "sha256": "de6c18832938afc99caf132b39d6a30a19bac7f2e812e28db2535b4608d27551",
+      "license": "SIL Open Font License1.1"
+    },
+    {
+      "file": "OFL-NotoEmoji.txt",
+      "url": "https://raw.githubusercontent.com/google/fonts/47d54ca1ebb14fd864695f1d39dc734f39017c33/ofl/notoemoji/OFL.txt",
+      "upstream_git_blob": "d09d3d0e09169f6747754e6b25faf5ba5ef6402d",
+      "size": 4330,
+      "sha256": "500bb1ccf43df7bbb522112f9133a52b16e1c35e809632f5d8609b179152de5b",
+      "license": "SIL Open Font License1.1"
+    }
+  ],
+  "coverage": "Bundled Stack Sans Text plus Noto Sans Devanagari and monochrome Noto Emoji; not universal Unicode coverage."
+}

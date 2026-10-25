@@ -1,8 +1,11 @@
 FROM python:3.12-slim
+# Pillow wheels provide HarfBuzz/RAQM; this small runtime enables complex-script shaping.
+RUN apt-get update && apt-get install -y --no-install-recommends libfribidi0 && rm -rf /var/lib/apt/lists/*
 COPY --from=ghcr.io/astral-sh/uv:0.13.1 /uv /bin/uv
 WORKDIR /app
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev
+RUN .venv/bin/python -c "from PIL import features; assert features.check('raqm'), 'Invite images require RAQM/FriBiDi'"
 COPY . .
 # export:web places the same Expo app in web-dist before this API-only context is built.
 RUN test -s web-dist/index.html

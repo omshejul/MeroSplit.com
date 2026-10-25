@@ -7,10 +7,10 @@ import pytest
 from config.associations import APPLE_ASSOCIATION
 from config.logging import RedactInvitePath
 from django.test import Client
-from PIL import Image
+from PIL import Image, ImageChops, ImageDraw, ImageFont, features
 
-from .group_invite_views import invitation_card
 from .group_invites import link_token
+from .invite_card import ASSETS, font_choices, invitation_card, text_width, title_fonts, title_lines
 from .models import Change, CommandReceipt, Group, GroupInviteLink, Invite, MembershipDelivery, Participant
 from .test_api import client as client
 from .test_api import group as group
@@ -138,7 +138,65 @@ def test_request_and_error_logging_redacts_short_capability_and_query():
         assert settings.LOGGING['loggers'][logger]['handlers'] == ['console']
 
 
-def test_unicode_metadata_stays_exact_while_unsupported_image_glyphs_get_a_clean_fallback():
-    # The shipped Latin font has no Devanagari/emoji glyphs. Never render tofu.
-    assert invitation_card('पुणे 🧡 & Mumbai') == invitation_card("You're invited")
-    assert invitation_card('Mumbai') != invitation_card("You're invited")
+@pytest.mark.parametrize("name", ["Weekend away", "पुणे 🧡 & Mumbai", "A very long group title for friends travelling together through Mumbai and Pune and the mountains by the sea"])
+def test_rendered_card_draws_platform_and_actual_group_title_with_safe_wrapping(name, monkeypatch):
+    calls = []
+    original = ImageDraw.ImageDraw.text
+    def record(draw, xy, text, *args, **kwargs):
+        calls.append((xy, text))
+        return original(draw, xy, text, *args, **kwargs)
+    monkeypatch.setattr(ImageDraw.ImageDraw, "text", record)
+    png = invitation_card(name)
+    image = Image.open(BytesIO(png))
+    assert image.size == (1200, 630) and image.info["Title"] == name and image.info["Software"] == "MeroSplit"
+    assert any(text == "MeroSplit" for _, text in calls), "Platform name must be visibly drawn, not only metadata"
+    drawn_name = "".join(text for xy, text in calls if xy[1] in {336, 376, 428})
+    if len(name) < 40:
+        assert drawn_name.replace(" ", "") == name.replace(" ", "")
+    else:
+        assert drawn_name.endswith("…") and name.replace(" ", "").startswith(drawn_name.removesuffix("…").replace(" ", ""))
+    # Title ink stays inside a central square crop, including both measured lines.
+    area = image.crop((0, 280, 1200, 460))
+    bounds = ImageChops.difference(area, Image.new("RGB", area.size, "#FAF8F5")).getbbox()
+    assert bounds and bounds[0] >= 285 and bounds[2] <= 915
+
+
+def test_devanagari_is_shaped_with_licensed_glyphs_and_emoji_is_monochrome():
+    assert features.check("raqm"), "Install libfribidi0 for the Pillow wheel's RAQM shaping"
+    fonts = title_fonts(80)
+    choices = font_choices("पुणे 🧡 & Mumbai", fonts)
+    assert choices["प"] == 1 and choices["🧡"] == 2 and choices["M"] == 0
+    assert all(value.layout_engine == ImageFont.Layout.RAQM for value in fonts)
+    basic = ImageFont.truetype(str(ASSETS / "NotoSansDevanagari.ttf"), 80, layout_engine=ImageFont.Layout.BASIC)
+    basic.set_variation_by_axes([600, 100])
+    assert bytes(fonts[1].getmask("क्षि")) != bytes(basic.getmask("क्षि")), "Actual shaping must run"
+    for name in ["पुणे " * 24, "पुणे" * 30]:
+        choices = font_choices(name, fonts)
+        lines = title_lines(name, fonts, choices, 600)
+        assert len(lines) <= 2 and all(text_width(line, fonts, choices) <= 600 for line in lines)
+
+
+def test_uncovered_script_or_missing_shaper_keeps_real_html_identity_without_fake_image(client, group, monkeypatch):
+    gid, *_ = group
+    code = link(client, gid)
+    Group.objects.filter(pk=gid).update(name="北京旅行")
+    page = Client().get('/j/' + code)
+    assert "北京旅行" in page.content.decode()
+    response = Client().get('/j/' + code + '/card.png')
+    assert response.status_code == 503 and "You're invited" not in response.content.decode()
+    Group.objects.filter(pk=gid).update(name="पुणे & Mumbai")
+    monkeypatch.setattr(features, "check", lambda _: False)
+    assert Client().get('/j/' + code + '/card.png').status_code == 503
+    assert "पुणे &amp; Mumbai" in Client().get('/j/' + code).content.decode()
+
+
+def test_invite_fonts_ship_exact_upstream_files_and_redistribution_licenses():
+    import hashlib
+    import json
+    manifest = json.loads((ASSETS / "invite-fonts.json").read_text())
+    assert len(manifest["files"]) == 4
+    for row in manifest["files"]:
+        assert hashlib.sha256((ASSETS / row["file"]).read_bytes()).hexdigest() == row["sha256"]
+        assert "raw.githubusercontent.com/google/fonts/" + manifest["upstream_commit"] in row["url"]
+    for name in ["OFL-NotoSansDevanagari.txt", "OFL-NotoEmoji.txt"]:
+        assert "SIL OPEN FONT LICENSE" in (ASSETS / name).read_text()
