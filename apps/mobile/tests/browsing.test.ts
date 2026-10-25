@@ -128,3 +128,17 @@ test('Upgrade a previously opened browsing database without changing old immutab
     assert.throws(() => previewPending(summary(), [command]), /Balances show accepted records/);
   } finally { raw.close(); }
 });
+
+
+test('appended history keeps the first page and refresh reuses it without discarding older loaded rows',async()=>{
+  const raw=new DatabaseSync(':memory:'),db=sqliteAdapter(raw),original=globalThis.fetch,calls:string[]=[];
+  const first={...bill,id:'newest',date:'2026-10-19'},older={...bill,id:'older',date:'2026-05-15'};
+  const cached:Group={...summary(),expenses:[first,older],transactions:[{kind:'bill',date:first.date,bill:first},{kind:'bill',date:older.date,bill:older}],history:{...summary().history,transactions:{cursor:null,next_cursor:'even-older',query:'',previous:[]}}};
+  try{
+    await migrate(db);await saveGroup(db,owner,cached,'shared');
+    globalThis.fetch=async url=>{calls.push(String(url));return Response.json({groups:[{id:'g',version:1}]});};
+    await refreshGroups(db,session,'summary');
+    assert.deepEqual(calls,[session.baseUrl+'/api/v1/groups']);
+    assert.deepEqual((await readVisibleGroup(db,owner,'g'))?.group.transactions,cached.transactions);
+  }finally{globalThis.fetch=original;raw.close();}
+});
