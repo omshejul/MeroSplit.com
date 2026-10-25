@@ -93,9 +93,7 @@ def preview_link(actor, token):
     person = group.participants.filter(user=actor).first()
     if person and person.removed:
         raise HttpError(403, "Ask the organizer to add you again")
-    choices = list(claimable_people(group).order_by("id")[:101]) if not person else []
-    if len(choices) > 100:
-        raise HttpError(409, "This group has too many unlinked people. Ask the organizer to review them.")
+    choices = list(claimable_people(group).order_by("id")) if not person else []
     # Only authenticated capability holders see eligible labels, never emails or money.
     return {"name": group.name, "already_member": bool(person), "version": group.version,
             "people": [] if person else [{"id": str(p.id), "name": p.name} for p in choices]}

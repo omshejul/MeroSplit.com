@@ -273,14 +273,16 @@ def test_new_explicit_confirmation_cannot_silently_reclaim_same_account_person(c
     assert send(actor, 'post', '/group-invite-links/join', {'token': token, 'command_id': uid()}).status_code == 200
 
 
-def test_preview_bounds_choices_without_hiding_people_or_new_person_fallback(client, group):
+def test_large_preview_keeps_all_choices_and_normal_join_as_new(client, group):
     gid, *_ = group
     Participant.objects.bulk_create([Participant(group_id=gid, name=f'Local person {n}') for n in range(100)])
     actor = account()
     before = Participant.objects.count()
     response = send(actor, 'post', '/group-invite-links/preview', {'token': link(client, gid)})
-    assert response.status_code == 409
-    assert 'people' not in response.json() and Participant.objects.count() == before
+    assert response.status_code == 200 and len(response.json()['people']) == 102
+    assert Participant.objects.count() == before
+    assert send(actor, 'post', '/group-invite-links/join', {'token': link(client, gid), 'command_id': uid()}).status_code == 200
+    assert Participant.objects.count() == before + 1
 
 
 def test_account_deletion_clears_group_display_override_without_money_rewrite(client, group):
