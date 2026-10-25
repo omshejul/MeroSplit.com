@@ -42,11 +42,11 @@ export function EmailLinkSent({ busy, resendSeconds, onResend, onCode, onChangeE
     <Button contentStyle={{ minHeight: 48 }} title="Use another email" kind="text" disabled={busy} onPress={onChangeEmail} />
   </View>;
 }
-export function NameOnlyForm({ busy, onSave }: { busy: boolean; onSave: (name: string) => Promise<void> }) {
+export function NameOnlyForm({ busy, onSave, autoFocus = true }: { autoFocus?: boolean; busy: boolean; onSave: (name: string) => Promise<void> }) {
   const [name, setName] = useState(''), [error, setError] = useState('');
   async function save() { setError(''); try { await onSave(name.trim()); } catch { setError('Could not save your name. Try again.'); } }
   return <View style={{ gap: 12 }}>
-    <TextField label="Name" autoFocus value={name} maxLength={120} autoCapitalize="words" autoComplete="name" autoCorrect={false} editable={!busy} onChangeText={setName} returnKeyType="done" onSubmitEditing={() => { if (!busy && name.trim()) void save(); }} />
+    <TextField label="Name" autoFocus={autoFocus} value={name} maxLength={120} autoCapitalize="words" autoComplete="name" autoCorrect={false} editable={!busy} onChangeText={setName} returnKeyType="done" onSubmitEditing={() => { if (!busy && name.trim()) void save(); }} />
     {!!error && <ErrorText>{error}</ErrorText>}
     <Button title="Continue" kind="primary" disabled={busy || !name.trim()} onPress={() => void save()} />
   </View>;

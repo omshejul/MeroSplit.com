@@ -139,7 +139,7 @@ def authorize(request):
                 "client_name": row.client.name, "account_name": request.user.first_name.strip() or request.user.email,
                 "account_email": request.user.email, "expected_user_id": str(request.user.pk)})
             response["Cache-Control"] = "no-store"
-            response["Referrer-Policy"] = "no-referrer"
+            response["Referrer-Policy"] = "same-origin"
             response["Content-Security-Policy"] = "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"
             return response
         if request.method != "POST":

@@ -3,8 +3,8 @@ import { Platform, View, type StyleProp, type ViewStyle } from 'react-native';
 
 // Paper portals can overlap. Only the latest dialog owns browser keyboard focus.
 const dialogs: HTMLElement[] = [];
-export default function DialogFocus({ active = true, busy = false, onEscape, children, style }: {
-  active?: boolean; busy?: boolean; onEscape?: () => void; children: React.ReactNode; style?: StyleProp<ViewStyle>;
+export default function DialogFocus({ active = true, busy = false, onEscape, children, style, label }: {
+  label?: string; active?: boolean; busy?: boolean; onEscape?: () => void; children: React.ReactNode; style?: StyleProp<ViewStyle>;
 }) {
   const body = useRef<React.ComponentRef<typeof View>>(null), actions = useRef({ busy, onEscape });
   actions.current = { busy, onEscape };
@@ -32,17 +32,19 @@ export default function DialogFocus({ active = true, busy = false, onEscape, chi
         event.preventDefault(); (event.shiftKey ? last ?? root : first ?? root)?.focus();
       }
     };
+    // A removed focused input does not emit focusin. Keep dynamic dialog steps contained.
+    const observer = new MutationObserver(() => { if (ownsFocus() && !root!.contains(document.activeElement)) focus(); });
     const frame = requestAnimationFrame(() => {
       root = body.current as unknown as HTMLElement | null;
       if (!root) return;
-      dialogs.push(root); focus();
+      dialogs.push(root); focus(); observer.observe(root, { childList: true, subtree: true });
       document.addEventListener('focusin', focusin, true); document.addEventListener('keydown', keydown, true);
     });
     return () => {
-      cancelAnimationFrame(frame); document.removeEventListener('focusin', focusin, true); document.removeEventListener('keydown', keydown, true);
+      cancelAnimationFrame(frame); observer.disconnect(); document.removeEventListener('focusin', focusin, true); document.removeEventListener('keydown', keydown, true);
       const index = root ? dialogs.indexOf(root) : -1; if (index >= 0) dialogs.splice(index, 1);
       if (trigger?.isConnected && (!dialogs.length || dialogs.at(-1)!.contains(trigger))) trigger.focus({ preventScroll: true });
     };
   }, [active]);
-  return <View ref={body} tabIndex={-1} style={[{ flexShrink: 1 }, style]}>{children}</View>;
+  return <View ref={body} role={label ? 'dialog' : undefined} aria-modal={label ? true : undefined} accessibilityLabel={label} tabIndex={-1} style={[{ flexShrink: 1 }, style]}>{children}</View>;
 }
