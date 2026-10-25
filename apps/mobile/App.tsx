@@ -500,7 +500,7 @@ function AppContent() {
     void draftWrites.current.then(() => { if (authHeldRef.current) return; setAppLink(target); if (!target) { setGroupId(null); setExpenseId(null); navigate(session ? 'home' : 'login'); } });
   }), [session?.token]);
   useEffect(() => {
-    if (!ready || !session || authHeld || expired || busy || !appLink) return;
+    if (!ready || !session || authHeld || authHeldRef.current || activeSessionRef.current?.token !== session.token || expired || busy || !appLink) return;
     if ('groupInviteToken' in appLink) return;
     const active = session, target = appLink;
     launch(async () => {
@@ -525,7 +525,11 @@ function AppContent() {
       } catch (error) {
         if (error instanceof ApiError && error.status === 404) { setScreen('home'); setNotice('This link is unavailable, or your request is waiting for approval.', 'warning'); }
         else throw error;
-      } finally { setAppLink(null); }
+      } finally {
+        // Only read-only group links can retry after session validation.
+        const interrupted = 'groupId' in target && (authHeldRef.current || activeSessionRef.current?.token !== active.token);
+        if (!interrupted) setAppLink(current => current === target ? null : current);
+      }
     });
   }, [ready, session?.token, authHeld, expired, busy, appLink]);
   useEffect(() => {
@@ -1084,7 +1088,7 @@ function AppContent() {
       forgetGroupInvite(); void saveGroupInvite(null).catch(() => {}); setAppLink(null); setGroupId(group.id); setTab('Groups'); setScreen('group'); await load(accountOwner(active));
     }} />}
     {newPersonInvite && <SendInviteDialog visible={showNewPersonInvite && !authHeld} email={newPersonInvite.email} busy={busy} error={newPersonInviteError} onSend={() => void sendNewPersonInvite()} onCancel={() => { if (!busy) { setNewPersonInvite(null); setNewPersonInviteError(''); } }} />}
-    {authHeld && (emailEntry?.phase === 'switch' ? emailContent : <EmailLinkDialog title={emailEntry?.phase === 'name' ? 'Name' : 'Sign in'}>{emailContent}</EmailLinkDialog>)}
+    {authHeld && !!emailEntry && (emailEntry.phase === 'switch' ? emailContent : <EmailLinkDialog title={emailEntry.phase === 'name' ? 'Name' : 'Sign in'}>{emailContent}</EmailLinkDialog>)}
   </>;
 }
 export default function App() { return <SafeAreaProvider><UIProvider><AppContent /></UIProvider></SafeAreaProvider>; }
