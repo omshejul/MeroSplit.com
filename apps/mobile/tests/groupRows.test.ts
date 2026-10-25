@@ -321,3 +321,17 @@ test('category slot announces accepted meaning once, honors manual General and p
   const named = elements(summary({ title: 'Lunch', amount: '100', category: 'food', categoryText: true })).find(node => node.type === 'SectionHeading')!;
   assert.equal(named.props.accessibilityLabel, 'Lunch');
 });
+
+
+test('pending and offline detail retain the receipt in the same slot as a ready category', () => {
+  const detail = production('ExpenseDetail'), summary = production('RecordSummary');
+  const expense = billRow({ category: 'general', category_auto: true, split: { mode: 'equal', values: { self: '1' } }, notes: '' });
+  const base = { expense, group: { ...group, expenses: [expense] }, selfId: 'self', busy: false, canEdit: false };
+  const pending = elements(detail(base)).find(node => node.type === 'RecordSummary')!;
+  const ready = elements(detail({ ...base, categoryIcons: { [JSON.stringify(['g', 'bill', 'Lunch'])]: 'food' } })).find(node => node.type === 'RecordSummary')!;
+  const manual = elements(detail({ ...base, expense: { ...expense, category_auto: false }, categoryIcons: { [JSON.stringify(['g', 'bill', 'Lunch'])]: 'food' } })).find(node => node.type === 'RecordSummary')!;
+  for (const [value, name] of [[pending, 'bill'], [ready, 'food'], [manual, 'bill']] as const) {
+    const header = elements(summary({ ...value.props, children: value.children })).find(node => node.type === 'TransactionIcon');
+    assert.ok(header, 'every expense detail reserves its decorative icon slot'); assert.equal(header.props.name, name);
+  }
+});

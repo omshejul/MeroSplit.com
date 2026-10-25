@@ -261,7 +261,7 @@ export function ExpenseDetail({ categoryIcons = {}, noticeVisibility, expense, g
   const payers = group.participants.filter(person => BigInt(expense.paid[person.id] ?? '0') > 0n);
   const sharing = group.participants.filter(person => Object.hasOwn(expense.split.values, person.id));
   return <View role="region" accessibilityLabel={group.name} style={s.content}>
-    <VisibleExpense groupId={group.id} expense={expense} visibility={(group.expenses.find(value => value.id === expense.id) ?? group.focused_expense) === expense ? noticeVisibility : undefined}><RecordSummary categoryText={hasCategory} category={expense.deleted ? null : expenseCategory({ ...expense, groupId: group.id, title: expense.description }, categoryIcons)} reversed={!!expense.deleted} title={expense.description} amount={expense.total}>
+    <VisibleExpense groupId={group.id} expense={expense} visibility={(group.expenses.find(value => value.id === expense.id) ?? group.focused_expense) === expense ? noticeVisibility : undefined}><RecordSummary categoryText={hasCategory} category={expense.deleted ? null : expenseCategory({ ...expense, groupId: group.id, title: expense.description }, categoryIcons) ?? null} reversed={!!expense.deleted} title={expense.description} amount={expense.total}>
       <Text style={[ui.body, { color: balanceColor(change, colors) }]}>{billImpact(change)}</Text>
       <Text style={ui.caption}>{group.name} · {displayDate(expense.date)}</Text>
       <RecordAttribution action="Added" name={expense.added_by} />
