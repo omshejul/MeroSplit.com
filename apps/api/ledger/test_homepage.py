@@ -127,7 +127,7 @@ def test_install_intent_is_manual_safe_and_android_group_precedes_play(monkeypat
         html = response.content.decode()
         assert "Continue on web" in html and "https://testflight.apple.com/join/7HrHqqnB" in html
         assert html.index("https://groups.google.com/g/merosplit-beta") < html.index("https://play.google.com/apps/testing/com.omshejul.splitdumb")
-        assert "Use the same Google account" in html and "Finish each step before opening the next." in html
+        assert "Use the same Google account" in html and "Step 1 of 3" in html
     from hashlib import sha256
     for name, digest in [("try-on-iphone.svg", "b01a3c83b8dcde78a3b6c66d733a87507d74db44eae84d8d0b84cd04e89cd253"), ("try-on-android.svg", "b66a82d6a40c4d3dfa56c95fbba26a4f69f46bf8d76648d48e896d8af07ae3b6")]:
         response = browser.get("/assets/" + name)
@@ -169,7 +169,7 @@ def test_android_guide_is_modal_with_manual_nojs_fallback(monkeypatch):
     monkeypatch.setitem(resolve("/").func.view_initkwargs["extra_context"], "testing_links_ready", True)
     html = Client().get("/").content.decode()
     assert '<dialog id="android-guide"' in html and 'method="dialog"' in html
-    assert 'aria-haspopup="dialog"' in html and '<noscript><section' in html
+    assert 'aria-haspopup="dialog"' in html and 'class="wrap android-fallback" id="android-install"' in html
     assert '<details' not in html and 'Android testers:' not in html
     assert 'Become a tester' in html and 'tap Install on your phone' in html
     assert 'src="/assets/group-join.png"' in html
@@ -185,4 +185,19 @@ def test_guide_screenshots_are_keyboard_links_to_the_matching_step(monkeypatch):
         ("group-join.png", "https://groups.google.com/g/merosplit-beta"),
         ("play-become-tester.png", "https://play.google.com/apps/testing/com.omshejul.splitdumb"),
     ]:
-        assert f'<a href="{url}" target="_blank" rel="noopener"><img src="/assets/{image}"' in html
+        assert f'<a class="guide-shot" href="{url}" target="_blank" rel="noopener"><img src="/assets/{image}"' in html
+
+
+def test_android_wizard_has_one_initial_step_and_manual_unverified_progress(monkeypatch):
+    monkeypatch.setitem(resolve("/").func.view_initkwargs["extra_context"], "testing_links_ready", True)
+    html = Client().get("/").content.decode()
+    guide = html.split('<dialog id="android-guide"', 1)[1].split("</dialog>", 1)[0]
+    assert guide.count("data-guide-step") == 3
+    assert guide.count(" hidden>") == 2
+    assert guide.index("Join the group") < guide.index("Become a tester") < guide.index("Install MeroSplit")
+    assert 'id="android-next"' in guide and 'id="android-back"' in guide
+    assert 'id="android-progress" aria-live="polite"' in guide
+    assert '<progress id="android-progress-bar" max="3" value="1"' in guide
+    assert 'href="/app/"' in guide
+    assert 'installed successfully' not in guide.lower()
+    assert 'id="android-install"' in html and 'Join the Google Group first' in html

@@ -58,17 +58,30 @@
   </main>
 
   {% if testing_links_ready %}
-  <dialog id="android-guide" class="android-guide" aria-labelledby="android-title" aria-describedby="android-account">
-    <div class="guide-heading"><h2 id="android-title">Try MeroSplit on Android</h2><form method="dialog"><button autofocus aria-label="Close Android guide">Close</button></form></div>
-    <p id="android-account">Use the same Google account as your phone’s Play Store.</p>
-    <ol class="guide-steps">
-      <li><h3>Join the group</h3><p>Open the group. Sign in if asked, then choose Join group.</p><figure><a href="https://groups.google.com/g/merosplit-beta" target="_blank" rel="noopener"><img src="/assets/group-join.png" width="240" height="72" alt="MeroSplit Beta in Google Groups, with the Join group button below its name"></a><figcaption>Tap Join group.</figcaption></figure><a href="https://groups.google.com/g/merosplit-beta" target="_blank" rel="noopener">Open Google Group ↗</a></li>
-      <li><h3>Become a tester</h3><p>After joining, open the testing page and tap Become a tester.</p><figure><a href="https://play.google.com/apps/testing/com.omshejul.splitdumb" target="_blank" rel="noopener"><img src="/assets/play-become-tester.png" width="390" height="120" alt="Google Play testing page: blue Become a tester button"></a><figcaption>Actual Google Play testing button.</figcaption></figure><a href="https://play.google.com/apps/testing/com.omshejul.splitdumb" target="_blank" rel="noopener">Open testing page ↗</a></li>
-      <li><h3>Install</h3><p>After becoming a tester, open Google Play and tap Install on your phone.</p><a href="https://play.google.com/store/apps/details?id=com.omshejul.splitdumb" target="_blank" rel="noopener">Open Google Play ↗</a></li>
-    </ol>
-    <p class="guide-note">Finish each step before opening the next.</p>
+  <dialog id="android-guide" class="android-guide" aria-labelledby="android-step-1">
+    <div class="guide-heading"><p id="android-progress" aria-live="polite">Step 1 of 3</p><form method="dialog"><button class="guide-close" aria-label="Close Android guide"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/></svg></button></form></div>
+    <progress id="android-progress-bar" max="3" value="1" aria-label="Android setup step"></progress>
+    <section data-guide-step data-next="I've joined. Next">
+      <h2 id="android-step-1" tabindex="-1" autofocus>Join the group</h2>
+      <p>Use the same Google account as your phone’s Play Store. Tap Join group, then come back here.</p>
+      <a class="guide-shot" href="https://groups.google.com/g/merosplit-beta" target="_blank" rel="noopener"><img src="/assets/group-join.png" width="240" height="72" alt="MeroSplit Beta in Google Groups, with the Join group button below its name"></a>
+      <a class="guide-button guide-primary" href="https://groups.google.com/g/merosplit-beta" target="_blank" rel="noopener">Open Google Group <span aria-hidden="true">↗</span></a>
+    </section>
+    <section data-guide-step data-next="I'm a tester. Next" hidden>
+      <h2 id="android-step-2" tabindex="-1">Become a tester</h2>
+      <p>After joining the group, tap Become a tester on Google Play, then come back here.</p>
+      <a class="guide-shot" href="https://play.google.com/apps/testing/com.omshejul.splitdumb" target="_blank" rel="noopener"><img src="/assets/play-become-tester.png" width="390" height="120" alt="Google Play testing page: blue Become a tester button"></a>
+      <a class="guide-button guide-primary" href="https://play.google.com/apps/testing/com.omshejul.splitdumb" target="_blank" rel="noopener">Open testing page <span aria-hidden="true">↗</span></a>
+    </section>
+    <section data-guide-step hidden>
+      <h2 id="android-step-3" tabindex="-1">Install MeroSplit</h2>
+      <p>After becoming a tester, open Google Play and tap Install on your phone.</p>
+      <a class="guide-button guide-primary" href="https://play.google.com/store/apps/details?id=com.omshejul.splitdumb" target="_blank" rel="noopener">Open Google Play <span aria-hidden="true">↗</span></a>
+    </section>
+    <button id="android-next" class="guide-button guide-next" type="button">I've joined. Next</button>
+    <div class="guide-footer"><button id="android-back" class="guide-back" type="button" disabled>Back</button><a href="/app/">Continue on web</a></div>
   </dialog>
-  <noscript><section class="wrap android-fallback" id="android-install" tabindex="-1" aria-labelledby="fallback-title"><h2 id="fallback-title">Try on Android</h2><p>Use the same Google account as your phone’s Play Store.</p><ol><li><a href="https://groups.google.com/g/merosplit-beta">Join the Google Group first</a>.</li><li><a href="https://play.google.com/apps/testing/com.omshejul.splitdumb">Become a tester</a>.</li><li><a href="https://play.google.com/store/apps/details?id=com.omshejul.splitdumb">Open Google Play and install</a>.</li></ol></section></noscript>
+  <section class="wrap android-fallback" id="android-install" tabindex="-1" aria-labelledby="fallback-title"><h2 id="fallback-title">Try on Android</h2><p>Use the same Google account as your phone’s Play Store.</p><ol><li><a href="https://groups.google.com/g/merosplit-beta">Join the Google Group first</a>.</li><li><a href="https://play.google.com/apps/testing/com.omshejul.splitdumb">Become a tester</a>.</li><li><a href="https://play.google.com/store/apps/details?id=com.omshejul.splitdumb">Open Google Play and install</a>.</li></ol></section>
   {% endif %}
   {% include "ledger/components/public_footer.html" with show_support=True hide_author=True %}
 </body>
