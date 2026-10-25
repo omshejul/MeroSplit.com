@@ -29,7 +29,8 @@
           "NSAllowsLocalNetworking": true
         }
       },
-      "icon": "./assets/brand/merosplit.icon"
+      "icon": "./assets/brand/merosplit.icon",
+      "usesAppleSignIn": true
     },
     "android": {
       "package": "com.omshejul.splitdumb",
@@ -104,6 +105,7 @@
     "plugins": [
       "expo-sqlite",
       "expo-secure-store",
+      "expo-apple-authentication",
       [
         "react-native-nitro-google-signin",
         {

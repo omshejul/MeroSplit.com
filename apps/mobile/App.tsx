@@ -43,6 +43,7 @@ import Mascot from './src/Mascot';
 import { AddExpenseButton, AppFrame, pageContentStyle, ScreenHeader, AppTabs } from './src/AppNavigation';
 import { EmailSignIn, CodeSignIn } from './src/SignInForms';
 import GoogleSignInButton from './src/GoogleSignInButton';
+import AppleSignInButton from './src/AppleSignInButton';
 import type { GoogleAuthenticate, GoogleProcess } from './src/googleSignIn';
 import { captureEmailLink, forgetEmailProof, subscribeEmailLinks, type EmailLink, type EmailTarget, type EmailLinkInspection } from './src/emailLink';
 import { inspectEmailLink, resolveEmailLink, renewEmailLink, requestEmailLink, EmailLinkError } from './src/emailLinkApi';
@@ -780,7 +781,7 @@ function AppContent() {
       if (Platform.OS === 'web' && epoch === authEpoch.current && !emailEntryRef.current) { authHeldRef.current = false; setCheckingCookie(false); resumeAccountRequests(); }
     }
   }
-  async function finishGoogleSignIn(process: GoogleProcess, authenticate: GoogleAuthenticate) {
+  async function finishGoogleSignIn(process: GoogleProcess, authenticate: GoogleAuthenticate, provider = 'Google') {
     const active = activeSessionRef.current;
     if (process === 'connect' && !active) throw new Error('Your signed-in account changed. Try again.');
     const epoch = process === 'login' ? ++authEpoch.current : authEpoch.current;
@@ -791,7 +792,7 @@ function AppContent() {
       if (!current()) return;
       const value = await authenticate(current);
       if (!value || !current()) return;
-      if (process === 'connect') { setNotice('Google connected.', 'success'); return; }
+      if (process === 'connect') { setNotice(`${provider} connected.`, 'success'); return; }
       await saveSession(value);
       if (!current()) return;
       if (active && active.token !== value.token) { if (Platform.OS !== 'web') await endPushSession(active); else await push.clear(); await clearMediaPreviews(); }
@@ -842,10 +843,11 @@ function AppContent() {
     // Keep validation ahead of every destructive client or server side effect.
     const checked = accountDeletionInput(body.confirmation, body.email, active.email);
     await draftWrites.current; await flushChatWrites();
-    await request(active, '/account', 'DELETE', checked);
+    const deleted = await request<{ deleted: boolean; apple_revocation?: string }>(active, '/account', 'DELETE', checked);
     await push.clear(); setPushTarget(null);
     const db = await getDatabase(); await clearAccountMediaUploads(db, active); await wipeAccount(db, scope);
     await clearMediaPreviews(); await saveSession(null); changeScope(null);
+    if (deleted.apple_revocation && deleted.apple_revocation !== 'revoked') setNotice('Account deleted. Apple could not confirm disconnection. In your Apple Account, open Sign in with Apple and remove MeroSplit.', 'warning');
   }
   function beginEmailLink(link: EmailLink) {
     const previous = emailProof.current;
@@ -1058,6 +1060,7 @@ function AppContent() {
         {emailRequested ? <EmailLinkSent busy={busy} resendSeconds={Math.max(0, Math.ceil((retryAt - clock) / 1000))} onResend={() => launch(sendSignInLink)} onCode={() => setEmailRequested(false)} onChangeEmail={() => { setEmailRequested(false); setChallenge(null); setCode(''); }} />
           : !challenge ? <EmailSignIn email={email} busy={busy} onEmail={setEmail} sendLabel={Platform.OS === 'web' ? 'Email me a sign-in link' : undefined} onSend={() => launch(Platform.OS === 'web' ? sendSignInLink : sendSignInCode)}>
             {Platform.OS === 'web' && <Button title="Use a code instead" kind="text" disabled={busy} onPress={() => launch(sendSignInCode)} />}
+            <AppleSignInButton baseUrl={API_URL} process="login" busy={busy} onAuthenticate={authenticate => launch(() => finishGoogleSignIn('login', authenticate, 'Apple'))} />
             <GoogleSignInButton baseUrl={API_URL} process="login" busy={busy} onAuthenticate={authenticate => launch(() => finishGoogleSignIn('login', authenticate))} />
           </EmailSignIn>
           : <CodeSignIn email={email} code={code} busy={busy} resendSeconds={Math.max(0, Math.ceil((retryAt - clock) / 1000))} onCode={setCode} onConfirm={() => launch(finishSignIn)} onResend={() => launch(sendSignInCode)} onChangeEmail={() => { setChallenge(null); setCode(''); }} />}
@@ -1071,6 +1074,7 @@ function AppContent() {
         <View><ProfileSettings key={owner} name={myName} vpa={vpa} busy={busy} onSaveName={saveName} onSaveUPI={saveUPI} onAppearance={value => perform(() => changeAppearance(value), false)} onColorFamily={value => perform(() => changeColorFamily(value), false)} />
           <AccountNotifications key={owner} session={session} push={push} busy={busy} onBusyChange={value => { lock.current = value; setBusy(value); }} />
           <AppUpdates key={owner} busy={busy} online={online} onRestart={restartUpdate} />
+          <AppleSignInButton baseUrl={API_URL} process="connect" current={session} busy={busy || expired} onAuthenticate={authenticate => launch(() => finishGoogleSignIn('connect', authenticate, 'Apple'))} />
           <GoogleSignInButton key={`google-${owner}`} baseUrl={API_URL} process="connect" current={session} busy={busy || expired} onAuthenticate={authenticate => launch(() => finishGoogleSignIn('connect', authenticate))} />
           <MCPSettings key={owner} session={session} busy={busy} onBusyChange={value => { lock.current = value; setBusy(value); }} />
         <View><SettingsRow label="Import from Splitwise" icon="import" disabled={busy} onPress={() => navigate('import')} />

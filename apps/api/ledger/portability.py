@@ -328,7 +328,10 @@ def delete_account(actor):
     # shared participant/payment/change FKs above remain anonymous numeric history.
     from .models import ExpenseCategoryDecision
     ExpenseCategoryDecision.objects.filter(requested_by=actor).delete()
+    result = {"deleted": True}
+    from .apple_signin import after_account_deletion
+    after_account_deletion(actor, result)
     actor.delete()
     if media_ids:
         transaction.on_commit(lambda: purge_files(media_ids))
-    return {"deleted": True}
+    return result

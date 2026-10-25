@@ -1,8 +1,9 @@
 from allauth.headless.constants import Client
 from django.urls import include, path, re_path
 from django.views.generic import TemplateView
-from ledger import mcp_oauth_views
+from ledger import google_browser, mcp_oauth_views
 from ledger.api import api
+from ledger.apple_signin import AppleChallengeView, AppleTokenView
 from ledger.auth_views import (
     ConfirmEmailCodeView,
     ExchangeEmailLinkView,
@@ -13,9 +14,8 @@ from ledger.auth_views import (
     ResumeEmailLinkView,
 )
 from ledger.bill_email_views import stop_bill_emails
-from ledger.group_invite_views import group_invite_preview
 from ledger.google_signin import GoogleChallengeView, GoogleTokenView
-from ledger import google_browser
+from ledger.group_invite_views import group_invite_preview
 from ledger.mcp_setup import setup as mcp_setup
 
 from config.associations import android_association, apple_association
@@ -62,6 +62,8 @@ urlpatterns = [
     path("_allauth/app/v1/auth/code/confirm", ConfirmEmailCodeView.as_api_view(client=Client.APP)),
     path("_allauth/browser/v1/auth/code/request", RequestEmailCodeView.as_api_view(client=Client.BROWSER)),
     path("_allauth/browser/v1/auth/code/confirm", ConfirmEmailCodeView.as_api_view(client=Client.BROWSER)),
+    *[path(f"_allauth/app/v1/auth/apple/{action}", view.as_api_view(client=Client.APP))
+      for action, view in [("challenge", AppleChallengeView), ("token", AppleTokenView)]],
     *[path(f"_allauth/{client}/v1/auth/google/{action}", view.as_api_view(client=kind))
       for client, kind in [("browser", Client.BROWSER), ("app", Client.APP)]
       for action, view in [("challenge", GoogleChallengeView), ("token", GoogleTokenView)]],
