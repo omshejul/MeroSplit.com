@@ -19,7 +19,7 @@ from config.associations import android_association, apple_association
 from config.web import invite_app, public_asset, web_app, web_media
 
 # Enable only after the exact current iOS and Android testing builds are eligible.
-TESTING_LINKS_READY = False
+TESTING_LINKS_READY = True
 
 urlpatterns = [
     path("assets/typography.css", public_asset, {"asset": "typography.css"}),
