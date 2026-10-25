@@ -176,3 +176,13 @@ def test_android_guide_is_modal_with_manual_nojs_fallback(monkeypatch):
     assert Client().get("/assets/group-join.png")["Content-Type"] == "image/png"
     assert 'src="/assets/play-become-tester.png"' in html
     assert Client().get('/assets/play-become-tester.png')["Content-Type"] == 'image/png'
+
+
+def test_guide_screenshots_are_keyboard_links_to_the_matching_step(monkeypatch):
+    monkeypatch.setitem(resolve("/").func.view_initkwargs["extra_context"], "testing_links_ready", True)
+    html = Client().get("/").content.decode()
+    for image, url in [
+        ("group-join.png", "https://groups.google.com/g/merosplit-beta"),
+        ("play-become-tester.png", "https://play.google.com/apps/testing/com.omshejul.splitdumb"),
+    ]:
+        assert f'<a href="{url}" target="_blank" rel="noopener"><img src="/assets/{image}"' in html
