@@ -26,7 +26,7 @@ TESTING_LINKS_READY = True
 
 urlpatterns = [
     path("auth/google", google_browser.start),
-    path("auth/google/callback", google_browser.callback),
+    path("auth/google/callback", google_browser.callback, name="google_callback"),
     re_path(r"^j/(?P<code>[A-Za-z0-9_-]{32})$", group_invite_preview),
     re_path(r"^j/(?P<code>[A-Za-z0-9_-]{32})/card\.png$", group_invite_preview, {"card": True}),
     path("assets/typography.css", public_asset, {"asset": "typography.css"}),

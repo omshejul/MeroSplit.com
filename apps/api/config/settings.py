@@ -75,6 +75,8 @@ HEADLESS_ONLY = True
 HEADLESS_CLIENTS = ("app", "browser")
 GOOGLE_SIGN_IN_ENABLED = os.environ.get("GOOGLE_SIGN_IN_ENABLED", "false").lower() == "true"
 GOOGLE_OAUTH_WEB_CLIENT_ID = os.environ.get("GOOGLE_OAUTH_WEB_CLIENT_ID", "1091299527858-dmjm6sosrpqc7054m5nv6drpkgd03sma.apps.googleusercontent.com")
+GOOGLE_OAUTH_WEB_CLIENT_SECRET = os.environ.get("GOOGLE_OAUTH_WEB_CLIENT_SECRET", "")
+HEADLESS_FRONTEND_URLS = {"socialaccount_login_error": "/app/?google_error=unavailable"}
 APPLE_SIGN_IN_ENABLED = os.environ.get("APPLE_SIGN_IN_ENABLED", "false").lower() == "true"
 APPLE_SIGN_IN_CLIENT_ID = os.environ.get("APPLE_SIGN_IN_CLIENT_ID", "com.omshejul.splitdumb")
 APPLE_SIGN_IN_TEAM_ID = os.environ.get("APPLE_SIGN_IN_TEAM_ID", "M4K84L4TKR")
@@ -86,7 +88,9 @@ SOCIALACCOUNT_EMAIL_AUTHENTICATION = False
 SOCIALACCOUNT_EMAIL_AUTHENTICATION_AUTO_CONNECT = False
 SOCIALACCOUNT_STORE_TOKENS = False
 SOCIALACCOUNT_PROVIDERS = {"google": {
-    "APPS": [{"client_id": GOOGLE_OAUTH_WEB_CLIENT_ID, "secret": "", "key": ""}],
+    "APPS": [{"client_id": GOOGLE_OAUTH_WEB_CLIENT_ID, "secret": GOOGLE_OAUTH_WEB_CLIENT_SECRET, "key": ""}],
+    "OAUTH_PKCE_ENABLED": True,
+    "SCOPE": ["openid", "email", "profile"],
     "ID_TOKEN_ISSUER": ["https://accounts.google.com", "accounts.google.com"],
 }}
 SOCIALACCOUNT_PROVIDERS["apple"] = {"APPS": [{"client_id": APPLE_SIGN_IN_CLIENT_ID, "secret": "", "key": ""}]}
