@@ -59,10 +59,10 @@ export function previewPending(accepted: Group, commands: Command[]): Group {
       if (before && !before.deleted) group.balances = addExpense(group.balances, before.paid, before.shares, -1n);
       group.expenses = group.expenses.map(expense => expense.id === id ? { ...expense, deleted: true } : expense);
     } else if (command.path.endsWith('/settlements')) {
-      const { id, sender, recipient, amount } = body as Record<string, string>;
+      const { id, sender, recipient, amount, date } = body as Record<string, string>;
       if (!group.settlements.some(settlement => settlement.id === id)) {
         group.balances = addSettlement(group.balances, sender, recipient, amount);
-        group.settlements.push({ id, sender, recipient, amount, provenance: 'pending_manual' });
+        group.settlements.push({ id, sender, recipient, amount, date, provenance: 'pending_manual' });
       }
     } else if (command.path.endsWith('/reverse') && command.path.includes('/settlements/')) {
       const id = command.path.split('/').at(-2), settlement = group.settlements.find(value => value.id === id);

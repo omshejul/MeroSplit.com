@@ -49,3 +49,10 @@ test('actual syncAccount releases the UI action before the complete-history down
  await Promise.race([sync(active),new Promise((_,reject)=>setTimeout(()=>reject(new Error('History download held the UI action')),100))]);
  assert.equal(downloads,1);
 });
+
+test('actual App opens queued bill/payment previews without network or publishing pending data as accepted', async () => {
+ const active={token:'generation'},group={id:'trip'},navigated:string[]=[];let expense='',payment='';
+ const env={session:active,selected:{group},pending:[{body:{id:'bill'},path:'/groups/trip/expenses'},{body:{id:'payment'},path:'/groups/trip/settlements'}],perform:async(work:()=>unknown)=>work(),withBill:()=>{throw new Error('pending bill attempted server read');},withPayment:()=>{throw new Error('pending payment attempted server read');},activeSessionRef:{current:active},setExpenseId:(id:string)=>{expense=id;},setSettlementId:(id:string)=>{payment=id;},navigate:(screen:string)=>navigated.push(screen),saveGroup:()=>{throw new Error('pending preview persisted as accepted');}};
+ await production('openBill',env)({id:'bill'}); await production('openPayment',env)('payment');
+ assert.equal(expense,'bill');assert.equal(payment,'payment');assert.deepEqual(navigated,['expenseDetail','paymentDetail']);
+});

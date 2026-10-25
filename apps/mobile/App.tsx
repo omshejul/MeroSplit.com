@@ -191,7 +191,7 @@ function AppContent() {
   }
   const categoryIcons = useExpenseIcons(session, iconRefs, ready && foreground && !expired && !authHeld, online);
   const returnPayment = returns.find(value => value.groupId === groupId && value.attemptId === returnAttemptId) ?? null;
-  const settlement = selected?.group.settlements.find(value => value.id === settlementId) ?? (selected?.group.focused_settlement?.id === settlementId ? selected.group.focused_settlement : undefined);
+  const settlement = preview?.settlements.find(value => value.id === settlementId) ?? (preview?.focused_settlement?.id === settlementId ? preview.focused_settlement : undefined);
   const inviteGroup = groups.find(row => row.group.id === newPersonInvite?.groupId)?.group;
   const invitePerson = inviteGroup?.participants.find(person => person.id === newPersonInvite?.personId);
   const showNewPersonInvite = !!newPersonInvite && newPersonInvite.owner === owner && !!inviteGroup && inviteGroup.version > 0 && !!invitePerson && !invitePerson.user_id && !commands.some(value => value.group_id === inviteGroup.id && value.path === '/groups');
@@ -372,6 +372,7 @@ function AppContent() {
   async function openBill(bill: BillRow) {
     await perform(async () => {
       if (!session || !selected) return;
+      if (pending.some(value => value.body.id === bill.id && /\/expenses(?:\/[^/]+)?$/.test(value.path))) { setExpenseId(bill.id); navigate('expenseDetail'); return; }
       const active = session, group = await withBill(active, selected.group, bill.id);
       if (activeSessionRef.current?.token !== active.token) return;
       await saveGroup(await getDatabase(), accountOwner(active), group, 'shared');
@@ -390,6 +391,7 @@ function AppContent() {
   async function openPayment(id: string) {
     await perform(async () => {
       if (!session || !selected) return;
+      if (pending.some(value => value.body.id === id && value.path.endsWith('/settlements'))) { setSettlementId(id); navigate('paymentDetail'); return; }
       const active = session, group = await withPayment(active, selected.group, id);
       if (activeSessionRef.current?.token !== active.token) return;
       await saveGroup(await getDatabase(), accountOwner(active), group, 'shared');

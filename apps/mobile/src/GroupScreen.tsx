@@ -108,9 +108,9 @@ function LogRow({ leading, date, label, busy, onPress, trailing, children, payme
 function PaymentRow({ payment, accepted, group, selfId, busy, onPayment }: Pick<Props, 'accepted' | 'group' | 'selfId' | 'busy' | 'onPayment'> & { payment: Settlement }) {
   const { palette: colors, ui } = useUI();
   const isAccepted = accepted.settlements.some(record => record.id === payment.id) || accepted.transactions?.some(record => record.kind === 'payment' && record.payment.id === payment.id);
-  if (!isAccepted) return null;
+  if (!isAccepted && payment.provenance !== 'pending_manual') return null;
   const presentation = paymentPresentation(payment, selfId, id => participantName(group.participants, selfId, id));
-  const status = presentation.status;
+  const status = isAccepted ? presentation.status : 'Pending sync';
   return <LogRow payment leading={<TransactionIcon name={payment.reversed ? 'refresh' : 'payment'} />} date={payment.date} busy={busy} onPress={() => onPayment(payment)} label={`Payment, ${presentation.title}, ${formatMoney(payment.amount)}${status ? `, ${status}` : ''}, ${displayDate(payment.date)}`}>
     <View style={s.paymentLine}>
       <Text style={[ui.rowSub, s.logCaption, s.paymentSentence, { color: colors.text }]}>{presentation.title} <Text style={{ color: presentation.cashflow === '0' ? colors.text : balanceColor(presentation.cashflow, colors) }}>{formatMoney(payment.amount)}</Text>{!!status && <Text style={[ui.rowSub, s.logCaption]}> · {status}</Text>}</Text>
@@ -246,7 +246,7 @@ export function PaymentDetail({ payment, group, selfId, busy, canReverse, onReve
   return <View role="region" accessibilityLabel={group.name} style={s.content}>
     <RecordSummary title={row.title} amount={payment.amount} amountColor={row.cashflow === '0' ? colors.text : balanceColor(row.cashflow, colors)}>
       <Text style={ui.caption}>{group.name} · {displayDate(payment.date)}{row.status ? ` · ${row.status}` : ''}</Text>
-      <RecordAttribution action="Marked paid" name={payment.recorded_by_name} />
+      {payment.provenance === 'pending_manual' ? <Text style={ui.caption}>Pending sync</Text> : <RecordAttribution action="Marked paid" name={payment.recorded_by_name} />}
       {payment.reversed && <RecordAttribution action="Reversed" name={payment.reversal?.actor_name} />}
     </RecordSummary>
     {payment.reversed ? <Text style={ui.notice}>This payment record was reversed.</Text>
