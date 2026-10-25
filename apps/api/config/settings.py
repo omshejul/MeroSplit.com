@@ -28,6 +28,8 @@ INSTALLED_APPS = [
     "django.contrib.sites",
     "allauth",
     "allauth.account",
+    "allauth.socialaccount",
+    "allauth.socialaccount.providers.google",
     "allauth.headless",
     "ledger",
 ]
@@ -70,6 +72,17 @@ ACCOUNT_LOGIN_BY_CODE_FORMAT = {"length": 4, "numeric": True, "dashed": False}
 ACCOUNT_UNIQUE_EMAIL = True
 HEADLESS_ONLY = True
 HEADLESS_CLIENTS = ("app", "browser")
+GOOGLE_SIGN_IN_ENABLED = os.environ.get("GOOGLE_SIGN_IN_ENABLED", "false").lower() == "true"
+GOOGLE_OAUTH_WEB_CLIENT_ID = os.environ.get("GOOGLE_OAUTH_WEB_CLIENT_ID", "1091299527858-dmjm6sosrpqc7054m5nv6drpkgd03sma.apps.googleusercontent.com")
+SOCIALACCOUNT_ADAPTER = "ledger.google_signin.GoogleAccountAdapter"
+SOCIALACCOUNT_EMAIL_AUTHENTICATION = False
+SOCIALACCOUNT_EMAIL_AUTHENTICATION_AUTO_CONNECT = False
+SOCIALACCOUNT_STORE_TOKENS = False
+SOCIALACCOUNT_PROVIDERS = {"google": {
+    "APPS": [{"client_id": GOOGLE_OAUTH_WEB_CLIENT_ID, "secret": "", "key": ""}],
+    "ID_TOKEN_ISSUER": ["https://accounts.google.com", "accounts.google.com"],
+}}
+SOCIALACCOUNT_REQUESTS_TIMEOUT = 5
 EMAIL_BACKEND = "django.core.mail.backends.dummy.EmailBackend"
 RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
 EMAIL_PROVIDER = os.environ.get("EMAIL_PROVIDER", "resend")

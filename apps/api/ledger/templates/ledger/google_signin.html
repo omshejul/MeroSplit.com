@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sign in to MeroSplit</title>
+<style>body{font-family:system-ui,sans-serif;margin:3rem auto;padding:1rem;max-width:24rem;color:#161616}h1{font-size:1.5rem}a{color:inherit}#google{margin:1.5rem 0}p{line-height:1.5}</style></head>
+<body><main><h1>Sign in to MeroSplit</h1><p id="status" role="status">Preparing Google sign-in…</p><div id="google"></div><a href="/app/">Return to MeroSplit</a></main>
+{{ data|json_script:"google-data" }}
+<script nonce="{{ script_nonce }}">
+(async () => {
+  const node = document.getElementById('google-data'), data = JSON.parse(node.textContent); node.remove();
+  const status = document.getElementById('status');
+  const csrf = () => decodeURIComponent(document.cookie.split('; ').find(v => v.startsWith('csrftoken='))?.slice(10) || '');
+  async function post(action, body) {
+    const response = await fetch('/_allauth/browser/v1/auth/google/' + action, {method:'POST', credentials:'same-origin', mode:'same-origin', headers:{'Content-Type':'application/json', 'X-CSRFToken':csrf(), ...(data.account ? {'X-MeroSplit-Account':data.account} : {})}, body:JSON.stringify(body), signal:AbortSignal.timeout(15000)});
+    let value; try { value = await response.json(); } catch { throw new Error('Could not confirm Google sign-in. Return to MeroSplit.'); }
+    if (!response.ok) throw new Error(value.errors?.[0]?.code === 'google_email_conflict' ? 'Sign in with your email first, then connect Google in Me.' : 'Could not sign in with Google. Return to MeroSplit and try again or use email.');
+    return value;
+  }
+  try {
+    if (data.credential) {
+      const value = await post('token', {process:data.process, id_token:data.credential});
+      delete data.credential;
+      if (value.meta?.is_authenticated !== true) throw new Error('Could not confirm your account. Return to MeroSplit.');
+      window.location.replace('/app/'); return;
+    }
+    const value = await post('challenge', {process:data.process});
+    if (!/^[a-f0-9]{64}$/.test(value.data?.nonce || '') || value.data?.client_id !== data.clientId) throw new Error('Could not prepare Google sign-in. Return to MeroSplit.');
+    const api = await new Promise((resolve, reject) => {
+      const script = document.createElement('script'); script.src='https://accounts.google.com/gsi/client'; script.async=true;
+      const fail = () => { clearTimeout(timer); script.remove(); reject(new Error('Google sign-in could not load. Return to MeroSplit and try again.')); };
+      const timer = setTimeout(fail, 15000);
+      script.onload = () => { clearTimeout(timer); const api=window.google?.accounts?.id; if (api) resolve(api); else fail(); };
+      script.onerror=fail; document.head.appendChild(script);
+    });
+    api.initialize({client_id:data.clientId, nonce:value.data.nonce, ux_mode:'redirect', login_uri:window.location.origin+'/auth/google/callback', use_fedcm_for_button:false, auto_select:false, button_auto_select:false});
+    api.renderButton(document.getElementById('google'), {theme:'outline', size:'large', text:'continue_with', state:data.process});
+    status.textContent='Choose your Google account to continue.';
+    setTimeout(() => { document.getElementById('google').replaceChildren(); status.textContent='Google sign-in expired. Return to MeroSplit and try again.'; }, value.data.expires_in*1000);
+  } catch (error) { delete data.credential; status.textContent=error instanceof Error ? error.message : 'Could not sign in. Return to MeroSplit.'; }
+})();
+</script></body></html>
