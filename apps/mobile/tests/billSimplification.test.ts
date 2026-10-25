@@ -96,6 +96,103 @@ test('all split modes still validate through the actual form and preserve draft-
   assert.equal(saved, 0); assert.ok(nodes(app.render(props)).some(node => node.type === 'ErrorText'));
 });
 
+function payerFields(app: ReturnType<typeof harness>, props: any) {
+  const selection = find(app.render(props), 'title', 'Who paid?').children[0];
+  const tree = harness('src/ExpenseForm.tsx', 'PayerFields').render(selection.props);
+  return { ...selection.props, fields: nodes(tree).filter(node => node.type === 'TextField') };
+}
+
+test('payer difference chips add only to the chosen payer, persist drafts and save through existing validation', async () => {
+  for (const id of ['self', 'other']) {
+    const app = harness('src/ExpenseForm.tsx', 'ExpenseForm'), drafts: any[] = [], saves: any[] = [];
+    const props = { group, selfId: 'self', busy: false, onSave: async (expense: any) => saves.push(expense), onDraftChange: (draft: any) => drafts.push(draft) };
+    payerFields(app, props).onChange({ amount: '285', description: 'Lunch', payerIds: ['self', 'other'], payerAmounts: { self: '90', other: '192' } });
+    const before = payerFields(app, props);
+    assert.equal(before.fields.length, 2);
+    assert.ok(before.fields.every((field: Element) => field.props.right.props.difference === 300n));
+    before.fields[id === 'self' ? 0 : 1].props.right.props.onPress();
+    before.onAdjust(id === 'self' ? 'other' : 'self'); // A second tap before rendering must recompute the current draft.
+    const after = payerFields(app, props), expected = id === 'self' ? { self: '93.00', other: '192' } : { self: '90', other: '195.00' };
+    assert.deepEqual(after.draft.payerAmounts, expected);
+    assert.ok(after.fields.every((field: Element) => field.props.right === null));
+    assert.equal(saves.length, 0);
+    assert.deepEqual(drafts.at(-1).payerAmounts, expected);
+    const restored = harness('src/ExpenseForm.tsx', 'ExpenseForm');
+    assert.deepEqual(payerFields(restored, { ...props, initialDraft: drafts.at(-1) }).draft.payerAmounts, expected);
+    find(app.render(props), 'title', 'Save bill').props.onPress(); await tick();
+    assert.deepEqual(saves[0].paid, id === 'self' ? { self: '9300', other: '19200' } : { self: '9000', other: '19500' });
+  }
+});
+
+test('payer subtraction chips never make a contribution negative and handle zero exactly', () => {
+  const app = harness('src/ExpenseForm.tsx', 'ExpenseForm'), props = { group, selfId: 'self', busy: false, onSave: async () => {} };
+  payerFields(app, props).onChange({ amount: '285', payerIds: ['self', 'other'], payerAmounts: { self: '1', other: '287' } });
+  let fields = payerFields(app, props);
+  assert.equal(fields.fields[0].props.right, null);
+  assert.equal(fields.fields[1].props.right.props.difference, -300n);
+  fields.onAdjust('self');
+  assert.deepEqual(payerFields(app, props).draft.payerAmounts, { self: '1', other: '287' });
+  fields.fields[1].props.right.props.onPress();
+  assert.deepEqual(payerFields(app, props).draft.payerAmounts, { self: '1', other: '284.00' });
+  fields = payerFields(app, props);
+  fields.onChange({ payerAmounts: { self: '3', other: '285' } });
+  payerFields(app, props).fields[0].props.right.props.onPress();
+  assert.deepEqual(payerFields(app, props).draft.payerAmounts, { self: '0.00', other: '285' });
+});
+
+test('payer chips support a one-paise difference, empty amounts and three payers without touching shares', () => {
+  const app = harness('src/ExpenseForm.tsx', 'ExpenseForm');
+  const props = { group: { ...group, participants: [...group.participants, { id: 'third', name: 'Noor' }] }, selfId: 'self', busy: false, onSave: async () => {} };
+  payerFields(app, props).onChange({ amount: '285', payerIds: ['self', 'other', 'third'], payerAmounts: { self: '90', other: '194.99', third: '' }, mode: 'exact', splitValues: { self: '1' } });
+  let fields = payerFields(app, props);
+  assert.equal(fields.status, '₹0.01 still to add.');
+  assert.equal(fields.fields[2].props.right.props.difference, 1n);
+  fields.fields[2].props.right.props.onPress();
+  fields = payerFields(app, props);
+  assert.deepEqual(fields.draft.payerAmounts, { self: '90', other: '194.99', third: '0.01' });
+  assert.deepEqual(fields.draft.splitValues, { self: '1' });
+  assert.equal(fields.status, 'Adds up to the bill.');
+});
+
+test('invalid input, a single payer, locked forms and removed people cannot be adjusted', () => {
+  const app = harness('src/ExpenseForm.tsx', 'ExpenseForm');
+  const props = { group: { ...group, participants: [...group.participants, { id: 'removed', name: 'Former', removed: true }] }, selfId: 'self', busy: false, onSave: async () => {} };
+  const draft = { amount: '285', payerIds: ['self', 'other', 'removed'], payerAmounts: { self: '90', other: '191', removed: '1' } };
+  payerFields(app, props).onChange(draft);
+  let fields = payerFields(app, props);
+  assert.equal(fields.fields[2].props.right, null);
+  fields.onAdjust('removed'); fields.onAdjust('unknown');
+  assert.deepEqual(payerFields(app, props).draft.payerAmounts, draft.payerAmounts);
+  for (const locked of [{ ...props, busy: true }, { ...props, group: { ...props.group, archived: true } }]) {
+    fields = payerFields(app, locked);
+    assert.ok(fields.fields.every((field: Element) => field.props.right === null));
+    fields.onAdjust('self');
+    assert.deepEqual(payerFields(app, locked).draft.payerAmounts, draft.payerAmounts);
+  }
+  for (const amount of ['-', '3.001', '1,000', '10000001']) {
+    payerFields(app, props).onChange({ ...draft, amount });
+    fields = payerFields(app, props);
+    assert.ok(fields.fields.every((field: Element) => field.props.right === null));
+    fields.onAdjust('self');
+    assert.deepEqual(payerFields(app, props).draft.payerAmounts, draft.payerAmounts);
+  }
+  payerFields(app, props).onChange({ ...draft, payerAmounts: { ...draft.payerAmounts, other: '1.001' } });
+  assert.ok(payerFields(app, props).fields.every((field: Element) => field.props.right === null));
+  payerFields(app, props).onChange({ ...draft, payerIds: ['self'] });
+  assert.equal(payerFields(app, props).fields.length, 0);
+});
+
+test('adjustment action uses an explicit sign and screen-reader action for either direction', () => {
+  const render = harness('src/ExpenseForm.tsx', 'PayerAdjustment', { TouchableRipple: 'TouchableRipple' });
+  for (const [difference, title, label] of [[300n, '+₹3.00', 'Add ₹3.00 to Jordan'], [-1n, '−₹0.01', 'Subtract ₹0.01 from Jordan']] as const) {
+    let tapped = 0;
+    const tree = render.render({ difference, name: 'Jordan', onPress: () => tapped++ });
+    assert.equal(tree.props.accessibilityRole, 'button'); assert.equal(tree.props.accessibilityLabel, label);
+    assert.equal(nodes(tree).find(node => node.type === 'Text')!.children.join(''), title);
+    tree.props.onPress(); assert.equal(tapped, 1);
+  }
+});
+
 test('people dialog opens/closes/reopens without changing its existing inputs and keeps Done outside scroll', () => {
   const app = harness('src/BillPeople.tsx', 'BillPeople'); const child = React.createElement('Input', { value: 'Preserved' });
   const props = { title: 'Who paid?', summary: '2 people', inline: false, disabled: false, children: child };
