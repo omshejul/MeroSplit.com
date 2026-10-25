@@ -129,7 +129,7 @@ def test_install_intent_is_manual_safe_and_android_group_precedes_play(monkeypat
         assert html.index("https://groups.google.com/g/merosplit-beta") < html.index("https://play.google.com/apps/testing/com.omshejul.splitdumb")
         assert "Use the same Google account" in html and "Finish each step before opening the next." in html
     from hashlib import sha256
-    for name, digest in [("try-on-iphone.svg", "b01a3c83b8dcde78a3b6c66d733a87507d74db44eae84d8d0b84cd04e89cd253"), ("try-on-android.svg", "235dc98ced6141c589fc655e064479f6719935b90ad04c1a785890226c9ed6fc")]:
+    for name, digest in [("try-on-iphone.svg", "b01a3c83b8dcde78a3b6c66d733a87507d74db44eae84d8d0b84cd04e89cd253"), ("try-on-android.svg", "b66a82d6a40c4d3dfa56c95fbba26a4f69f46bf8d76648d48e896d8af07ae3b6")]:
         response = browser.get("/assets/" + name)
         assert response.status_code == 200
         assert sha256(b"".join(response.streaming_content)).hexdigest() == digest
