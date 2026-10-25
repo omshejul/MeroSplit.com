@@ -44,8 +44,9 @@ import { AddExpenseButton, AppFrame, pageContentStyle, ScreenHeader, AppTabs } f
 import { EmailSignIn, CodeSignIn } from './src/SignInForms';
 import SignInLayout from './src/SignInLayout';
 import GoogleSignInButton from './src/GoogleSignInButton';
+import { useLinkedProviders } from './src/useLinkedProviders';
 import AppleSignInButton from './src/AppleSignInButton';
-import type { GoogleAuthenticate, GoogleProcess } from './src/googleSignIn';
+import { googleBrowserError, type GoogleAuthenticate, type GoogleProcess } from './src/googleSignIn';
 import { captureEmailLink, forgetEmailProof, subscribeEmailLinks, type EmailLink, type EmailTarget, type EmailLinkInspection } from './src/emailLink';
 import { inspectEmailLink, resolveEmailLink, renewEmailLink, requestEmailLink, EmailLinkError } from './src/emailLinkApi';
 import { inspectNativeEmailLink, resolveNativeEmailLink, renewNativeEmailLink, NativeEmailLinkError } from './src/nativeEmailLinkApi';
@@ -58,6 +59,7 @@ import CreateGroupForm from './src/CreateGroupForm';
 import type { NewGroupValues } from './src/CreateGroupForm';
 import { SavedChanges, LegacyRecovery as LegacyRecords } from './src/AccountRecovery';
 import ProfileSettings from './src/ProfileSettings';
+import SignInMethods from './src/SignInMethods';
 import AppUpdates from './src/AppUpdates';
 import { restartForUpdate } from './src/appUpdate';
 import { usePushNotifications } from './src/PushSettings';
@@ -85,7 +87,7 @@ import { Text } from 'react-native-paper';
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL ?? (Platform.OS === 'web' ? window.location.origin : APP_ORIGIN);
 const uuid = () => Crypto.randomUUID();
-type Screen = 'home' | 'create' | 'group' | 'expense' | 'expenseDetail' | 'expenseVersions' | 'billChat' | 'settle' | 'members' | 'login' | 'review' | 'paymentDetail' | 'import';
+type Screen = 'signInMethods' | 'home' | 'create' | 'group' | 'expense' | 'expenseDetail' | 'expenseVersions' | 'billChat' | 'settle' | 'members' | 'login' | 'review' | 'paymentDetail' | 'import';
 type Transfer = { sender: string; recipient: string; amount: string };
 type EmailEntry = { id: string | null; phase: 'opening' | 'switch' | 'target' | 'name' | 'error'; error: string; sent: boolean; target?: EmailTarget; inspection?: EmailLinkInspection; switchFromUserId?: number };
 function AppContent() {
@@ -101,7 +103,16 @@ function AppContent() {
   const [screen, setScreen] = useState<Screen>('home'), [tab, setTab] = useState('Groups'), [groupId, setGroupId] = useState<string | null>(null);
   const [expenseId, setExpenseId] = useState<string | null>(null), [draft, setDraft] = useState<ExpenseFormDraft | null>(null), [transfer, setTransfer] = useState<Transfer | undefined>();
   const [reviewCommand, setReviewCommand] = useState<Command | null>(null), [reviewInput, setReviewInput] = useState<Expense | undefined>();
-  const [busy, setBusy] = useState(false), [pulling, setPulling] = useState(false), [feedback, setFeedback] = useState({ text: '', tone: 'info' as 'info' | 'success' | 'warning' | 'error' });
+  const methodsRow = useRef<React.ComponentRef<typeof View>>(null);
+  const googleReturn = useRef(Platform.OS === 'web' ? new URLSearchParams(window.location.search).get('google_return') : null);
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const url = new URL(window.location.href);
+    if (!url.searchParams.has('google_error') && !url.searchParams.has('google_return')) return;
+    url.searchParams.delete('google_error'); url.searchParams.delete('google_return');
+    window.history.replaceState(window.history.state, '', url.pathname + url.search + url.hash);
+  }, []);
+  const [busy, setBusy] = useState(false), [pulling, setPulling] = useState(false), [feedback, setFeedback] = useState(() => ({ text: Platform.OS === 'web' ? googleBrowserError(window.location.search) : '', tone: 'error' as 'info' | 'success' | 'warning' | 'error' }));
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const notice = feedback.text;
   const setNotice = (text: string, tone: typeof feedback.tone = 'info') => setFeedback({ text, tone });
@@ -143,6 +154,8 @@ function AppContent() {
     onForeground: async () => { if (ready && session && !authHeldRef.current && !lock.current) launch(() => sync()); },
     shouldSuppress: data => suppressPush.current(data),
   });
+  const providerConnections = useLinkedProviders(authPending ? null : session, ready && foreground && online && !expired && !authHeld);
+  useEffect(() => { if (session && (screen === 'signInMethods' || screen === 'home' && tab === 'Account')) providerConnections.refresh(); }, [session?.token, screen, tab]);
   const activeGroupRef = useRef(groupId); activeGroupRef.current = groupId;
   const selected = groups.find(row => row.group.id === groupId) ?? null;
   const browseScope = `${owner}|${session?.token}|${screen}|${tab}|${groupId}|${foreground}|${expired}|${authHeld}|${online}|${groupVersions.current}|${selected?.group.version}|${selected?.group.history?.transactions?.query ?? selected?.group.history?.bills?.query ?? ''}`;
@@ -206,7 +219,7 @@ function AppContent() {
     ownerRef.current = value ? accountOwner(value) : '';
     activeSessionRef.current = value;
     setShowArchived(false); setShowHidden(false); setNeedsInvitation(false); setSession(value); setExpired(false); setGroups([]); setCommands([]); setLegacy([]); setRecoveries([]); setUnavailable([]); setLegacySelf({});
-    setGroupId(null); setExpenseId(null); setDraft(null); setVpa(''); setScreen(value ? 'home' : 'login'); setTab('Groups');
+    setGroupId(null); setExpenseId(null); setDraft(null); setVpa(''); setScreen(value ? googleReturn.current === 'connect' ? 'signInMethods' : 'home' : 'login'); setTab(value && googleReturn.current === 'connect' ? 'Account' : 'Groups'); googleReturn.current = null;
     setMyName(value?.displayName || value?.email.split('@')[0] || 'You');
     setReviewCommand(null); setReviewInput(undefined); setReturns([]); setReturnAttemptId(null); setSettlementId(null); setActivity(null); setActivityError(''); activityOwner.current = ''; groupVersions.current = '';
     void load(ownerRef.current).catch(error => setNotice(error.message, 'error'));
@@ -606,6 +619,7 @@ function AppContent() {
     await push.clear(); setPushTarget(null);
   }
   function back() {
+    if (screen === 'signInMethods') { openMe(); requestAnimationFrame(() => methodsRow.current?.focus()); return; }
     if (screen === 'expenseVersions') { if (groupId && expenseId) writeAppLink({ groupId, expenseId }, { replace: true }); navigate('expenseDetail'); return; }
     if (screen === 'billChat') { navigate('expenseDetail'); return; }
     if (screen === 'home' && tab === 'Groups' && (showArchived || showHidden)) { setShowArchived(false); setShowHidden(false); return; }
@@ -793,7 +807,7 @@ function AppContent() {
       if (!current()) return;
       const value = await authenticate(current);
       if (!value || !current()) return;
-      if (process === 'connect') { setNotice(`${provider} connected.`, 'success'); return; }
+      if (process === 'connect') { providerConnections.refresh(); setNotice(`${provider} connected.`, 'success'); return; }
       await saveSession(value);
       if (!current()) return;
       if (active && active.token !== value.token) { if (Platform.OS !== 'web') await endPushSession(active); else await push.clear(); await clearMediaPreviews(); }
@@ -1009,7 +1023,7 @@ function AppContent() {
   const archivedGroups = groupListRows(listedGroups, true);
   const visibleGroups = !direct && showHidden ? hiddenGroups : direct ? listedGroups.filter(row => !!session && visiblePeopleSummary(row.group, session.userId, commands.some(command => command.group_id === row.group.id))) : groupListRows(listedGroups, showArchived);
   const showAddExpense = screen === 'group' && !!selected && !selected.group.archived;
-  const title = screen === 'home' ? (tab === 'Friends' ? 'People' : tab === 'Account' ? 'Me' : tab === 'Groups' && showHidden ? 'Removed from my list' : tab === 'Groups' && showArchived ? 'Archived groups' : tab) : screen === 'login' ? 'Sign in' : screen === 'create' ? (direct ? 'Add a person' : 'New group') : screen === 'expense' ? (expenseId ? 'Edit bill' : 'Add expense') : screen === 'expenseVersions' ? 'Version history' : screen === 'billChat' ? 'Chat' : screen === 'expenseDetail' ? expense?.description ?? 'Bill' : screen === 'settle' ? 'Payment' : screen === 'members' ? 'Group settings' : screen === 'review' ? 'Review your bill' : screen === 'paymentDetail' ? 'Payment record' : screen === 'import' ? 'Import from Splitwise' : selected ? groupDisplayName(selected.group, session?.userId) : 'Group';
+  const title = screen === 'home' ? (tab === 'Friends' ? 'People' : tab === 'Account' ? 'Me' : tab === 'Groups' && showHidden ? 'Removed from my list' : tab === 'Groups' && showArchived ? 'Archived groups' : tab) : screen === 'signInMethods' ? 'Sign-in methods' : screen === 'login' ? 'Sign in' : screen === 'create' ? (direct ? 'Add a person' : 'New group') : screen === 'expense' ? (expenseId ? 'Edit bill' : 'Add expense') : screen === 'expenseVersions' ? 'Version history' : screen === 'billChat' ? 'Chat' : screen === 'expenseDetail' ? expense?.description ?? 'Bill' : screen === 'settle' ? 'Payment' : screen === 'members' ? 'Group settings' : screen === 'review' ? 'Review your bill' : screen === 'paymentDetail' ? 'Payment record' : screen === 'import' ? 'Import from Splitwise' : selected ? groupDisplayName(selected.group, session?.userId) : 'Group';
   if (!ready) return <SafeAreaView style={[s.screen, s.loading]}><ActivityIndicator color={colors.accent} /><Text style={ui.caption}>Opening your groups…</Text></SafeAreaView>;
   const listNotice = <>{!!notice && <MotionReveal><Text accessibilityLiveRegion="polite" accessibilityRole={feedback.tone === 'error' ? 'alert' : undefined} style={[ui.notice, feedback.tone === 'success' ? ui.success : feedback.tone === 'warning' ? ui.warning : feedback.tone === 'error' ? ui.error : undefined]}>{notice}</Text></MotionReveal>}
       {expired && screen !== 'login' && <Button title="Sign in again" kind="primary" onPress={() => { setChallenge(null); setCode(''); navigate('login'); }} />}</>;
@@ -1034,7 +1048,7 @@ function AppContent() {
   </SignInLayout>;
   return <><AppFrame onTouchStart={notices.engage}><View ref={protectedContent} style={{ flex: 1 }} pointerEvents={authHeld ? 'none' : 'auto'} accessibilityElementsHidden={authHeld} importantForAccessibility={authHeld ? 'no-hide-descendants' : 'auto'} aria-hidden={authHeld}>
     <MotionScreen route={{ scope: owner, screen, tab, group: groupId, record: screen === 'paymentDetail' ? settlementId : ['expense', 'expenseDetail', 'billChat', 'expenseVersions'].includes(screen) ? expenseId : null,
-      allowed: !!session && !authHeld && !expired && (screen === 'home' || screen === 'create' || screen === 'import' || !!selected) }}>
+      allowed: !!session && !authHeld && !expired && (screen === 'home' || screen === 'create' || screen === 'import' || screen === 'signInMethods' || !!selected) }}>
     {screen !== 'login' && <ScreenHeader title={title} brand={!session} busy={busy} onFeedback={session && !authHeld && !expired && screen === 'home' && ['Groups', 'Friends', 'Activity'].includes(tab) ? () => setFeedbackOpen(true) : undefined} onBack={screen === 'home' && tab === 'Groups' && (showArchived || showHidden) || screen !== 'home' ? back : undefined}>
       {Platform.OS === 'web' && session && (screen === 'home' && tab !== 'Account' || screen === 'group') && <IconAction name="refresh" label="Refresh" disabled={busy} onPress={() => { if (screen === 'home' && tab === 'Activity') void refreshActivity().catch(() => {}); else launch(sync); }} />}
       {screen === 'group' && selected && <IconAction name="settings" label="Group settings" disabled={busy} onPress={() => navigate('members')} />}
@@ -1044,6 +1058,7 @@ function AppContent() {
       refreshControl={session && !expired && (screen === 'home' || screen === 'group') ? <RefreshControl refreshing={pulling} tintColor={colors.accent} colors={[colors.accent]} onRefresh={pullToRefresh} /> : undefined}>
       {listNotice}
       {homeContext}
+      {screen === 'signInMethods' && session && <SignInMethods key={owner} session={session} busy={busy || expired} connections={providerConnections} onGoogle={authenticate => launch(() => finishGoogleSignIn('connect', authenticate))} onApple={authenticate => launch(() => finishGoogleSignIn('connect', authenticate, 'Apple'))} />}
 
 
       {screen === 'home' && (tab === 'Groups' || tab === 'Friends') && <>
@@ -1071,10 +1086,9 @@ function AppContent() {
       {screen === 'home' && tab === 'Account' && session && <>
         <AccountHeader key={owner} session={session} name={myName} busy={busy} onBusyChange={value => { lock.current = value; setBusy(value); }} />
         <View><ProfileSettings key={owner} name={myName} vpa={vpa} busy={busy} onSaveName={saveName} onSaveUPI={saveUPI} onAppearance={value => perform(() => changeAppearance(value), false)} onColorFamily={value => perform(() => changeColorFamily(value), false)} />
+          <SettingsRow rowRef={methodsRow} label="Sign-in methods" icon="key" disabled={busy || expired} onPress={() => navigate('signInMethods')} />
           <AccountNotifications key={owner} session={session} push={push} busy={busy} onBusyChange={value => { lock.current = value; setBusy(value); }} />
           <AppUpdates key={owner} busy={busy} online={online} onRestart={restartUpdate} />
-          <AppleSignInButton baseUrl={API_URL} process="connect" current={session} busy={busy || expired} onAuthenticate={authenticate => launch(() => finishGoogleSignIn('connect', authenticate, 'Apple'))} />
-          <GoogleSignInButton key={`google-${owner}`} baseUrl={API_URL} process="connect" current={session} busy={busy || expired} onAuthenticate={authenticate => launch(() => finishGoogleSignIn('connect', authenticate))} />
           <MCPSettings key={owner} session={session} busy={busy} onBusyChange={value => { lock.current = value; setBusy(value); }} />
         <View><SettingsRow label="Import from Splitwise" icon="import" disabled={busy} onPress={() => navigate('import')} />
           <ExportData key={owner} busy={busy} onExport={() => perform(exportData)} /></View>

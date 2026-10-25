@@ -116,6 +116,35 @@ def consume_challenge(request, claims, process, provider="google", state=None):
     setattr(request, f"{provider}_proof_consumed", True)
 
 
+@sensitive_variables()
+def prepare_google_identity(request, sociallogin, process):
+    claims = sociallogin.account.extra_data
+    email = normalized_email(claims.get("email"))
+    if (not isinstance(claims.get("sub"), str) or not 1 <= len(claims["sub"]) <= 255
+            or claims.get("aud") != settings.GOOGLE_OAUTH_WEB_CLIENT_ID
+            or claims.get("iss") not in {"accounts.google.com", "https://accounts.google.com"}
+            or type(claims.get("exp")) is not int or claims["exp"] <= time.time()
+            or claims.get("email_verified") is not True or entry_for_email(email)):
+        raise ValidationError("Invalid Google identity")
+    browser_nonce = getattr(request, "google_browser_nonce", None)
+    if browser_nonce is None:
+        consume_challenge(request, claims, process)
+    elif (not getattr(request, "google_proof_consumed", False) or not isinstance(claims.get("nonce"), str)
+          or not secrets.compare_digest(browser_nonce, claims["nonce"])):
+        raise ValidationError("Google sign-in expired")
+    # A non-Google-hosted address may have changed owners since Google
+    # verified it. Require email login + explicit connect for new links.
+    request.google_email_authoritative = email.endswith("@gmail.com") or bool(isinstance(claims.get("hd"), str) and claims["hd"])
+    if not request.google_email_authoritative:
+        sociallogin.email_addresses = []
+    sociallogin.state["process"] = process
+    # Store basic profile claims only, never credentials or nonce/proof material.
+    sociallogin.account.extra_data = {k: claims[k] for k in ["sub", "email", "email_verified", "given_name", "family_name"] if k in claims}
+    sociallogin.user.email = email
+    sociallogin.user.first_name = str(sociallogin.user.first_name or "").strip()[:150]
+    sociallogin.user.last_name = str(sociallogin.user.last_name or "").strip()[:150]
+
+
 class GoogleTokenView(APIView):
     @sensitive_variables()
     def post(self, request, *args, **kwargs):
@@ -138,26 +167,7 @@ class GoogleTokenView(APIView):
                 raise ValidationError("Invalid signing algorithm")
             provider = get_adapter().get_provider(request, "google", client_id=settings.GOOGLE_OAUTH_WEB_CLIENT_ID)
             sociallogin = provider.verify_token(request, {"id_token": credential})
-            claims = sociallogin.account.extra_data
-            email = normalized_email(claims.get("email"))
-            if (not isinstance(claims.get("sub"), str) or not 1 <= len(claims["sub"]) <= 255
-                    or claims.get("aud") != settings.GOOGLE_OAUTH_WEB_CLIENT_ID
-                    or claims.get("iss") not in {"accounts.google.com", "https://accounts.google.com"}
-                    or type(claims.get("exp")) is not int or claims["exp"] <= time.time()
-                    or claims.get("email_verified") is not True or entry_for_email(email)):
-                raise ValidationError("Invalid Google identity")
-            consume_challenge(request, claims, data["process"])
-            # A non-Google-hosted address may have changed owners since Google
-            # verified it. Require email login + explicit connect for new links.
-            request.google_email_authoritative = email.endswith("@gmail.com") or bool(isinstance(claims.get("hd"), str) and claims["hd"])
-            if not request.google_email_authoritative:
-                sociallogin.email_addresses = []
-            sociallogin.state["process"] = data["process"]
-            # Store basic profile claims only, never credentials or nonce/proof material.
-            sociallogin.account.extra_data = {k: claims[k] for k in ["sub", "email", "email_verified", "given_name", "family_name"] if k in claims}
-            sociallogin.user.email = email
-            sociallogin.user.first_name = str(sociallogin.user.first_name or "").strip()[:150]
-            sociallogin.user.last_name = str(sociallogin.user.last_name or "").strip()[:150]
+            prepare_google_identity(request, sociallogin, data["process"])
             with transaction.atomic():
                 response = complete_token_login(request, sociallogin)
             return AuthenticationResponse.from_response(request, response)

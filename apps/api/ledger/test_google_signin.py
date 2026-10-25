@@ -247,22 +247,16 @@ def test_browser_requires_csrf_and_exact_signed_in_account(signer, settings):
     assert response.status_code == 401 and not SocialAccount.objects.exists()
 
 
-def test_redirect_document_is_separate_from_isolated_app_and_has_fixed_return():
+def test_get_no_longer_renders_an_intermediate_google_button():
     client = Client()
     response = client.get('/auth/google?process=login')
-    assert response.status_code == 200 and client.cookies.get('csrftoken')
-    assert response['Cache-Control'] == 'no-store'
-    assert 'Cross-Origin-Embedder-Policy' not in response
-    assert "frame-ancestors 'none'" in response['Content-Security-Policy']
-    assert b"ux_mode:'redirect'" in response.content and b"window.location.origin+'/auth/google/callback'" in response.content
-    assert b'sqlite' not in response.content.lower()
-    assert client.get('/auth/google?process=redirect&next=https://attacker.invalid').status_code == 400
-    assert client.get('/auth/google?process=connect&account=1').status_code == 400
+    assert response.status_code == 405
+    assert b'accounts.google.com/gsi/client' not in response.content
 
 
 def test_google_redirect_csrf_bridge_does_not_need_lax_session_or_authenticate_before_same_origin_nonce(signer, settings):
     browser = Client(enforce_csrf_checks=True)
-    browser.get('/auth/google?process=login')
+    browser.get('/_allauth/browser/v1/config')
     csrf = browser.cookies['csrftoken'].value
     credential = token(signer, settings, challenge(browser, browser=True, HTTP_X_CSRFTOKEN=csrf))
     # The cross-site redirect POST omits the Lax session cookie. The Google

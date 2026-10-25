@@ -60,3 +60,12 @@ export async function finishGoogle(attempt: GoogleAttempt, credential: string, c
   if (!reply.meta.session_token) throw new Error( `Could not confirm ${label} sign-in. Reopen the app or use email.`);
   return { baseUrl: attempt.session.baseUrl, userId: String(user.id), email: user.email, token: reply.meta.session_token };
 }
+
+
+// Public callback status only. Identity still comes from the browser session read.
+export function googleBrowserError(search: string): string {
+  const code = new URLSearchParams(search).get('google_error');
+  return code === 'conflict' ? 'Sign in with your email first, then connect Google in Me.'
+    : code === 'account_changed' ? 'Your signed-in account changed. Try again. Saved changes are safe.'
+    : code === 'unavailable' ? 'Could not sign in with Google. Try again or use email.' : '';
+}
