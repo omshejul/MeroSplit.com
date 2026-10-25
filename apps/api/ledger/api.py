@@ -11,8 +11,9 @@ from ninja import File, Form, NinjaAPI
 from ninja.errors import HttpError, ValidationError
 from ninja.files import UploadedFile as RequestFile
 from ninja.security import django_auth
+from pydantic import Field
 
-from . import balance_statements, bill_chat, feedback
+from . import balance_statements, bill_chat, feedback, group_invites
 from .accounting import AccountingError
 from .collaboration import (
     acknowledge_opening,
@@ -73,6 +74,7 @@ from .schemas import (
     FeedbackIn,
     GroupIn,
     GroupLeaveIn,
+    Input,
     InviteIn,
     LinkedWriteResult,
     NotificationPreferencesIn,
@@ -438,6 +440,34 @@ def media_thumbnail(request, file_id: UUID):
 @api.put("/me/payment-profile")
 def profile_update(request, body: ProfileIn):
     return update_profile(request.auth, body.vpa)
+
+
+@api.post("/groups/{group_id}/invite-link")
+def group_invite_link_create(request, group_id: UUID, body: Command):
+    result, token = group_invites.create_link(request.auth, group_id, body.model_dump(mode="json"))
+    response = JsonResponse({**result, "url": settings.PUBLIC_WEB_URL.rstrip("/") + "/app/invite/join#token=" + quote(token, safe="")})
+    response["Cache-Control"] = "private, no-store"
+    return response
+
+
+class GroupLinkToken(Input):
+    token: str = Field(min_length=1, max_length=128)
+
+
+class GroupLinkJoin(Command):
+    token: str = Field(min_length=1, max_length=128)
+
+
+@api.post("/group-invite-links/preview")
+def group_invite_link_preview(request, body: GroupLinkToken):
+    response = JsonResponse(group_invites.preview_link(request.auth, body.token))
+    response["Cache-Control"] = "private, no-store"
+    return response
+
+
+@api.post("/group-invite-links/join", response=WriteResult)
+def group_invite_link_join(request, body: GroupLinkJoin):
+    return group_invites.join_link(request.auth, body.model_dump(mode="json"))
 
 
 @api.post("/groups/{group_id}/invites")

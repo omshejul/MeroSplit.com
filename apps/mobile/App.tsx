@@ -26,6 +26,10 @@ import type { PaymentReturn } from './src/paymentReturn';
 import { listPaymentReturns, savePaymentReturn, clearPaymentReturn, resolvePaymentReturn } from './src/paymentReturnStorage';
 import MembersScreen from './src/MembersScreen';
 import SendInviteDialog from './src/SendInviteDialog';
+import GroupJoinDialog from './src/GroupJoinDialog';
+import { savedGroupInvite, saveGroupInvite } from './src/groupInviteStore';
+import { groupInviteToken } from './src/groupInvite';
+import { forgetGroupInvite } from './src/groupInvite';
 import FeedbackDialog from './src/FeedbackDialog';
 import UPISetupDialog from './src/UPISetupDialog';
 import { sendInvitation } from './src/members';
@@ -153,6 +157,7 @@ function AppContent() {
   function navigate(value: Screen) { setNotice(''); setScreen(value); }
   function changeScope(value: Session | null) {
     setFeedbackOpen(false); setUpiSetup(false);
+    if (!value && session) { forgetGroupInvite(); void saveGroupInvite(null).catch(() => {}); setAppLink(null); }
     setVerifiedEmptyOwner(''); setEmptyChatScope('');
     ownerRef.current = value ? accountOwner(value) : '';
     activeSessionRef.current = value;
@@ -425,6 +430,7 @@ function AppContent() {
   }), [session?.token]);
   useEffect(() => {
     if (!ready || !session || authHeld || expired || busy || !appLink) return;
+    if ('groupInviteToken' in appLink) return;
     const active = session, target = appLink;
     launch(async () => {
       await draftWrites.current;
@@ -699,7 +705,7 @@ function AppContent() {
   async function createGroup(values: NewGroupValues) {
     if (!session) throw new Error('Sign in first.');
     requireConnectionForTemporaryStorage();
-    const participants = [myName, ...values.people].map((name, index) => ({ id: uuid(), name: name.trim(), user_id: index === 0 ? Number(session.userId) : null, ...(direct && index === 1 && values.email.trim() ? { email: values.email.trim() } : {}) }));
+    const participants = [myName, ...values.people].map((name, index) => ({ id: uuid(), name: name.trim(), user_id: index === 0 ? Number(session.userId) : null, ...((index > 0 && (direct ? values.email : values.emails?.[index - 1] ?? '').trim()) ? { email: (direct ? values.email : values.emails?.[index - 1] ?? '').trim() } : {}) }));
     const group = { ...emptyGroup(uuid(), direct ? values.people[0].trim() : values.name, participants), owner_id: Number(session.userId), is_direct: direct };
     const id = uuid(), create: Command = { command_id: id, group_id: group.id, base_version: 0, method: 'POST', path: '/groups', body: { command_id: id, id: group.id, name: group.name, participants: participants.map(({ id, name, email }) => ({ id, name, ...(email ? { email } : {}) })), self_participant_id: participants[0].id, is_direct: direct }, state: 'pending', error: null };
     await createPendingGroup(await getDatabase(), owner, group, [create]);
@@ -744,7 +750,7 @@ function AppContent() {
     const previous = emailProof.current;
     if (emailEntryRef.current && previous?.id === link.id && (previous.proof === link.proof || emailEntryRef.current.phase !== 'opening' && !previous.proof)) return;
     authEpoch.current++; authHeldRef.current = true; activeSessionRef.current = null;
-    emailProof.current = link; cookieCheck.current = false; setCheckingCookie(false); setAppLink(null); setPushTarget(null);
+    emailProof.current = link; cookieCheck.current = false; setCheckingCookie(false); setAppLink(current => current && 'groupInviteToken' in current ? current : null); setPushTarget(null);
     void pauseAccountRequests();
     const next: EmailEntry = { id: link.id, phase: 'opening', error: '', sent: false };
     emailEntryRef.current = next; setEmailEntry(next);
@@ -774,8 +780,8 @@ function AppContent() {
   useEffect(() => {
     if (Platform.OS !== 'web') return startNativeLinks(Linking, value => {
       if (value.kind === 'email') beginEmailLink(value.link);
-      else setAppLink(value.target);
-    }, () => setNativeLinksReady(true));
+      else { if ('groupInviteToken' in value.target) void saveGroupInvite(value.target.groupInviteToken).catch(() => {}); setAppLink(value.target); }
+    }, () => { void savedGroupInvite().then(token => { if (token && groupInviteToken('#token=' + encodeURIComponent(token))) setAppLink(current => current ?? { groupInviteToken: token }); }).catch(() => {}).finally(() => setNativeLinksReady(true)); });
     if (initialEmailLink.current) void pauseAccountRequests();
     const unsubscribe = subscribeEmailLinks(beginEmailLink);
     const changed = (event: StorageEvent) => {
@@ -943,6 +949,7 @@ function AppContent() {
       {screen === 'home' && tab === 'Activity' && session && <ChatInbox key={owner} session={session} active={foreground && !authHeld && !expired && online} busy={busy} onEmptyChange={empty => chatInboxEmptyChanged(session, empty)} onOpen={(groupId, expenseId) => { void openActivityTarget({ kind: 'bill', groupId, expenseId }, true).catch(() => {}); }} />}
       {screen === 'home' && tab === 'Activity' && session && <ActivityScreen emptyVerified={activityEmptyVerified} showEmpty={activityEmptyVerified || busy} items={activity?.items ?? []} busy={busy} error={activityError} hasMore={!!activity?.next_cursor} onRefresh={() => { void refreshActivity().catch(() => {}); }} onLoadMore={() => { void refreshActivity(true).catch(() => {}); }} onOpen={target => { void openActivityTarget(target).catch(() => {}); }} />}
       {screen === 'login' && <>
+        {appLink && 'groupInviteToken' in appLink && <><Text style={ui.body}>Sign in to join the group. You will confirm before joining.</Text><Button title="Cancel invitation" disabled={busy} onPress={() => { forgetGroupInvite(); void saveGroupInvite(null).catch(() => {}); setAppLink(null); writeAppLink(null, { replace: true }); }} /></>}
         {emailRequested ? <EmailLinkSent busy={busy} resendSeconds={Math.max(0, Math.ceil((retryAt - clock) / 1000))} onResend={() => launch(sendSignInLink)} onCode={() => setEmailRequested(false)} onChangeEmail={() => { setEmailRequested(false); setChallenge(null); setCode(''); }} />
           : !challenge ? <EmailSignIn email={email} busy={busy} onEmail={setEmail} sendLabel={Platform.OS === 'web' ? 'Email me a sign-in link' : undefined} onSend={() => launch(Platform.OS === 'web' ? sendSignInLink : sendSignInCode)}>
             {Platform.OS === 'web' && <Button title="Use a code instead" kind="text" disabled={busy} onPress={() => launch(sendSignInCode)} />}
@@ -983,12 +990,21 @@ function AppContent() {
     </MotionScreen>
     {screen === 'home' && session && <AppTabs selected={tab} busy={busy} onSelect={value => { setShowArchived(false); setShowHidden(false); if (value === 'Activity') { activityOwner.current = ''; setActivityError(''); } setTab(value); setNotice(''); }} />}
   </View></AppFrame>
-    {session && !authHeld && !expired && <UPISetupDialog key={`${owner}|${session.token}`} visible={upiSetup && !feedbackOpen && screen !== 'settle' && screen !== 'expense' && screen !== 'billChat'} busy={busy} needsName={!session.displayName?.trim()} onSaveName={value => saveName(value, true)} onSave={saveUPI} onSkip={() => setUpiSetup(false)} />}
+    {session && !authHeld && !expired && <UPISetupDialog key={`${owner}|${session.token}`} visible={upiSetup && !(appLink && 'groupInviteToken' in appLink) && !feedbackOpen && screen !== 'settle' && screen !== 'expense' && screen !== 'billChat'} busy={busy} needsName={!session.displayName?.trim()} onSaveName={value => saveName(value, true)} onSave={saveUPI} onSkip={() => setUpiSetup(false)} />}
     {session && !authHeld && !expired && <FeedbackDialog key={`${owner}|${session.token}`} visible={feedbackOpen} onClose={() => setFeedbackOpen(false)} onSubmit={async body => {
       const active = session;
       if (activeSessionRef.current?.token !== active.token || ownerRef.current !== accountOwner(active)) throw new Error('Sign in again.');
       const result = await request<{ id: string; saved: boolean }>(active, '/me/feedback', 'POST', body);
       if (activeSessionRef.current?.token !== active.token || ownerRef.current !== accountOwner(active) || result.id !== body.id || result.saved !== true) throw new Error('Could not confirm feedback.');
+    }} />}
+    {session && !authHeld && !expired && appLink && 'groupInviteToken' in appLink && <GroupJoinDialog key={`${session.token}|${appLink.groupInviteToken}`} session={session} token={appLink.groupInviteToken} onCancel={() => { forgetGroupInvite(); void saveGroupInvite(null).catch(() => {}); setAppLink(null); writeAppLink(null, { replace: true }); }} onJoined={async id => {
+      const active = session;
+      if (activeSessionRef.current?.token !== active.token) return;
+      const group = await fetchGroup(active, id);
+      if (activeSessionRef.current?.token !== active.token) return;
+      await saveGroup(await getDatabase(), accountOwner(active), group, 'shared');
+      if (activeSessionRef.current?.token !== active.token) return;
+      forgetGroupInvite(); void saveGroupInvite(null).catch(() => {}); setAppLink(null); setGroupId(group.id); setTab('Groups'); setScreen('group'); await load(accountOwner(active));
     }} />}
     {newPersonInvite && <SendInviteDialog visible={showNewPersonInvite && !authHeld} email={newPersonInvite.email} busy={busy} error={newPersonInviteError} onSend={() => void sendNewPersonInvite()} onCancel={() => { if (!busy) { setNewPersonInvite(null); setNewPersonInviteError(''); } }} />}
     {authHeld && (emailEntry?.phase === 'switch' ? emailContent : <EmailLinkDialog title={emailEntry?.phase === 'name' ? 'Name' : 'Sign in'}>{emailContent}</EmailLinkDialog>)}

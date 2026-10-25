@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import ts from 'typescript';
+import { confirmedGroupInvite } from '../src/appLinks.ts';
 import * as members from '../src/members.ts';
 import type { Group } from '../src/types.ts';
 
@@ -16,7 +17,7 @@ function production(file: string, extra: Record<string, any> = {}) {
   const states: any[] = [], dependencies: Record<number, any[]> = {}, cleanups: Record<number, any> = {}, timers = new Map<number, () => void>();
   let effects: (() => void)[] = [];
   const env: Record<string, any> = {
-    ...members, React: { Fragment: 'Fragment', createElement: (type: any, props: any, ...children: any[]) => ({ type, props: props ?? {}, children }) },
+    ...members, confirmedGroupInvite, React: { Fragment: 'Fragment', createElement: (type: any, props: any, ...children: any[]) => ({ type, props: props ?? {}, children }) },
     Platform: { OS: 'native' }, View: 'View', Text: 'Text', Pressable: 'Pressable', Button: 'Button', Avatar: 'Avatar', Icon: 'Icon', IconAction: 'IconAction',
     Disclosure: 'Disclosure', EmailField: 'EmailField', TextField: 'TextField', GroupMembershipActions: 'GroupMembershipActions', KeyboardDialog: 'KeyboardDialog', SendInviteDialog: 'SendInviteDialog',
     LoadingSpinner: 'LoadingSpinner', DialogFocus: 'DialogFocus', DialogScrollBody: 'DialogScrollBody', CancelDialogActions: 'CancelDialogActions', ErrorText: 'ErrorText', Dialog: Object.assign(() => {}, { Title: 'Dialog.Title' }),
@@ -192,4 +193,68 @@ test('guest name save is blocked when the person joins or is removed while the d
     assert.equal(panel.calls.filter(call => call.path.endsWith('/name')).length, 0);
     panel.unmount();
   }
+});
+
+
+test('shared group creation starts solo and keeps optional person emails aligned', () => {
+  const output:any[]=[];const app=production('CreateGroupForm.tsx',{Form:'Form'});
+  const render=()=>app.render('CreateGroupForm',{direct:false,busy:false,onCreate:(v:any)=>output.push(v)});
+  let tree=render();assert.equal(nodes(tree).filter(n=>n.type==='EmailField').length,0);
+  nodes(tree).find(n=>n.props.label==='Group name')!.props.onChangeText('Trip');
+  tree=render();button(tree,'Create group').props.onPress();assert.deepEqual(output[0].people,[]);
+  button(tree,'Add person').props.onPress();tree=render();
+  nodes(tree).find(n=>n.props.label==='Person 1')!.props.onChangeText('Noor');
+  nodes(tree).find(n=>n.props.label==='Person 1 email (optional)')!.props.onChangeText('noor@example.invalid');
+  tree=render();button(tree,'Create group').props.onPress();assert.deepEqual(output[1].emails,['noor@example.invalid']);
+  button(tree,'Remove person 1').props.onPress();tree=render();button(tree,'Create group').props.onPress();assert.deepEqual(output[2].people,[]);app.unmount();
+});
+
+test('group invite preview never joins automatically; explicit duplicate presses join once', async () => {
+  const calls:any[]=[],joined:string[]=[];let finish!: (value:any)=>void;
+  const app=production('GroupJoinDialog.tsx',{request:async(_s:any,path:string,_m:string,body:any)=>{calls.push({path,body});if(path.endsWith('preview'))return{name:'Trip',already_member:false};return new Promise(r=>{finish=r;});}});
+  const props={session:{token:'account-A',email:'a@example.invalid'},token:'synthetic-capability',onJoined:async(id:string)=>{joined.push(id);},onCancel(){}};
+  const render=()=>app.render('GroupJoinDialog',props);render();await app.commit();let tree=render();
+  assert.equal(calls.length,1);assert.equal(button(tree,'Join group').props.disabled,false);
+  button(tree,'Join group').props.onPress();button(tree,'Join group').props.onPress();await tick();assert.equal(calls.length,2);
+  finish({id:'group'});await tick();assert.deepEqual(joined,['group']);app.unmount();
+});
+
+test('group join completion after account-scope unmount cannot open another account group', async () => {
+  let finish!:(v:any)=>void;let joined=0;
+  const app=production('GroupJoinDialog.tsx',{request:async(_s:any,p:string)=>p.endsWith('preview')?{name:'Trip',already_member:false}:new Promise(r=>{finish=r;})});
+  const props={session:{token:'account-A',email:'a@example.invalid'},token:'synthetic',onJoined:async()=>{joined++;},onCancel(){}};
+  app.render('GroupJoinDialog',props);await app.commit();button(app.render('GroupJoinDialog',props),'Join group').props.onPress();await tick();app.unmount();finish({id:'group'});await tick();assert.equal(joined,0);
+});
+
+test('uncertain group link receipt is not shareable and retries the same command', async () => {
+ let accepted=false;
+ const token='01234567-89ab-cdef-0123-456789abcdef:'+ 's'.repeat(43);
+ const panel=settings(false,async(path,body)=>path==='/invite-link'&&accepted?{id:'group',version:2,url:'https://merosplit.com/app/invite/join#token='+encodeURIComponent(token)}:{});
+ let tree=panel.render();button(tree,'Invite with a link').props.onPress();await tick();tree=panel.render();
+ assert.equal(nodes(tree).some(n=>n.props.title==='Share link'),false);
+ accepted=true;button(tree,'Invite with a link').props.onPress();await tick();
+ assert.ok(button(panel.render(),'Share link'));
+ const calls=panel.calls.filter(c=>c.path==='/invite-link');assert.equal(calls.length,2);assert.equal(calls[0].body.command_id,calls[1].body.command_id);
+ panel.unmount();
+});
+
+
+test('group link and join command IDs are lazy and retained through uncertain retries', async () => {
+  let ids = 0;
+  const crypto = { randomUUID: () => `lazy-${++ids}` };
+  const members = production('MembersScreen.tsx', { Crypto: crypto });
+  const group: Group = { id: 'group', name: 'Trip', owner_id: 1, version: 1, participants: [{ id: 'self', name: 'You', user_id: 1 }], expenses: [], settlements: [], balances: {}, transfers: [], activity: [] };
+  const writes: any[] = [];
+  const props = { group, selfId: 'self', busy: false, onMembership() {}, onAction: async (_path: string, body: any) => { writes.push(body); throw Error('Unknown response'); } };
+  for (let i = 0; i < 3; i++) members.render('MemberSettings', props);
+  assert.equal(ids, 0, 'ordinary renders do not consume command IDs');
+  button(members.render('MemberSettings', props), 'Invite with a link').props.onPress(); await tick();
+  button(members.render('MemberSettings', props), 'Invite with a link').props.onPress(); await tick();
+  assert.equal(ids, 1); assert.deepEqual(writes.map(v => v.command_id), ['lazy-1', 'lazy-1']); members.unmount();
+  const joins: any[] = [];
+  const dialog = production('GroupJoinDialog.tsx', { Crypto: crypto, request: async (_session: any, path: string, _method: string, body: any) => { if (path.endsWith('preview')) return { name: 'Trip', already_member: false }; joins.push(body); throw Error('Unknown response'); } });
+  const joinProps = { session: { token: 'account-a', email: 'a@example.invalid' }, token: 'synthetic', onJoined: async () => {}, onCancel() {} };
+  dialog.render('GroupJoinDialog', joinProps); await dialog.commit(); dialog.render('GroupJoinDialog', joinProps); assert.equal(ids, 1);
+  for (let i = 0; i < 2; i++) { button(dialog.render('GroupJoinDialog', joinProps), 'Join group').props.onPress(); await tick(); }
+  assert.equal(ids, 2); assert.deepEqual(joins.map(v => v.command_id), ['lazy-2', 'lazy-2']); dialog.unmount();
 });

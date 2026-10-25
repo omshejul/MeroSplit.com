@@ -1,4 +1,4 @@
-import { publicAppUrl } from './appLinks';
+import { confirmedGroupInvite, publicAppUrl } from './appLinks';
 import { DialogScrollBody, CancelDialogActions } from './DialogParts';
 import KeyboardDialog from './KeyboardDialog';
 import SendInviteDialog from './SendInviteDialog';
@@ -82,15 +82,16 @@ function MemberRow({ group, person, selfId, organizer, disabled, working, feedba
   </View>;
 }
 
-function AddPersonDialog({ visible, disabled, working, archived, name, email, onName, onEmail, onClose, onSave, feedback }: {
+function AddPersonDialog({ visible, disabled, working, archived, name, email, onName, onEmail, onClose, onSave, onLink, feedback }: {
   visible: boolean; disabled: boolean; working: boolean; archived: boolean; name: string; email: string;
-  onName: (value: string) => void; onEmail: (value: string) => void; onClose: () => void; onSave: () => void; feedback: Feedback;
+  onName: (value: string) => void; onEmail: (value: string) => void; onClose: () => void; onSave: () => void; onLink: () => void; feedback: Feedback;
 }) {
   return <KeyboardDialog visible={visible} onDismiss={() => { if (!disabled) onClose(); }}>
     <Dialog.Title aria-level={2}>Add person</Dialog.Title>
     <DialogScrollBody maxHeight={280} gap={8}>
       <Field label="Name" value={name} onChange={onName} disabled={disabled} autoFocus autoCapitalize="words" />
       <Field label="Email (optional)" value={email} onChange={onEmail} disabled={disabled} keyboardType="email-address" maxLength={254} />
+      <Button title="Invite with a link" kind="text" disabled={disabled || archived} onPress={onLink} />
       <FeedbackNote section="add-person" feedback={feedback} />
     </DialogScrollBody>
     <CancelDialogActions disabled={disabled} onCancel={onClose}>
@@ -175,6 +176,7 @@ function MemberSettings({ group, selfId, busy, addPersonRequest = 0, onAction, o
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const emailPerson = group.participants.find(person => person.id === emailPersonId);
   function closePersonEmail() { Keyboard.dismiss(); setEmailPersonId(null); requestAnimationFrame(() => emailTrigger.current?.focus()); }
+  const [groupLink, setGroupLink] = useState(''), groupLinkCommand = useRef<string | null>(null);
   const [inviteLink, setInviteLink] = useState<InviteLink | null>(null);
   const [invitePerson, setInvitePerson] = useState<Participant | null>(null);
   const [working, setWorking] = useState(false);
@@ -190,6 +192,7 @@ function MemberSettings({ group, selfId, busy, addPersonRequest = 0, onAction, o
   const savedEmail = directPerson?.email ?? '', email = contactEmail ?? savedEmail;
   const emailChanged = email.trim().toLowerCase() !== savedEmail.trim().toLowerCase();
   const disabled = busy || working;
+  useEffect(() => { if (!organizer || group.archived || group.is_direct) setGroupLink(''); }, [organizer, group.archived, group.is_direct]);
   useEffect(() => {
     if (lastAddRequest.current === addPersonRequest) return;
     lastAddRequest.current = addPersonRequest;
@@ -332,7 +335,28 @@ function MemberSettings({ group, selfId, busy, addPersonRequest = 0, onAction, o
     });
   }
 
+  async function createGroupLink() {
+    if (!organizer || group.is_direct || group.archived) return;
+    closeAddPerson();
+    await perform('group-link', async () => {
+      groupLinkCommand.current ??= Crypto.randomUUID();
+      const result = await onAction('/invite-link', { command_id: groupLinkCommand.current });
+      const url = confirmedGroupInvite(group.id, result);
+      if (mounted.current && latestGroup.current.id === group.id && latestGroup.current.owner_id === self?.user_id && !latestGroup.current.archived) setGroupLink(url);
+    });
+  }
+
   return <View style={s.content}>
+    {organizer && !group.is_direct && <View style={s.section}>
+      <Button title="Invite with a link" disabled={disabled || !!group.archived} onPress={() => void createGroupLink()} />
+      {!!groupLink && !group.archived && <>
+        <Text style={ui.caption}>Anyone with this link can join. It is reusable and does not expire.</Text>
+        <Text selectable style={ui.body}>{groupLink}</Text>
+        {Platform.OS === 'web' ? <Button title="Copy link" disabled={disabled} onPress={() => void perform('group-link', async () => { await navigator.clipboard.writeText(groupLink); }, 'Link copied.')} />
+          : <Button title="Share link" disabled={disabled} onPress={() => void perform('group-link', async () => { await Share.share({ message: `Join ${group.name}: ${groupLink}` }); })} />}
+      </>}
+      <FeedbackNote section="group-link" feedback={feedback} />
+    </View>}
     <View>
       {group.participants.map(person => <MemberRow key={person.id} group={group} person={person} selfId={selfId} organizer={organizer} disabled={disabled} working={working} feedback={feedback}
         cooldown={inviteCooldowns[person.id] ?? 0} contactChanged={person.id === directPerson?.id && emailChanged}
@@ -355,7 +379,7 @@ function MemberSettings({ group, selfId, busy, addPersonRequest = 0, onAction, o
     <EditNameDialog person={namePerson} name={personName} disabled={disabled} working={working} unavailable={!organizer || !!group.archived || !!namePerson?.removed || namePerson?.user_id != null} onName={setPersonName} onClose={closeName} onSave={saveName} feedback={feedback} />
     <PersonEmailDialog person={emailPerson} email={personEmail} disabled={disabled} working={working} unavailable={!organizer || !!group.archived || !!emailPerson?.removed || emailPerson?.user_id != null} onEmail={setPersonEmail} onClose={closePersonEmail} onSave={savePersonEmail} feedback={feedback} />
     <AddPersonDialog visible={addingPerson} disabled={disabled} working={working} archived={!!group.archived} name={newName} email={newEmail}
-      onName={setNewName} onEmail={setNewEmail} onClose={closeAddPerson} onSave={savePerson} feedback={feedback} />
+      onName={setNewName} onEmail={setNewEmail} onClose={closeAddPerson} onSave={savePerson} onLink={() => void createGroupLink()} feedback={feedback} />
     <SendInviteDialog visible={!!invitePerson} email={invitePerson?.email ?? ''} busy={disabled}
       error={feedback?.error && feedback.section === `email-invite:${invitePerson?.id}` ? feedback.text : ''}
       onSend={sendConfirmedInvite} onCancel={() => { if (!disabled) { setInvitePerson(null); setFeedback(null); } }} />

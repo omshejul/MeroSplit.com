@@ -1,3 +1,4 @@
+import { groupInviteToken } from './groupInvite.ts';
 import type { AppLink } from './browserLinks.ts';
 import type { EmailLink } from './emailLink.ts';
 
@@ -32,6 +33,10 @@ export function parseNativeLink(value: string | null | undefined): NativeLink | 
     if (email) {
       const proof = hash.match(/^#proof=([A-Za-z0-9_-]{43,128})$/)?.[1] ?? null;
       return hash && !proof ? null : { kind: 'email', link: { id: email[1].toLowerCase(), proof } };
+    }
+    if (/^\/app\/invite\/join\/?$/.test(path)) {
+      const token = groupInviteToken(hash);
+      return token ? { kind: 'app', target: { groupInviteToken: token } } : null;
     }
     if (hash) return null;
     const group = path.match(groupPath);
@@ -70,4 +75,12 @@ export function startNativeLinks(source: NativeLinkSource, onLink: (link: Native
     if (!stopped && !warmReceived) { const link = parseNativeLink(value); if (link) enqueue(link); }
   }, () => {}).then(() => { if (!stopped) onReady(); });
   return () => { stopped = true; subscription.remove(); pending.length = 0; keys.clear(); };
+}
+
+// A receipt must prove both the accepted group write and the exact capability URL.
+export function confirmedGroupInvite(groupId: string, value: Record<string, unknown>): string {
+  const url = value.url;
+  const parsed = typeof url === 'string' && url.startsWith(`${APP_ORIGIN}/app/invite/join#token=`) ? parseNativeLink(url) : null;
+  if (value.id !== groupId || !Number.isSafeInteger(value.version) || Number(value.version) < 1 || !parsed || parsed.kind !== 'app' || !('groupInviteToken' in parsed.target)) throw new Error('Could not confirm the invite link. Try again.');
+  return url as string;
 }

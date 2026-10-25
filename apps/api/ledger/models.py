@@ -473,3 +473,10 @@ class MembershipDelivery(models.Model):
             models.UniqueConstraint(fields=['change', 'device', 'device_revision'], condition=Q(channel='push'), name='membership_push_once'),
         ]
         indexes = [models.Index(fields=['state', 'due_at', 'id'], name='membership_delivery_due')]
+
+
+class GroupInviteLink(models.Model):
+    """Reusable group capability, distinct from invitations claiming a participant."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    group = models.OneToOneField(Group, on_delete=models.CASCADE, related_name="invite_link")
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
