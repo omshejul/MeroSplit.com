@@ -545,6 +545,13 @@ def test_https_consent_uses_hidden_form_csrf_without_header(settings, host, deci
     page = client.get(response['Location'], HTTP_HOST=host, HTTP_X_FORWARDED_PROTO='https')
     assert page.status_code == 200
     assert page['Referrer-Policy'] == 'same-origin'
+    policy = {part.split()[0]: part.split()[1:] for part in page["Content-Security-Policy"].split(";") if part.strip()}
+    # Chromium applies form-action to the validated cross-origin callback redirect too.
+    assert "form-action" not in policy
+    assert "'self'" in policy["style-src"] and "'self'" in policy["font-src"]
+    assert policy["default-src"] == ["'none'"]
+    assert policy["frame-ancestors"] == ["'none'"] and policy["base-uri"] == ["'none'"]
+    assert b'action="/oauth/authorize"' in page.content
     assert b'name="referrer" content="same-origin"' in page.content
     hidden = re.search(r'name="csrfmiddlewaretoken" value="([^"]+)"', page.content.decode()).group(1)
     data = {'request': request_id, 'expected_user_id': client.session['_auth_user_id'], 'decision': decision, 'csrfmiddlewaretoken': hidden}
