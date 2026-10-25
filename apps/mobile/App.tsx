@@ -443,7 +443,7 @@ function AppContent() {
         const rows = resource === 'transactions' ? group.transactions ?? [] : resource === 'bills' ? group.expenses : resource === 'settlements' ? group.settlements : resource === 'attempts' ? group.payment_attempts ?? [] : group.activity;
         const identity = (row: any) => resource === 'transactions' ? `${row.kind}:${row.bill?.id ?? row.payment?.id}` : row.id ?? row.sequence;
         const added = page.items.filter(row => !rows.some(old => identity(old) === identity(row)));
-        await saveGroup(await getDatabase(), accountOwner(active), { ...group, [field]: direction === 'next' ? [...rows, ...added] : page.items, history: { ...group.history, [resource]: { next_cursor: page.next_cursor, cursor, previous: [], query: search } } }, 'shared');
+        await saveGroup(await getDatabase(), accountOwner(active), { ...group, [field]: direction === 'next' ? [...rows, ...added] : page.items, history: { ...group.history, [resource]: { next_cursor: page.next_cursor, cursor: direction === 'next' ? window.cursor ?? null : cursor, previous: [], query: search } } }, 'shared');
         if (signal?.aborted || activeSessionRef.current?.token !== active.token || browseCurrent.current !== context) return false;
         if (direction === 'next') await load(accountOwner(active));
         return resource === 'settlements' ? added.some(row => row.sender === selfId || row.recipient === selfId) : added.length > 0;
