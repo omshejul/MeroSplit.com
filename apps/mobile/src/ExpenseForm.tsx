@@ -1,7 +1,7 @@
 import Form from './Form';
 import React, { useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
-import { Checkbox, Text } from 'react-native-paper';
+import { Checkbox, Text, TouchableRipple } from 'react-native-paper';
 import * as Crypto from 'expo-crypto';
 import { formatMoney, integer, rupeesToPaise, validateExpense } from './accounting';
 import type { Amounts, Split } from './accounting';
@@ -32,6 +32,13 @@ type Props = {
 const today = () => { const date = new Date(); return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`; };
 const rupees = (value: string) => { const amount = integer(value); return `${amount / 100n}.${(amount % 100n).toString().padStart(2, '0')}`; };
 const paise = (value: string) => ['0', '0.0', '0.00'].includes(value) ? '0' : rupeesToPaise(value);
+
+function payerDifference(draft: ExpenseFormDraft): bigint | null {
+  if (draft.payerIds.length < 2) return null;
+  try {
+    return integer(rupeesToPaise(draft.amount)) - draft.payerIds.reduce((sum, id) => sum + integer(paise(draft.payerAmounts[id] || '0')), 0n);
+  } catch { return null; }
+}
 
 function startingDraft(group: Group, expense: Expense | undefined, selfId: string, saved: Props['initialDraft']): { draft: ExpenseFormDraft; warning: string } {
   const ids = group.participants.map(person => person.id);
@@ -82,13 +89,25 @@ type ExpenseSelectionProps = {
 };
 const splitModes = { equal: 'Equally', exact: 'Exact amounts', percent: 'Percentages', shares: 'Shares' } as const;
 
-function PayerFields({ participants, draft, disabled, preserveRemoved, label, onChange, status, onToggle }: ExpenseSelectionProps & { onToggle: (id: string) => void }) {
+function PayerAdjustment({ difference, name, onPress }: { difference: bigint; name: string; onPress: () => void }) {
+  const { ui } = useUI(), adding = difference > 0n, amount = formatMoney((adding ? difference : -difference).toString());
+  return <TouchableRipple accessibilityRole="button" accessibilityLabel={`${adding ? 'Add' : 'Subtract'} ${amount} ${adding ? 'to' : 'from'} ${name}`} onPress={onPress} style={styles.adjustTouch}>
+    <View style={[styles.adjustChip, { backgroundColor: adding ? '#4ADE80' : '#F87171' }]}>
+      <Text style={[ui.caption, styles.adjustText, { color: adding ? '#052E16' : '#450A0A' }]}>{adding ? '+' : '−'}{amount}</Text>
+    </View>
+  </TouchableRipple>;
+}
+
+function PayerFields({ participants, draft, disabled, preserveRemoved, label, onChange, status, onToggle, onAdjust }: ExpenseSelectionProps & { onToggle: (id: string) => void; onAdjust: (id: string) => void }) {
   const { ui } = useUI();
+  const difference = payerDifference(draft);
   return <View style={styles.reveal}>
     {participants.filter(person => !person.removed || draft.payerIds.includes(person.id)).map(person => <View key={`payer-${person.id}`} style={styles.field}>
       <Choice title={label(person.id)} selected={draft.payerIds.includes(person.id)} disabled={disabled || (preserveRemoved && !!person.removed)} onPress={() => onToggle(person.id)} />
       {draft.payerIds.length > 1 && draft.payerIds.includes(person.id) && <TextField autoCorrect={false} label={`Paid by ${label(person.id)} (₹)`} value={draft.payerAmounts[person.id] ?? ''}
-        onChangeText={value => onChange({ payerAmounts: { ...draft.payerAmounts, [person.id]: value } })} keyboardType="decimal-pad" editable={!disabled && !person.removed} />}
+        onChangeText={value => onChange({ payerAmounts: { ...draft.payerAmounts, [person.id]: value } })} keyboardType="decimal-pad" editable={!disabled && !person.removed}
+        right={!disabled && !person.removed && difference !== null && difference !== 0n && integer(paise(draft.payerAmounts[person.id] || '0')) + difference >= 0n
+          ? <PayerAdjustment difference={difference} name={label(person.id)} onPress={() => onAdjust(person.id)} /> : null} />}
     </View>)}
     {!!status && <Text accessibilityLiveRegion="polite" style={ui.caption}>{status}</Text>}
   </View>;
@@ -138,6 +157,12 @@ export default function ExpenseForm({ group, expense, selfId, busy, onSave, init
     if (draft.payerIds.length === 1) payerAmounts[draft.payerIds[0]] = draft.amount;
     change({ payerIds, payerAmounts });
   }
+  function adjustPayer(id: string) {
+    const current = draftRef.current, difference = payerDifference(current);
+    if (disabled || lock.current || group.archived || difference === null || difference === 0n || !current.payerIds.includes(id) || !group.participants.some(person => person.id === id && !person.removed)) return;
+    const amount = integer(paise(current.payerAmounts[id] || '0')) + difference;
+    if (amount >= 0n) change({ payerAmounts: { ...current.payerAmounts, [id]: rupees(amount.toString()) } });
+  }
   async function save() {
     if (lock.current || busy || fileBusy || group.archived) return;
     setError('');
@@ -179,12 +204,9 @@ export default function ExpenseForm({ group, expense, selfId, busy, onSave, init
       const display = draft.mode === 'percent' ? `${rupees(absolute)}%` : formatMoney(absolute);
       splitStatus = difference === 0n ? 'Adds up.' : `${display} ${difference > 0n ? 'left to split' : 'too much'}.`;
     }
-    if (draft.payerIds.length > 1) {
-      const sum = draft.payerIds.reduce((value, id) => value + integer(paise(draft.payerAmounts[id] || '0')), 0n);
-      const difference = integer(rupeesToPaise(draft.amount)) - sum;
-      payerStatus = difference === 0n ? 'Adds up to the bill.' : `${formatMoney((difference < 0n ? -difference : difference).toString())} ${difference > 0n ? 'still to add' : 'too much'}.`;
-    }
   } catch { /* The save action keeps the existing accounting validation authoritative. */ }
+  const difference = payerDifference(draft);
+  if (difference !== null) payerStatus = difference === 0n ? 'Adds up to the bill.' : `${formatMoney((difference < 0n ? -difference : difference).toString())} ${difference > 0n ? 'still to add' : 'too much'}.`;
   return <Form label="Bill" style={styles.form} onSubmit={() => { if (!disabled && !group.archived) void save(); }}>
     <Text style={ui.caption}>{group.name}</Text>
     {group.archived && <Text style={ui.notice}>Reopen this group in settings before saving a bill.</Text>}
@@ -193,8 +215,8 @@ export default function ExpenseForm({ group, expense, selfId, busy, onSave, init
     <TextField autoCorrect={false} label="Description" value={draft.description} onChangeText={description => change({ description })} placeholder="What was it for?" maxLength={200} editable={!disabled} />
     <BillPeople icon="pay" title="Who paid?" summary={draft.payerIds.length === 1 ? label(draft.payerIds[0]) : draft.payerIds.length ? `${draft.payerIds.length} people` : 'Choose who paid'}
       inline={group.participants.filter(person => !person.removed || draft.payerIds.includes(person.id)).length === 1} disabled={disabled}>
-      <PayerFields participants={group.participants} draft={draft} disabled={disabled} preserveRemoved={!!acceptedExpense}
-        label={label} onChange={change} status={payerStatus} onToggle={togglePayer} />
+      <PayerFields participants={group.participants} draft={draft} disabled={disabled || !!group.archived} preserveRemoved={!!acceptedExpense}
+        label={label} onChange={change} status={payerStatus} onToggle={togglePayer} onAdjust={adjustPayer} />
     </BillPeople>
     <BillPeople icon="people" title="Split between" summary={between} inline={group.participants.filter(person => !person.removed || draft.participantIds.includes(person.id)).length === 1} disabled={disabled}>
       <SplitFields participants={group.participants} draft={draft} disabled={disabled} preserveRemoved={!!acceptedExpense}
@@ -211,4 +233,7 @@ export default function ExpenseForm({ group, expense, selfId, busy, onSave, init
 const styles = StyleSheet.create({
   form: { gap: 12 }, field: { gap: 7 },
   notes: { minHeight: 100, textAlignVertical: 'top' }, reveal: { gap: 12, paddingBottom: 12 },
+  adjustTouch: { minWidth: 44, minHeight: 44, justifyContent: 'center', borderRadius: 8, flexShrink: 1 },
+  adjustChip: { borderRadius: 8, paddingHorizontal: 12, paddingVertical: 5 },
+  adjustText: { fontSize: 14, lineHeight: 20, fontWeight: '700', fontVariant: ['tabular-nums'], textAlign: 'center' },
 });
