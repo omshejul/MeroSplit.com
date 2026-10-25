@@ -18,10 +18,17 @@ from ledger.mcp_setup import setup as mcp_setup
 from config.associations import android_association, apple_association
 from config.web import invite_app, public_asset, web_app, web_media
 
+# Enable only after the exact current iOS and Android testing builds are eligible.
+TESTING_LINKS_READY = False
+
 urlpatterns = [
     path("assets/typography.css", public_asset, {"asset": "typography.css"}),
     path("assets/fonts/StackSansText.ttf", public_asset, {"asset": "StackSansText.ttf"}),
     path("assets/home.css", public_asset, {"asset": "home.css"}),
+    path("assets/install.js", public_asset, {"asset": "install.js"}),
+    path("assets/install-qr.svg", public_asset, {"asset": "install-qr.svg"}),
+    path("assets/try-on-iphone.svg", public_asset, {"asset": "try-on-iphone.svg"}),
+    path("assets/try-on-android.svg", public_asset, {"asset": "try-on-android.svg"}),
     path("assets/merosplit-icon.png", public_asset, {"asset": "merosplit-icon.png"}),
     path("assets/merosplit-logo.svg", public_asset, {"asset": "merosplit-logo.svg"}),
     path("assets/favicon.png", public_asset, {"asset": "favicon.png"}),
@@ -35,7 +42,7 @@ urlpatterns = [
     path("oauth/authorize", mcp_oauth_views.authorize),
     path("oauth/token", mcp_oauth_views.token),
     path("oauth/revoke", mcp_oauth_views.revoke),
-    path("", TemplateView.as_view(template_name="ledger/home.html")),
+    path("", TemplateView.as_view(template_name="ledger/home.html", extra_context={"testing_links_ready": TESTING_LINKS_READY})),
     path("robots.txt", TemplateView.as_view(template_name="ledger/robots.txt", content_type="text/plain; charset=utf-8")),
     path("sitemap.xml", TemplateView.as_view(template_name="ledger/sitemap.xml", content_type="application/xml; charset=utf-8")),
     path(".well-known/apple-app-site-association", apple_association),
