@@ -168,13 +168,14 @@ export default function GroupScreen({ categoryIcons, header, noticeVisibility, g
   // Adopt both views together only for an explicit read or the user's saved changes.
   const [shown, setShown] = useState({ group: incoming, accepted: incomingAccepted, previewError: incomingPreviewError });
   const { group, accepted, previewError } = shown;
-  const ownChanges = pending.map(command => `${command.command_id}:${command.state}`).join('|');
-  const adoptedRevision = useRef(revision), savedCommands = useRef(new Set(pending.map(command => command.command_id)));
+  const commandBodies = new Map(pending.map(command => [command.command_id, JSON.stringify(command.body)]));
+  const ownChanges = pending.map(command => `${command.command_id}:${command.state}:${commandBodies.get(command.command_id)}`).join('|');
+  const adoptedRevision = useRef(revision), savedCommands = useRef(commandBodies);
   const [opacity] = useState(() => new Animated.Value(1));
   useLayoutEffect(() => {
     const deliberate = revision !== adoptedRevision.current;
-    const ownSave = pending.some(command => !savedCommands.current.has(command.command_id));
-    adoptedRevision.current = revision; savedCommands.current = new Set(pending.map(command => command.command_id));
+    const ownSave = pending.some(command => !savedCommands.current.has(command.command_id) || savedCommands.current.get(command.command_id) !== commandBodies.get(command.command_id));
+    adoptedRevision.current = revision; savedCommands.current = commandBodies;
     if (!deliberate && !ownSave) return;
     if (deliberate && incoming.version !== group.version) {
       list.current?.scrollToOffset({ offset: 0, animated: false });

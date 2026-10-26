@@ -151,3 +151,56 @@ test('a changed server revision clears old history instead of mixing redacted or
   assert.equal(tree.props.ListEmptyComponent.children[0].children[0], 'History changed. Refresh to see the latest.');
   app.unmount();
 });
+
+
+const footerButton = (tree: any, title: string): any => {
+  const find = (node: any): any => node?.props?.title === title ? node : (Array.isArray(node) ? node : node?.children || []).map(find).find(Boolean);
+  return find(tree.props.ListFooterComponent);
+};
+const historyBatch = (highest: number, lowest: number, next_before: number | null): ExpenseHistoryPage => ({ ...page(), items: Array.from({ length: highest - lowest + 1 }, (_, i) => ({ ...version(`version-${highest-i}`), sequence: highest-i, changes: [{ field: 'notes', before: `Before ${highest-i}`, after: `Body ${highest-i}` }] })), next_before });
+
+test('older-page 503 Retry requests the same cursor once and retains all 65 ordered history bodies', async () => {
+  let tailFails = true; const calls: string[] = [];
+  const app = component(async (_session, path) => {
+    calls.push(path);
+    if (!path.includes('?before=')) return historyBatch(65, 16, 16);
+    assert.equal(path, '/groups/group/expenses/bill/versions?before=16&limit=20');
+    if (tailFails) throw new ApiError(503, 'Temporary failure');
+    return historyBatch(15, 1, null);
+  });
+  try {
+    app.render(); await app.commit(); let tree = app.render();
+    const firstBodies = tree.props.data.map((row: any) => row.version);
+    assert.equal(firstBodies.length, 50);
+    footerButton(tree, 'Load older').props.onPress(); await tick(); tree = app.render(); await app.commit();
+    assert.deepEqual(tree.props.data.map((row: any) => row.version), firstBodies);
+    const retry = footerButton(tree, 'Retry'); assert.ok(retry);
+    tailFails = false; await app.commit(); assert.equal(calls.length, 2, 'recovery does not automatically retry');
+    retry.props.onPress(); retry.props.onPress(); await tick(); tree = app.render(); await app.commit();
+    assert.equal(calls.length, 3, 'one request from explicit Retry, double tap deduplicated');
+    assert.deepEqual(tree.props.data.map((row: any) => row.version.sequence), Array.from({length:65},(_,i)=>65-i));
+    assert.deepEqual(tree.props.data.slice(0,50).map((row: any) => row.version), firstBodies);
+    assert.equal(new Set(tree.props.data.map((row: any)=>row.version.id)).size,65);
+    assert.deepEqual(tree.props.data.map((row: any)=>row.change.after),Array.from({length:65},(_,i)=>`Body ${65-i}`));
+    assert.equal(footerButton(tree, 'Retry'), undefined); assert.equal(footerButton(tree,'Load older'), undefined);
+    retry.props.onPress(); await tick(); assert.equal(calls.length,3,'exhausted cursor cannot replay');
+  } finally { app.unmount(); }
+});
+
+test('initial-load Retry remains available and makes only its explicit request', async () => {
+  let fail=true,calls=0;const app=component(async()=>{calls++;if(fail)throw new ApiError(503,'Temporary');return page();});
+  try { app.render();await app.commit();let tree=app.render();const retry=tree.props.ListEmptyComponent.children.find((node:any)=>node?.props?.title==='Retry');assert.ok(retry);
+    fail=false;retry.props.onPress();app.render();await app.commit();tree=app.render();assert.equal(calls,2);assert.equal(tree.props.data.length,1);
+  }finally{app.unmount();}
+});
+
+test('older Retry callbacks cannot request after offline, account/session switch or unmount', async () => {
+  for (const change of ['offline','account','session','unmount']) {
+    let calls=0;const app=component(async (_session,path)=>{calls++;if(path.includes('?before='))throw new ApiError(503,'Temporary');return historyBatch(65,16,16);});
+    let closed=false;
+    try { app.render();await app.commit();let tree=app.render();footerButton(tree,'Load older').props.onPress();await tick();tree=app.render();await app.commit();const retry=footerButton(tree,'Retry');assert.ok(retry);
+      if(change==='unmount'){app.unmount();closed=true;}else{app.render(change==='offline'?{online:false}:{session:{...session,userId:change==='account'?'2':'1',token:'changed'}});await app.commit();}
+      const before=calls;retry.props.onPress();await tick();assert.equal(calls,before,change+' stale Retry must not request');
+    }finally{if(!closed)app.unmount();}
+  }
+});

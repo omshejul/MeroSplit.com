@@ -98,7 +98,7 @@ export default function ExpenseVersionHistory({ session, groupId, expenseId, gro
     if (active) void load();
     return () => { mounted.current = false; controller.current?.abort(); };
   }, [scope, active, online, retry]);
-  const paging = useScrollPagination({ scope, cursor: shown?.next_before, enabled: active && online && !error, load: signal => load(shown?.next_before ?? undefined, signal).then(Boolean) });
+  const paging = useScrollPagination({ scope, cursor: shown?.next_before, enabled: active && online, load: signal => load(shown?.next_before ?? undefined, signal).then(Boolean) });
   if (!active) return null;
   const rows: Row[] = shown?.items.flatMap(version => version.kind === 'created' ? [{ version }] : version.changes.map(change => ({ version, change }))) ?? [];
   return <FlatList ref={list} scrollEventThrottle={100} onEndReachedThreshold={0.3} data={rows} keyExtractor={({ version, change }) => `${version.id}:${change?.field || 'created'}`}

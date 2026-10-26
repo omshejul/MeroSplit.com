@@ -169,6 +169,52 @@ test('virtualized timeline and legacy bill/payment lists preserve server order',
   assert.ok(!elements(history).some(node => node.type === 'HistoryPages'));
 });
 
+test('actual GroupScreen transaction rows expose offline new/edit bills and their detail callback', () => {
+  const bill = { ...billRow({ id: 'accepted', total: '1000', paid: { self: '1000' }, shares: { self: '500', other: '500' } }), category: 'other', notes: '', split: { mode: 'equal' as const, values: { self: '1', other: '1' } } };
+  const accepted: Group = { ...group, name: 'Trip', version: 1, read_mode: 'summary', expenses: [bill], settlements: [], balances: { self: '500', other: '-500' }, transfers: [{ sender: 'other', recipient: 'self', amount: '500' }], activity: [], transactions: [{ kind: 'bill', date: bill.date, bill }], history: { transactions: { next_cursor: 'older' } } };
+  const pending: Command[] = [
+    { command_id: 'edit', group_id: 'g', base_version: 1, state: 'pending', error: null, method: 'PUT', path: '/groups/g/expenses/accepted', body: { ...bill, description: 'Saved accepted edit' } },
+    { command_id: 'photo', group_id: 'g', base_version: 1, state: 'pending', error: null, method: 'POST', path: '/groups/g/expenses', body: { ...bill, id: 'photo', date: '2026-10-27', description: 'Saved photo bill' } },
+  ];
+  const projected = previewPending(accepted, pending), opened: string[] = [];
+  const tree = production('GroupScreen')({ group: projected, accepted, pending, selfId: 'self', busy: false, online: false, onExpense: (bill: any) => opened.push(bill.id) });
+  const list = elements(tree).find(node => node.type === 'FlatList')!;
+  assert.deepEqual(list.props.data.map((row: any) => row.bill.id), ['photo', 'accepted']);
+  assert.equal(list.props.data[1].bill.description, 'Saved accepted edit');
+  assert.deepEqual(list.props.data.map(list.props.keyExtractor), ['bill:photo', 'bill:accepted']);
+  const row = list.props.renderItem({ item: list.props.data[0] });
+  assert.equal(row.props.group, projected);
+  const rendered = production('BillTimelineRow')(row.props);
+  elements(rendered).find(node => node.type === 'LogRow')!.props.onPress();
+  assert.deepEqual(opened, ['photo'], 'the newly saved bill reaches the existing detail callback offline');
+  assert.equal(elements(tree).find(node => node.type === 'PersonalTransferRow')!.props.disabled, true);
+  assert.deepEqual(projected.history, accepted.history);
+});
+
+test('own saved payload changes adopt the same queued ID while conflict and acknowledgement keep the reading snapshot', () => {
+  const slots: any[] = [];
+  let cursor = 0, dirty = false, effects: (() => void)[] = [];
+  const effect = (callback: () => void, deps: unknown[]) => { const index = cursor++, previous = slots[index]; if (!previous || deps.some((value, i) => !Object.is(value, previous[i]))) { slots[index] = deps; effects.push(callback); } };
+  const render = production('GroupScreen', {
+    useState: (initial: any) => { const index = cursor++; if (!(index in slots)) slots[index] = typeof initial === 'function' ? initial() : initial; return [slots[index], (value: any) => { slots[index] = value; dirty = true; }]; },
+    useRef: (initial: any) => { const index = cursor++; return slots[index] ??= { current: initial }; }, useLayoutEffect: effect, useEffect: effect,
+  });
+  const accepted = { ...group, version: 1, expenses: [], settlements: [], balances: { self: '0' }, transfers: [], transactions: [] };
+  const firstBill = billRow({ id: 'pending', description: 'Saved first' }), secondBill = { ...firstBill, description: 'Saved edited' };
+  const first = { ...accepted, expenses: [firstBill], transactions: [{ kind: 'bill', date: firstBill.date, bill: firstBill }] };
+  const second = { ...first, expenses: [secondBill], transactions: [{ kind: 'bill', date: secondBill.date, bill: secondBill }] };
+  const command = { command_id: 'same-command', state: 'pending', body: { id: 'pending', description: 'Saved first' } };
+  const props = { group: first, accepted, pending: [command], selfId: 'self', busy: false, revision: 0 };
+  const view = (next: any) => { let tree: Element; do { dirty = false; cursor = 0; effects = []; tree = render(next); effects.forEach(fn => fn()); } while (dirty); return elements(tree!).find(node => node.type === 'FlatList')!; };
+  view(props);
+  const edited = { ...command, body: { ...command.body, description: 'Saved edited' } };
+  assert.equal(view({ ...props, group: second, pending: [edited] }).props.data[0].bill.description, 'Saved edited');
+  assert.equal(view({ ...props, group: accepted, pending: [{ ...edited, state: 'conflict' }] }).props.data[0].bill.description, 'Saved edited');
+  const acknowledged = { ...accepted, version: 2 };
+  assert.equal(view({ ...props, group: acknowledged, accepted: acknowledged, pending: [] }).props.data[0].bill.description, 'Saved edited');
+  assert.deepEqual(view({ ...props, group: acknowledged, accepted: acknowledged, pending: [], revision: 1 }).props.data, []);
+});
+
 test('held optimistic total keeps its pending label until Show updates adopts accepted records', () => {
   const slots: any[] = [];
   let cursor = 0, dirty = false, effects: (() => void)[] = [], available = false;

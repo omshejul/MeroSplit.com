@@ -1,5 +1,5 @@
 import { addExpense, addSettlement, proposeTransfers, validateExpense } from './accounting.ts';
-import type { Command, Expense, Group, Participant } from './types';
+import type { Command, Expense, Group, GroupTransaction, Participant } from './types';
 
 export function emptyGroup(id: string, name: string, participants: Participant[]): Group {
   if (!name.trim() || name.trim().length > 120 || !participants.length || participants.length > 100 || participants.some(p => !p.name.trim() || p.name.length > 120)) throw new Error('Enter group/participant names of at most 120 characters, with 1 to 100 participants.');
@@ -32,6 +32,16 @@ export function legacyMatchesServer(legacy: Group, canonical: Group): boolean {
 export function previewPending(accepted: Group, commands: Command[]): Group {
   if (accepted.read_mode === 'summary' && commands.some(command => command.group_id === accepted.id && command.base_version !== accepted.version)) throw new Error('Balances show accepted records. Sync or review saved changes before previewing a new total.');
   let group: Group = JSON.parse(JSON.stringify(accepted));
+  function previewTransaction(row: GroupTransaction) {
+    if (!group.transactions) return;
+    const id = (value: GroupTransaction) => value.kind === 'bill' ? `bill:${value.bill.id}` : `payment:${value.payment.id}`;
+    // Use accepted date/kind/id order, keeping its downloaded rows and cursors.
+    const key = (value: GroupTransaction) => `${value.date ? 1 : 0}|${value.date ?? ''}|${id(value)}`;
+    const rows = group.transactions.filter(value => id(value) !== id(row));
+    const index = rows.findIndex(value => key(value) < key(row));
+    rows.splice(index < 0 ? rows.length : index, 0, row);
+    group.transactions = rows;
+  }
   if (group.focused_expense && !group.expenses.some(value => value.id === group.focused_expense!.id)) group.expenses.push(group.focused_expense);
   for (const command of commands.filter(row => row.group_id === accepted.id)) {
     const body = command.body;
@@ -51,18 +61,23 @@ export function previewPending(accepted: Group, commands: Command[]): Group {
       if (before && !before.deleted) group.balances = addExpense(group.balances, before.paid, before.shares, -1n);
       const vectors = validateExpense(input.total, input.paid, input.split, group.participants.map(p => p.id));
       group.balances = addExpense(group.balances, vectors.paid, vectors.shares);
-      group.expenses = [...group.expenses.filter(expense => expense.id !== input.id), { ...input, ...vectors, deleted: false, version: before?.version ?? 0 }];
+      const expense = { ...input, ...vectors, deleted: false, version: before?.version ?? 0 };
+      group.expenses = [...group.expenses.filter(value => value.id !== input.id), expense];
+      previewTransaction({ kind: 'bill', date: expense.date, bill: expense });
     } else if (command.method === 'POST' && command.path.endsWith('/reverse') && command.path.includes('/expenses/')) {
       const id = command.path.split('/').at(-2);
       const before = group.expenses.find(expense => expense.id === id);
       if (group.read_mode === 'summary' && !before) throw new Error('Open this saved bill online to review its pending balance.');
       if (before && !before.deleted) group.balances = addExpense(group.balances, before.paid, before.shares, -1n);
       group.expenses = group.expenses.map(expense => expense.id === id ? { ...expense, deleted: true } : expense);
+      if (before) previewTransaction({ kind: 'bill', date: before.date, bill: { ...before, deleted: true } });
     } else if (command.path.endsWith('/settlements')) {
       const { id, sender, recipient, amount, date } = body as Record<string, string>;
       if (!group.settlements.some(settlement => settlement.id === id)) {
         group.balances = addSettlement(group.balances, sender, recipient, amount);
-        group.settlements.push({ id, sender, recipient, amount, date, provenance: 'pending_manual' });
+        const payment = { id, sender, recipient, amount, date, provenance: 'pending_manual' };
+        group.settlements.push(payment);
+        previewTransaction({ kind: 'payment', date: date ?? null, payment });
       }
     } else if (command.path.endsWith('/reverse') && command.path.includes('/settlements/')) {
       const id = command.path.split('/').at(-2), settlement = group.settlements.find(value => value.id === id);
@@ -70,6 +85,7 @@ export function previewPending(accepted: Group, commands: Command[]): Group {
       if (settlement && !settlement.reversed) {
         group.balances = addSettlement(group.balances, settlement.recipient, settlement.sender, settlement.amount);
         group.settlements = group.settlements.map(value => value.id === id ? { ...value, reversed: true } : value);
+        previewTransaction({ kind: 'payment', date: settlement.date ?? null, payment: { ...settlement, reversed: true } });
       }
     } else if (command.path.includes('/opening-balances') || command.path.endsWith('/confirm')) {
       throw new Error('This acknowledgment needs the accepted server result. Sync before viewing a pending total.');
