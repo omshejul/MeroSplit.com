@@ -21,7 +21,7 @@ export type ExpenseFormDraft = {
 };
 type Props = {
   group: Group; expense?: Expense; selfId: string; busy: boolean;
-  onSave: (expense: Expense, attachment?: PendingMediaUpload) => Promise<void>;
+  onSave: (expense: Expense, attachment?: PendingMediaUpload, onQueued?: () => void) => Promise<void>;
 };
 
 const today = () => { const date = new Date(); return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`; };
@@ -114,7 +114,7 @@ export default function ExpenseForm({ group, expense, selfId, busy, onSave }: Pr
     const file = draftRef.current.attachment?.file;
     if (file && !handedOff.current) void clearStagedMedia(file).catch(() => {});
   }, []);
-  const lock = useRef(false), disabled = busy || saving || fileBusy;
+  const lock = useRef(false), disabled = busy || saving || fileBusy || handedOff.current;
   const acceptedExpense = group.expenses.find(value => value.id === draft.id);
   const label = (id: string) => {
     const person = group.participants.find(value => value.id === id)!;
@@ -138,7 +138,7 @@ export default function ExpenseForm({ group, expense, selfId, busy, onSave }: Pr
     if (amount >= 0n) change({ payerAmounts: { ...current.payerAmounts, [id]: rupees(amount.toString()) } });
   }
   async function save() {
-    if (lock.current || busy || fileBusy || group.archived) return;
+    if (lock.current || busy || fileBusy || handedOff.current || group.archived) return;
     setError('');
     try {
       if (!draft.description.trim() || draft.description.trim().length > 200) throw new Error('Enter a description of up to 200 characters.');
@@ -158,11 +158,10 @@ export default function ExpenseForm({ group, expense, selfId, busy, onSave }: Pr
         throw new Error('Keep removed people’s paid amounts and shares unchanged.');
       }
       lock.current = true; setSaving(true);
-      handedOff.current = true;
       await onSave({ id: draft.id, version: draft.expenseVersion, description: draft.description.trim(), total, ...vectors, split,
-        date: draft.date, notes: draft.notes, category: expense?.category ?? 'general', category_auto: expense?.category_auto ?? ['', 'general', 'other'].includes((expense?.category ?? '').trim().toLowerCase()), deleted: false }, draft.attachment);
+        date: draft.date, notes: draft.notes, category: expense?.category ?? 'general', category_auto: expense?.category_auto ?? ['', 'general', 'other'].includes((expense?.category ?? '').trim().toLowerCase()), deleted: false }, draft.attachment, () => { handedOff.current = true; });
+      handedOff.current = true;
     } catch (cause) {
-      handedOff.current = false;
       const message = cause instanceof Error ? cause.message : 'Could not save the expense. Try again.';
       setError(message);
     }

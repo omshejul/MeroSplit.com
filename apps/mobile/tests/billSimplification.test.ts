@@ -1,7 +1,15 @@
 import { explainTransfer, balanceKey } from '../src/balanceExplanation.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync, mkdtempSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
+import { DatabaseSync } from 'node:sqlite';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { pathToFileURL, fileURLToPath } from 'node:url';
+import { accountOwner, expensePayload } from '../src/api.ts';
+import { enqueue, enqueueBill, migrate, pendingCommands, replaceCommand } from '../src/storage.ts';
+import { enqueueExpenseWithMedia, pendingMediaUpload, saveMediaUpload } from '../src/media.ts';
+import { sqliteAdapter } from './sqlite.ts';
 import ts from 'typescript';
 import * as members from '../src/members.ts';
 import { formatMoney, integer, rupeesToPaise, validateExpense } from '../src/accounting.ts';
@@ -1054,16 +1062,20 @@ test('stale current push binding stays off in the channel view and last local Em
 });
 
 
-test('Back asks to discard the bill, Cancel retains the form and Discard leaves with the trash action', () => {
-  let open = false; const screens: string[] = [];
-  const env = { screen: 'expense', setDiscardBill: (value: boolean) => { open = value; }, navigate: (value: string) => screens.push(value) };
-  appAction('back', env)(); assert.equal(open, true); assert.deepEqual(screens, []);
+function billDiscardDialog(env: Record<string, any>) {
   const source = ts.createSourceFile('App.tsx', readFileSync(new URL('../App.tsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   let expression: ts.BinaryExpression | undefined;
   function visit(node: ts.Node) { if (ts.isBinaryExpression(node) && ts.isJsxElement(node.right) && node.right.openingElement.tagName.getText(source) === 'KeyboardDialog' && node.getText(source).includes('discardBill')) expression = node; ts.forEachChild(node, visit); }
   visit(source); assert.ok(expression);
   const code = ts.transpile(`const dialog = ${expression!.getText(source)}`, { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React });
-  const tree = new Function('env', `with(env){${code};return dialog;}`)({ ...env, React, Dialog, discardBill: open, busy: false, KeyboardDialog: 'KeyboardDialog', DialogFocus: 'DialogFocus', CancelDialogActions: 'CancelDialogActions', Button: 'Button' });
+  return new Function('env', `with(env){${code};return dialog;}`)({ React, Dialog, busy: false, KeyboardDialog: 'KeyboardDialog', DialogFocus: 'DialogFocus', CancelDialogActions: 'CancelDialogActions', Button: 'Button', ...env });
+}
+
+test('Back asks to discard the bill, Cancel retains the form and Discard leaves with the trash action', () => {
+  let open = false; const screens: string[] = [];
+  const env = { screen: 'expense', setDiscardBill: (value: boolean) => { open = value; }, navigate: (value: string) => screens.push(value) };
+  appAction('back', env)(); assert.equal(open, true); assert.deepEqual(screens, []);
+  const tree = billDiscardDialog({ ...env, discardBill: open });
   assert.ok(nodes(tree).some(node => node.children.includes('Do you want to discard the draft?')));
   nodes(tree).find(node => node.type === 'CancelDialogActions')!.props.onCancel();
   assert.equal(open, false); assert.deepEqual(screens, [], 'Cancel keeps the same form mounted');
@@ -1082,5 +1094,60 @@ test('leaving an unsaved bill clears its staged file; a submitted file stays wit
     tree = app.render(props);
     if (submit) { find(tree, 'title', 'Save bill').props.onPress(); await tick(); }
     app.unmount(); await tick(); assert.deepEqual(cleared, submit ? [] : [attachment.file]);
+  }
+});
+
+
+test('actual bill save transfers file ownership at commit, retaining exact queued work after load failure and discard/reopen', async () => {
+  for (const phase of ['before commit', 'after commit']) {
+    const folder = mkdtempSync(join(tmpdir(), 'bill-ownership-')), database = join(folder, 'cache.sqlite'), file = join(folder, 'staged.png'), otherFile = join(folder, 'other.png');
+    writeFileSync(file, 'synthetic attachment bytes'); writeFileSync(otherFile, 'other account bytes');
+    let raw = new DatabaseSync(database), failing = true;
+    try {
+      const base = sqliteAdapter(raw); await migrate(base);
+      const db = { ...base, withExclusiveTransactionAsync: (task: Parameters<typeof base.withExclusiveTransactionAsync>[0]) => base.withExclusiveTransactionAsync(async tx => { await task(tx); if (phase === 'before commit' && failing) throw Error('SQLite commit failed'); }) };
+      const session = { baseUrl: 'https://ownership.invalid', userId: '1', email: 'one@example.invalid', token: 'synthetic' }, owner = accountOwner(session), other = { ...session, userId: '2' };
+      const attachment = { id: 'file-id', path: '/groups/g/expenses/bill-id/attachments', file: { uri: pathToFileURL(file).href, name: 'receipt.png', type: 'image/png', size: 26 } };
+      await enqueue(base, accountOwner(other), { command_id: 'other-command', group_id: 'g', method: 'POST', path: '/groups/g/expenses', body: { id: 'other-bill' }, state: 'pending', error: null });
+      await saveMediaUpload(base, other, { ...attachment, id: 'other-file', file: { ...attachment.file, uri: pathToFileURL(otherFile).href } });
+      const otherBefore = JSON.stringify({ commands: await pendingCommands(base, accountOwner(other)), media: await pendingMediaUpload(base, other, attachment.path) });
+      let discardOpen = false, completion: Promise<unknown> | undefined; const screens: string[] = [];
+      const env: Record<string, any> = { selected: { group: { ...group, version: 1 } }, session, owner, groupId: 'g', expenseId: null, reviewCommand: null,
+        perform: (action: any) => action(), draftWrites: { current: Promise.resolve() }, getDatabase: async () => db,
+        expensePayload, uuid: () => 'bill-command', enqueueExpenseWithMedia, enqueue, enqueueBill, replaceCommand,
+        requireConnectionForTemporaryStorage() {}, load: async () => { if (phase === 'after commit' && failing) throw Error('Projection read failed'); },
+        setReviewCommand() {}, setReviewInput() {}, navigate: (screen: string) => screens.push(screen), isOnline: () => false };
+      env.command = appAction('command', env); env.queue = appAction('queue', env); env.saveExpense = appAction('saveExpense', env);
+      const app = harness('src/ExpenseForm.tsx', 'ExpenseForm', { clearStagedMedia: async (value: any) => { unlinkSync(fileURLToPath(value.uri)); } });
+      const props = { group, selfId: 'self', busy: false, onSave: (...args: any[]) => { const saving = env.saveExpense(...args); completion = saving.then(() => {}, () => {}); return saving; } };
+      let tree = app.render(props); app.commit();
+      await nodes(tree).find(node => node.type === 'DraftAttachment')!.props.onChange(attachment);
+      payerFields(app, props).onChange({ amount: '10.00', description: 'Saved bill' });
+      find(app.render(props), 'title', 'Save bill').props.onPress(); await completion; await tick();
+      tree = app.render(props);
+      assert.equal(existsSync(file), true, 'a failed save never clears the recoverable file');
+      assert.equal((await pendingCommands(base, owner)).length, phase === 'before commit' ? 0 : 1);
+      assert.equal(!!await pendingMediaUpload(base, session, attachment.path), phase === 'after commit');
+      const backEnv = { screen: 'expense', setDiscardBill: (value: boolean) => { discardOpen = value; }, navigate: env.navigate };
+      appAction('back', backEnv)();
+      nodes(billDiscardDialog({ ...backEnv, discardBill: discardOpen })).find(node => node.type === 'CancelDialogActions')!.props.onCancel();
+      assert.equal(discardOpen, false); assert.deepEqual(screens, []); assert.equal(existsSync(file), true);
+      assert.equal(find(app.render(props), 'label', 'Amount (₹)').props.value, '10.00', 'Cancel keeps the current form and file');
+      if (phase === 'before commit') {
+        assert.equal(!!find(tree, 'title', 'Save bill').props.disabled, false, 'failed persistence remains recoverable');
+        failing = false; find(tree, 'title', 'Save bill').props.onPress(); await completion; await tick();
+      }
+      const snapshot = async (connection: any) => JSON.stringify({ commands: await pendingCommands(connection, owner), media: await pendingMediaUpload(connection, session, attachment.path) });
+      const queued = await snapshot(base); assert.equal((await pendingCommands(base, owner))[0].command_id, 'bill-command');
+      appAction('back', backEnv)(); find(billDiscardDialog({ ...backEnv, discardBill: discardOpen }), 'title', 'Discard').props.onPress();
+      app.unmount(); await tick();
+      assert.equal(existsSync(file), true, 'discard must not delete an attachment owned by the committed queue');
+      if (phase === 'after commit') assert.equal(find(tree, 'title', 'Save bill').props.disabled, true, 'the form cannot modify a file already owned by the queue');
+      assert.equal(readFileSync(file, 'utf8'), 'synthetic attachment bytes');
+      raw.close(); raw = new DatabaseSync(database); const reopened = sqliteAdapter(raw); await migrate(reopened);
+      assert.equal(await snapshot(reopened), queued, 'command body, IDs, media metadata and owner survive SQLite reopen exactly');
+      assert.equal(JSON.stringify({ commands: await pendingCommands(reopened, accountOwner(other)), media: await pendingMediaUpload(reopened, other, attachment.path) }), otherBefore);
+      assert.equal(existsSync(otherFile), true);
+    } finally { raw.close(); rmSync(folder, { recursive: true, force: true }); }
   }
 });

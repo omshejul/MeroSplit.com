@@ -749,7 +749,7 @@ function AppContent() {
   function requireConnectionForTemporaryStorage() {
     if (!storageIsDurable() && !isOnline()) throw new Error('This temporary browser tab needs an internet connection to save changes. Keep the tab open and reconnect.');
   }
-  async function queue(value: Command, replacing?: string, attachment?: PendingMediaUpload) {
+  async function queue(value: Command, replacing?: string, attachment?: PendingMediaUpload, onQueued?: () => void) {
     requireConnectionForTemporaryStorage();
     if (attachment) {
       if (!session) throw new Error('Sign in to save the file.');
@@ -757,6 +757,7 @@ function AppContent() {
     } else if (replacing) await replaceCommand(await getDatabase(), owner, replacing, value);
     else if (/\/expenses(?:\/[^/]+)?$/.test(value.path)) await enqueueBill(await getDatabase(), owner, value);
     else await enqueue(await getDatabase(), owner, value);
+    onQueued?.();
     await load(owner);
     if (session && isOnline()) {
       setSyncing(true);
@@ -772,12 +773,12 @@ function AppContent() {
     setDiscardBill(false);
     setExpenseId(value?.id ?? null); navigate('expense');
   }
-  async function saveExpense(value: Expense, attachment?: PendingMediaUpload) {
+  async function saveExpense(value: Expense, attachment?: PendingMediaUpload, onQueued?: () => void) {
     await perform(async () => {
       if (!selected) throw new Error('Open a group first.');
       if (selected.group.archived) throw new Error('Reopen this group in settings before making changes.');
       await draftWrites.current;
-      await queue(command(expenseId ? 'PUT' : 'POST', `/groups/${groupId}/expenses${expenseId ? `/${value.id}` : ''}`, expensePayload(value, !!expenseId)), reviewCommand?.command_id, attachment);
+      await queue(command(expenseId ? 'PUT' : 'POST', `/groups/${groupId}/expenses${expenseId ? `/${value.id}` : ''}`, expensePayload(value, !!expenseId)), reviewCommand?.command_id, attachment, onQueued);
       setReviewCommand(null); setReviewInput(undefined); navigate('group');
       if (session && isOnline()) {
         const waiting = await retryAccountMediaUploads(await getDatabase(), session);
