@@ -1,6 +1,6 @@
 # MeroSplit
 
-Shared expenses for iOS, Android and web, with an Expo React Native client and Django/PostgreSQL backend. [App](https://merosplit.com) · [Repository](https://github.com/omshejul/MeroSplit)
+Shared expenses for iOS, Android and web, with an Expo React Native client and Django/PostgreSQL backend. [App](https://merosplit.com) · [Repository](https://github.com/omshejul/MeroSplit.com)
 
 Groups and personal ledgers track bills, payments and balances. An account-scoped local cache and durable queue support offline use and synchronization. Recording a payment does not move money or verify a bank transfer.
 
