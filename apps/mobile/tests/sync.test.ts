@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { accountOwner, ApiError, requestEmailCode, confirmEmailCode, request, syncOutbox } from '../src/api.ts';
 import { migrate, enqueue, pendingCommands, readGroup, saveGroup, replaceCommand } from '../src/storage.ts';
 import { sqliteAdapter } from './sqlite.ts';
@@ -82,14 +85,15 @@ test('Connection failures hide native diagnostics while HTTP conflicts keep thei
   } finally { globalThis.fetch = original; }
 });
 
-test('a newer accepted bill replaces a stale offline edit automatically and later commands continue', async () => {
-  const original = globalThis.fetch, raw = new DatabaseSync(':memory:'), db = sqliteAdapter(raw);
-  const edit: Command = { ...command, command_id: 'edit', method: 'PUT', path: '/groups/g/expenses/bill', body: { command_id: 'edit', id: 'bill', version: 1 } };
+test('a conflicting bill edit survives restart unchanged and blocks later work until explicit review', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'bill-conflict-')), original = globalThis.fetch;
+  let raw = new DatabaseSync(join(directory, 'cache.sqlite')), db = sqliteAdapter(raw), reviewed = false;
+  const edit: Command = { ...command, command_id: 'edit', method: 'PUT', path: '/groups/g/expenses/bill', body: { command_id: 'edit', id: 'bill', version: 1, description: 'My saved edit', total: '2000', notes: 'Keep my notes' } };
   const latest = { ...group, version: 3, expenses: [{ id: 'bill', version: 2, description: 'Reuben latest' }] };
   const calls: string[] = [];
   globalThis.fetch = async (url, options) => {
     const path = String(url).split('/api/v1')[1]; calls.push(`${options?.method ?? 'GET'} ${path}`);
-    if (options?.method === 'PUT') return Response.json({ detail: 'Expense changed; fetch the current revision before retrying' }, { status: 409 });
+    if (options?.method === 'PUT') return reviewed ? Response.json({ id: 'bill', version: 3 }) : Response.json({ detail: 'Expense changed; fetch the current revision before retrying' }, { status: 409 });
     if (path === edit.path) return Response.json(latest.expenses[0]);
     if (options?.method === 'POST') return Response.json({ id: 'g', version: 3 });
     return Response.json(latest);
@@ -97,25 +101,35 @@ test('a newer accepted bill replaces a stale offline edit automatically and late
   try {
     await migrate(db); await saveGroup(db, owner, group, 'shared'); await enqueue(db, owner, edit);
     await enqueue(db, owner, { ...command, command_id: 'later', body: { command_id: 'later' } });
+    await enqueue(db, 'other-account', edit);
+    await assert.rejects(syncOutbox(db, session), /Expense changed/);
+    raw.close(); raw = new DatabaseSync(join(directory, 'cache.sqlite')); db = sqliteAdapter(raw); await migrate(db);
+    const saved = await pendingCommands(db, owner);
+    assert.equal(saved[0].state, 'conflict'); assert.equal(saved[0].command_id, edit.command_id); assert.deepEqual(saved[0].body, edit.body);
+    assert.deepEqual(saved.map(row => row.command_id), ['edit', 'later']);
+    assert.deepEqual((await pendingCommands(db, 'other-account'))[0].body, edit.body);
+    assert.deepEqual((await readGroup(db, owner, 'g'))?.group, group, 'a rejected edit cannot replace accepted cache');
+    assert.deepEqual(calls, ['PUT /groups/g/expenses/bill']);
+    await assert.rejects(syncOutbox(db, session), /Resolve/);
+    assert.deepEqual(calls, ['PUT /groups/g/expenses/bill'], 'existing conflicts never silently replay or acknowledge');
+    const replacement = { ...edit, command_id: 'reviewed-edit', body: { ...edit.body, command_id: 'reviewed-edit', version: 2 } };
+    await replaceCommand(db, owner, edit.command_id, replacement); reviewed = true;
     await syncOutbox(db, session);
     assert.equal((await pendingCommands(db, owner)).length, 0);
-    assert.equal((await readGroup(db, owner, 'g'))?.group.expenses[0].description, 'Reuben latest');
-    assert.equal(calls.filter(value => value.startsWith('PUT')).length, 1, 'never overwrite the newer server edit');
-    assert.ok(calls.includes('POST /groups'), 'later work is not blocked');
-    await enqueue(db, owner, { ...edit, command_id: 'old-conflict', state: 'conflict' });
-    await syncOutbox(db, session);
-    assert.equal((await pendingCommands(db, owner)).length, 0, 'existing conflict queues also recover automatically');
-  } finally { globalThis.fetch = original; raw.close(); }
+    assert.ok(calls.includes('POST /groups'), 'later work continues only after explicit review');
+    assert.equal((await pendingCommands(db, 'other-account')).length, 1);
+  } finally { globalThis.fetch = original; raw.close(); rmSync(directory, { recursive: true, force: true }); }
 });
 
-test('a failed canonical read keeps the stale bill queued for automatic retry', async () => {
+test('a failed canonical read after an accepted bill write keeps the same command pending for retry', async () => {
   const original = globalThis.fetch, raw = new DatabaseSync(':memory:'), db = sqliteAdapter(raw);
   globalThis.fetch = async (_url, options) => options?.method === 'PUT'
-    ? Response.json({ detail: 'Expense changed' }, { status: 409 }) : Response.json({ detail: 'Unavailable' }, { status: 503 });
+    ? Response.json({ id: 'bill', version: 2 }) : Response.json({ detail: 'Unavailable' }, { status: 503 });
   try {
     await migrate(db); await saveGroup(db, owner, group, 'shared');
     await enqueue(db, owner, { ...command, method: 'PUT', path: '/groups/g/expenses/bill', body: { command_id: 'c', version: 1 } });
     await assert.rejects(syncOutbox(db, session), /Unavailable/);
     assert.equal((await pendingCommands(db, owner))[0].state, 'pending');
+    assert.deepEqual((await pendingCommands(db, owner))[0].body, { command_id: 'c', version: 1 });
   } finally { globalThis.fetch = original; raw.close(); }
 });
