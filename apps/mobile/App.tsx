@@ -6,6 +6,10 @@ import MotionScreen from './src/MotionScreen';
 import MotionReveal from './src/MotionReveal';
 import { loadBalanceSource } from './src/balanceExplanationStorage';
 import React, { useEffect, useRef, useState } from 'react';
+import { Dialog } from 'react-native-paper';
+import KeyboardDialog from './src/KeyboardDialog';
+import DialogFocus from './src/DialogFocus';
+import { CancelDialogActions } from './src/DialogParts';
 import { ActivityIndicator, AppState, BackHandler, Linking, Platform, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import type { AlertButton } from 'react-native';
 import { Alert } from './src/alerts';
@@ -18,11 +22,10 @@ import { validateUPIPayment, type UPILaunchQuote } from './src/upi';
 import { formatMoney } from './src/accounting';
 import { emptyGroup, previewPending } from './src/ledger';
 import { getDatabase, savedSession, saveSession, retireSyncPause, shareJson, storageIsDurable, isOnline } from './src/native';
-import { storageRevision, discardCommand, discardUnsentGroup, enqueue, enqueueBill, confirmedSync, confirmSync, readGroup, listGroups, pendingCommands, createPendingGroup, listLegacyGroups, listLegacyRecoveries, listUnavailableGroups, readDraft, replaceCommand, saveDraft, saveGroup, readVisibleGroup, wipeAccount } from './src/storage';
+import { storageRevision, discardCommand, discardUnsentGroup, enqueue, enqueueBill, confirmedSync, confirmSync, readGroup, listGroups, pendingCommands, createPendingGroup, listLegacyGroups, listLegacyRecoveries, listUnavailableGroups, replaceCommand, saveGroup, readVisibleGroup, wipeAccount } from './src/storage';
 import GroupScreen, { ExpenseDetail, PaymentDetail } from './src/GroupScreen';
 import ExpenseForm from './src/ExpenseForm';
 import ExpenseVersionHistory from './src/ExpenseVersionHistory';
-import type { ExpenseFormDraft } from './src/ExpenseForm';
 import SettleForm from './src/SettleForm';
 import ActivityScreen from './src/ActivityScreen';
 import ChatInbox from './src/ChatInbox';
@@ -107,7 +110,7 @@ function AppContent() {
   const [showArchived, setShowArchived] = useState(false), [showHidden, setShowHidden] = useState(false);
   const [needsInvitation, setNeedsInvitation] = useState(false);
   const [screen, setScreen] = useState<Screen>('home'), [tab, setTab] = useState('Groups'), [groupId, setGroupId] = useState<string | null>(null);
-  const [expenseId, setExpenseId] = useState<string | null>(null), [draft, setDraft] = useState<ExpenseFormDraft | null>(null), [transfer, setTransfer] = useState<Transfer | undefined>();
+  const [expenseId, setExpenseId] = useState<string | null>(null), [discardBill, setDiscardBill] = useState(false), [transfer, setTransfer] = useState<Transfer | undefined>();
   const [reviewCommand, setReviewCommand] = useState<Command | null>(null), [reviewInput, setReviewInput] = useState<Expense | undefined>();
   const methodsRow = useRef<React.ComponentRef<typeof View>>(null);
   const googleReturn = useRef(Platform.OS === 'web' ? new URLSearchParams(window.location.search).get('google_return') : null);
@@ -228,7 +231,7 @@ function AppContent() {
     activeSessionRef.current = value;
     publishedStorage.current = { scope: '', view: '', changes: '' }; loadGeneration.current++;
     setShowArchived(false); setShowHidden(false); setNeedsInvitation(false); setSession(value); setExpired(false); setGroups([]); setCommands([]); setLegacy([]); setRecoveries([]); setUnavailable([]); setLegacySelf({});
-    setGroupId(null); setExpenseId(null); setDraft(null); setVpa(''); setLastConfirmed(null); setSyncProblem(false); setSyncing(false); setPendingFiles(0); setDownloadingOwner(''); setScreen(value ? googleReturn.current === 'connect' ? 'signInMethods' : 'home' : 'login'); setTab(value && googleReturn.current === 'connect' ? 'Account' : 'Groups'); googleReturn.current = null;
+    setGroupId(null); setExpenseId(null); setVpa(''); setLastConfirmed(null); setSyncProblem(false); setSyncing(false); setPendingFiles(0); setDownloadingOwner(''); setScreen(value ? googleReturn.current === 'connect' ? 'signInMethods' : 'home' : 'login'); setTab(value && googleReturn.current === 'connect' ? 'Account' : 'Groups'); googleReturn.current = null;
     setMyName(value?.displayName || value?.email.split('@')[0] || 'You');
     setReviewCommand(null); setReviewInput(undefined); setReturns([]); setReturnAttemptId(null); setSettlementId(null); setActivity(null); setActivityError(''); activityOwner.current = ''; groupVersions.current = '';
     void load(ownerRef.current).catch(error => setNotice(error.message, 'error'));
@@ -628,7 +631,7 @@ function AppContent() {
         await saveGroup(await getDatabase(), accountOwner(active), group, 'shared');
         setGroupId(group.id); setTab(group.is_direct ? 'Friends' : 'Groups');
         const bill = target.expenseId && (group.expenses.find(value => value.id === target.expenseId) ?? (group.focused_expense?.id === target.expenseId ? group.focused_expense : undefined));
-        setExpenseId(bill ? bill.id : null); setDraft(null); setScreen(bill ? target.chat ? 'billChat' : target.versions ? 'expenseVersions' : 'expenseDetail' : 'group');
+        setExpenseId(bill ? bill.id : null); setScreen(bill ? target.chat ? 'billChat' : target.versions ? 'expenseVersions' : 'expenseDetail' : 'group');
       } catch (error) {
         if (error instanceof ApiError && error.status === 404) { setScreen('home'); setNotice('This link is unavailable, or your request is waiting for approval.', 'warning'); }
         else throw error;
@@ -730,11 +733,12 @@ function AppContent() {
     await push.clear(); setPushTarget(null);
   }
   function back() {
+    if (screen === 'expense') { setDiscardBill(true); return; }
     if (screen === 'signInMethods') { openMe(); requestAnimationFrame(() => methodsRow.current?.focus()); return; }
     if (screen === 'expenseVersions') { if (groupId && expenseId) writeAppLink({ groupId, expenseId }, { replace: true }); navigate('expenseDetail'); return; }
     if (screen === 'billChat') { navigate('expenseDetail'); return; }
     if (screen === 'home' && tab === 'Groups' && (showArchived || showHidden)) { setShowArchived(false); setShowHidden(false); return; }
-    if (screen === 'expense' || screen === 'expenseDetail' || screen === 'settle' || screen === 'members' || screen === 'review' || screen === 'paymentDetail') navigate('group');
+    if (screen === 'expenseDetail' || screen === 'settle' || screen === 'members' || screen === 'review' || screen === 'paymentDetail') navigate('group');
     else if (screen === 'import') openMe();
     else navigate(session ? 'home' : 'login');
   }
@@ -761,11 +765,11 @@ function AppContent() {
       finally { if (ownerRef.current === owner) setSyncing(false); }
     }
   }
-  async function openGroup(row: CachedGroup) { await draftWrites.current; const full = !isOnline() ? await readGroup(await getDatabase(), owner, row.group.id) : null; if (full?.kind === 'shared' && full.group.version === row.group.version) setGroups(rows => rows.map(value => value.group.id === row.group.id ? full : value)); setGroupId(row.group.id); setExpenseId(null); setDraft(null); navigate('group'); }
+  async function openGroup(row: CachedGroup) { await draftWrites.current; const full = !isOnline() ? await readGroup(await getDatabase(), owner, row.group.id) : null; if (full?.kind === 'shared' && full.group.version === row.group.version) setGroups(rows => rows.map(value => value.group.id === row.group.id ? full : value)); setGroupId(row.group.id); setExpenseId(null); navigate('group'); }
   async function openExpense(value?: Expense) {
     await draftWrites.current;
     setReviewCommand(null); setReviewInput(undefined);
-    setDraft(await readDraft<ExpenseFormDraft>(await getDatabase(), owner, groupId!));
+    setDiscardBill(false);
     setExpenseId(value?.id ?? null); navigate('expense');
   }
   async function saveExpense(value: Expense, attachment?: PendingMediaUpload) {
@@ -774,7 +778,7 @@ function AppContent() {
       if (selected.group.archived) throw new Error('Reopen this group in settings before making changes.');
       await draftWrites.current;
       await queue(command(expenseId ? 'PUT' : 'POST', `/groups/${groupId}/expenses${expenseId ? `/${value.id}` : ''}`, expensePayload(value, !!expenseId)), reviewCommand?.command_id, attachment);
-      await draftWrites.current; if (!attachment) await saveDraft(await getDatabase(), owner, groupId!, null); setDraft(null); setReviewCommand(null); setReviewInput(undefined); navigate('group');
+      setReviewCommand(null); setReviewInput(undefined); navigate('group');
       if (session && isOnline()) {
         const waiting = await retryAccountMediaUploads(await getDatabase(), session);
         try { await refreshGroups(await getDatabase(), session, 'summary'); } catch { /* A saved bill never needs to be created again after a file retry. */ }
@@ -957,7 +961,7 @@ function AppContent() {
     try { if (isOnline()) { setSyncing(true); await syncOutbox(await getDatabase(), session, 'summary'); } }
     catch (error) { if (error instanceof ApiError && error.status === 401) setExpired(true); setSyncProblem(true); }
     finally { if (ownerRef.current === owner) setSyncing(false); }
-    setGroupId(group.id); setExpenseId(null); setDraft(null); setScreen('group');
+    setGroupId(group.id); setExpenseId(null); setScreen('group');
   }
   async function sendNewPersonInvite() {
     const value = newPersonInvite;
@@ -1201,8 +1205,8 @@ function AppContent() {
         !expense.deleted && (!(selected.group.expenses.some(value => value.id === expense.id) || selected.group.focused_expense?.id === expense.id) ? <Text style={ui.caption}>Pending sync</Text> : <BillAttachments key={`${owner}|${groupId}|${expense.id}`} session={session} groupId={selected.group.id} expenseId={expense.id} revision={selected.group.version} readOnly={selected.group.archived || !!pending.length} busy={busy}
           onBusyChange={value => { lock.current = value; setBusy(value); }} onChanged={async () => { if (!session) return; const scope = accountOwner(session); const updated = await fetchGroup(session, selected.group.id); await saveGroup(await getDatabase(), scope, updated, 'shared'); await load(scope); }} />)} />
       </>}
-      {screen === 'expense' && selected && <ExpenseForm key={`${owner}|${groupId}|${expenseId ?? 'new'}`} group={preview ?? selected.group} expense={reviewInput ?? expense} selfId={selfId} busy={busy} initialDraft={draft ?? undefined} onDraftChange={value => { setHasDrafts(true); const scope = owner, id = groupId!; const write = draftWrites.current.catch(() => {}).then(async () => saveDraft(await getDatabase(), scope, id, value)); draftWrites.current = write; void write.catch(error => setNotice(`Could not save draft: ${error.message}`, 'error')); return write; }} onSave={saveExpense} onCancel={back} />}
-      {screen === 'review' && selected && reviewCommand && <SavedChangeScreen command={reviewCommand} group={selected.group} busy={busy} onDiscard={() => confirm('Discard this unsent change?', 'Accepted records remain. Your saved change will be removed from this phone.', async () => { await discardCommand(await getDatabase(), owner, reviewCommand.command_id); setReviewCommand(null); navigate('group'); })} onEditSaved={value => { setReviewInput(value); setDraft(null); setExpenseId(reviewCommand.method === 'PUT' ? value.id : null); navigate('expense'); }} />}
+      {screen === 'expense' && selected && <ExpenseForm key={`${owner}|${groupId}|${expenseId ?? 'new'}`} group={preview ?? selected.group} expense={reviewInput ?? expense} selfId={selfId} busy={busy} onSave={saveExpense} />}
+      {screen === 'review' && selected && reviewCommand && <SavedChangeScreen command={reviewCommand} group={selected.group} busy={busy} onDiscard={() => confirm('Discard this unsent change?', 'Accepted records remain. Your saved change will be removed from this phone.', async () => { await discardCommand(await getDatabase(), owner, reviewCommand.command_id); setReviewCommand(null); navigate('group'); })} onEditSaved={value => { setReviewInput(value); setExpenseId(reviewCommand.method === 'PUT' ? value.id : null); navigate('expense'); }} />}
       {screen === 'settle' && selected && preview && <SettleForm key={`${owner}|${groupId}`} group={preview} initial={transfer} busy={busy} selfId={selfId} onReviewAttempt={reviewPaymentAttempt} onPrepareUPI={prepareUPI} onCancelUPI={async id => { await groupAction(`/payment-attempts/${id}/cancel`, {}); await clearPaymentReturn(await getDatabase(), owner, id); await load(); }} returnPayment={returnPayment} onArmReturn={armPaymentReturn} onReturnPaymentChange={persistPaymentReturn} onResolveReturn={finishPaymentReturn} onSave={savePayment} onCancel={() => { setReturnAttemptId(null); back(); }} />}
       {screen === 'paymentDetail' && selected && settlement && <PaymentDetail payment={settlement} group={preview ?? selected.group} selfId={selfId} busy={busy} canReverse={!pending.length && !selected.group.archived} onReverse={() => confirm('Reverse payment record?', 'This removes the payment from the group’s balances.', () => reversePayment(settlement))} />}
       {screen === 'members' && selected && <MembersScreen key={`${owner}|${groupId}`} group={preview ?? selected.group} selfId={selfId} busy={busy} onAction={groupAction} onMembership={action => { if (action === 'restore') launch(() => changeMembership(action)); else confirm('Delete group?', 'Leave this group and remove it from your list. Shared balances and history stay. Your saved drafts are kept.', () => changeMembership(action)); }} addPersonRequest={addPersonRequest} />}
@@ -1259,6 +1263,14 @@ function AppContent() {
       if (activeSessionRef.current?.token !== active.token) return;
       forgetGroupInvite(); void saveGroupInvite(null).catch(() => {}); setAppLink(null); setGroupId(group.id); setTab('Groups'); setScreen('group'); await load(accountOwner(active));
     }} />}
+    {screen === 'expense' && <KeyboardDialog visible={discardBill} onDismiss={() => setDiscardBill(false)}>
+      <DialogFocus active={discardBill} label="Discard draft" onEscape={() => setDiscardBill(false)}>
+        <Dialog.Title>Do you want to discard the draft?</Dialog.Title>
+        <CancelDialogActions disabled={busy} onCancel={() => setDiscardBill(false)}>
+          <Button title="Discard" kind="danger" icon="remove" disabled={busy} onPress={() => { setDiscardBill(false); navigate('group'); }} />
+        </CancelDialogActions>
+      </DialogFocus>
+    </KeyboardDialog>}
     {newPersonInvite && <SendInviteDialog visible={showNewPersonInvite && !authHeld} email={newPersonInvite.email} busy={busy} error={newPersonInviteError} onSend={() => void sendNewPersonInvite()} onCancel={() => { if (!busy) { setNewPersonInvite(null); setNewPersonInviteError(''); } }} />}
     {authHeld && !!emailEntry && (emailEntry.phase === 'switch' ? emailContent : <EmailLinkDialog title={emailEntry.phase === 'name' ? 'Name' : 'Sign in'}>{emailContent}</EmailLinkDialog>)}
     {session && !authHeld && !expired && Platform.OS === 'web' && <OAuthContinuation key={`oauth-continuation|${owner}|${session.token}`} session={session} busy={busy} onSaveName={value => saveName(value, true)} beforeContinue={async () => { await draftWrites.current; }} />}

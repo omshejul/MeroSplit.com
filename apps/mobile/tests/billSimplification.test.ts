@@ -74,7 +74,7 @@ test('form keeps one selected payer changeable when other people are eligible an
   tree = app.render(props); assert.deepEqual(find(tree, 'title', 'Who paid?').children[0].props.draft.payerAmounts, { self: '6.00', other: '4.00' });
   assert.equal(saves.length, 0); find(tree, 'title', 'Save bill').props.onPress(); await tick();
   assert.equal(saves.length, 1); assert.deepEqual(saves[0].paid, { self: '600', other: '400' });
-  assert.ok(drafts.every(draft => draft.schemaVersion === 1 && draft.groupId === 'g'));
+  assert.equal(drafts.length, 0, 'typing and saving never autosave a form draft');
   const single = harness('src/ExpenseForm.tsx', 'ExpenseForm').render({ ...props, group: { ...group, participants: [group.participants[0]] } });
   assert.equal(find(single, 'title', 'Who paid?').props.inline, true); assert.equal(find(single, 'title', 'Split between').props.inline, true);
   assert.ok(find(single, 'label', 'Notes (optional)'));
@@ -102,7 +102,7 @@ function payerFields(app: ReturnType<typeof harness>, props: any) {
   return { ...selection.props, fields: nodes(tree).filter(node => node.type === 'TextField') };
 }
 
-test('payer difference chips add only to the chosen payer, persist drafts and save through existing validation', async () => {
+test('payer difference chips keep local values and save through existing validation', async () => {
   for (const id of ['self', 'other']) {
     const app = harness('src/ExpenseForm.tsx', 'ExpenseForm'), drafts: any[] = [], saves: any[] = [];
     const props = { group, selfId: 'self', busy: false, onSave: async (expense: any) => saves.push(expense), onDraftChange: (draft: any) => drafts.push(draft) };
@@ -116,9 +116,9 @@ test('payer difference chips add only to the chosen payer, persist drafts and sa
     assert.deepEqual(after.draft.payerAmounts, expected);
     assert.ok(after.fields.every((field: Element) => field.props.right === null));
     assert.equal(saves.length, 0);
-    assert.deepEqual(drafts.at(-1).payerAmounts, expected);
-    const restored = harness('src/ExpenseForm.tsx', 'ExpenseForm');
-    assert.deepEqual(payerFields(restored, { ...props, initialDraft: drafts.at(-1) }).draft.payerAmounts, expected);
+    assert.equal(drafts.length, 0, 'editing stays in the mounted form');
+    const reopened = harness('src/ExpenseForm.tsx', 'ExpenseForm');
+    assert.deepEqual(payerFields(reopened, props).draft.payerAmounts, {});
     find(app.render(props), 'title', 'Save bill').props.onPress(); await tick();
     assert.deepEqual(saves[0].paid, id === 'self' ? { self: '9300', other: '19200' } : { self: '9000', other: '19500' });
   }
@@ -1051,4 +1051,36 @@ test('stale current push binding stays off in the channel view and last local Em
   assert.equal(notificationToggle(tree, 'Email notifications'), undefined);
   assert.ok(!nodes(tree).some(node => node.type === 'PushSettings'));
   panel.app.unmount();
+});
+
+
+test('Back asks to discard the bill, Cancel retains the form and Discard leaves with the trash action', () => {
+  let open = false; const screens: string[] = [];
+  const env = { screen: 'expense', setDiscardBill: (value: boolean) => { open = value; }, navigate: (value: string) => screens.push(value) };
+  appAction('back', env)(); assert.equal(open, true); assert.deepEqual(screens, []);
+  const source = ts.createSourceFile('App.tsx', readFileSync(new URL('../App.tsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  let expression: ts.BinaryExpression | undefined;
+  function visit(node: ts.Node) { if (ts.isBinaryExpression(node) && ts.isJsxElement(node.right) && node.right.openingElement.tagName.getText(source) === 'KeyboardDialog' && node.getText(source).includes('discardBill')) expression = node; ts.forEachChild(node, visit); }
+  visit(source); assert.ok(expression);
+  const code = ts.transpile(`const dialog = ${expression!.getText(source)}`, { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React });
+  const tree = new Function('env', `with(env){${code};return dialog;}`)({ ...env, React, Dialog, discardBill: open, busy: false, KeyboardDialog: 'KeyboardDialog', DialogFocus: 'DialogFocus', CancelDialogActions: 'CancelDialogActions', Button: 'Button' });
+  assert.ok(nodes(tree).some(node => node.children.includes('Do you want to discard the draft?')));
+  nodes(tree).find(node => node.type === 'CancelDialogActions')!.props.onCancel();
+  assert.equal(open, false); assert.deepEqual(screens, [], 'Cancel keeps the same form mounted');
+  const discard = find(tree, 'title', 'Discard'); assert.equal(discard.props.kind, 'danger'); assert.equal(discard.props.icon, 'remove');
+  discard.props.onPress(); assert.deepEqual(screens, ['group']);
+});
+
+test('leaving an unsaved bill clears its staged file; a submitted file stays with its queued bill', async () => {
+  for (const submit of [false, true]) {
+    const cleared: any[] = [], app = harness('src/ExpenseForm.tsx', 'ExpenseForm', { clearStagedMedia: async (file: any) => { cleared.push(file); } });
+    const props = { group, selfId: 'self', busy: false, onSave: async () => {} };
+    let tree = app.render(props); app.commit();
+    const attachment = { id: 'file', file: { uri: 'file:///synthetic.png' } };
+    nodes(tree).find(node => node.type === 'DraftAttachment')!.props.onChange(attachment);
+    payerFields(app, props).onChange({ amount: '10', description: 'Lunch' });
+    tree = app.render(props);
+    if (submit) { find(tree, 'title', 'Save bill').props.onPress(); await tick(); }
+    app.unmount(); await tick(); assert.deepEqual(cleared, submit ? [] : [attachment.file]);
+  }
 });
