@@ -9,12 +9,13 @@ import { personalSettlements, personalTransfers } from '../src/personalBalances.
 
 type Element = { type: unknown; props: Record<string, any>; children: unknown[] };
 const React = { createElement: (type: unknown, props: Record<string, any> | null, ...children: unknown[]): Element => ({ type, props: props ?? {}, children }) };
+const Animated = { View: 'Animated.View', Value: class { value: number; constructor(value: number) { this.value = value; } stopAnimation() {} setValue(value: number) { this.value = value; } }, timing: () => ({ start() {} }) };
 const source = ts.createSourceFile('GroupScreen.tsx', readFileSync(new URL('../src/GroupScreen.tsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
 function production(name: string, overrides: Record<string, any> = {}) {
   const helpers = source.statements.filter(node => ts.isVariableStatement(node) && node.declarationList.declarations.some(d => ['billImpact', 'participantName', 'displayDate', 's'].includes(d.name.getText(source)))).map(node => node.getText(source)).join('\n');
   const node = source.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === name); assert.ok(node);
   const code = ts.transpile(`${helpers}\n${node.getText(source).replace(/^export (?:default )?/, '')}\nreturn ${name};`, { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React });
-  return new Function('env', `with(env) { ${code} }`)({ React, categoryIcon, categoryMeaning, expenseCategory, TransactionIcon: 'TransactionIcon', PagingFooter: 'PagingFooter', LegacyPayments: 'LegacyPayments', FlatList: 'FlatList', ScrollView: 'ScrollView', pageContentStyle: {}, LoadingSpinner: 'LoadingSpinner', useScrollPagination: () => ({ events: {}, loading: false, failed: false }), expenseBalanceChange, formatMoney, paymentPresentation, personalSettlements, personalTransfers, BalanceExplanation: 'BalanceExplanation', balanceKey: () => '', useRef: () => ({ current: null }), useState: (initial: unknown) => [initial, () => {}], Avatar: 'Avatar', AmountText: 'AmountText', Text: 'Text', SectionHeading: 'SectionHeading', View: 'View', Pressable: 'Pressable', Icon: 'Icon', Button: 'Button', RecordSummary: 'RecordSummary', ParticipantAmountRow: 'ParticipantAmountRow', LogRow: 'LogRow', LogDate: 'LogDate', BillEffect: 'BillEffect', VisibleExpense: 'VisibleExpense', HistoryPages: 'HistoryPages', BillSearch: 'BillSearch', PaymentRow: 'PaymentRow', BillTimelineRow: 'BillTimelineRow', Disclosure: 'Disclosure', BillPeople: 'BillPeople', RecordAttribution: 'RecordAttribution', PersonalTransferRow: 'PersonalTransferRow', PendingChangeRow: 'PendingChangeRow', StyleSheet: { create: (styles: unknown) => styles }, radii: { surface: 16 }, balanceColor: (amount: string) => BigInt(amount) < 0n ? 'negative' : 'positive', useUI: () => ({ ui: { numeric: { fontSize: 32, fontWeight: '600' }, caption: { fontSize: 14 }, row: { minHeight: 52, paddingVertical: 6 } }, palette: { muted: 'muted', line: '#334455', surface: 'surface', text: 'text' } }), ...overrides });
+  return new Function('env', `with(env) { ${code} }`)({ React, Animated, Platform: { OS: 'web' }, useLayoutEffect: () => {}, useEffect: () => {}, categoryIcon, categoryMeaning, expenseCategory, TransactionIcon: 'TransactionIcon', PagingFooter: 'PagingFooter', LegacyPayments: 'LegacyPayments', FlatList: 'FlatList', ScrollView: 'ScrollView', pageContentStyle: {}, LoadingSpinner: 'LoadingSpinner', useScrollPagination: () => ({ events: {}, loading: false, failed: false }), expenseBalanceChange, formatMoney, paymentPresentation, personalSettlements, personalTransfers, BalanceExplanation: 'BalanceExplanation', balanceKey: () => '', useRef: () => ({ current: null }), useState: (initial: unknown) => [typeof initial === 'function' ? initial() : initial, () => {}], Avatar: 'Avatar', AmountText: 'AmountText', Text: 'Text', SectionHeading: 'SectionHeading', View: 'View', Pressable: 'Pressable', Icon: 'Icon', Button: 'Button', RecordSummary: 'RecordSummary', ParticipantAmountRow: 'ParticipantAmountRow', LogRow: 'LogRow', LogDate: 'LogDate', BillEffect: 'BillEffect', VisibleExpense: 'VisibleExpense', HistoryPages: 'HistoryPages', BillSearch: 'BillSearch', PaymentRow: 'PaymentRow', BillTimelineRow: 'BillTimelineRow', Disclosure: 'Disclosure', BillPeople: 'BillPeople', RecordAttribution: 'RecordAttribution', PersonalTransferRow: 'PersonalTransferRow', PendingChangeRow: 'PendingChangeRow', StyleSheet: { create: (styles: unknown) => styles }, radii: { surface: 16 }, balanceColor: (amount: string) => BigInt(amount) < 0n ? 'negative' : 'positive', useUI: () => ({ motion: { enabled: false }, ui: { numeric: { fontSize: 32, fontWeight: '600' }, caption: { fontSize: 14 }, row: { minHeight: 52, paddingVertical: 6 } }, palette: { muted: 'muted', line: '#334455', surface: 'surface', text: 'text' } }), ...overrides });
 }
 function elements(tree: unknown): Element[] {
   if (Array.isArray(tree)) return tree.flatMap(elements);
@@ -164,6 +165,58 @@ test('virtualized timeline and legacy bill/payment lists preserve server order',
   assert.equal(payments.props.group, fallback);
   assert.ok(elements(history).some(node => node.type === 'Disclosure' && node.props.title === 'Payment records'));
   assert.ok(!elements(history).some(node => node.type === 'HistoryPages'));
+});
+
+test('background summaries preserve displayed bills and accepted payments until an explicit read or own saved change', async () => {
+  const slots: any[] = [], updates: boolean[] = [], reads: any[][] = [], offsets: unknown[] = [];
+  let cursor = 0, dirty = false, layout: (() => void)[] = [], effects: (() => void)[] = [], paging: any;
+  const effect = (queue: (() => void)[], callback: () => void, deps: unknown[]) => {
+    const index = cursor++, previous = slots[index];
+    if (!previous || deps.some((value, i) => !Object.is(value, previous[i]))) { slots[index] = deps; queue.push(callback); }
+  };
+  const render = production('GroupScreen', {
+    useState: (initial: any) => {
+      const index = cursor++;
+      if (!(index in slots)) slots[index] = typeof initial === 'function' ? initial() : initial;
+      return [slots[index], (value: any) => { const next = typeof value === 'function' ? value(slots[index]) : value; if (!Object.is(slots[index], next)) { slots[index] = next; dirty = true; } }];
+    },
+    useRef: (initial: any) => { const index = cursor++; return slots[index] ??= { current: initial }; },
+    useLayoutEffect: (callback: () => void, deps: unknown[]) => effect(layout, callback, deps),
+    useEffect: (callback: () => void, deps: unknown[]) => effect(effects, callback, deps),
+    useScrollPagination: (options: any) => { paging = options; return { events: {}, loading: false, failed: false }; },
+  });
+  const bill = billRow(), payment = { id: 'older-payment', sender: 'self', recipient: 'other', amount: '10' };
+  const original = { ...group, version: 1, read_mode: 'summary', expenses: [bill], settlements: [payment], transfers: [], transactions: [{ kind: 'bill', bill }, { kind: 'payment', payment }], history: { transactions: { next_cursor: 'older' } } };
+  const initial = { ...original }, props = { group: initial, accepted: original, selfId: 'self', pending: [], busy: false, revision: 0, onUpdatesAvailable: (value: boolean) => updates.push(value), onHistoryPage: async (...args: any[]) => { reads.push(args); return true; } };
+  const view = (next: any) => {
+    let tree: Element;
+    do { dirty = false; cursor = 0; layout = []; effects = []; tree = render(next); layout.forEach(fn => fn()); effects.forEach(fn => fn()); } while (dirty);
+    return elements(tree!).find(node => node.type === 'FlatList')!;
+  };
+  const first = view(props);
+  first.props.ref.current = { scrollToOffset: (value: unknown) => offsets.push(value) };
+  const latestBill = billRow({ id: 'newest' }), latest = { ...original, version: 2, expenses: [latestBill], settlements: [], transactions: [{ kind: 'bill', bill: latestBill }], history: { transactions: { next_cursor: 'newer-window' } } };
+  const background = view({ ...props, group: latest, accepted: latest });
+  assert.equal(background.props.data, original.transactions, 'background head replacement preserves every displayed row');
+  const oldPayment = background.props.renderItem({ item: original.transactions[1] });
+  assert.equal(oldPayment.props.accepted, original, 'accepted payment membership advances with the displayed snapshot');
+  assert.equal(updates.at(-1), true); assert.deepEqual(offsets, []);
+  await paging.load(undefined);
+  assert.equal(reads[0][4], original, 'paging uses the accepted displayed version rather than an optimistic preview or newer background summary');
+  const refreshed = view({ ...props, group: latest, accepted: latest, revision: 1 });
+  assert.equal(refreshed.props.data, latest.transactions); assert.equal(updates.at(-1), false);
+  assert.deepEqual(offsets, [{ offset: 0, animated: false }]);
+  const own = { ...latest, transactions: [...latest.transactions, { kind: 'bill', bill }] };
+  const saved = view({ ...props, group: own, accepted: latest, revision: 1, pending: [{ command_id: '00000000-0000-4000-8000-000000000001', state: 'pending' }] });
+  assert.equal(saved.props.data, own.transactions, 'own saved changes appear without waiting for another refresh');
+  const acknowledged = { ...latest, version: 3 };
+  const afterSync = view({ ...props, group: acknowledged, accepted: acknowledged, revision: 1 });
+  assert.equal(afterSync.props.data, own.transactions, 'background acknowledgment keeps the displayed rows');
+  assert.deepEqual(offsets, [{ offset: 0, animated: false }], 'acknowledgment does not move the reader');
+  assert.equal(updates.at(-1), true);
+  const adopted = view({ ...props, group: acknowledged, accepted: acknowledged, revision: 2 });
+  assert.equal(adopted.props.data, acknowledged.transactions);
+  assert.equal(updates.at(-1), false);
 });
 
 test('search opens from the heading line, stays open for an active query, and partial pages still offer it', () => {

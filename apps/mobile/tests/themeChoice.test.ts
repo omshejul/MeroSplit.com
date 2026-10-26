@@ -193,14 +193,14 @@ test('background sync never drives the pull spinner; a user pull shows it until 
   assert.doesNotMatch(app, /refreshing=\{busy\}/);
   for (const [screen, tab, kind] of [['home', 'Groups', 'sync'], ['group', 'Groups', 'sync'], ['home', 'Activity', 'activity']] as const) {
     const pulls: boolean[] = [], calls: string[] = [], work = deferred<void>();
-    const env = { screen, tab, setPulling: (value: boolean) => pulls.push(value), sync: async () => { calls.push('sync'); }, perform: async (action: () => Promise<void>) => { await action(); await work.promise; }, refreshActivity: async () => { calls.push('activity'); await work.promise; } };
+    const env = { screen, tab, owner: 'owner', groupId: 'g', ownerRef: { current: 'owner' }, activeGroupRef: { current: 'g' }, setLedgerRevision() {}, setPulling: (value: boolean) => pulls.push(value), sync: async () => { calls.push('sync'); }, perform: async (action: () => Promise<void>) => { await action(); await work.promise; }, refreshActivity: async () => { calls.push('activity'); await work.promise; } };
     appFunction('pullToRefresh', env)();
     await tick(); assert.deepEqual(pulls, [true]); assert.deepEqual(calls, [kind]);
     work.resolve(); await tick(); assert.deepEqual(pulls, [true, false]);
   }
   for (const failure of ['Please wait for the current action.', 'Offline']) {
     const pulls: boolean[] = [];
-    appFunction('pullToRefresh', { screen: 'home', tab: 'Groups', setPulling: (value: boolean) => pulls.push(value), sync: async () => {}, perform: async () => { throw new Error(failure); } })();
+    appFunction('pullToRefresh', { screen: 'home', tab: 'Groups', owner: 'owner', groupId: 'g', ownerRef: { current: 'owner' }, activeGroupRef: { current: 'g' }, setLedgerRevision() {}, setPulling: (value: boolean) => pulls.push(value), sync: async () => {}, perform: async () => { throw new Error(failure); } })();
     await tick(); assert.deepEqual(pulls, [true, false], `${failure} does not leave the spinner stuck`);
   }
 });

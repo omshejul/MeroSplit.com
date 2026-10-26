@@ -11,7 +11,7 @@ export type NoticeVisibility = {
   onVisible: (groupId: string, expenseId: string, version: number, stillVisible: () => boolean) => void;
 };
 
-export function useExpenseNotices(session: Session | null, options: { enabled: boolean; visibleExpenseIds?: string[]; onRefresh: (groupIds: string[]) => Promise<void> }) {
+export function useExpenseNotices(session: Session | null, options: { enabled: boolean; scope?: string; visibleExpenseIds?: string[]; onRefresh: (groupIds: string[]) => Promise<void> }) {
   const [notices, setNotices] = useState<ExpenseNotice[]>([]);
   const active = useRef({ session, ...options }); active.current = { session, ...options };
   const feed = useRef<ExpenseNotice[]>([]);
@@ -40,9 +40,8 @@ export function useExpenseNotices(session: Session | null, options: { enabled: b
       finally { polling = false; }
     };
     void poll();
-    const interval = setInterval(() => { void poll(); }, 10_000);
-    return () => { stopped = true; clearInterval(interval); if (flushTimer.current) clearTimeout(flushTimer.current); flushTimer.current = null; pending.current.clear(); };
-  }, [session?.token, session?.baseUrl, options.enabled, [...new Set(options.visibleExpenseIds ?? [])].sort().join(',')]);
+    return () => { stopped = true; if (flushTimer.current) clearTimeout(flushTimer.current); flushTimer.current = null; pending.current.clear(); };
+  }, [session?.token, session?.baseUrl, options.enabled, options.scope]);
 
   const acknowledgeVisible = useCallback((groupId: string, expenseId: string, version: number, stillVisible: () => boolean) => {
     const { session: currentSession, enabled } = active.current;

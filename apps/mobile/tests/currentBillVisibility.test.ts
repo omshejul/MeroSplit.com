@@ -38,7 +38,7 @@ test('actual pull refresh recovers the October bill from a persisted May page at
     if (path === '/api/v1/me/bill-email-entry') return Response.json({needs_invitation:false});
     throw Error('Unexpected request ' + path);
   };
-  const env: any = { ApiError, session, screen:'group', tab:'Groups', selected:{group:older}, groupId:'g', ownerRef:{current:owner}, activeGroupRef:{current:'g'}, activeSessionRef:{current:session}, accountOwner, request, refreshGroups, syncOutbox,
+  const env: any = { ApiError, session, owner, setLedgerRevision:()=>{}, screen:'group', tab:'Groups', selected:{group:older}, groupId:'g', ownerRef:{current:owner}, activeGroupRef:{current:'g'}, activeSessionRef:{current:session}, accountOwner, request, refreshGroups, syncOutbox,
     getDatabase:async()=>db, readProfile:async()=>{}, retryAccountMediaUploads:async()=>false, load:async(scope:string)=>{if(env.ownerRef.current===scope)shown=(await readVisibleGroup(db,scope,'g'))?.group;},
     setVerifiedEmptyOwner:()=>{}, setNeedsInvitation:()=>{}, setNotice:()=>{}, setGroupId:()=>{}, setScreen:()=>{}, setPulling:()=>{},
     perform:(fn:any)=>{done=fn();return done;} };
