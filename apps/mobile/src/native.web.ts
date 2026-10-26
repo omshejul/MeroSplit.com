@@ -8,6 +8,7 @@ import type { Session } from './types';
 import { cachedBrowserSession, readBrowserSession } from './browserAuth.ts';
 import { isColorFamily, type ColorFamily } from './theme';
 
+const wasmURL = '/app/sqlite.wasm';
 let database: Promise<Database> | undefined;
 let durable = true;
 export function storageIsDurable(): boolean { return durable; }
@@ -16,13 +17,14 @@ export function getDatabase(): Promise<Database> {
   database ??= (async () => {
     if (!window.crossOriginIsolated || typeof SharedArrayBuffer === 'undefined') throw new Error('This browser cannot open MeroSplit storage. Use a current Safari, Chrome, Edge or Firefox browser.');
     try {
+      SQLite.configureWeb({ wasmURL });
       const result = await openBrowserStorage(
         async () => {
           if (!navigator.storage?.getDirectory) throw new Error('Persistent storage unavailable');
           return serializedDatabase(await SQLite.openDatabaseAsync('merosplit-web.db'));
         },
         async () => {
-          SQLite.configureWeb({ memoryOnly: true });
+          SQLite.configureWeb({ wasmURL, memoryOnly: true });
           return serializedDatabase(await SQLite.openDatabaseAsync(':memory:', { useNewConnection: true }));
         }, migrate,
       );

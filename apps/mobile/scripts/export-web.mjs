@@ -1,12 +1,15 @@
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { readdir, readFile, writeFile } from 'node:fs/promises';
+import { readdir, readFile, writeFile, copyFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, relative, resolve } from 'node:path';
 const project = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const destination = resolve(project, '../api/web-dist');
 const result = spawnSync(process.execPath, [join(project, 'node_modules/expo/bin/cli'), 'export', '--platform', 'web', '--output-dir', destination], { cwd: project, stdio: 'inherit', env: { ...process.env, EXPO_WEB_BUILD: '1', NODE_ENV: 'production' } });
 if (result.status !== 0) process.exit(result.status ?? 1);
+// Dependency-directory paths may be excluded by deployment uploaders, including
+// paths generated from a symlinked node_modules. SQLite uses this public URL.
+await copyFile(join(project, 'node_modules/expo-sqlite/web/wa-sqlite/wa-sqlite.wasm'), join(destination, 'sqlite.wasm'));
 // Scrub an incoming email proof before the browser starts any app asset requests.
 const index = join(destination, 'index.html');
 const bootstrap = await readFile(join(project, 'scripts/email-link-bootstrap.js'), 'utf8');
