@@ -159,7 +159,7 @@ test('the changing safe viewport bounds Paper iOS content, not just its outer sh
       StyleSheet: { flatten: (value: unknown) => Object.assign({}, ...[value].flat(Infinity)) },
       splitStyles: splitModule.splitStyles, forwardRef: (fn: Function) => fn, getStyleForShadowLayer: () => ({}) });
   function contentStyle(props: Record<string, any>) {
-    const dialog = one(renderDialog({ ...props, children: [] }), 'PaperDialog');
+    const dialog = one(renderDialog({ ...props, visible: true, children: [] }), 'PaperDialog');
     const outer = renderSurface({ container: true, elevation: 0, style: dialog.props.style }, null) as Element;
     assert.equal(outer.props.style.flexShrink, 1);
     return (outer.children[0] as Element).props.style;

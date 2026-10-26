@@ -87,6 +87,26 @@ test('Add person closes for linked accounts and name-only contacts, without a su
   }
 });
 
+test('cancel dismisses the keyboard, restores the browser trigger and reopens the same controlled draft', async () => {
+  let focused = 0, dismissed = 0;
+  const trigger = { focus: () => focused++ };
+  const app = production('MembersScreen.tsx', { Platform: { OS: 'web' }, Keyboard: { dismiss: () => dismissed++ },
+    document: { querySelector: () => trigger, addEventListener() {}, removeEventListener() {} } });
+  const group: Group = { id: 'group', name: 'Trip', owner_id: 1, version: 1, participants: [{ id: 'self', name: 'You', user_id: 1 }], expenses: [], settlements: [], balances: {}, transfers: [], activity: [] };
+  let addPersonRequest = 0;
+  const render = () => app.render('MemberSettings', { group, selfId: 'self', busy: false, addPersonRequest, onMembership() {}, onAction: async () => { throw Error('Cancel must not save'); } });
+  try {
+    render(); await app.commit(); addPersonRequest++; render(); await app.commit();
+    component(render(), 'AddPersonDialog').props.onName('Retained draft');
+    component(render(), 'AddPersonDialog').props.onClose();
+    assert.equal(component(render(), 'AddPersonDialog').props.visible, false);
+    assert.equal(dismissed, 1); assert.equal(focused, 1);
+    addPersonRequest++; render(); await app.commit();
+    const reopened = component(render(), 'AddPersonDialog');
+    assert.equal(reopened.props.visible, true); assert.equal(reopened.props.name, 'Retained draft');
+  } finally { app.unmount(); }
+});
+
 test('An unknown email gets an explicit confirmation; Cancel keeps the already accepted person and sends nothing', async () => {
   const app = settings();
   try {
