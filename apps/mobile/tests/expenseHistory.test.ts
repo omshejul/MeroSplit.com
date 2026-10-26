@@ -56,6 +56,24 @@ test('relative times use actual server time and handle invalid and future timest
   assert.equal(historyTime('invalid', now), 'Time not recorded');
 });
 
+test('actual history row survives the minute refresh when Hermes has no RelativeTimeFormat', async () => {
+  const descriptor = Object.getOwnPropertyDescriptor(Intl, 'RelativeTimeFormat')!;
+  const app = component(async () => page());
+  await app.commit();
+  Object.defineProperty(Intl, 'RelativeTimeFormat', { ...descriptor, value: undefined });
+  try {
+    const created = version('native-history'), timestamp = Date.parse(created.created_at);
+    for (const [age, label] of [[0, 'Just now'], [59_000, 'Just now'], [60_000, '1 min. ago'], [120_000, '2 min. ago'],
+      [3_600_000, '1 hr. ago'], [7_200_000, '2 hr. ago'], [86_400_000, 'yesterday'], [172_800_000, '2 days ago']] as const) {
+      const row = app.row({ version: created, now: timestamp + age });
+      assert.equal(row.children[0].children[2].children[0], label);
+    }
+  } finally {
+    Object.defineProperty(Intl, 'RelativeTimeFormat', descriptor);
+    app.unmount();
+  }
+});
+
 test('screen fetches only its entity via GET, preserves newest order and accessible actual values', async () => {
   const calls: any[] = [], app = component(async (...args) => { calls.push(args); return page(); });
   let tree = app.render(); assert.equal(tree.props.ListEmptyComponent.type, 'LoadingSpinner');
