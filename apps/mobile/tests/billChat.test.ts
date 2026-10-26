@@ -122,6 +122,53 @@ test('Reader backs off to a bounded interval, pauses fully, and resumes with a n
   const resumed = startChatReads(session, path, () => [], () => {}, () => {}, send, timer.timers); await tick(); assert.equal(calls, 7); resumed.stop();
 });
 
+test('Reader callbacks retain the effective older cursor through resets, incremental nulls and the final older page', async () => {
+  const timer = timerFixture(), calls: { url: string; resolve: (value: ChatPage) => void }[] = [], received: ChatPage[] = [];
+  let rows: ChatMessage[] = [];
+  const messages = (first: number, last: number) => Array.from({ length: last - first + 1 }, (_, i) => message(String(first + i), String(first + i)));
+  const send: typeof request = async <T>(_active: Session, url: string): Promise<T> => new Promise(resolve => calls.push({ url, resolve: value => resolve(value as T) }));
+  const reader = startChatReads(session, path, () => [], value => { received.push(value); rows = mergeChatMessages(rows, value.messages, value.removed_ids); }, error => { throw error; }, send, timer.timers);
+  try {
+    calls[0].resolve(page([], 'after0')); await tick();
+    reader.refresh(true); await tick();
+    assert.equal(new URL('https://example.test' + calls[1].url).searchParams.has('after'), false);
+    calls[1].resolve(page(messages(6, 55), 'after55', 'before6')); await tick();
+    assert.equal(received.at(-1)?.older_cursor, 'before6');
+    timer.fire(); await tick(); calls[2].resolve(page([], 'after55')); await tick();
+    assert.equal(received.at(-1)?.older_cursor, 'before6', 'An incremental raw null must not hide the older page');
+    const older = reader.older(); await tick();
+    assert.equal(new URL('https://example.test' + calls[3].url).searchParams.get('before'), 'before6');
+    calls[3].resolve(page(messages(1, 5), 'after5')); await older;
+    assert.equal(received.at(-1)?.older_cursor, null); assert.equal(reader.hasOlder(), false);
+    assert.equal(rows.length, 55); assert.equal(new Set(rows.map(row => row.id)).size, 55);
+    reader.refresh(true); await tick(); calls[4].resolve(page([], 'after0')); await tick();
+    assert.equal(received.at(-1)?.older_cursor, null);
+    reader.refresh(true); await tick(); calls[5].resolve(page(messages(6, 55), 'after55', 'before6')); await tick();
+    assert.equal(received.at(-1)?.older_cursor, 'before6');
+    timer.fire(); await tick(); calls[6].resolve(page([message('55', '55')], 'after55')); await tick();
+    assert.equal(received.at(-1)?.older_cursor, 'before6');
+    assert.equal(rows.length, 55); assert.equal(new Set(rows.map(row => row.id)).size, 55);
+  } finally { reader.stop(); }
+});
+
+test('Stopped reset callbacks cannot publish into a replacement account reader', async () => {
+  const timer = timerFixture(), calls: { account: string; signal: AbortSignal; resolve: (value: ChatPage) => void }[] = [];
+  const oldPages: ChatPage[] = [], nextPages: ChatPage[] = [];
+  const send: typeof request = async <T>(active: Session, _url: string, _method?: string, _body?: unknown, _type?: 'json' | 'text', signal?: AbortSignal): Promise<T> => new Promise(resolve => calls.push({ account: active.userId, signal: signal!, resolve: value => resolve(value as T) }));
+  const old = startChatReads(session, path, () => [], value => oldPages.push(value), () => {}, send, timer.timers);
+  calls[0].resolve(page([], 'old0')); await tick(); old.refresh(true); await tick(); old.stop();
+  assert.equal(calls[1].signal.aborted, true);
+  const next = startChatReads({ ...session, userId: '2', token: 'next-synthetic' }, path, () => [], value => nextPages.push(value), () => {}, send, timer.timers);
+  try {
+    calls[1].resolve(page([message('99')], 'old99', 'old-before')); await tick();
+    assert.equal(oldPages.length, 1); assert.equal(nextPages.length, 0);
+    calls[2].resolve(page([message('1')], 'next1', 'next-before')); await tick();
+    assert.equal(calls[2].account, '2'); assert.equal(nextPages[0].older_cursor, 'next-before');
+    next.stop(); const count = calls.length; old.refresh(true); next.refresh(true); await tick();
+    assert.equal(calls.length, count); assert.equal(timer.pending.size, 0);
+  } finally { old.stop(); next.stop(); }
+});
+
 test('A revoked conversation stops retries and does not fetch another page', async () => {
   const timer = timerFixture(); let calls = 0;
   const reader = startChatReads(session, path, () => [], () => {}, () => {}, async () => { calls++; throw new ApiError(404, 'No access'); }, timer.timers);
