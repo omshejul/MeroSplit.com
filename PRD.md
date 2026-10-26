@@ -11,13 +11,13 @@ The recommendation is to prototype this narrower product before funding a full S
 
 ## 1. Evidence and boundaries
 
-Use [Splitwise behavior](research/SPLITWISE_FEATURES.md), [India user research](research/INDIA_USER_RESEARCH.md), [market assessment](research/MARKET_RESEARCH.md), [UPI and architecture](research/UPI_AND_ARCHITECTURE.md), and [test coverage](research/HANDS_ON_TEST_LOG.md) as supporting evidence. Requirements below are proposed behavior unless explicitly attributed to Splitwise.
+Use Splitwise behavior (private research archive), India user research (private research archive), market assessment (private research archive), UPI and architecture (private research archive), and test coverage (private research archive) as supporting evidence. Requirements below are proposed behavior unless explicitly attributed to Splitwise.
 
 The current Splitwise help documents four free expenses per day. Annual Individual and Duo subscriptions include one Trip Pass that grants a chosen group Pro features for 30 days. Old complaints about different limits or the absence of any group trip plan must not become current product claims. [Splitwise Pro help](https://kb.splitwise.com/pro/what-is-splitwise-pro)
 
 Current India payment availability is unresolved. The India store listing advertises Paytm, but current payment help describes the US and select European countries. Neither proves a working generic UPI flow on an Indian iPhone today. The Android test flow showed only manual payment recording for a synthetic recipient without a phone or VPA, in an account initially defaulting to USD. That observation does not establish India-wide availability. [India listing](https://apps.apple.com/in/app/splitwise/id458023433), [payment help](https://kb.splitwise.com/payment-integrations/how-do-i-send-money-to-someone-on-splitwise)
 
-The research collected 1,500 review IDs across three Apple storefronts. Research agents manually inspected 100 latest negative or mixed India-store reviews and 30 latest positive-star India-store reviews. These are selected review samples, not estimates of Indian market prevalence. See the [audit](research/results/apple_review_audit_summary.json). A follow-up walkthrough tested Splitwise Android 26.9.1/963 in an official Google Play emulator. Four synthetic bills and one manual payment verified a simplified debt chain, partial repayment, equal rounding and multiple payers. The fifth expense was blocked. See the [native findings](research/ANDROID_HANDS_ON_FINDINGS.md) and [transcribed fixture](research/results/native_accounting_fixture.json). iOS, real UPI, offline conflicts and actual exports remain untested; the [test log](research/HANDS_ON_TEST_LOG.md) tracks those gaps.
+The research collected 1,500 review IDs across three Apple storefronts. Research agents manually inspected 100 latest negative or mixed India-store reviews and 30 latest positive-star India-store reviews. These are selected review samples, not estimates of Indian market prevalence. See the audit (private research archive). A follow-up walkthrough tested Splitwise Android 26.9.1/963 in an official Google Play emulator. Four synthetic bills and one manual payment verified a simplified debt chain, partial repayment, equal rounding and multiple payers. The fifth expense was blocked. See the native findings (private research archive) and transcribed fixture (private research archive). iOS, real UPI, offline conflicts and actual exports remain untested; the test log (private research archive) tracks those gaps.
 
 Implement shared-expense concepts independently. Do not copy Splitwise code, branding, screenshots or private interfaces into the product. Do not depend on Splitwise's developer API for competitive replication. Its API terms restrict that use. User-supplied exports need a separate compatibility and rights review. [Developer terms](https://dev.splitwise.com/)
 
@@ -181,7 +181,7 @@ Zero share is allowed for an excluded participant but must not accidentally sele
 | Repeat submission of the same expense command after network timeout | One expense revision and one ledger effect |
 | Asha owed Bharat ₹500 in one group and Bharat owed Charu ₹500 in another | Keep group obligations separate; do not route Asha to Charu across groups |
 
-The table specifies our proposed implementation. Separate [native fixtures](research/results/native_accounting_fixture.json) transcribe observed Splitwise cases; their final balances were independently reconciled in integer paise. The observed extra paise went to A, but this does not establish Splitwise's private tie-break rule. Run our specified deterministic rules on both server and mobile when implementation starts.
+The table specifies our proposed implementation. Separate native fixtures (private research archive) transcribe observed Splitwise cases; their final balances were independently reconciled in integer paise. The observed extra paise went to A, but this does not establish Splitwise's private tie-break rule. Run our specified deterministic rules on both server and mobile when implementation starts.
 
 ## 8. Simplify debts, required in the first release
 
@@ -286,7 +286,7 @@ UPI handoff requires an online accepted snapshot in P0. Offline manual records c
 
 Test real P2P addresses on physical iPhones and Android phones, with Google Pay, PhonePe, Paytm and BHIM where installed and supported. Cover no app, wrong/changed VPA, app rejection, partial payment, cancelled transfer, bank pending, manual return, app termination, duplicate tap and another phone paying at the same time. The human tester authorizes any real transfer and exact small amount. Do not infer P2P support from a merchant demo. If iOS cannot support a safe one-tap flow, release the honest copy/QR/manual flow and describe it accurately.
 
-Do not build remote P2P Collect as a launch dependency. Recheck current NPCI/provider rules and the permitted commercial model before any provider integration. More detail and regulatory source limitations are in [UPI and architecture](research/UPI_AND_ARCHITECTURE.md).
+Do not build remote P2P Collect as a launch dependency. Recheck current NPCI/provider rules and the permitted commercial model before any provider integration. More detail and regulatory source limitations are in UPI and architecture (private research archive).
 
 ## 11. Migration, export and backup
 
@@ -506,7 +506,7 @@ Do not hold the first working local slice for charts, avatars, OCR or localizati
 
 ## 18. Reverse engineering tools
 
-Assess tools against the evidence needed: native UI walkthroughs, recorded inputs and outputs, export inspection, optional authorized binary analysis, and reproducible accounting fixtures. The likely repository referenced by the user is [REA](https://github.com/morluto/rea), but its identity is not confirmed. See the [tool assessment](research/REVERSE_ENGINEERING_TOOLS.md) for official sources, device/build prerequisites, fit and limitations. No analysis tool was installed or run on Splitwise in this phase.
+Assess tools against the evidence needed: native UI walkthroughs, recorded inputs and outputs, export inspection, optional authorized binary analysis, and reproducible accounting fixtures. The likely repository referenced by the user is [REA](https://github.com/morluto/rea), but its identity is not confirmed. See the tool assessment (private research archive) for official sources, device/build prerequisites, fit and limitations. No analysis tool was installed or run on Splitwise in this phase.
 
 ## 19. Decisions still requiring evidence
 

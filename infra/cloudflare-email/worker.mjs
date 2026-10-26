@@ -1,12 +1,12 @@
 const MAILBOX = 'mail@merosplit.com';
-const DESTINATION = 'mail@merosplit.com';
 
 export default {
-  async email(message) {
+  async email(message, env) {
     if (message.to.toLowerCase() !== MAILBOX) {
       message.setReject('Unknown recipient');
       return;
     }
-    await message.forward(DESTINATION);
+    if (!env?.FORWARD_TO) throw new Error('Mail forwarding is not configured');
+    await message.forward(env.FORWARD_TO);
   },
 };

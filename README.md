@@ -1,6 +1,6 @@
 # MeroSplit
 
-Shared-expense app for iOS, Android and web, built with Expo React Native and a Django/PostgreSQL backend. [MeroSplit](https://merosplit.com) · [Private source repository](https://github.com/omshejul/SplitDumb).
+Shared-expense app for iOS, Android and web, built with Expo React Native and a Django/PostgreSQL backend. [MeroSplit](https://merosplit.com) · [Private source repository](https://github.com/omshejul/MeroSplit).
 
 The current 0.3.5 source, native build 13, uses Groups, People, Activity and Me with React Native Paper controls, native pickers and Hugeicons. Accounts sync automatically. PostgreSQL owns accepted records; the phone keeps an account-scoped cache, drafts and an idempotent offline queue. Sign-out preserves unsent work for that account. Earlier unowned phone records require explicit account and participant confirmation before recovery. Original history remains available in recovery export.
 
@@ -18,37 +18,6 @@ The PRD's [implementation rules](PRD.md#rules-against-bloat-and-unnecessary-abst
 
 Simplify debts is required in the first iOS and Android release. It cancels circular obligations and proposes fewer group repayments while preserving each person's balance. The PRD includes its controls, explanations and eight acceptance cases.
 
-## Research documents
+## Research privacy
 
-- [Market assessment and build recommendation](research/MARKET_RESEARCH.md)
-- [Splitwise features and documented behavior](research/SPLITWISE_FEATURES.md)
-- [Indian user complaints, alternatives and counterevidence](research/INDIA_USER_RESEARCH.md)
-- [UPI feasibility and React Native architecture](research/UPI_AND_ARCHITECTURE.md)
-- [Reverse engineering repositories and testing tools](research/REVERSE_ENGINEERING_TOOLS.md)
-- [Actual research-agent discussion and decisions](research/RESEARCH_DISCUSSION.md)
-- [Android hands-on findings](research/ANDROID_HANDS_ON_FINDINGS.md) and [coverage / remaining device tests](research/HANDS_ON_TEST_LOG.md)
-- [Research contract](research/RESEARCH_CONTRACT.md)
-
-## Evidence and reproducibility
-
-The corpus contains 1,500 public Splitwise Apple review IDs across India, US and UK storefronts. Research agents inspected a selected 130 India-store reviews plus 36 community records. The corpus is a discovery sample, not a representative survey or verified set of buyers. The [completion audit](research/results/completion_audit.json) records coverage and gaps.
-
-- [Review audit summary](research/results/apple_review_audit_summary.json) and [record IDs](research/results/apple_review_audit.csv)
-- [Community evidence](research/normalized/community_evidence.json)
-- [Competitor comparison](research/results/competitors.csv)
-- [Official source register](research/normalized/official_sources.json)
-- [Technical source register](research/normalized/technical_sources.json)
-- [Source coverage](research/results/source_coverage.csv)
-
-`research/raw` preserves retrieved materials locally for audit. Marketing screenshots are reference material, not product assets. Source publication dates, collection dates and current product claims are distinguished in the reports.
-
-To reproduce the bounded Apple collection and saved inspection labels with Python's standard library:
-
-```sh
-python3 research/collect_apple_reviews.py
-python3 research/audit_reviews.py
-```
-
-Collection reuses existing raw snapshots. The saved label map is tied to the fixed review sample and must be inspected again if that sample changes. It is not an automatic sentiment or willingness-to-pay classifier.
-
-Splitwise Android 26.9.1/963 was installed through Google Play and tested in the official Android emulator. Saved synthetic cases verified a simplified debt chain, partial manual repayment, paise rounding and multiple payers. The fifth expense was blocked after four bills. The labeled test group remains available for review. No real money moved. See the [hands-on findings](research/ANDROID_HANDS_ON_FINDINGS.md) and [transcribed accounting fixture](research/results/native_accounting_fixture.json). Splitwise's iOS behavior, real UPI handoff, offline conflicts and export fidelity remain untested. SplitDumb's implementation tests are recorded separately in the verification report above.
+Scraped research, reviewer profiles and third-party snapshots are kept outside the source repository. Use synthetic fixtures for development and testing.
