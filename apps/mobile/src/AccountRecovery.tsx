@@ -7,28 +7,29 @@ import { Button, Disclosure, useUI } from './ui';
 
 export type SavedChangesProps = {
   commands: Command[]; groups: CachedGroup[]; busy: boolean; expired: boolean; expanded?: boolean;
-  onOpen: (group: CachedGroup) => void; onDiscard: (command: Command) => void; onRetry: () => void;
+  onOpen: (group: CachedGroup) => void; onReview: (command: Command) => void; onDiscard: (command: Command) => void; onRetry: () => void;
 };
 
-export function SavedCommandRow({ command, group, busy, onOpen, onDiscard }: {
+export function SavedCommandRow({ command, group, busy, onOpen, onReview, onDiscard }: {
   command: Command; group?: CachedGroup; busy: boolean;
-  onOpen: (group: CachedGroup) => void; onDiscard: (command: Command) => void;
+  onOpen: (group: CachedGroup) => void; onReview: (command: Command) => void; onDiscard: (command: Command) => void;
 }) {
   const { ui, palette } = useUI();
   return <View style={[styles.row, { borderBottomColor: palette.line }]}>
     <Text style={ui.rowTitle}>{String(command.body.description ?? group?.group.name ?? 'Saved change')}</Text>
     <Text style={ui.caption}>{command.error ?? (command.state === 'pending' ? 'Pending sync' : 'Needs review')}</Text>
-    {group ? <Button title="Open" kind="text" onPress={() => onOpen(group)} />
+    {group ? command.state !== 'pending' ? <Button title="Review" kind="text" disabled={busy} onPress={() => onReview(command)} />
+      : <Button title="Open" kind="text" disabled={busy} onPress={() => onOpen(group)} />
       : <Button title="Discard saved change" kind="text" disabled={busy} onPress={() => onDiscard(command)} />}
   </View>;
 }
 
-export function SavedChanges({ commands, groups, busy, expired, expanded = false, onOpen, onDiscard, onRetry }: SavedChangesProps) {
+export function SavedChanges({ commands, groups, busy, expired, expanded = false, onOpen, onReview, onDiscard, onRetry }: SavedChangesProps) {
   const needsReview = commands.some(command => command.state !== 'pending');
   if (!commands.length) return null;
   return <Disclosure title={needsReview ? 'Needs review' : 'Pending sync'} initialOpen={expanded || needsReview}>
     {commands.map(command => <SavedCommandRow key={command.command_id} command={command}
-      group={groups.find(group => group.group.id === command.group_id)} busy={busy} onOpen={onOpen} onDiscard={onDiscard} />)}
+      group={groups.find(group => group.group.id === command.group_id)} busy={busy} onOpen={onOpen} onReview={onReview} onDiscard={onDiscard} />)}
     {!expired && <Button title="Retry" disabled={busy} onPress={onRetry} />}
   </Disclosure>;
 }

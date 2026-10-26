@@ -22,7 +22,7 @@ import { SectionHeading, AmountText, Avatar, balanceColor, Button, Disclosure, I
 type Transfer = { sender: string; recipient: string; amount: string };
 type Props = {
   categoryIcons?: ExpenseIcons; noticeVisibility?: NoticeVisibility; header?: React.ReactNode;
-  revision?: number; onUpdatesAvailable?: (available: boolean) => void;
+  revision?: number; onUpdatesAvailable?: (available: boolean) => void; previewError?: string;
   group: Group; accepted: Group; pending: Command[]; busy: boolean; selfId: string;
   onLoadBalanceGroup?: (expected: Group) => Promise<BalanceSource>;
   onHistoryPage?: (resource: HistoryResource, direction: 'next' | 'previous' | 'search', query?: string, signal?: AbortSignal, target?: Group) => Promise<boolean>;
@@ -162,12 +162,12 @@ function BillSearch({ value, onChange, onSearch, showSubmit, busy, autoFocus }: 
   </View>;
 }
 
-export default function GroupScreen({ categoryIcons, header, noticeVisibility, group: incoming, accepted: incomingAccepted, revision = 0, onUpdatesAvailable, pending, busy, selfId, pagingScope = incoming.id, active = true, online = true, onRefresh, refreshing = false, onVisibleBills, onLoadBalanceGroup, onHistoryPage, onExpense, onPayment, onSettle }: Props) {
+export default function GroupScreen({ categoryIcons, header, noticeVisibility, group: incoming, accepted: incomingAccepted, previewError: incomingPreviewError = '', revision = 0, onUpdatesAvailable, pending, busy, selfId, pagingScope = incoming.id, active = true, online = true, onRefresh, refreshing = false, onVisibleBills, onLoadBalanceGroup, onHistoryPage, onExpense, onPayment, onSettle }: Props) {
   const { ui, motion } = useUI();
   // Background cache updates must not replace a page while someone is reading it.
   // Adopt both views together only for an explicit read or the user's saved changes.
-  const [shown, setShown] = useState({ group: incoming, accepted: incomingAccepted });
-  const { group, accepted } = shown;
+  const [shown, setShown] = useState({ group: incoming, accepted: incomingAccepted, previewError: incomingPreviewError });
+  const { group, accepted, previewError } = shown;
   const ownChanges = pending.map(command => `${command.command_id}:${command.state}`).join('|');
   const adoptedRevision = useRef(revision), savedCommands = useRef(new Set(pending.map(command => command.command_id)));
   const [opacity] = useState(() => new Animated.Value(1));
@@ -184,16 +184,15 @@ export default function GroupScreen({ categoryIcons, header, noticeVisibility, g
         Animated.timing(opacity, { toValue: 1, duration: 180, useNativeDriver: Platform.OS !== 'web', isInteraction: false }).start();
       } else opacity.setValue(1);
     }
-    setShown({ group: incoming, accepted: incomingAccepted });
+    setShown({ group: incoming, accepted: incomingAccepted, previewError: incomingPreviewError });
   }, [revision, ownChanges]);
-  useEffect(() => { onUpdatesAvailable?.(incoming.version !== group.version); }, [incoming.version, group.version, onUpdatesAvailable]);
+  useEffect(() => { onUpdatesAvailable?.(incoming.version !== group.version || incomingPreviewError !== previewError); }, [incoming.version, group.version, incomingPreviewError, previewError, onUpdatesAvailable]);
   useEffect(() => () => opacity.stopAnimation(), [opacity]);
   const [explanation, setExplanation] = useState<BalanceSelection | null>(null);
   const historyResource = group.transactions ? 'transactions' : 'bills';
   const [search, setSearch] = useState(group.history?.[historyResource]?.query ?? ''), [searching, setSearching] = useState(false);
   const historyWindow = group.history?.[historyResource];
   const expenses = group.read_mode === 'summary' ? group.expenses : group.expenses.filter(expense => group.expenses.length < 5 || `${expense.description} ${expense.notes}`.toLowerCase().includes(search.trim().toLowerCase()));
-  const needsAttention = pending.some(command => command.state !== 'pending' || !!command.error);
   const transfers = personalTransfers(group, selfId);
   const celebrateSettled = pending.length === 0 && accepted.balances?.[selfId] === '0';
   const rows: GroupTransaction[] = group.transactions ?? (group.read_mode === 'summary' ? expenses : [...expenses].reverse()).map(bill => ({ kind: 'bill', date: bill.date, bill }));
@@ -218,6 +217,8 @@ export default function GroupScreen({ categoryIcons, header, noticeVisibility, g
         ? <PaymentRow payment={row.payment} accepted={accepted} group={group} selfId={selfId} busy={busy} onPayment={onPayment} />
         : <BillTimelineRow categoryIcons={categoryIcons} expense={row.bill} group={group} selfId={selfId} busy={busy} onExpense={onExpense} noticeVisibility={group === accepted ? visibility : undefined} />}
       ListHeaderComponent={<View style={s.content}>{header}
+    {!!previewError && <Text>{previewError}</Text>}
+    {group !== accepted && <Text style={ui.caption}>Balances show a pending preview.</Text>}
     {group.archived && <Text style={ui.notice}>Archived. Reopen in settings to make changes.</Text>}
     {!transfers.length && <Text style={celebrateSettled ? ui.numeric : ui.caption}>{celebrateSettled ? '🎉 All settled' : 'All settled'}</Text>}
     {transfers.map(transfer => <PersonalTransferRow key={`${transfer.sender}:${transfer.recipient}`} transfer={transfer} group={group} selfId={selfId} disabled={busy || !!group.archived || pending.length > 0} onSettle={onSettle} onExplain={(transfer, restoreFocus) => setExplanation({ group, accepted, commands: pending, selfId, transfer, restoreFocus, load: onLoadBalanceGroup })} />)}
