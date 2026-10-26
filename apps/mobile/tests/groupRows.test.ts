@@ -6,6 +6,8 @@ import { categoryIcon, categoryMeaning, expenseCategory } from '../src/categoryI
 import { expenseBalanceChange, formatMoney } from '../src/accounting.ts';
 import { paymentPresentation } from '../src/activityPresentation.ts';
 import { personalSettlements, personalTransfers } from '../src/personalBalances.ts';
+import { previewPending } from '../src/ledger.ts';
+import type { Command, Group } from '../src/types.ts';
 
 type Element = { type: unknown; props: Record<string, any>; children: unknown[] };
 const React = { createElement: (type: unknown, props: Record<string, any> | null, ...children: unknown[]): Element => ({ type, props: props ?? {}, children }) };
@@ -165,6 +167,48 @@ test('virtualized timeline and legacy bill/payment lists preserve server order',
   assert.equal(payments.props.group, fallback);
   assert.ok(elements(history).some(node => node.type === 'Disclosure' && node.props.title === 'Payment records'));
   assert.ok(!elements(history).some(node => node.type === 'HistoryPages'));
+});
+
+test('held optimistic total keeps its pending label until Show updates adopts accepted records', () => {
+  const slots: any[] = [];
+  let cursor = 0, dirty = false, effects: (() => void)[] = [], available = false;
+  const effect = (callback: () => void, deps: unknown[]) => {
+    const index = cursor++, previous = slots[index];
+    if (!previous || deps.some((value, i) => !Object.is(value, previous[i]))) { slots[index] = deps; effects.push(callback); }
+  };
+  const render = production('GroupScreen', {
+    useState: (initial: any) => { const index = cursor++; if (!(index in slots)) slots[index] = typeof initial === 'function' ? initial() : initial; return [slots[index], (value: any) => { slots[index] = value; dirty = true; }]; },
+    useRef: (initial: any) => { const index = cursor++; return slots[index] ??= { current: initial }; },
+    useLayoutEffect: effect, useEffect: effect,
+  });
+  const bill = { ...billRow(), category: 'other', notes: '', total: '800', paid: { self: '800' }, shares: { self: '400', other: '400' }, split: { mode: 'equal' as const, values: { self: '1', other: '1' } } };
+  const accepted: Group = { ...group, name: 'Trip', activity: [], read_mode: 'summary', version: 1, balances: { self: '400', other: '-400' }, expenses: [bill], settlements: [], transfers: [{ sender: 'other', recipient: 'self', amount: '400' }] };
+  const pending: Command[] = [
+    { command_id: 'edit', group_id: 'g', method: 'PUT', path: '/groups/g/expenses/bill', base_version: 1, state: 'pending', error: null, body: { ...bill, command_id: 'edit' } },
+    { command_id: 'later', group_id: 'g', method: 'POST', path: '/groups/g/expenses', base_version: 1, state: 'pending', error: null, body: { ...bill, id: 'later', total: '300', paid: { self: '300' }, command_id: 'later' } },
+  ];
+  const optimistic = previewPending(accepted, pending);
+  const props = { group: optimistic, accepted, pending, selfId: 'self', busy: false, revision: 0, previewError: '', onUpdatesAvailable: (value: boolean) => { available = value; } };
+  const view = (next: any) => { let tree: Element; do { dirty = false; cursor = 0; effects = []; tree = render(next); effects.forEach(fn => fn()); } while (dirty); return tree!; };
+  view(props);
+  const latest = { ...accepted, version: 2 };
+  let previewError = '';
+  try { previewPending(latest, pending); } catch (error) { previewError = (error as Error).message; }
+  assert.match(previewError, /Balances show accepted records/);
+  view({ ...props, group: accepted, previewError });
+  assert.equal(available, true, 'a changed preview status exposes Show updates even at the same accepted version');
+  const conflictProps = { ...props, group: latest, accepted: latest, pending: [{ ...pending[0], state: 'conflict' }, pending[1]], previewError };
+  const held = view(conflictProps), row = elements(held).find(node => node.type === 'PersonalTransferRow')!;
+  assert.equal(row.props.transfer.amount, '550', 'background conflict preserves reading position and total');
+  assert.equal(row.props.disabled, true, 'live pending work keeps payments disabled');
+  assert.match(text(held), /Balances show a pending preview/);
+  assert.doesNotMatch(text(held), /Balances show accepted records/);
+  assert.equal(available, true);
+  const refreshed = view({ ...conflictProps, revision: 1 });
+  assert.equal(elements(refreshed).find(node => node.type === 'PersonalTransferRow')!.props.transfer.amount, '400');
+  assert.ok(text(refreshed).includes(previewError));
+  assert.doesNotMatch(text(refreshed), /Balances show a pending preview/);
+  assert.equal(elements(refreshed).find(node => node.type === 'PersonalTransferRow')!.props.disabled, true);
 });
 
 test('background summaries preserve displayed bills and accepted payments until an explicit read or own saved change', async () => {
