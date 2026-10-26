@@ -1,7 +1,15 @@
 import { explainTransfer, balanceKey } from '../src/balanceExplanation.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync, mkdtempSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
+import { DatabaseSync } from 'node:sqlite';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { pathToFileURL, fileURLToPath } from 'node:url';
+import { accountOwner, expensePayload } from '../src/api.ts';
+import { enqueue, enqueueBill, migrate, pendingCommands, replaceCommand } from '../src/storage.ts';
+import { enqueueExpenseWithMedia, pendingMediaUpload, saveMediaUpload } from '../src/media.ts';
+import { sqliteAdapter } from './sqlite.ts';
 import ts from 'typescript';
 import * as members from '../src/members.ts';
 import { formatMoney, integer, rupeesToPaise, validateExpense } from '../src/accounting.ts';
@@ -18,7 +26,7 @@ const tick = async () => { for (let i = 0; i < 15; i++) await Promise.resolve();
 function harness(file: string, name: string, extra: Record<string, any> = {}) {
   let cursor = 0, states: any[] = [], effects: (() => void)[] = [], cleanups: Record<number, () => void> = {};
   const deps: Record<number, any[]> = {};
-  const env: Record<string, any> = { React, Dialog, validUPIAddress, View: 'View', ScrollView: 'ScrollView', KeyboardDialog: 'KeyboardDialog', Pressable: 'Pressable', Text: 'Text', LoadingSpinner: 'LoadingSpinner', NotificationSwitch: 'NotificationSwitch', PushSettings: 'PushSettings', BalanceStatements: 'BalanceStatements', DialogScrollBody: 'DialogScrollBody', Form: 'Form', SectionHeading: 'SectionHeading', Button: 'Button', Icon: 'Icon', SettingsRow: 'SettingsRow', BillPeople: 'BillPeople', DraftAttachment: 'DraftAttachment', LocalAttachment: 'LocalAttachment', AmountField: 'AmountField', TextField: 'TextField', DateField: 'DateField', ErrorText: 'ErrorText', Checkbox: { Item: 'Checkbox' }, RadioChoice: 'RadioChoice', Crypto: { randomUUID: () => 'bill-id' }, StyleSheet: { create: (value: any) => value }, Keyboard: { dismiss() {} }, useWindowDimensions: () => ({ height: 667 }), useSafeAreaInsets: () => ({ top: 20, bottom: 0 }), Platform: { OS: 'native' }, requestAnimationFrame: (fn: () => void) => fn(), useUI: () => ({ ui: {} }), formatMoney, integer, rupeesToPaise, validateExpense, ...extra,
+  const env: Record<string, any> = { React, Dialog, useScreenRemovalLock() {}, validUPIAddress, View: 'View', ScrollView: 'ScrollView', KeyboardDialog: 'KeyboardDialog', Pressable: 'Pressable', Text: 'Text', LoadingSpinner: 'LoadingSpinner', NotificationSwitch: 'NotificationSwitch', PushSettings: 'PushSettings', BalanceStatements: 'BalanceStatements', DialogScrollBody: 'DialogScrollBody', Form: 'Form', SectionHeading: 'SectionHeading', Button: 'Button', Icon: 'Icon', SettingsRow: 'SettingsRow', BillPeople: 'BillPeople', DraftAttachment: 'DraftAttachment', LocalAttachment: 'LocalAttachment', AmountField: 'AmountField', TextField: 'TextField', DateField: 'DateField', ErrorText: 'ErrorText', Checkbox: { Item: 'Checkbox' }, RadioChoice: 'RadioChoice', Crypto: { randomUUID: () => 'bill-id' }, StyleSheet: { create: (value: any) => value }, Keyboard: { dismiss() {} }, useWindowDimensions: () => ({ height: 667 }), useSafeAreaInsets: () => ({ top: 20, bottom: 0 }), Platform: { OS: 'native' }, requestAnimationFrame: (fn: () => void) => fn(), useUI: () => ({ ui: {} }), formatMoney, integer, rupeesToPaise, validateExpense, ...extra,
     useState: (initial: any) => { const id = cursor++; if (!(id in states)) states[id] = typeof initial === 'function' ? initial() : initial; return [states[id], (value: any) => { states[id] = typeof value === 'function' ? value(states[id]) : value; }]; },
     useRef: (initial: any) => { const id = cursor++; return states[id] ??= { current: initial }; },
     useEffect: (fn: () => any, values: any[]) => { const id = cursor++; if (!deps[id] || values.some((value, i) => value !== deps[id][i])) { effects.push(() => { cleanups[id]?.(); cleanups[id] = fn(); }); deps[id] = values; } },
@@ -44,6 +52,7 @@ test('One Export data action invokes once, has no chooser and blocks repeats unt
 });
 
 function appAction(name: string, env: Record<string, any>) {
+  env.navigation ??= { complete: env.navigate };
   const source = ts.createSourceFile('App.tsx', readFileSync(new URL('../App.tsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   const app = source.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === 'AppContent') as ts.FunctionDeclaration;
   const fn = app.body!.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === name)!;
@@ -74,7 +83,7 @@ test('form keeps one selected payer changeable when other people are eligible an
   tree = app.render(props); assert.deepEqual(find(tree, 'title', 'Who paid?').children[0].props.draft.payerAmounts, { self: '6.00', other: '4.00' });
   assert.equal(saves.length, 0); find(tree, 'title', 'Save bill').props.onPress(); await tick();
   assert.equal(saves.length, 1); assert.deepEqual(saves[0].paid, { self: '600', other: '400' });
-  assert.ok(drafts.every(draft => draft.schemaVersion === 1 && draft.groupId === 'g'));
+  assert.equal(drafts.length, 0, 'typing and saving never autosave a form draft');
   const single = harness('src/ExpenseForm.tsx', 'ExpenseForm').render({ ...props, group: { ...group, participants: [group.participants[0]] } });
   assert.equal(find(single, 'title', 'Who paid?').props.inline, true); assert.equal(find(single, 'title', 'Split between').props.inline, true);
   assert.ok(find(single, 'label', 'Notes (optional)'));
@@ -102,7 +111,7 @@ function payerFields(app: ReturnType<typeof harness>, props: any) {
   return { ...selection.props, fields: nodes(tree).filter(node => node.type === 'TextField') };
 }
 
-test('payer difference chips add only to the chosen payer, persist drafts and save through existing validation', async () => {
+test('payer difference chips keep local values and save through existing validation', async () => {
   for (const id of ['self', 'other']) {
     const app = harness('src/ExpenseForm.tsx', 'ExpenseForm'), drafts: any[] = [], saves: any[] = [];
     const props = { group, selfId: 'self', busy: false, onSave: async (expense: any) => saves.push(expense), onDraftChange: (draft: any) => drafts.push(draft) };
@@ -116,9 +125,9 @@ test('payer difference chips add only to the chosen payer, persist drafts and sa
     assert.deepEqual(after.draft.payerAmounts, expected);
     assert.ok(after.fields.every((field: Element) => field.props.right === null));
     assert.equal(saves.length, 0);
-    assert.deepEqual(drafts.at(-1).payerAmounts, expected);
-    const restored = harness('src/ExpenseForm.tsx', 'ExpenseForm');
-    assert.deepEqual(payerFields(restored, { ...props, initialDraft: drafts.at(-1) }).draft.payerAmounts, expected);
+    assert.equal(drafts.length, 0, 'editing stays in the mounted form');
+    const reopened = harness('src/ExpenseForm.tsx', 'ExpenseForm');
+    assert.deepEqual(payerFields(reopened, props).draft.payerAmounts, {});
     find(app.render(props), 'title', 'Save bill').props.onPress(); await tick();
     assert.deepEqual(saves[0].paid, id === 'self' ? { self: '9300', other: '19200' } : { self: '9000', other: '19500' });
   }
@@ -1052,3 +1061,140 @@ test('stale current push binding stays off in the channel view and last local Em
   assert.ok(!nodes(tree).some(node => node.type === 'PushSettings'));
   panel.app.unmount();
 });
+
+
+function billDiscardDialog(env: Record<string, any>) {
+  const source = ts.createSourceFile('AppStack.tsx', readFileSync(new URL('../src/AppStack.tsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  let expression: ts.JsxElement | undefined;
+  function visit(node: ts.Node) { if (ts.isJsxElement(node) && node.openingElement.tagName.getText(source) === 'KeyboardDialog') expression = node; ts.forEachChild(node, visit); }
+  visit(source); assert.ok(expression);
+  const code = ts.transpile(`const dialog = ${expression!.getText(source)}`, { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React });
+  return new Function('env', `with(env){${code};return dialog;}`)({ React, Dialog, blocked: false, localBlocked: false, pending: env.discardBill ? { type: 'GO_BACK' } : null, setPending: (value: unknown) => env.setDiscardBill(!!value), KeyboardDialog: 'KeyboardDialog', DialogFocus: 'DialogFocus', CancelDialogActions: 'CancelDialogActions', Button: 'Button', ...env, navigation: { dispatch: () => env.navigate('group') } });
+}
+
+test('Back asks to discard the bill, Cancel retains the form and Discard leaves with the trash action', () => {
+  let open = false; const screens: string[] = [];
+  const env = { screen: 'expense', session: {}, navigation: { back: () => { open = true; } }, setDiscardBill: (value: boolean) => { open = value; }, navigate: (value: string) => screens.push(value) };
+  appAction('back', env)(); assert.equal(open, true); assert.deepEqual(screens, []);
+  const tree = billDiscardDialog({ ...env, discardBill: open });
+  assert.ok(nodes(tree).some(node => node.children.includes('Do you want to discard the draft?')));
+  nodes(tree).find(node => node.type === 'CancelDialogActions')!.props.onCancel();
+  assert.equal(open, false); assert.deepEqual(screens, [], 'Cancel keeps the same form mounted');
+  const discard = find(tree, 'title', 'Discard'); assert.equal(discard.props.kind, 'danger'); assert.equal(discard.props.icon, 'remove');
+  discard.props.onPress(); assert.deepEqual(screens, ['group']);
+});
+
+test('leaving an unsaved bill clears its staged file; a submitted file stays with its queued bill', async () => {
+  for (const submit of [false, true]) {
+    const cleared: any[] = [], app = harness('src/ExpenseForm.tsx', 'ExpenseForm', { clearStagedMedia: async (file: any) => { cleared.push(file); } });
+    const props = { group, selfId: 'self', busy: false, onSave: async () => {} };
+    let tree = app.render(props); app.commit();
+    const attachment = { id: 'file', file: { uri: 'file:///synthetic.png' } };
+    nodes(tree).find(node => node.type === 'DraftAttachment')!.props.onChange(attachment);
+    payerFields(app, props).onChange({ amount: '10', description: 'Lunch' });
+    tree = app.render(props);
+    if (submit) { find(tree, 'title', 'Save bill').props.onPress(); await tick(); }
+    app.unmount(); await tick(); assert.deepEqual(cleared, submit ? [] : [attachment.file]);
+  }
+});
+
+
+test('actual bill save transfers file ownership at commit, retaining exact queued work after load failure and discard/reopen', async () => {
+  for (const phase of ['before commit', 'after commit']) {
+    const folder = mkdtempSync(join(tmpdir(), 'bill-ownership-')), database = join(folder, 'cache.sqlite'), file = join(folder, 'staged.png'), otherFile = join(folder, 'other.png');
+    writeFileSync(file, 'synthetic attachment bytes'); writeFileSync(otherFile, 'other account bytes');
+    let raw = new DatabaseSync(database), failing = true;
+    try {
+      const base = sqliteAdapter(raw); await migrate(base);
+      const db = { ...base, withExclusiveTransactionAsync: (task: Parameters<typeof base.withExclusiveTransactionAsync>[0]) => base.withExclusiveTransactionAsync(async tx => { await task(tx); if (phase === 'before commit' && failing) throw Error('SQLite commit failed'); }) };
+      const session = { baseUrl: 'https://ownership.invalid', userId: '1', email: 'one@example.invalid', token: 'synthetic' }, owner = accountOwner(session), other = { ...session, userId: '2' };
+      const attachment = { id: 'file-id', path: '/groups/g/expenses/bill-id/attachments', file: { uri: pathToFileURL(file).href, name: 'receipt.png', type: 'image/png', size: 26 } };
+      await enqueue(base, accountOwner(other), { command_id: 'other-command', group_id: 'g', method: 'POST', path: '/groups/g/expenses', body: { id: 'other-bill' }, state: 'pending', error: null });
+      await saveMediaUpload(base, other, { ...attachment, id: 'other-file', file: { ...attachment.file, uri: pathToFileURL(otherFile).href } });
+      const otherBefore = JSON.stringify({ commands: await pendingCommands(base, accountOwner(other)), media: await pendingMediaUpload(base, other, attachment.path) });
+      let discardOpen = false, completion: Promise<unknown> | undefined; const screens: string[] = [];
+      const env: Record<string, any> = { selected: { group: { ...group, version: 1 } }, session, owner, groupId: 'g', expenseId: null, reviewCommand: null,
+        perform: (action: any) => action(), draftWrites: { current: Promise.resolve() }, getDatabase: async () => db,
+        expensePayload, uuid: () => 'bill-command', enqueueExpenseWithMedia, enqueue, enqueueBill, replaceCommand,
+        requireConnectionForTemporaryStorage() {}, load: async () => { if (phase === 'after commit' && failing) throw Error('Projection read failed'); },
+        setReviewCommand() {}, setReviewInput() {}, navigate: (screen: string) => screens.push(screen), isOnline: () => false };
+      env.command = appAction('command', env); env.queue = appAction('queue', env); env.saveExpense = appAction('saveExpense', env);
+      const app = harness('src/ExpenseForm.tsx', 'ExpenseForm', { clearStagedMedia: async (value: any) => { unlinkSync(fileURLToPath(value.uri)); } });
+      const props = { group, selfId: 'self', busy: false, onSave: (...args: any[]) => { const saving = env.saveExpense(...args); completion = saving.then(() => {}, () => {}); return saving; } };
+      let tree = app.render(props); app.commit();
+      await nodes(tree).find(node => node.type === 'DraftAttachment')!.props.onChange(attachment);
+      payerFields(app, props).onChange({ amount: '10.00', description: 'Saved bill' });
+      find(app.render(props), 'title', 'Save bill').props.onPress(); await Promise.resolve(); await completion; await tick();
+      tree = app.render(props);
+      assert.equal(existsSync(file), true, 'a failed save never clears the recoverable file');
+      assert.equal((await pendingCommands(base, owner)).length, phase === 'before commit' ? 0 : 1);
+      assert.equal(!!await pendingMediaUpload(base, session, attachment.path), phase === 'after commit');
+      const backEnv = { screen: 'expense', session: {}, navigation: { back: () => { discardOpen = true; } }, setDiscardBill: (value: boolean) => { discardOpen = value; }, navigate: env.navigate };
+      appAction('back', backEnv)();
+      nodes(billDiscardDialog({ ...backEnv, discardBill: discardOpen })).find(node => node.type === 'CancelDialogActions')!.props.onCancel();
+      assert.equal(discardOpen, false); assert.deepEqual(screens, []); assert.equal(existsSync(file), true);
+      assert.equal(find(app.render(props), 'label', 'Amount (₹)').props.value, '10.00', 'Cancel keeps the current form and file');
+      if (phase === 'before commit') {
+        assert.equal(!!find(tree, 'title', 'Save bill').props.disabled, false, 'failed persistence remains recoverable');
+        failing = false; find(tree, 'title', 'Save bill').props.onPress(); await Promise.resolve(); await completion; await tick();
+      }
+      const snapshot = async (connection: any) => JSON.stringify({ commands: await pendingCommands(connection, owner), media: await pendingMediaUpload(connection, session, attachment.path) });
+      const queued = await snapshot(base); assert.equal((await pendingCommands(base, owner))[0].command_id, 'bill-command');
+      appAction('back', backEnv)(); find(billDiscardDialog({ ...backEnv, discardBill: discardOpen }), 'title', 'Discard').props.onPress();
+      app.unmount(); await tick();
+      assert.equal(existsSync(file), true, 'discard must not delete an attachment owned by the committed queue');
+      if (phase === 'after commit') assert.equal(find(tree, 'title', 'Save bill').props.disabled, true, 'the form cannot modify a file already owned by the queue');
+      assert.equal(readFileSync(file, 'utf8'), 'synthetic attachment bytes');
+      raw.close(); raw = new DatabaseSync(database); const reopened = sqliteAdapter(raw); await migrate(reopened);
+      assert.equal(await snapshot(reopened), queued, 'command body, IDs, media metadata and owner survive SQLite reopen exactly');
+      assert.equal(JSON.stringify({ commands: await pendingCommands(reopened, accountOwner(other)), media: await pendingMediaUpload(reopened, other, attachment.path) }), otherBefore);
+      assert.equal(existsSync(otherFile), true);
+    } finally { raw.close(); rmSync(folder, { recursive: true, force: true }); }
+  }
+});
+
+
+async function unmountBeforeBillCommit(commits: boolean) {
+  const folder = mkdtempSync(join(tmpdir(), 'bill-inflight-')), database = join(folder, 'cache.sqlite'), file = join(folder, 'staged.png'), bytes = 'pending save attachment';
+  writeFileSync(file, bytes); let raw = new DatabaseSync(database);
+  let entered!: () => void, release!: () => void;
+  const saving = new Promise<void>(resolve => { entered = resolve; }), decision = new Promise<void>(resolve => { release = resolve; });
+  try {
+    const base = sqliteAdapter(raw); await migrate(base);
+    const db = { ...base, withExclusiveTransactionAsync: (task: Parameters<typeof base.withExclusiveTransactionAsync>[0]) => base.withExclusiveTransactionAsync(async tx => {
+      await task(tx); entered(); await decision; if (!commits) throw Error('Commit failed');
+    }) };
+    const session = { baseUrl: 'https://inflight.invalid', userId: '7', email: 'seven@example.invalid', token: 'synthetic' }, owner = accountOwner(session);
+    const attachment = { id: 'file-id', path: '/groups/g/expenses/bill-id/attachments', file: { uri: pathToFileURL(file).href, name: 'receipt.png', type: 'image/png', size: Buffer.byteLength(bytes) } };
+    const env: Record<string, any> = { selected: { group: { ...group, version: 1 } }, session, owner, groupId: 'g', expenseId: null, reviewCommand: null,
+      perform: (action: any) => action(), draftWrites: { current: Promise.resolve() }, getDatabase: async () => db,
+      expensePayload, uuid: () => 'inflight-command', enqueueExpenseWithMedia, enqueue, enqueueBill, replaceCommand,
+      requireConnectionForTemporaryStorage() {}, load: async () => {}, setReviewCommand() {}, setReviewInput() {}, navigate() {}, isOnline: () => false };
+    env.command = appAction('command', env); env.queue = appAction('queue', env); env.saveExpense = appAction('saveExpense', env);
+    let completion: Promise<unknown> | undefined, cleanups = 0;
+    const app = harness('src/ExpenseForm.tsx', 'ExpenseForm', { clearStagedMedia: async (value: any) => { cleanups++; unlinkSync(fileURLToPath(value.uri)); } });
+    const props = { group, selfId: 'self', busy: false, onSave: (...args: any[]) => { const pending = env.saveExpense(...args); completion = pending.then(() => {}, () => {}); return pending; } };
+    const tree = app.render(props); app.commit();
+    await nodes(tree).find(node => node.type === 'DraftAttachment')!.props.onChange(attachment);
+    payerFields(app, props).onChange({ amount: '10.00', description: 'Pending bill' });
+    find(app.render(props), 'title', 'Save bill').props.onPress(); await saving;
+    const snapshot = async (connection: any) => JSON.stringify({ commands: await pendingCommands(connection, owner), media: await pendingMediaUpload(connection, session, attachment.path) });
+    const queuedBeforeCommit = await snapshot(base);
+    app.unmount(); await tick();
+    const existedWhilePending = existsSync(file), cleanupsWhilePending = cleanups;
+    release(); await completion; await tick();
+    assert.equal(existedWhilePending, true, 'forced unmount must keep bytes until the save outcome is known');
+    assert.equal(cleanupsWhilePending, 0, 'cleanup cannot run while enqueue is still pending');
+    raw.close(); raw = new DatabaseSync(database); const reopened = sqliteAdapter(raw); await migrate(reopened);
+    if (commits) {
+      assert.equal(await snapshot(reopened), queuedBeforeCommit, 'late commit keeps the exact command, media intent and owner after reopen');
+      assert.equal(readFileSync(file, 'utf8'), bytes); assert.equal(cleanups, 0);
+    } else {
+      assert.deepEqual(await pendingCommands(reopened, owner), []); assert.equal(await pendingMediaUpload(reopened, session, attachment.path), null);
+      assert.equal(existsSync(file), false, 'unsubmitted file is cleaned only after the transaction fails'); assert.equal(cleanups, 1);
+    }
+  } finally { release(); raw.close(); rmSync(folder, { recursive: true, force: true }); }
+}
+
+test('forced unmount before enqueue commit preserves the file when the pending save later commits', () => unmountBeforeBillCommit(true));
+test('forced unmount before enqueue failure defers deletion until the pending save rolls back', () => unmountBeforeBillCommit(false));

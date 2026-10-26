@@ -15,7 +15,11 @@
         "buildType": "app-bundle"
       },
       "pnpm": "10.33.4",
-      "channel": "merosplit-1-1-testing"
+      "channel": "merosplit-production"
+    },
+    "production": {
+      "extends": "beta",
+      "channel": "merosplit-production"
     }
   },
   "submit": {

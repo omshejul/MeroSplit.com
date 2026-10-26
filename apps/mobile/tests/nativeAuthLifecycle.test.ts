@@ -35,6 +35,7 @@ function harness() {
   const ref = <T>(current: T) => ({ current });
   const env: Record<string, any> = {
     EmailLinkError, NativeEmailLinkError,
+    navigate: (screen: string, params: any = {}) => { state.screen = screen; state.groupId = params.groupId ?? null; state.tab = params.tab ?? 'Groups'; },
     inspectNativeEmailLink: async () => ({email:state.result.session.email,userId:Number(state.result.session.userId),purpose:'login',currentUserId:1,currentEmail:old.email}),
     Platform: { OS: 'android' }, API_URL: baseUrl, authEpoch: ref(0), authHeldRef: ref(false), activeSessionRef: ref(old),
     emailProof: ref(null), emailEntryRef: ref(null), cookieCheck: ref(false), initialEmailLink: ref(null), validatedBrowserSession: ref(''), draftWrites: ref(Promise.resolve()),

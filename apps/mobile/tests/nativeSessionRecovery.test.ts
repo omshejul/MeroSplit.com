@@ -20,7 +20,7 @@ const compiled = ts.transpile(declarations.join('\n'), { target: ts.ScriptTarget
 const tick = () => new Promise<void>(done => setImmediate(done));
 
 function harness(active: Session | null = old, target = fresh) {
-  const events: string[] = [], view: Record<string, unknown> = { groups: ['old-private-group'], commands: ['old-pending-command'], draft: 'old-private-draft' };
+  const events: string[] = [], view: Record<string, unknown> = { groups: ['old-private-group'], commands: ['old-pending-command'] };
   const state = { persisted: active, session: active }, ref = <T>(current: T) => ({ current });
   const env: Record<string, any> = {
     Platform: { OS: 'ios' }, API_URL: baseUrl, challenge: { challengeId: 'synthetic-challenge' }, email: target.email, code: '0000',
@@ -39,6 +39,8 @@ function harness(active: Session | null = old, target = fresh) {
   for (const name of ['FeedbackOpen', 'UpiSetup', 'VerifiedEmptyOwner', 'EmptyChatScope', 'ShowArchived', 'ShowHidden', 'NeedsInvitation', 'Expired', 'Groups', 'Commands', 'Legacy', 'Recoveries', 'Unavailable', 'LegacySelf', 'GroupId', 'ExpenseId', 'Draft', 'Vpa', 'LastConfirmed', 'SyncProblem', 'Syncing', 'PendingFiles', 'DownloadingOwner', 'Screen', 'Tab', 'MyName', 'ReviewCommand', 'ReviewInput', 'Returns', 'ReturnAttemptId', 'SettlementId', 'Activity', 'ActivityError', 'PushTarget', 'Challenge', 'Code']) {
     env[`set${name}`] = (value: unknown) => { view[name[0].toLowerCase() + name.slice(1)] = value; };
   }
+  env.initialScreen = { current: 'login' };
+  env.setNavigationScope = (update: (scope: number) => number) => { view.scope = update(Number(view.scope ?? 0)); view.screen = env.initialScreen.current; view.tab = view.screen === 'signInMethods' ? 'Account' : 'Groups'; };
   Object.defineProperty(env, 'session', { get: () => state.session });
   const run = new Function('env', `with (env) { ${compiled}; return finishSignIn; }`)(env) as () => Promise<void>;
   return { env, state, view, events, target, run };
@@ -78,7 +80,7 @@ test('actual App OTP persists, cleans up only old token, and adopts current acco
       assert.ok(h.events.indexOf('clear-push') < h.events.indexOf('adopt'));
       assert.equal(h.env.ownerRef.current, accountOwner(target)); assert.equal(h.env.activeSessionRef.current.token, target.token);
       assert.deepEqual(h.env.publishedStorage.current, { scope: '', view: '', changes: '' }); assert.equal(h.env.loadGeneration.current, 8);
-      assert.deepEqual(h.view.groups, []); assert.deepEqual(h.view.commands, []); assert.equal(h.view.draft, null);
+      assert.deepEqual(h.view.groups, []); assert.deepEqual(h.view.commands, []); assert.equal(h.view.scope, 1, 'account adoption remounts the stack and its local forms');
       assert.equal(h.env.activityOwner.current, ''); assert.equal(h.env.groupVersions.current, '');
       assert.deepEqual(h.events.slice(-2), [`load:${accountOwner(target)}`, `sync:${accountOwner(target)}`]);
     } finally { n.restore(); }

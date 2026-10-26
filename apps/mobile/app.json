@@ -154,9 +154,10 @@
     },
     "updates": {
       "url": "https://u.expo.dev/7b058184-31a7-41e9-96e1-5a752b7bf14f",
-      "checkAutomatically": "NEVER",
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 0,
       "requestHeaders": {
-        "expo-channel-name": "merosplit-1-1-testing"
+        "expo-channel-name": "merosplit-production"
       }
     }
   }

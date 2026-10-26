@@ -1,15 +1,17 @@
 import Form from './Form';
-import React, { useRef, useState } from 'react';
+import { useScreenRemovalLock } from './screenRemoval';
+import React, { useEffect, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Checkbox, Text, TouchableRipple } from 'react-native-paper';
 import * as Crypto from 'expo-crypto';
 import { formatMoney, integer, rupeesToPaise, validateExpense } from './accounting';
-import type { Amounts, Split } from './accounting';
+import type { Split } from './accounting';
 import type { Expense, Group } from './types';
 import { Button, DateField, ErrorText, useUI } from './ui';
 import { AmountField, RadioChoice, TextField } from './FormFields';
 import DraftAttachment from './DraftAttachment';
 import type { PendingMediaUpload } from './media';
+import { clearStagedMedia } from './media';
 import BillPeople from './BillPeople';
 
 export type ExpenseFormDraft = {
@@ -18,15 +20,9 @@ export type ExpenseFormDraft = {
   payerIds: string[]; payerAmounts: Record<string, string>; mode: Split['mode'];
   attachment?: PendingMediaUpload; participantIds: string[]; splitValues: Record<string, string>;
 };
-export type LegacyExpenseDraft = {
-  description: string; amount: string; paid: string; mode: Split['mode']; values: string;
-  date: string; notes: string; editing: Expense | null;
-};
 type Props = {
   group: Group; expense?: Expense; selfId: string; busy: boolean;
-  onSave: (expense: Expense, attachment?: PendingMediaUpload) => Promise<void>; onCancel: () => void;
-  initialDraft?: ExpenseFormDraft | LegacyExpenseDraft | null;
-  onDraftChange?: (draft: ExpenseFormDraft) => void | Promise<void>;
+  onSave: (expense: Expense, attachment?: PendingMediaUpload, onQueued?: () => void) => Promise<void>;
 };
 
 const today = () => { const date = new Date(); return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`; };
@@ -40,11 +36,11 @@ function payerDifference(draft: ExpenseFormDraft): bigint | null {
   } catch { return null; }
 }
 
-function startingDraft(group: Group, expense: Expense | undefined, selfId: string, saved: Props['initialDraft']): { draft: ExpenseFormDraft; warning: string } {
+function startingDraft(group: Group, expense: Expense | undefined, selfId: string): ExpenseFormDraft {
   const ids = group.participants.map(person => person.id);
   const activeIds = group.participants.filter(person => !person.removed).map(person => person.id);
   const payer = activeIds.includes(selfId) ? selfId : activeIds[0];
-  const base: ExpenseFormDraft = {
+  return {
     schemaVersion: 1, groupId: group.id, expenseId: expense?.id ?? null, id: expense?.id ?? Crypto.randomUUID(), expenseVersion: expense?.version ?? 0,
     description: expense?.description ?? '', amount: expense ? rupees(expense.total) : '', date: expense?.date ?? today(), notes: expense?.notes ?? '',
     payerIds: expense ? ids.filter(id => integer(expense.paid[id] ?? '0') > 0n) : payer ? [payer] : [],
@@ -52,28 +48,6 @@ function startingDraft(group: Group, expense: Expense | undefined, selfId: strin
     mode: expense?.split.mode ?? 'equal', participantIds: expense ? Object.keys(expense.split.values) : activeIds,
     splitValues: expense ? Object.fromEntries(Object.entries(expense.split.values).map(([id, value]) => [id, expense.split.mode === 'exact' ? rupees(value) : value])) : {},
   };
-  if (!saved) return { draft: base, warning: '' };
-  if ('schemaVersion' in saved) {
-    if (saved.schemaVersion === 1 && saved.groupId === group.id && saved.expenseId === (expense?.id ?? null)
-      && saved.payerIds.every(id => ids.includes(id)) && saved.participantIds.every(id => ids.includes(id))) return { draft: saved, warning: '' };
-    return { draft: base, warning: 'This saved draft belongs to a different expense. Please review the new form.' };
-  }
-  if ((saved.editing?.id ?? null) !== (expense?.id ?? null) || (saved.editing && !group.expenses.some(row => row.id === saved.editing!.id))) {
-    return { draft: base, warning: 'This older draft belongs to a different expense. Please review the new form.' };
-  }
-  const text = { description: saved.description, amount: saved.amount, date: saved.date, notes: saved.notes };
-  try {
-    const paid = JSON.parse(saved.paid) as Amounts, values = JSON.parse(saved.values) as Amounts;
-    for (const vector of [paid, values]) if (!vector || typeof vector !== 'object' || Array.isArray(vector) || Object.keys(vector).some(id => !ids.includes(id))) throw new Error('Incomplete people selection');
-    return { draft: {
-      ...base, ...text, expenseVersion: saved.editing?.version ?? base.expenseVersion, mode: saved.mode,
-      payerIds: Object.keys(paid).length ? Object.keys(paid).filter(id => integer(paid[id]) > 0n) : base.payerIds,
-      payerAmounts: Object.fromEntries(Object.entries(paid).map(([id, value]) => [id, rupees(value)])),
-      participantIds: Object.keys(values), splitValues: Object.fromEntries(Object.entries(values).map(([id, value]) => [id, saved.mode === 'exact' ? rupees(value) : value])),
-    }, warning: '' };
-  } catch {
-    return { draft: { ...base, ...text }, warning: 'This older draft had an incomplete split. Check the people and amounts before saving.' };
-  }
 }
 
 function Choice({ title, selected, disabled, onPress, role = 'checkbox' }: { title: string; selected: boolean; disabled: boolean; onPress: () => void; role?: 'checkbox' | 'radio' }) {
@@ -131,26 +105,31 @@ function SplitFields({ participants, draft, disabled, preserveRemoved, label, on
   </View>;
 }
 
-export default function ExpenseForm({ group, expense, selfId, busy, onSave, initialDraft, onDraftChange }: Props) {
+export default function ExpenseForm({ group, expense, selfId, busy, onSave }: Props) {
   const { ui } = useUI();
-  const [restored] = useState(() => startingDraft(group, expense, selfId, initialDraft));
-  const [draft, setDraft] = useState(restored.draft), [error, setError] = useState(restored.warning), [saving, setSaving] = useState(false);
+  const [draft, setDraft] = useState(() => startingDraft(group, expense, selfId)), [error, setError] = useState(''), [saving, setSaving] = useState(false);
   const [fileBusy, setFileBusy] = useState(false);
   const draftRef = useRef(draft);
-  const lock = useRef(false), disabled = busy || saving || fileBusy;
+  const handedOff = useRef(false);
+  const pendingSave = useRef<Promise<void> | null>(null);
+  useEffect(() => () => {
+    const file = draftRef.current.attachment?.file;
+    if (file) void Promise.resolve(pendingSave.current).catch(() => {}).then(() => {
+      if (!handedOff.current) return clearStagedMedia(file);
+    }).catch(() => {});
+  }, []);
+  const lock = useRef(false), disabled = busy || saving || fileBusy || handedOff.current;
+  useScreenRemovalLock(saving || fileBusy);
   const acceptedExpense = group.expenses.find(value => value.id === draft.id);
   const label = (id: string) => {
     const person = group.participants.find(value => value.id === id)!;
     const matching = group.participants.filter(value => value.name === person.name);
     return `${person.name}${person.removed ? ' (removed)' : ''}${matching.length > 1 ? ` (${matching.findIndex(value => value.id === id) + 1})` : ''}${id === selfId && person.name.trim().toLowerCase() !== 'you' ? ' (you)' : ''}`;
   };
-  async function persistChange(patch: Partial<ExpenseFormDraft>) {
-    const previous = draftRef.current, next = { ...previous, ...patch };
+  function change(patch: Partial<ExpenseFormDraft>) {
+    const next = { ...draftRef.current, ...patch };
     draftRef.current = next; setDraft(next); setError('');
-    try { await onDraftChange?.(next); }
-    catch (error) { if ('attachment' in patch) { draftRef.current = previous; setDraft(previous); } throw error; }
   }
-  function change(patch: Partial<ExpenseFormDraft>) { void persistChange(patch).catch(error => setError(error.message)); }
   function togglePayer(id: string) {
     const payerIds = draft.payerIds.includes(id) ? draft.payerIds.filter(value => value !== id) : [...draft.payerIds, id];
     const payerAmounts = { ...draft.payerAmounts };
@@ -164,7 +143,7 @@ export default function ExpenseForm({ group, expense, selfId, busy, onSave, init
     if (amount >= 0n) change({ payerAmounts: { ...current.payerAmounts, [id]: rupees(amount.toString()) } });
   }
   async function save() {
-    if (lock.current || busy || fileBusy || group.archived) return;
+    if (lock.current || busy || fileBusy || handedOff.current || group.archived) return;
     setError('');
     try {
       if (!draft.description.trim() || draft.description.trim().length > 200) throw new Error('Enter a description of up to 200 characters.');
@@ -184,9 +163,10 @@ export default function ExpenseForm({ group, expense, selfId, busy, onSave, init
         throw new Error('Keep removed people’s paid amounts and shares unchanged.');
       }
       lock.current = true; setSaving(true);
-      await onDraftChange?.(draft);
-      await onSave({ id: draft.id, version: draft.expenseVersion, description: draft.description.trim(), total, ...vectors, split,
-        date: draft.date, notes: draft.notes, category: expense?.category ?? 'general', category_auto: expense?.category_auto ?? ['', 'general', 'other'].includes((expense?.category ?? '').trim().toLowerCase()), deleted: false }, draft.attachment);
+      pendingSave.current = Promise.resolve().then(() => onSave({ id: draft.id, version: draft.expenseVersion, description: draft.description.trim(), total, ...vectors, split,
+        date: draft.date, notes: draft.notes, category: expense?.category ?? 'general', category_auto: expense?.category_auto ?? ['', 'general', 'other'].includes((expense?.category ?? '').trim().toLowerCase()), deleted: false }, draft.attachment, () => { handedOff.current = true; }));
+      await pendingSave.current;
+      handedOff.current = true;
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : 'Could not save the expense. Try again.';
       setError(message);
@@ -224,7 +204,7 @@ export default function ExpenseForm({ group, expense, selfId, busy, onSave, init
     </BillPeople>
     <DateField label="Date" value={draft.date} onChange={date => change({ date })} disabled={disabled} />
     <TextField autoCorrect={false} label="Notes (optional)" value={draft.notes} onChangeText={notes => change({ notes })} multiline style={styles.notes} maxLength={2000} editable={!disabled} />
-    {!expense && <DraftAttachment value={draft.attachment} path={`/groups/${group.id}/expenses/${draft.id}/attachments`} disabled={disabled || !!group.archived} onChange={attachment => persistChange({ attachment })} onBusy={setFileBusy} onError={setError} />}
+    {!expense && <DraftAttachment value={draft.attachment} path={`/groups/${group.id}/expenses/${draft.id}/attachments`} disabled={disabled || !!group.archived} onChange={async attachment => change({ attachment })} onBusy={setFileBusy} onError={setError} />}
     {!!error && <ErrorText live>{error}</ErrorText>}
     <Button title={saving ? 'Saving…' : 'Save bill'} onPress={() => void save()} disabled={disabled || group.archived} kind="primary" icon="check" />
   </Form>;

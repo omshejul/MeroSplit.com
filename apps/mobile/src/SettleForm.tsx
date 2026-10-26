@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useScreenRemovalLock } from './screenRemoval';
 import { AppState, Linking, Platform, Pressable, StyleSheet, View } from 'react-native';
 import { Text } from 'react-native-paper';
 import { Alert } from './alerts';
@@ -53,6 +54,7 @@ export default function SettleForm({ group, initial, busy, selfId, onSave, onRev
   const armedHere = useRef<string | null>(null);
   const returnChange = useRef(onReturnPaymentChange); returnChange.current = onReturnPaymentChange;
   const lock = useRef(false), mounted = useRef(true), disabled = busy || saving || reviewing || !!chooser;
+  useScreenRemovalLock(saving || reviewing || !!chooser);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   useEffect(() => {
     if (!returnPayment || returnPayment.attemptId !== returnRef.current?.attemptId) {
