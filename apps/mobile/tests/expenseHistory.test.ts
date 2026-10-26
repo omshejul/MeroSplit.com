@@ -16,7 +16,7 @@ const tick = async () => { for (let i = 0; i < 150; i++) await Promise.resolve()
 function component(send: (...args: any[]) => Promise<any>) {
   const raw = new DatabaseSync(':memory:'), db = sqliteAdapter(raw);
   const ready = (async () => { await migrate(db); for (const userId of ['1', '2']) await saveGroup(db, accountOwner({ ...session, userId }), { id:'group',name:'Dinner',version:3,participants:[],expenses:[],settlements:[],balances:{},transfers:[],activity:[] }, 'shared'); })();
-  let cursor = 0;
+  let cursor = 0, invalidations = 0;
   const state: any[] = [], dependencies: Record<number, any[]> = {}, cleanup: Record<number, any> = {};
   let effects: (() => void)[] = [];
   const env = { React: { createElement: (type: any, props: any, ...children: any[]) => ({ type, props: props || {}, children }) },
@@ -34,8 +34,8 @@ function component(send: (...args: any[]) => Promise<any>) {
   const source = ts.createSourceFile('ExpenseVersionHistory.tsx', readFileSync(new URL('../src/ExpenseVersionHistory.tsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   const body = source.statements.filter(n => !ts.isImportDeclaration(n)).map(n => n.getText(source).replace(/^export (?:default )?/, '')).join('\n');
   const methods = new Function('env', `with(env){${ts.transpile(body, { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React })};return {ExpenseVersionHistory,VersionHistoryRow};}`)(env);
-  return { render: (changes: any = {}) => { cursor = 0; return methods.ExpenseVersionHistory({ session, groupId: 'group', expenseId: 'bill', groupVersion: 3, title: 'Dinner', active: true, online: true, ...changes }); },
-    row: methods.VersionHistoryRow, commit: async () => { const run = effects; effects = []; run.forEach(fn => fn()); await tick(); }, unmount: () => { Object.values(cleanup).forEach(fn => fn?.()); raw.close(); } };
+  return { render: (changes: any = {}) => { cursor = 0; return methods.ExpenseVersionHistory({ session, groupId: 'group', expenseId: 'bill', groupVersion: 3, title: 'Dinner', active: true, online: true, onInvalidated: () => { invalidations++; }, ...changes }); },
+    row: methods.VersionHistoryRow, invalidations: () => invalidations, commit: async () => { const run = effects; effects = []; run.forEach(fn => fn()); await tick(); }, unmount: () => { Object.values(cleanup).forEach(fn => fn?.()); raw.close(); } };
 }
 
 test('actual payer and split allocations retain zero-share participants and recorded labels', () => {
@@ -84,7 +84,7 @@ test('offline screen retains downloaded data, inactive or denied reads hide it',
   const app = component(async () => { calls++; if (fail) throw new ApiError(404, 'Denied'); return page(); });
   app.render(); await app.commit(); assert.equal(app.render().props.data.length, 1);
   assert.equal(app.render({ online: false }).props.data.length, 1); await app.commit(); assert.equal(calls, 1);
-  fail = true; app.render(); await app.commit(); const tree = app.render(); assert.equal(tree.props.data.length, 0); assert.equal(tree.props.ListEmptyComponent.type, 'View');
+  fail = true; app.render(); await app.commit(); const tree = app.render(); assert.equal(tree.props.data.length, 0); assert.equal(tree.props.ListEmptyComponent.type, 'View'); assert.equal(app.invalidations(),1,'history invalidation must also clear the parent acknowledgement');
   assert.equal(app.render({ active: false }), null); await app.commit(); app.unmount();
 });
 

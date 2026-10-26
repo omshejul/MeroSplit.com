@@ -38,8 +38,8 @@ export function VersionHistoryRow({ version, change, now }: Row & { now?: number
   </View>;
 }
 
-export default function ExpenseVersionHistory({ session, groupId, expenseId, groupVersion, title, active, online }: {
-  session: Session; groupId: string; expenseId: string; groupVersion: number; title: string; active: boolean; online: boolean;
+export default function ExpenseVersionHistory({ session, groupId, expenseId, groupVersion, title, active, online, onInvalidated }: {
+  session: Session; groupId: string; expenseId: string; groupVersion: number; title: string; active: boolean; online: boolean; onInvalidated: () => void;
 }) {
   const { ui } = useUI(), path = `/groups/${groupId}/expenses/${expenseId}/versions`, owner = accountOwner(session);
   const scope = `${owner}|${session.token}|${path}|${groupVersion}`;
@@ -82,9 +82,9 @@ export default function ExpenseVersionHistory({ session, groupId, expenseId, gro
       if (!valid()) return false;
       const denied = cause instanceof ApiError && [401, 403, 404, 409].includes(cause.status);
       if (denied || fetched) {
+        setPage(null); onInvalidated();
         await forgetExpenseHistory(await getDatabase(), owner, groupId, expenseId);
         if (!valid()) return false;
-        setPage(null);
       }
       setError(cause instanceof ApiError && cause.status === 409 ? 'History changed. Refresh to see the latest.' : denied ? 'This history is no longer available.' : 'Could not refresh version history. Downloaded changes are kept.');
       if (before) throw cause;

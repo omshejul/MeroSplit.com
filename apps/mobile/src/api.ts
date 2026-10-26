@@ -157,8 +157,13 @@ export async function cacheOfflineGroups(db: Database, session: Session, current
     const group = await fetchGroup(session, row.group.id, 'full');
     if (!current()) throw new Error('The signed-in account changed.');
     if (group.id !== row.group.id || group.read_mode || !Number.isSafeInteger(group.version) || group.version < row.group.version || !Array.isArray(group.participants) || !Array.isArray(group.expenses) || !Array.isArray(group.settlements) || !Array.isArray(group.activity) || !Array.isArray(group.transfers) || !group.balances) throw new Error('Some group records have not downloaded. Reconnect to finish.');
-    // Saving this authorized group cannot prune other groups on a partial fetch.
-    await saveGroup(db, owner, group, 'shared');
+    // The authoritative index may revoke membership while this GET is in flight.
+    await db.withExclusiveTransactionAsync(async tx => {
+      const authorized = await readVisibleGroup(tx, owner, group.id);
+      if (!current() || authorized?.kind !== 'shared' || authorized.group.version !== row.group.version) throw new Error('Group access changed while downloading. Refresh to continue.');
+      await saveGroup(tx, owner, group, 'shared');
+      if (!current()) throw new Error('The signed-in account changed.');
+    });
   }
   // One sequential, bounded pass. Partial pages persist and the next existing
   // foreground sync resumes them; no complete checkpoint until every tail ends.

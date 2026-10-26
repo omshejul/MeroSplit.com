@@ -8,6 +8,8 @@ import { sqliteAdapter } from './sqlite.ts';
 import { migrate, saveGroup, saveDraft, reconcileGroupCache, wipeAccount, enqueue, pendingCommands, readExpenseHistory, saveExpenseHistory, confirmSync, confirmedSync } from '../src/storage.ts';
 import type { ExpenseHistoryPage, ExpenseVersion } from '../src/expenseHistory.ts';
 import type { Group } from '../src/types.ts';
+import { accountOwner, cacheOfflineGroups } from '../src/api.ts';
+import { readVisibleGroup } from '../src/storage.ts';
 const owner='server|1';
 const group:Group={id:'trip',name:'Trip',version:3,participants:[],expenses:[{id:'bill'} as any],settlements:[],balances:{},transfers:[],activity:[]};
 const entry=(sequence:number):ExpenseVersion=>({id:String(sequence),sequence,created_at:'2026-10-24T00:00:00Z',actor_name:'Synthetic actor',names:{},currency:'INR',kind:'edited',changes:[{field:'description',before:'Old',after:'Saved'}],labels_recorded:true});
@@ -56,4 +58,23 @@ test('v5 upgrade invalidates old incomplete-core checkpoints but preserves truly
   await migrate(db);assert.equal((await pendingCommands(db,owner))[0].attempted,undefined);assert.equal(await confirmedSync(db,owner),null);
   assert.equal((await db.getFirstAsync<{user_version:number}>('PRAGMA user_version'))?.user_version,6);
  }finally{raw.close();}
+});
+
+
+test('delayed full/history downloads cannot revive a group removed by a newer authorized index',async()=>{
+ const original=globalThis.fetch,session={baseUrl:'https://fixture.invalid',userId:'1',email:'actor@fixture.invalid',token:'generation'},scope=accountOwner(session);
+ try{
+  for(const delayed of ['full','history'])for(const retained of [false,true]){
+   const raw=new DatabaseSync(':memory:'),db=sqliteAdapter(raw);let release:((v:Response)=>void)|undefined;
+   try{
+    await migrate(db);await saveGroup(db,scope,delayed==='full'?{...group,read_mode:'summary'}:group,'shared');if(retained)await saveDraft(db,scope,'trip',{description:'Keep saved work'});
+    globalThis.fetch=async url=>{const isFull=String(url).endsWith('/groups/trip');if(isFull&&delayed==='full'||!isFull&&delayed==='history')return new Promise(resolve=>{release=resolve;});return Response.json(isFull?group:page({next_before:null}));};
+    const work=cacheOfflineGroups(db,session);for(let i=0;i<100&&!release;i++)await Promise.resolve();assert.ok(release);
+    await reconcileGroupCache(db,scope,[]);release!(Response.json(delayed==='full'?group:page({next_before:null})));
+    await assert.rejects(work,/changed/i);
+    const visible=await readVisibleGroup(db,scope,'trip');assert.equal(visible?.kind,retained?'unavailable':undefined);assert.equal(await readExpenseHistory(db,scope,'trip','bill'),null);
+    assert.equal((await db.getFirstAsync<{n:number}>("SELECT count(*) AS n FROM groups_cache WHERE owner=? AND kind='shared'",scope))?.n,0);assert.equal(await confirmedSync(db,scope),null);
+   }finally{raw.close();}
+  }
+ }finally{globalThis.fetch=original;}
 });
