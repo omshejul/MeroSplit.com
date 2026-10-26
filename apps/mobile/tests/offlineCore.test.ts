@@ -71,7 +71,7 @@ test('full offline snapshot is downloaded without pruning other cached groups; f
 test('status derives from durable pending work, conflicts, actual persisted acknowledgement and account scope', async () => {
  const raw = new DatabaseSync(':memory:'), db = sqliteAdapter(raw), base = { commands: [] as Command[], pendingFiles: 0, confirmedAt: null, durable: true, syncing: false, problem: false };
  try {
-  await migrate(db); assert.equal(syncStatus(base).label, 'Needs attention');
+  await migrate(db); assert.equal(syncStatus(base).label, 'Online');
   assert.equal(syncStatus({ ...base, commands: [bill] }).label, 'Saved on device');
   assert.equal(syncStatus({ ...base, pendingFiles: 1 }).label, 'Saved on device');
   assert.equal(syncStatus({ ...base, drafts: true }).label, 'Saved on device');
@@ -84,9 +84,9 @@ test('status derives from durable pending work, conflicts, actual persisted ackn
   assert.equal(syncStatus({ ...base, commands: [bill], durable: false }).label, 'Needs attention');
   await confirmSync(db, 'server|1'); const confirmedAt = await confirmedSync(db, 'server|1');
   assert.equal(syncStatus({ ...base, confirmedAt }).label, 'Synced');
-  assert.equal(syncStatus({ ...base, confirmedAt: await confirmedSync(db, 'server|2') }).label, 'Needs attention');
+  assert.equal(syncStatus({ ...base, confirmedAt: await confirmedSync(db, 'server|2') }).label, 'Online');
   assert.equal(syncStatus({ ...base, confirmedAt, commands: [bill] }).label, 'Saved on device');
-  assert.equal(syncStatus({ ...base, confirmedAt, problem: true }).label, 'Needs attention');
+  assert.equal(syncStatus({ ...base, confirmedAt, problem: true }).label, 'Online');
  } finally { raw.close(); }
 });
 
@@ -164,6 +164,15 @@ test('temporary storage alone does not demand attention; unsent work still does'
   assert.equal(status.label, 'Needs attention');
   assert.match(status.detail, /closing or reloading/);
  }
- assert.equal(syncStatus({ ...idle, problem: true }).label, 'Needs attention', 'real sync failures remain visible');
+ assert.equal(syncStatus({ ...idle, problem: true }).label, 'Online', 'read-only download failures do not imply unsent changes');
  assert.equal(syncStatus({ ...idle, reviewRequired: true }).label, 'Needs attention', 'account/access review remains visible');
+});
+
+
+test('incomplete offline downloads never imply an unsent user action', () => {
+ const idle = { commands: [] as Command[], drafts: false, pendingFiles: 0, confirmedAt: null, durable: false, syncing: false, problem: true };
+ assert.equal(syncStatus(idle).label, 'Online');
+ assert.match(syncStatus(idle).detail, /Nothing is waiting to sync/);
+ assert.equal(syncStatus({ ...idle, online: false }).label, 'Offline');
+ assert.equal(syncStatus({ ...idle, commands: [{ ...bill, state: 'conflict' }] }).label, 'Needs attention');
 });

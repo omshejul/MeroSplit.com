@@ -6,7 +6,7 @@ import type { CachedGroup, Command, Group } from './types';
 import { Button, Disclosure, useUI } from './ui';
 
 export type SavedChangesProps = {
-  commands: Command[]; groups: CachedGroup[]; busy: boolean; expired: boolean;
+  commands: Command[]; groups: CachedGroup[]; busy: boolean; expired: boolean; expanded?: boolean;
   onOpen: (group: CachedGroup) => void; onDiscard: (command: Command) => void; onRetry: () => void;
 };
 
@@ -23,10 +23,10 @@ export function SavedCommandRow({ command, group, busy, onOpen, onDiscard }: {
   </View>;
 }
 
-export function SavedChanges({ commands, groups, busy, expired, onOpen, onDiscard, onRetry }: SavedChangesProps) {
+export function SavedChanges({ commands, groups, busy, expired, expanded = false, onOpen, onDiscard, onRetry }: SavedChangesProps) {
   const needsReview = commands.some(command => command.state !== 'pending');
   if (!commands.length) return null;
-  return <Disclosure title={needsReview ? 'Needs review' : 'Pending sync'} initialOpen={needsReview}>
+  return <Disclosure title={needsReview ? 'Needs review' : 'Pending sync'} initialOpen={expanded || needsReview}>
     {commands.map(command => <SavedCommandRow key={command.command_id} command={command}
       group={groups.find(group => group.group.id === command.group_id)} busy={busy} onOpen={onOpen} onDiscard={onDiscard} />)}
     {!expired && <Button title="Retry" disabled={busy} onPress={onRetry} />}
