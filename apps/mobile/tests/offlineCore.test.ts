@@ -59,8 +59,9 @@ test('full offline snapshot is downloaded without pruning other cached groups; f
   globalThis.fetch = async () => { throw new Error('offline'); };
   await assert.rejects(cacheOfflineGroups(db, session), /Could not connect/); assert.equal(await confirmedSync(db, owner), null);
   const full = { ...accepted, expenses: Array.from({ length: 80 }, (_, i) => ({ id: `bill-${i}`, description: `Bill ${i}` })) };
-  let reads = 0; globalThis.fetch = async url => { reads++; assert.equal(String(url), session.baseUrl+'/api/v1/groups/trip'); return Response.json(full); };
-  await cacheOfflineGroups(db, session); await confirmSync(db, owner);
+  let reads = 0, historyReads = 0; globalThis.fetch = async url => { if (String(url).endsWith('/groups/trip')) { reads++; return Response.json(full); } historyReads++; const id = new URL(String(url)).pathname.split('/').at(-2); return Response.json({group_id:'trip',expense_id:id,version:3,items:[],next_before:null,legacy_gap:true}); };
+  for (let pass=0;pass<3;pass++) { await assert.rejects(cacheOfflineGroups(db,session),/history download is incomplete/); assert.equal(await confirmSync(db,owner),false); }
+  await cacheOfflineGroups(db, session); await confirmSync(db, owner); assert.equal(historyReads,80, 'bounded sequential passes resume saved history without duplicate downloads');
   assert.ok(await confirmedSync(db, owner)); await cacheOfflineGroups(db, session); assert.equal(reads, 1, 'unchanged full snapshot reused');
   assert.equal((await db.getFirstAsync<{ n: number }>("SELECT json_array_length(snapshot,'$.expenses') AS n FROM groups_cache WHERE owner=?", owner))?.n, 80);
   await saveGroup(db, owner, { ...accepted, version: 4, read_mode: 'summary' }, 'shared'); assert.equal(await confirmedSync(db, owner), null, 'new version removes stale offline-ready checkpoint');

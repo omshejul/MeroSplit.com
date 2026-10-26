@@ -1,4 +1,5 @@
 import type { CachedGroup, Command, Group, LegacyRecovery, LegacySource } from './types';
+import type { ExpenseHistoryPage } from './expenseHistory';
 
 type Bind = string | number | null;
 // Small seam for native SQLite and the real SQLite adapter used by Node tests.
@@ -12,8 +13,8 @@ export interface Database {
 
 export async function migrate(db: Database): Promise<void> {
   const row = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
-  if ((row?.user_version ?? 0) > 5) throw new Error('This database needs a newer app.');
-  if (row?.user_version === 5) return;
+  if ((row?.user_version ?? 0) > 6) throw new Error('This database needs a newer app.');
+  if (row?.user_version === 6) return;
   await db.withExclusiveTransactionAsync(async tx => {
     await tx.execAsync(`
       CREATE TABLE IF NOT EXISTS groups_cache (
@@ -36,19 +37,27 @@ export async function migrate(db: Database): Promise<void> {
         snapshot TEXT NOT NULL, PRIMARY KEY(owner, id)
       );
       CREATE TABLE IF NOT EXISTS sync_state (owner TEXT PRIMARY KEY, confirmed_at TEXT NOT NULL);
-      PRAGMA user_version = 5;
+      CREATE TABLE IF NOT EXISTS expense_history (
+        owner TEXT NOT NULL, group_id TEXT NOT NULL, expense_id TEXT NOT NULL,
+        version INTEGER NOT NULL, body TEXT NOT NULL, PRIMARY KEY(owner,group_id,expense_id)
+      );
+      DELETE FROM sync_state;
+      PRAGMA user_version = 6;
     `);
     const columns = await tx.getAllAsync<{ name: string }>('PRAGMA table_info(outbox)');
     if (!columns.some(column => column.name === 'base_version')) await tx.execAsync('ALTER TABLE outbox ADD COLUMN base_version INTEGER;');
     if (!columns.some(column => column.name === 'attempted')) await tx.execAsync('ALTER TABLE outbox ADD COLUMN attempted INTEGER NOT NULL DEFAULT 0;');
     // Older queues did not distinguish unsent writes from lost server responses.
-    await tx.runAsync('UPDATE outbox SET attempted=1');
+    if ((row?.user_version ?? 0) < 5) await tx.runAsync('UPDATE outbox SET attempted=1');
   });
 }
 
 export async function saveGroup(db: Database, owner: string, group: Group, kind: CachedGroup['kind']): Promise<void> {
+  const previous = await db.getFirstAsync<{ version: number | null }>("SELECT MAX(version) AS version FROM (SELECT json_extract(snapshot,'$.version') AS version FROM groups_cache WHERE owner=? AND id=? UNION ALL SELECT json_extract(snapshot,'$.version') FROM group_summaries WHERE owner=? AND id=?)", owner, group.id, owner, group.id);
   const table = group.read_mode === 'summary' ? 'group_summaries' : 'groups_cache';
   await db.runAsync(`INSERT INTO ${table}(owner,id,kind,snapshot) VALUES(?,?,?,?) ON CONFLICT(owner,id) DO UPDATE SET kind=excluded.kind,snapshot=excluded.snapshot WHERE json_extract(${table}.snapshot,'$.version') <= json_extract(excluded.snapshot,'$.version') AND (${table}.kind<>excluded.kind OR ${table}.snapshot<>excluded.snapshot)`, owner, group.id, kind, JSON.stringify(group));
+  await db.runAsync('DELETE FROM expense_history WHERE owner=? AND group_id=? AND version<?', owner, group.id, group.version);
+  if (previous?.version !== group.version) await db.runAsync('DELETE FROM sync_state WHERE owner=?', owner);
   // A newer authoritative version invalidates all old history, including redacted text.
   if (group.read_mode === 'summary') {
     const complete = await db.getFirstAsync<{ id: string }>("SELECT id FROM groups_cache WHERE owner=? AND id=? AND kind='shared' AND json_extract(snapshot,'$.version') >= ?", owner, group.id, group.version);
@@ -120,6 +129,8 @@ export async function reconcileGroupCache(db: Database, owner: string, authorize
       if (visible.has(row.id)) continue;
       const commands = queued.filter(command => command.group_id === row.id), group = JSON.parse(row.snapshot) as Group;
       if (group.version === 0 && commands.some(command => command.method === 'POST' && command.path === '/groups' && command.body.id === row.id)) continue;
+      await tx.runAsync('DELETE FROM expense_history WHERE owner=? AND group_id=?', owner, row.id);
+      await tx.runAsync('DELETE FROM sync_state WHERE owner=?', owner);
       const keep = commands.length || await readDraft(tx, owner, row.id) != null || await readLegacyRecovery(tx, owner, row.id);
       for (const table of ['groups_cache', 'group_summaries']) {
         if (keep) await tx.runAsync(`UPDATE ${table} SET kind='unavailable' WHERE owner=? AND id=?`, owner, row.id);
@@ -260,6 +271,7 @@ export async function wipeAccount(db: Database, owner: string): Promise<void> {
     await tx.runAsync('DELETE FROM group_summaries WHERE owner=?', owner);
     await tx.runAsync('DELETE FROM drafts WHERE owner=?', owner);
     await tx.runAsync('DELETE FROM sync_state WHERE owner=?', owner);
+    await tx.runAsync('DELETE FROM expense_history WHERE owner=?', owner);
   });
 }
 
@@ -289,6 +301,11 @@ export async function confirmSync(db: Database, owner: string, current: () => bo
     for (const row of await listGroups(tx, owner)) {
       const full = await tx.getFirstAsync<{ version: number }>("SELECT json_extract(snapshot,'$.version') AS version FROM groups_cache WHERE owner=? AND id=? AND kind='shared' AND json_extract(snapshot,'$.read_mode') IS NULL", owner, row.group.id);
       if (!full || full.version < row.group.version) return;
+      const snapshot = await readGroup(tx, owner, row.group.id);
+      for (const expense of snapshot!.group.expenses) {
+        const history = await readExpenseHistory(tx, owner, row.group.id, expense.id, row.group.version);
+        if (!history || history.next_before !== null) return;
+      }
     }
     if (!current()) return;
     await tx.runAsync('INSERT INTO sync_state(owner,confirmed_at) VALUES(?,?) ON CONFLICT(owner) DO UPDATE SET confirmed_at=excluded.confirmed_at', owner, new Date().toISOString());
@@ -296,4 +313,39 @@ export async function confirmSync(db: Database, owner: string, current: () => bo
     confirmed = true;
   });
   return confirmed;
+}
+
+export async function readExpenseHistory(db: Database, owner: string, groupId: string, expenseId: string, version?: number): Promise<ExpenseHistoryPage | null> {
+  const group = await db.getFirstAsync<{ kind: string; version: number }>(`SELECT kind,json_extract(snapshot,'$.version') AS version FROM (${visibleGroups} AND id=?)`, owner, owner, groupId);
+  if (group?.kind !== 'shared' || version !== undefined && group.version !== version) return null;
+  const row = await db.getFirstAsync<{ body: string }>('SELECT body FROM expense_history WHERE owner=? AND group_id=? AND expense_id=? AND version=?', owner, groupId, expenseId, group.version);
+  return row ? JSON.parse(row.body) as ExpenseHistoryPage : null;
+}
+
+export async function saveExpenseHistory(db: Database, owner: string, groupId: string, expenseId: string, page: ExpenseHistoryPage, before?: number, current: () => boolean = () => true): Promise<ExpenseHistoryPage> {
+  if (page.group_id !== groupId || page.expense_id !== expenseId || !Number.isSafeInteger(page.version) || page.version < 0 || !Array.isArray(page.items) || page.items.length > 50
+    || page.next_before !== null && (!Number.isSafeInteger(page.next_before) || page.next_before < 1 || before !== undefined && page.next_before >= before)
+    || page.items.some((item, index) => !item.id || !Number.isSafeInteger(item.sequence) || item.sequence < 1 || before !== undefined && item.sequence >= before || index > 0 && page.items[index - 1].sequence <= item.sequence || !Array.isArray(item.changes))
+    || new Set(page.items.map(item => item.id)).size !== page.items.length) throw new Error('This history is unavailable.');
+  let saved = page;
+  await db.withExclusiveTransactionAsync(async tx => {
+    const group = await tx.getFirstAsync<{ kind: string; version: number }>(`SELECT kind,json_extract(snapshot,'$.version') AS version FROM (${visibleGroups} AND id=?)`, owner, owner, groupId);
+    if (!current() || group?.kind !== 'shared' || group.version !== page.version) throw new Error('History changed. Refresh to see the latest.');
+    const old = await readExpenseHistory(tx, owner, groupId, expenseId, page.version);
+    if (before !== undefined && (!old || old.next_before !== null && before < old.next_before)) throw new Error('History changed. Refresh to see the latest.');
+    if (old) {
+      const next = old.next_before === null || page.next_before === null ? null : Math.min(old.next_before, page.next_before);
+      saved = { ...page, items: [...old.items.filter(item => !page.items.some(value => value.id === item.id)), ...page.items].sort((a, b) => b.sequence - a.sequence), next_before: next, legacy_gap: old.legacy_gap || page.legacy_gap };
+    }
+    await tx.runAsync('INSERT INTO expense_history(owner,group_id,expense_id,version,body) VALUES(?,?,?,?,?) ON CONFLICT(owner,group_id,expense_id) DO UPDATE SET version=excluded.version,body=excluded.body', owner, groupId, expenseId, page.version, JSON.stringify(saved));
+    if (!current()) throw new Error('The signed-in account changed.');
+  });
+  return saved;
+}
+
+export async function forgetExpenseHistory(db: Database, owner: string, groupId: string, expenseId: string): Promise<void> {
+  await db.withExclusiveTransactionAsync(async tx => {
+    await tx.runAsync('DELETE FROM expense_history WHERE owner=? AND group_id=? AND expense_id=?', owner, groupId, expenseId);
+    await tx.runAsync('DELETE FROM sync_state WHERE owner=?', owner);
+  });
 }

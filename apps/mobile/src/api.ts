@@ -3,7 +3,8 @@ import type { Command, Expense, Group, LegacyRecovery, Session } from './types';
 import { sessionRequest } from './transport.ts';
 export { requestEmailCode, confirmEmailCode, signOut as endSession } from './transport.ts';
 export type { EmailCodeChallenge } from './transport.ts';
-import { acceptCommand, bindLegacyGroup, markCommand, pendingCommands, readGroup, readLegacyRecovery, readLegacySource, reconcileGroupCache, readVisibleGroup, listGroups, saveGroup } from './storage.ts';
+import { acceptCommand, bindLegacyGroup, markCommand, pendingCommands, readGroup, readLegacyRecovery, readLegacySource, reconcileGroupCache, readVisibleGroup, listGroups, saveGroup, readExpenseHistory, saveExpenseHistory, forgetExpenseHistory } from './storage.ts';
+import type { ExpenseHistoryPage } from './expenseHistory';
 import type { AcceptedMembership, Database, MembershipReceipt } from './storage.ts';
 import { legacyMatchesServer, previewPending } from './ledger.ts';
 
@@ -159,8 +160,25 @@ export async function cacheOfflineGroups(db: Database, session: Session, current
     // Saving this authorized group cannot prune other groups on a partial fetch.
     await saveGroup(db, owner, group, 'shared');
   }
+  // One sequential, bounded pass. Partial pages persist and the next existing
+  // foreground sync resumes them; no complete checkpoint until every tail ends.
+  let pagesLeft = 20;
   for (const row of await listGroups(db, owner)) {
     const full = await db.getFirstAsync<{ version: number }>("SELECT json_extract(snapshot,'$.version') AS version FROM groups_cache WHERE owner=? AND id=? AND kind='shared'", owner, row.group.id);
     if (!current() || !full || full.version < row.group.version) throw new Error('Records changed while downloading. Reconnect to finish.');
+    for (const expense of (await readGroup(db, owner, row.group.id))!.group.expenses) {
+      let history = await readExpenseHistory(db, owner, row.group.id, expense.id, full.version);
+      while (!history || history.next_before !== null) {
+        if (!current() || pagesLeft-- <= 0) throw new Error('Version history download is incomplete. Reconnect to finish.');
+        const before = history?.next_before ?? undefined;
+        try {
+          const page = await request<ExpenseHistoryPage>(session, `/groups/${row.group.id}/expenses/${expense.id}/versions?limit=50${before === undefined ? '' : `&before=${before}`}`);
+          history = await saveExpenseHistory(db, owner, row.group.id, expense.id, page, before, current);
+        } catch (error) {
+          if (current() && error instanceof ApiError && [401, 403, 404, 409].includes(error.status)) await forgetExpenseHistory(db, owner, row.group.id, expense.id);
+          throw error;
+        }
+      }
+    }
   }
 }

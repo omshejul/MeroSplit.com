@@ -58,7 +58,7 @@ test('Upgrade version one retains accepted rows and adds draft storage', async (
     assert.equal((await readGroup(db, 'account1', 'g'))?.group.version, 4);
     await saveDraft(db, 'account1', 'g', { description: 'after upgrade' });
     assert.deepEqual(await readDraft(db, 'account1', 'g'), { description: 'after upgrade' });
-    assert.equal((await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version'))?.user_version, 5);
+    assert.equal((await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version'))?.user_version, 6);
   } finally { raw.close(); }
 });
 
