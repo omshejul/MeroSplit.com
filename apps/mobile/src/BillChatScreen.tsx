@@ -82,7 +82,7 @@ export default function BillChatScreen({ session, groupId, expenseId, active, on
     reads.current = startChatReads(session, path, () => [...viewable.current, ...incoming.current.map(row => row.id)].slice(0, 50), (value, older) => {
       if (readFailed.current) { readFailed.current = false; setReconnected(value => value + 1); }
       ackVisible.current();
-      setError(''); setPage(previous => older && previous ? { ...value, after_cursor: previous.after_cursor } : previous ? { ...value, older_cursor: previous.older_cursor } : value);
+      setError(''); setPage(previous => older && previous ? { ...value, after_cursor: previous.after_cursor } : value);
       const unseen = value.messages.some(row => !rows.current.some(old => old.id === row.id));
       if (!older && unseen && rows.current.length && !follow.current) {
         incoming.current = mergeChatMessages(incoming.current, value.messages.filter(row => !rows.current.some(old => old.id === row.id)), value.removed_ids);

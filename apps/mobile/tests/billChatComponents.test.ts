@@ -82,6 +82,53 @@ test('Older-history reader receives a New messages action and keeps rendered dat
   } finally { app.unmount(); await chat.flushChatWrites(); raw.close(); }
 });
 
+test('Actual screen callback reopens older paging after an empty chat fills, then block and unblock reset it', async () => {
+  const raw = new DatabaseSync(':memory:'), db = sqliteAdapter(raw);
+  const reads: { url: string; resolve: (value: ChatPage) => void }[] = [], controls: any[] = [];
+  const timers = new Map<number, () => void>(); let timerID = 0;
+  const send: typeof request = async <T>(_active: Session, url: string, method = 'GET', body?: any): Promise<T> => {
+    if (method === 'GET') return new Promise(resolve => reads.push({ url, resolve: value => resolve(value as T) }));
+    if (method === 'PUT') controls.push(body);
+    return { seen: 1 } as T;
+  };
+  const app = component(db, send, {
+    startChatReads: (active: Session, path: string, known: () => string[], receive: any, fail: any) => chat.startChatReads(active, path, known, receive, fail, send,
+      { set: fn => { timers.set(++timerID, fn); return timerID as any; }, clear: id => { timers.delete(Number(id)); } }),
+  });
+  const fire = async () => { const [id, fn] = timers.entries().next().value!; timers.delete(id); fn(); await tick(); };
+  const messages = (first: number, last: number) => Array.from({ length: last - first + 1 }, (_, i) => message(String(first + i)));
+  const response = (rows: ChatMessage[], after: string, before: string | null = null): ChatPage => ({ ...page(rows), older_cursor: before, after_cursor: after });
+  try {
+    await migrate(db); app.render(); await app.commit();
+    reads[0].resolve(response([], 'after0')); await tick(); app.render(); await app.commit();
+    await fire(); reads[1].resolve(response(messages(1, 50), 'after50')); await tick(); app.render(); await app.commit();
+    await fire(); reads[2].resolve(response(messages(51, 55), 'after55')); await tick();
+    let tree = app.render(); await app.commit();
+    assert.equal(find(tree, 'FlatList').props.data.length, 55);
+    find(tree, 'FlatList').props.renderItem({ item: message('55'), index: 0 }).props.onBlock(); await tick();
+    assert.deepEqual(controls, [{ user_id: 2, blocked: true }]);
+    reads[3].resolve({ ...response([], 'after0'), blocked_users: [{ id: '2', name: 'Asha' }] }); await tick();
+    tree = app.render(); await app.commit(); assert.equal(find(tree, 'FlatList').props.data.length, 0);
+    nodes(tree).find(node => node.props.label === 'Chat settings')!.props.onPress(); tree = app.render(); await app.commit();
+    find(tree, 'ChatControls').props.onUnblock('2'); await tick();
+    assert.deepEqual(controls[1], { user_id: 2, blocked: false });
+    reads[4].resolve(response(messages(6, 55), 'after55', 'before6')); await tick();
+    tree = app.render(); await app.commit(); find(tree, 'ChatControls').props.onClose(); tree = app.render(); await app.commit();
+    const flat = find(tree, 'FlatList'), nativeEvent = { contentOffset: { y: 0 }, contentSize: { height: 4000 }, layoutMeasurement: { height: 500 } };
+    flat.props.onLayout({ nativeEvent: { layout: { height: 500 } } });
+    flat.props.onScroll({ nativeEvent }); flat.props.onScrollBeginDrag();
+    flat.props.onScroll({ nativeEvent: { ...nativeEvent, contentOffset: { y: 3500 } } }); await tick();
+    assert.equal(reads.length, 6, 'Actual screen cursor must allow the older-page request after unblock');
+    assert.equal(new URL('https://example.test' + reads[5].url).searchParams.get('before'), 'before6');
+    reads[5].resolve(response(messages(1, 5), 'after5')); await tick();
+    tree = app.render(); await app.commit();
+    const ids = find(tree, 'FlatList').props.data.map((row: ChatMessage) => row.id);
+    assert.equal(ids.length, 55); assert.equal(new Set(ids).size, 55); assert.equal(ids.at(-1), '1');
+    const count = reads.length; flat.props.onScrollBeginDrag(); flat.props.onScroll({ nativeEvent: { ...nativeEvent, contentOffset: { y: 3600 } } }); await tick();
+    assert.equal(reads.length, count, 'No older request remains after paging to the end');
+  } finally { app.unmount(); await chat.flushChatWrites(); raw.close(); }
+});
+
 test('First-post consent stays explicit and repeated Send taps queue only one immutable message', async () => {
   const raw = new DatabaseSync(':memory:'), db = sqliteAdapter(raw), posts: any[] = [];
   const send: typeof request = async <T>(_active: Session, path: string, method?: string, body?: any): Promise<T> => {

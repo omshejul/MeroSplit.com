@@ -118,7 +118,7 @@ export function startChatReads(session: Session, path: string, known: () => stri
       failures = 0;
       if (older || !after) before = page.older_cursor;
       if (!older) after = page.after_cursor;
-      onPage(page, older);
+      onPage({ ...page, older_cursor: before }, older);
       return page;
     } catch (error) {
       if (stopped || signal?.aborted) return null;
