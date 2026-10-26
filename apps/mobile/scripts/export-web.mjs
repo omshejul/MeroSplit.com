@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { readdir, readFile, writeFile, copyFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, relative, resolve } from 'node:path';
+import { webManifest, webShell } from './web-shell.mjs';
 const project = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const destination = resolve(project, '../api/web-dist');
 const result = spawnSync(process.execPath, [join(project, 'node_modules/expo/bin/cli'), 'export', '--platform', 'web', '--output-dir', destination], { cwd: project, stdio: 'inherit', env: { ...process.env, EXPO_WEB_BUILD: '1', NODE_ENV: 'production' } });
@@ -13,7 +14,10 @@ await copyFile(join(project, 'node_modules/expo-sqlite/web/wa-sqlite/wa-sqlite.w
 // Scrub an incoming email proof before the browser starts any app asset requests.
 const index = join(destination, 'index.html');
 const bootstrap = await readFile(join(project, 'scripts/email-link-bootstrap.js'), 'utf8');
-await writeFile(index, (await readFile(index, 'utf8')).replace('<head>', `<head><link rel="canonical" href="https://merosplit.com/app/"><meta property="og:url" content="https://merosplit.com/app/"><script>${bootstrap}</script>`));
+await writeFile(index, webShell(await readFile(index, 'utf8'), bootstrap));
+await writeFile(join(destination, 'manifest.json'), JSON.stringify(webManifest));
+await copyFile(join(project, '../../store-assets/google-play/icon-512.png'), join(destination, 'icon-512.png'));
+await copyFile(join(project, '../api/ledger/assets/apple-touch-icon.png'), join(destination, 'apple-touch-icon.png'));
 async function files(folder) { const rows = await readdir(folder, { withFileTypes: true }); return (await Promise.all(rows.map(row => row.isDirectory() ? files(join(folder, row.name)) : join(folder, row.name)))).flat(); }
 const paths = await files(destination);
 const manifest = paths.filter(path => !path.endsWith('.map')).map(path => '/app/' + relative(destination, path).split('\\').join('/'));

@@ -224,7 +224,7 @@ export default function GroupScreen({ categoryIcons, header, noticeVisibility, g
     {/* Search opens from the heading line; an active query or typed text keeps it open. */}
     <View style={s.logHeading}>
       <SectionHeading style={[ui.caption, s.logCaption, s.flex]}>Bills and payments</SectionHeading>
-      {searchable && !showSearch && <Button title="Search" icon="search" kind="outlined" compact accessibilityLabel="Search bills" onPress={() => setSearching(true)} />}
+      {searchable && !showSearch && <Button title="Search" icon="search" compact small accessibilityLabel="Search bills" onPress={() => setSearching(true)} />}
     </View>
       {showSearch && <BillSearch value={search} onChange={setSearch} onSearch={() => { void onHistoryPage?.(historyResource, 'search', search.trim(), undefined, accepted).then(() => list.current?.scrollToOffset({ offset: 0, animated: false })).catch(() => {}); }} showSubmit={group.read_mode === 'summary'} busy={busy} autoFocus={searching} />}
 </View>}
