@@ -624,3 +624,33 @@ test('actual App join callback adopts only the active account and ignores late a
     assert.deepEqual(calls,changeAt==='none'?['fetch','save','forget','open','load']:changeAt==='before'?[]:changeAt==='fetch'?['fetch']:['fetch','save']);
   }
 });
+
+test('Previous members appear only in the counted dialog, leaving historical records untouched', () => {
+  const app = production('MembersScreen.tsx');
+  const group: Group = { id: 'history-group', name: 'Trip', owner_id: 1, version: 4,
+    participants: [{ id: 'self', name: 'You', user_id: 1 }, { id: 'active', name: 'Sam', user_id: 2 },
+      { id: 'old', name: 'John Doe', user_id: 3, removed: true, account_email: 'john@example.invalid' }],
+    expenses: [], settlements: [], balances: { old: '1200' }, transfers: [], activity: [] };
+  const before = JSON.stringify(group);
+  const props = { group, selfId: 'self', busy: false, onMembership() {}, onAction: async () => { throw new Error('Read-only dialog must not write'); } };
+  const render = () => app.render('MemberSettings', props);
+  const active = (tree: any) => nodes(tree).filter(node => node.type?.name === 'MemberRow').map(node => node.props.person.id);
+  let tree = render();
+  assert.deepEqual(active(tree), ['self', 'active']);
+  assert.equal(nodes(tree).some(node => node.type?.name === 'PreviousMembersDialog'), false);
+  const row = nodes(tree).find(node => node.type === 'SettingsRow' && node.props.label === 'Previous members')!;
+  assert.equal(row.props.value, '1'); row.props.onPress();
+  tree = render();
+  const dialog = component(tree, 'PreviousMembersDialog');
+  assert.deepEqual(dialog.props.people.map((person: any) => person.id), ['old']);
+  assert.deepEqual(active(tree), ['self', 'active']);
+  const contents = app.invoke('PreviousMembersDialog', dialog.props);
+  assert.deepEqual(nodes(contents).filter(node => node.type === 'Avatar').map(node => node.props.name), ['John Doe']);
+  assert.deepEqual(nodes(contents).filter(node => node.type === 'Text').map(node => node.children.join('')), ['John Doe']);
+  assert.equal(nodes(contents).some(node => /Remove|Restore|Invite/.test(node.props.title ?? '')), false);
+  component(contents, 'CancelDialogActions').props.onCancel();
+  assert.equal(nodes(render()).some(node => node.type?.name === 'PreviousMembersDialog'), false);
+  assert.equal(JSON.stringify(group), before, 'participants, balances and historical records stay intact');
+  group.participants = group.participants.filter(person => !person.removed);
+  assert.equal(nodes(render()).some(node => node.props.label === 'Previous members'), false);
+});
