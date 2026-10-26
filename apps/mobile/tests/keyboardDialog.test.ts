@@ -41,6 +41,10 @@ test('hidden dialogs retain the height-measuring ancestor and keep scrolling con
     const boundary = one(tree, 'KeyboardAvoidingView');
     assert.equal(boundary.props.behavior, 'height', 'padding does not constrain Paper’s absolute-fill modal');
     assert.equal(boundary.props.style.flex, 1);
+    if (!visible) {
+      assert.equal(elements(tree).filter(node => node.type === Dialog).length, 0, 'hidden native dialogs do not retain an opacity-zero Paper modal');
+      continue;
+    }
     const dialog = one(tree, Dialog);
     assert.equal(dialog.props.visible, visible); assert.equal(dialog.props.onDismiss, dismiss); assert.equal(dialog.props.dismissable, false); assert.equal(dialog.props.theme.animation.scale, visible ? 0.75 : 0, 'closing content is removed without an exit delay');
     assert.equal(dialog.props.style.flexShrink, 1); assert.equal(dialog.props.style.marginVertical, 0);
@@ -55,7 +59,7 @@ test('opted-in dialog cards track the measured keyboard viewport, safe area, rot
   const footer = React.createElement(Dialog.Actions, {}, 'Done');
   const props = { visible: false, onDismiss() {}, maxHeight: 647, children: [body, footer] };
   let tree = render(props);
-  assert.equal(one(tree, Dialog).props.style.maxHeight, 647, 'the first hidden layout has a window/safe-area cap');
+  assert.equal(elements(tree).filter(node => node.type === Dialog).length, 0);
   for (const [height, callerCap, expected] of [[667, 647, 647], [433, 647, 413], [375, 355, 355], [300, 647, 280], [667, 400, 400], [667, 647, 647], [10, 647, 0]]) {
     one(tree, 'KeyboardAvoidingView').props.onLayout({ nativeEvent: { layout: { height } } });
     tree = render({ ...props, visible: true, maxHeight: callerCap });
@@ -63,8 +67,89 @@ test('opted-in dialog cards track the measured keyboard viewport, safe area, rot
     assert.equal(elements(one(tree, Dialog)).find(node => node.type === Dialog.Actions), footer);
     assert.equal(elements(body).includes(footer), false);
   }
-  tree = render({ ...props, maxHeight: undefined });
+  tree = render({ ...props, visible: true, maxHeight: undefined });
   assert.equal(one(tree, Dialog).props.style.maxHeight, undefined, 'non-opted-in callers retain their original layout');
+});
+
+// Run the pinned Paper Modal function with deferred native animations. This tests
+// its real mount/effect path, without claiming to reproduce the native compositor.
+function paperModal() {
+  const path = '../node_modules/react-native-paper/src/components/Modal.tsx';
+  const source = ts.createSourceFile(path, readFileSync(new URL(path, import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const declaration = source.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === 'Modal')!;
+  let cursor = 0, changed = false;
+  const slots: any[] = [], effects: (() => void)[] = [], back: (() => boolean)[] = [];
+  const same = (a: unknown[], b: unknown[]) => a?.length === b.length && a.every((value, i) => Object.is(value, b[i]));
+  const state = (initial: any) => {
+    const i = cursor++; if (!(i in slots)) slots[i] = initial;
+    return [slots[i], (value: any) => { changed ||= !Object.is(slots[i], value); slots[i] = value; }];
+  };
+  const hooks = { ...React, useState: state,
+    useCallback(fn: Function, deps: unknown[]) { const i = cursor++; if (!slots[i] || !same(slots[i].deps, deps)) slots[i] = { fn, deps }; return slots[i].fn; },
+    useEffect(fn: () => (() => void) | undefined, deps: unknown[]) {
+      const i = cursor++; if (slots[i] && same(slots[i].deps, deps)) return;
+      effects.push(() => { slots[i]?.cleanup?.(); slots[i] = { deps, cleanup: fn() }; });
+    },
+  };
+  const animations: any[] = [];
+  const scope = { React: hooks, DEFAULT_DURATION: 220, useInternalTheme: () => ({ animation: { scale: 0.75 } }), useLatestCallback: (fn: Function) => fn,
+    useSafeAreaInsets: () => ({ top: 20, bottom: 0 }), useAnimatedValue: (value: number) => state({ value })[0],
+    Animated: { View: 'Animated.View', timing: (value: any, config: any) => ({ start: (done?: Function) => animations.push({ value, config, done }) }) },
+    Easing: { out: (value: unknown) => value, cubic: 'cubic' }, StyleSheet: { absoluteFill: {} }, AnimatedPressable: 'AnimatedPressable', View: 'View', Surface: 'Surface', styles: {}, BackHandler: {},
+    addEventListener(_target: unknown, _event: string, fn: () => boolean) { back.push(fn); return { remove() { back.splice(back.indexOf(fn), 1); } }; },
+  };
+  const modal = new Function('env', `with(env) { ${ts.transpile(declaration.getText(source), { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React })}; return Modal; }`)(scope);
+  return {
+    animations, back,
+    render(props: any) {
+      let tree: Element | null;
+      do { cursor = 0; changed = false; tree = modal(props); effects.splice(0).forEach(effect => effect()); } while (changed);
+      return tree;
+    },
+    unmount() { slots.forEach(slot => slot?.cleanup?.()); },
+  };
+}
+
+test('first native open and reopen paint opaque before any Paper animation completes', () => {
+  const render = production('KeyboardDialog.tsx', 'KeyboardDialog');
+  let modal: ReturnType<typeof paperModal> | undefined, dismissed = 0;
+  const props = { onDismiss: () => dismissed++, children: 'autofocused input' };
+  for (const visible of [false, true, false, true]) {
+    const dialog = elements(render({ ...props, visible })).find(node => node.type === Dialog);
+    if (!dialog) { modal?.unmount(); if (modal) assert.equal(modal.back.length, 0); modal = undefined; continue; }
+    modal ??= paperModal();
+    const tree = modal.render(dialog.props);
+    if (!visible) continue;
+    const surface = one(tree, 'Surface');
+    assert.equal(surface.props.style[0].opacity.value, 1, 'the first mounted native surface must not depend on a hidden-to-visible native animation');
+    assert.equal(modal.animations.length, 0);
+    assert.equal(modal.back.length, 1); modal.back[0](); assert.equal(dismissed, 1);
+    one(tree, 'AnimatedPressable').props.onPress(); assert.equal(dismissed, 2);
+    dismissed = 0;
+  }
+  modal?.unmount();
+});
+
+test('a busy native dialog still consumes Back without dismissing or enabling the backdrop', () => {
+  const render = production('KeyboardDialog.tsx', 'KeyboardDialog'), modal = paperModal();
+  let dismissed = 0;
+  const dialog = one(render({ visible: true, dismissable: false, onDismiss: () => dismissed++ }), Dialog);
+  const tree = modal.render(dialog.props);
+  assert.equal(modal.back[0](), true); assert.equal(dismissed, 0);
+  assert.equal(one(tree, 'AnimatedPressable').props.disabled, true);
+  assert.equal(one(tree, 'AnimatedPressable').props.onPress, undefined);
+  modal.unmount(); assert.equal(modal.back.length, 0);
+});
+
+test('the pinned Paper hidden-to-visible path really retains opacity zero until its native animation updates', () => {
+  const modal = paperModal(), onDismiss = () => {};
+  assert.equal(modal.render({ visible: false, onDismiss }), null);
+  const tree = modal.render({ visible: true, onDismiss });
+  assert.equal(one(tree, 'Surface').props.style[0].opacity.value, 0);
+  assert.equal(modal.animations.length, 1);
+  assert.equal(modal.animations[0].config.useNativeDriver, true);
+  assert.equal(modal.animations[0].config.toValue, 1);
+  modal.unmount();
 });
 
 test('Add person preserves drafts and action guards across hidden/open renders without conditionally mounting the keyboard boundary', () => {
@@ -79,6 +164,7 @@ test('Add person preserves drafts and action guards across hidden/open renders w
     assert.equal(scroll.props.keyboardShouldPersistTaps, 'handled');
     assert.equal(elements(scroll).includes(actions), false, 'actions must remain outside the scrolling input body');
     const field = elements(tree).find(node => node.type === 'Field' && node.props.label === 'Email (optional)')!;
+    assert.equal(elements(tree).find(node => node.type === 'Field' && node.props.label === 'Name')!.props.autoFocus, true);
     assert.equal(field.props.value, base.email); assert.equal(field.props.onChange, onEmail); field.props.onChange('edited@example.invalid');
     const buttons = elements(actions).filter(node => node.type === 'Button');
     assert.equal(buttons[0].props.onPress, onClose); assert.equal(buttons[1].props.onPress, onSave);
@@ -114,6 +200,7 @@ test('shared web dialog is centered and compact on desktop while retaining phone
   const props = { visible: true, onDismiss() {}, children: 'unchanged fields' };
   try {
     env.Platform.OS = 'web';
+    assert.equal(one(render({ ...props, visible: false }), Dialog).props.visible, false, 'web retains its existing mounted dialog/focus lifecycle');
     for (const [width, expected] of [[1440, 520], [2000, 520], [540, 488], [375, 323]]) {
       windowWidth = width; const dialog = one(render(props), Dialog);
       assert.equal(dialog.props.style.width, expected); assert.equal(dialog.props.style.alignSelf, 'center');
