@@ -41,9 +41,9 @@ export function useExpenseIcons(session: Session | null, visible: ExpenseIconRef
         // Cosmetic failures keep a receipt or an accepted cached icon. No error banner or retry storm.
       }
     }
-    void read();
+    timer = setTimeout(() => void read(), 250);
     return () => { stopped = true; controller.abort(); if (timer) clearTimeout(timer); };
   }, [scope]);
   if (!active || saved.account !== account) return {};
-  return Object.fromEntries(refs.map(ref => categoryKey(ref.groupId, ref.id, ref.title)).filter(key => Object.hasOwn(saved.icons, key)).map(key => [key, saved.icons[key]]));
+  return saved.icons;
 }

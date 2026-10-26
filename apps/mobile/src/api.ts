@@ -29,7 +29,7 @@ export async function request<T>(session: Session, path: string, method = 'GET',
     const response = await sessionRequest(session, `/api/v1${path}`, {
       method, headers: { 'Content-Type': 'application/json' },
       body: body === undefined ? undefined : JSON.stringify(body), signal: controller.signal,
-    }).catch(() => { recordConnection(false); throw new Error('Could not connect. Your saved changes stay on this device.'); });
+    }).catch(error => { if (signal?.aborted) throw error; recordConnection(false); throw new Error('Could not connect. Your saved changes stay on this device.'); });
     recordConnection(true);
     if (responseType === 'text' && response.ok) return await response.text() as T;
     if (!response.headers.get('content-type')?.includes('json')) throw new ApiError(response.ok ? 502 : response.status, 'The service is temporarily unavailable. Try again later.');

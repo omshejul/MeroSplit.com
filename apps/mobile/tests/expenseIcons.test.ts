@@ -24,7 +24,7 @@ function fixture() {
   const body = source.statements.filter(n => !ts.isImportDeclaration(n)).map(n => n.getText(source).replace(/^export /, '')).join('\n');
   const hook = new Function('env', `with(env){${ts.transpile(body, { target: ts.ScriptTarget.ES2022 })};return useExpenseIcons;}`)(env);
   return { calls, timers, render(changes: Partial<typeof props> = {}) { props = { ...props, ...changes }; index = 0; return hook(props.session, props.visible, props.active, props.online); },
-    async commit() { effects.splice(0).forEach(fn => fn()); await tick(); }, async fire() { const [id, timer] = timers.entries().next().value!; timers.delete(id); timer.fn(); await tick(); },
+    async commit(start = true) { effects.splice(0).forEach(fn => fn()); await tick(); if (start) for (const [id, timer] of timers) { if (timer.delay === 250) { timers.delete(id); timer.fn(); await tick(); } } }, async fire() { const [id, timer] = timers.entries().next().value!; timers.delete(id); timer.fn(); await tick(); },
     unmount() { cleanups.forEach(fn => fn?.()); } };
 }
 
@@ -33,7 +33,7 @@ test('advisory icons use only current visible IDs and never financial writes', a
   assert.equal(app.calls.length, 1); assert.equal(app.calls[0].path, '/expense-icons?ids=bill');
   app.calls[0].resolve(hint()); await tick();
   assert.equal(app.render()[categoryKey('group', 'bill', 'Dinner')], 'food');
-  assert.deepEqual(app.render({ visible: [] }), {}); await app.commit();
+  assert.equal(app.render({ visible: [] })[categoryKey('group', 'bill', 'Dinner')], 'food'); await app.commit();
   assert.equal(app.calls.length, 1); assert.equal(app.timers.size, 0); app.unmount();
 });
 
@@ -83,4 +83,18 @@ test('explicit manual categories including General override prior automatic icon
   assert.equal(expenseCategory({ ...bill, category_auto: false }, icons), 'general');
   assert.equal(expenseCategory({ ...bill, category: 'water' }, icons), 'water');
   assert.equal(expenseCategory({ ...bill, title: 'New title' }, icons), undefined);
+});
+
+
+test('scrolling cancels queued icon reads and preserves cached icons for older mounted rows', async () => {
+  const app = fixture(); app.render(); await app.commit(false);
+  assert.equal(app.calls.length, 0);
+  app.render({ visible: [{ ...bill, id: 'second' }] }); await app.commit(false);
+  app.render({ visible: [bill] }); await app.commit(false);
+  assert.equal(app.calls.length, 0); assert.equal(app.timers.size, 1);
+  await app.fire(); assert.equal(app.calls.length, 1);
+  app.calls[0].resolve(hint()); await tick();
+  const key = categoryKey('group', 'bill', 'Dinner');
+  assert.equal(app.render({ visible: [{ ...bill, id: 'third' }] })[key], 'food');
+  app.unmount();
 });

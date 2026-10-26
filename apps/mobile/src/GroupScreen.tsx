@@ -1,12 +1,12 @@
 import TransactionIcon from './TransactionIcon';
 import { categoryIcon, categoryMeaning, expenseCategory } from './categoryIcons';
 import type { ExpenseIcons } from './categoryIcons';
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import BillPeople from './BillPeople';
 import BalanceExplanation, { type BalanceSelection } from './BalanceExplanationDialog';
 import { balanceKey } from './balanceExplanation';
 import type { BalanceSource } from './balanceExplanationStorage';
-import { FlatList, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { Animated, Platform, FlatList, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { useScrollPagination } from './useScrollPagination';
 import LoadingSpinner from './LoadingSpinner';
 import { pageContentStyle } from './AppNavigation';
@@ -22,9 +22,10 @@ import { SectionHeading, AmountText, Avatar, balanceColor, Button, Disclosure, I
 type Transfer = { sender: string; recipient: string; amount: string };
 type Props = {
   categoryIcons?: ExpenseIcons; noticeVisibility?: NoticeVisibility; header?: React.ReactNode;
+  revision?: number; onUpdatesAvailable?: (available: boolean) => void;
   group: Group; accepted: Group; pending: Command[]; busy: boolean; selfId: string;
   onLoadBalanceGroup?: (expected: Group) => Promise<BalanceSource>;
-  onHistoryPage?: (resource: HistoryResource, direction: 'next' | 'previous' | 'search', query?: string, signal?: AbortSignal) => Promise<boolean>;
+  onHistoryPage?: (resource: HistoryResource, direction: 'next' | 'previous' | 'search', query?: string, signal?: AbortSignal, target?: Group) => Promise<boolean>;
   pagingScope?: string; active?: boolean; online?: boolean; onRefresh?: () => void; refreshing?: boolean; onVisibleBills?: (ids: string[]) => void;
   onExpense: (expense: BillRow) => void; onPayment: (payment: Settlement) => void; onSettle: (transfer?: Transfer) => void;
   onReverse: (settlement: Settlement) => void;
@@ -46,7 +47,7 @@ function LegacyPayments({ group, selfId, accepted, busy, onPayment, onPage, scop
 }) {
   const ref = useRef<React.ComponentRef<typeof ScrollView>>(null), payments = personalSettlements(group, selfId);
   const paging = useScrollPagination({ scope: scope + '|payments', cursor: group.history?.settlements?.next_cursor,
-    enabled: enabled && !busy, load: signal => onPage?.('settlements', 'next', undefined, signal) ?? Promise.resolve(false) });
+    enabled: enabled && !busy, load: signal => onPage?.('settlements', 'next', undefined, signal, accepted) ?? Promise.resolve(false) });
   return <ScrollView ref={ref} nestedScrollEnabled scrollEventThrottle={100} style={{ maxHeight: 320 }}>
     {payments.map(payment => <PaymentRow key={payment.id} payment={payment} accepted={accepted} group={group} selfId={selfId} busy={busy} onPayment={onPayment} />)}
     {!payments.length && <Text>{group.history?.settlements?.next_cursor ? 'No payments on this page.' : 'No payments recorded.'}</Text>}
@@ -161,8 +162,32 @@ function BillSearch({ value, onChange, onSearch, showSubmit, busy, autoFocus }: 
   </View>;
 }
 
-export default function GroupScreen({ categoryIcons, header, noticeVisibility, group, accepted, pending, busy, selfId, pagingScope = group.id, active = true, online = true, onRefresh, refreshing = false, onVisibleBills, onLoadBalanceGroup, onHistoryPage, onExpense, onPayment, onSettle }: Props) {
-  const { ui } = useUI();
+export default function GroupScreen({ categoryIcons, header, noticeVisibility, group: incoming, accepted: incomingAccepted, revision = 0, onUpdatesAvailable, pending, busy, selfId, pagingScope = incoming.id, active = true, online = true, onRefresh, refreshing = false, onVisibleBills, onLoadBalanceGroup, onHistoryPage, onExpense, onPayment, onSettle }: Props) {
+  const { ui, motion } = useUI();
+  // Background cache updates must not replace a page while someone is reading it.
+  // Adopt both views together only for an explicit read or the user's saved changes.
+  const [shown, setShown] = useState({ group: incoming, accepted: incomingAccepted });
+  const { group, accepted } = shown;
+  const ownChanges = pending.map(command => `${command.command_id}:${command.state}`).join('|');
+  const adoptedRevision = useRef(revision), savedCommands = useRef(new Set(pending.map(command => command.command_id)));
+  const [opacity] = useState(() => new Animated.Value(1));
+  useLayoutEffect(() => {
+    const deliberate = revision !== adoptedRevision.current;
+    const ownSave = pending.some(command => !savedCommands.current.has(command.command_id));
+    adoptedRevision.current = revision; savedCommands.current = new Set(pending.map(command => command.command_id));
+    if (!deliberate && !ownSave) return;
+    if (deliberate && incoming.version !== group.version) {
+      list.current?.scrollToOffset({ offset: 0, animated: false });
+      opacity.stopAnimation();
+      if (motion.enabled) {
+        opacity.setValue(0.6);
+        Animated.timing(opacity, { toValue: 1, duration: 180, useNativeDriver: Platform.OS !== 'web', isInteraction: false }).start();
+      } else opacity.setValue(1);
+    }
+    setShown({ group: incoming, accepted: incomingAccepted });
+  }, [revision, ownChanges]);
+  useEffect(() => { onUpdatesAvailable?.(incoming.version !== group.version); }, [incoming.version, group.version, onUpdatesAvailable]);
+  useEffect(() => () => opacity.stopAnimation(), [opacity]);
   const [explanation, setExplanation] = useState<BalanceSelection | null>(null);
   const historyResource = group.transactions ? 'transactions' : 'bills';
   const [search, setSearch] = useState(group.history?.[historyResource]?.query ?? ''), [searching, setSearching] = useState(false);
@@ -181,9 +206,9 @@ export default function GroupScreen({ categoryIcons, header, noticeVisibility, g
   const viewable = useRef(({ viewableItems }: { viewableItems: { isViewable: boolean; item: GroupTransaction }[] }) => visible.current?.(viewableItems.filter(row => row.isViewable && row.item.kind === 'bill').map(row => row.item.kind === 'bill' ? row.item.bill.id : '')));
   const paging = useScrollPagination({ scope: `${pagingScope}|${group.version}|${historyResource}|${historyWindow?.query || ''}`,
     cursor: historyWindow?.next_cursor, enabled: active && online && !busy,
-    load: signal => onHistoryPage?.(historyResource, 'next', undefined, signal) ?? Promise.resolve(false) });
+    load: signal => onHistoryPage?.(historyResource, 'next', undefined, signal, accepted) ?? Promise.resolve(false) });
   const visibility = noticeVisibility ? { ...noticeVisibility, viewport, scrollEpoch } : undefined;
-  return <View ref={frame} role="region" accessibilityLabel={group.name} style={{ flex: 1 }}>
+  return <Animated.View ref={frame} role="region" accessibilityLabel={group.name} style={{ flex: 1, opacity }}>
     <FlatList ref={list} data={rows} nestedScrollEnabled scrollEventThrottle={100} onEndReachedThreshold={0.3}
       onLayout={event => { frame.current?.measureInWindow((x, y, width, height) => setViewport({ x, y, width, height })); }}
       onScroll={event => { setScrollEpoch(value => value + 1); }}
@@ -201,7 +226,7 @@ export default function GroupScreen({ categoryIcons, header, noticeVisibility, g
       <SectionHeading style={[ui.caption, s.logCaption, s.flex]}>Bills and payments</SectionHeading>
       {searchable && !showSearch && <Button title="Search" kind="text" accessibilityLabel="Search bills" onPress={() => setSearching(true)} />}
     </View>
-      {showSearch && <BillSearch value={search} onChange={setSearch} onSearch={() => { void onHistoryPage?.(historyResource, 'search', search.trim()).then(() => list.current?.scrollToOffset({ offset: 0, animated: false })).catch(() => {}); }} showSubmit={group.read_mode === 'summary'} busy={busy} autoFocus={searching} />}
+      {showSearch && <BillSearch value={search} onChange={setSearch} onSearch={() => { void onHistoryPage?.(historyResource, 'search', search.trim(), undefined, accepted).then(() => list.current?.scrollToOffset({ offset: 0, animated: false })).catch(() => {}); }} showSubmit={group.read_mode === 'summary'} busy={busy} autoFocus={searching} />}
 </View>}
       ListEmptyComponent={<View style={s.empty}><Icon name="bill" size={32} /><Text style={ui.section}>{historyWindow?.next_cursor ? 'No matching records on this page.' : historyWindow?.query || search.trim() ? 'No matching bills' : 'No bills or payments yet'}</Text></View>}
       ListFooterComponent={<>
@@ -210,8 +235,8 @@ export default function GroupScreen({ categoryIcons, header, noticeVisibility, g
           <LegacyPayments group={group} accepted={accepted} selfId={selfId} busy={busy} onPayment={onPayment} onPage={onHistoryPage} scope={pagingScope} enabled={active && online} />
         </Disclosure>}
       </>} />
-    <BalanceExplanation selection={explanation} currentKey={balanceKey(group, pending)} onClose={() => setExplanation(null)} />
-  </View>;
+    <BalanceExplanation selection={explanation} currentKey={balanceKey(incoming, pending)} onClose={() => setExplanation(null)} />
+  </Animated.View>;
 }
 function RecordAttribution({ action, name }: { action: string; name?: string | null }) {
   const { ui } = useUI();
