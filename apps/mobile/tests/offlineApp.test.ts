@@ -67,7 +67,7 @@ test('actual syncAccount releases the UI action before the complete-history down
  let downloads=0;
  const active={userId:'1',token:'generation'},scope='server|1';
  const env={accountOwner:()=>scope,ownerRef:{current:scope},activeSessionRef:{current:active},activeGroupRef:{current:null},setSyncing(){},setSyncProblem(){},setVerifiedEmptyOwner(){},getDatabase:async()=>({}),readProfile:async()=>({}),request:async()=>({needs_invitation:false}),setNeedsInvitation(){},syncOutbox:async()=>[],ApiError:class extends Error{},retryAccountMediaUploads:async()=>0,setNotice(){},refreshGroups:async()=>[],load:async()=>{},setGroupId(){},setScreen(){},downloadOffline:()=>{downloads++;return new Promise(()=>{});}};
- const sync=production('syncAccount',env);
+ const sync=production('runAccountRefresh',{...env,authHeldRef:{current:false}});
  await Promise.race([sync(active),new Promise((_,reject)=>setTimeout(()=>reject(new Error('History download held the UI action')),100))]);
  assert.equal(downloads,1);
 });

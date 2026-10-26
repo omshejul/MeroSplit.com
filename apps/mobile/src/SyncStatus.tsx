@@ -1,13 +1,24 @@
-import React from 'react';
-import { Pressable } from 'react-native';
-import { Text } from 'react-native-paper';
+import React, { useState } from 'react';
+import { ActivityIndicator, Pressable } from 'react-native';
+import { Menu, Text } from 'react-native-paper';
 import type { Command } from './types';
 import { syncStatus } from './syncState';
-import { useUI } from './ui';
-import { pageContentStyle } from './AppNavigation';
-export default function SyncStatus(props: { commands: Command[]; pendingFiles: number; drafts: boolean; confirmedAt: string | null; durable: boolean; syncing: boolean; problem: boolean; reviewRequired?: boolean; onPress: () => void }) {
-  const { ui, palette } = useUI(), status = syncStatus(props);
-  return <Pressable accessibilityRole="button" accessibilityLabel={`${status.label}. ${status.detail}`} accessibilityHint="Open Me to review saved changes" onPress={props.onPress} style={[pageContentStyle, { minHeight: 44, justifyContent: 'center', paddingTop: 0, paddingBottom: 6 }]}>
-    <Text accessibilityLiveRegion="polite" style={[ui.caption, { color: status.label === 'Needs attention' ? palette.error : palette.muted }]}>{status.label}{props.commands.length ? ` · ${props.commands.length}` : ''}</Text>
-  </Pressable>;
+import DialogFocus from './DialogFocus';
+import { Button, Icon, useUI } from './ui';
+
+export default function SyncStatus(props: { commands: Command[]; pendingFiles: number; drafts: boolean; confirmedAt: string | null; durable: boolean; syncing: boolean; problem: boolean; online?: boolean; reviewRequired?: boolean; onPress: () => void }) {
+  const { ui, palette } = useUI(), status = syncStatus(props), [open, setOpen] = useState(false);
+  const color = status.label === 'Synced' ? palette.positive : status.label === 'Needs attention' ? palette.warning : palette.muted;
+  const icon = status.label === 'Synced' ? 'check' : status.label === 'Needs attention' ? 'info' : status.label === 'Offline' ? 'offline' : 'history';
+  return <Menu visible={open} onDismiss={() => setOpen(false)} anchorPosition="bottom" overlayAccessibilityLabel="Close sync status" contentStyle={{ maxWidth: 288, padding: 16, borderRadius: 12 }} anchor={
+    <Pressable accessibilityRole="button" accessibilityLabel={`Sync status: ${status.label}`} accessibilityHint="Show sync details" accessibilityState={{ expanded: open }} onPress={() => setOpen(value => !value)} style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}>
+      {status.label === 'Syncing' ? <ActivityIndicator color={palette.accent} size={22} /> : <Icon name={icon} size={22} color={color} />}
+    </Pressable>
+  }>
+    <DialogFocus active={open} label="Sync details" onEscape={() => setOpen(false)} style={{ gap: 8, maxWidth: 256 }}>
+      <Text accessibilityRole="header" aria-level={2} style={ui.rowTitle}>{status.label}</Text>
+      <Text style={ui.body}>{status.detail}</Text>
+      {status.label === 'Needs attention' && <Button title="View saved changes" kind="text" onPress={() => { setOpen(false); props.onPress(); }} />}
+    </DialogFocus>
+  </Menu>;
 }

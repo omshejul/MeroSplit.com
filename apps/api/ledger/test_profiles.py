@@ -71,8 +71,11 @@ def test_canonical_name_invalidates_only_active_linked_groups_and_preserves_hist
     for state in (after, summary, send(client, "get", f"/groups/{group_id}/export").json()["group"]):
         person = next(person for person in state["participants"] if person["id"] == ids[0])
         assert person["name"] == "Current account name" and person["recorded_name"] == "Original imported name"
-    for key in ("balances", "transfers", "totals", "expenses", "settlements", "opening_balance", "payment_attempts"):
+    for key in ("balances", "transfers", "totals", "opening_balance", "payment_attempts"):
         assert after[key] == before[key]
+    for key, label in (("expenses", "added_by"), ("settlements", "recorded_by_name")):
+        assert [{k: v for k, v in row.items() if k != label} for row in after[key]] == [{k: v for k, v in row.items() if k != label} for row in before[key]]
+        assert all(row[label] == "Current account name" for row in after[key])
     assert list(Change.objects.filter(id__in=[row["id"] for row in old_changes]).order_by("id").values("id", "sequence", "kind", "data", "actor_id")) == old_changes
     assert {str(person.id): person.name for person in Participant.objects.filter(group_id=group_id)} == recorded_names
     assert Group.objects.get(pk=group_id).import_source_hash == "synthetic-import-fingerprint"

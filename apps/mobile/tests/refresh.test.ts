@@ -7,7 +7,7 @@ import { sqliteAdapter } from './sqlite.ts';
 import type { Group, Session } from '../src/types.ts';
 const session: Session = { baseUrl: 'https://refresh.test', token: 'synthetic', userId: 'one', email: 'one@example.test' };
 const owner = accountOwner(session);
-const group = (id: string, version: number): Group => ({ id, name: id, version, participants: [], expenses: [], settlements: [], balances: {}, transfers: [], activity: [] });
+const group = (id: string, version: number): Group => ({ attribution_version: 1, id, name: id, version, participants: [], expenses: [], settlements: [], balances: {}, transfers: [], activity: [] });
 
 test('An unchanged complete index costs one request and zero cache writes', async () => {
   const raw = new DatabaseSync(':memory:'), db = sqliteAdapter(raw), original = globalThis.fetch, calls: string[] = [];

@@ -176,7 +176,7 @@ export default function BillChatScreen({ session, groupId, expenseId, active, on
     const waiting = incoming.current; incoming.current = []; follow.current = true; forceFollow.current = true; setNewMessages(false);
     setMessages(previous => mergeChatMessages(previous, waiting)); list.current?.scrollToOffset({ offset: 0, animated: false });
   }
-  const paging = useScrollPagination({ scope, cursor: page?.older_cursor, enabled, scrollRef: list, load: async signal => {
+  const paging = useScrollPagination({ scope, cursor: page?.older_cursor, enabled, load: async signal => {
     follow.current = false; forceFollow.current = false;
     const before = new Set(rows.current.map(row => row.id));
     const value = await reads.current?.older(signal);
@@ -185,13 +185,13 @@ export default function BillChatScreen({ session, groupId, expenseId, active, on
   const newestFirst = [...messages].reverse();
   return <View role="main" style={{ flex: 1, width: '100%', maxWidth: 760, alignSelf: 'center' }}>
     <View style={{ flexDirection: 'row', paddingHorizontal: 16, alignItems: 'center' }}><Text numberOfLines={1} style={[ui.caption, { flex: 1 }]}>Messages about this bill</Text><IconAction name="settings" label="Chat settings" disabled={!active} onPress={() => setSettings(true)} /></View>
-    <FlatList ref={list} {...paging.events} inverted data={newestFirst} keyExtractor={row => row.id} style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 12 }}
+    <FlatList ref={list} inverted data={newestFirst} keyExtractor={row => row.id} style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 12 }}
       maintainVisibleContentPosition={{ minIndexForVisible: 0 }} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag"
       onViewableItemsChanged={onViewable.current} viewabilityConfig={viewability.current}
-      onScrollBeginDrag={() => { paging.events.onScrollBeginDrag(); forceFollow.current = false; follow.current = false; }}
-      onScroll={event => { paging.events.onScroll(event); const { contentOffset } = event.nativeEvent; const atBottom = contentOffset.y < 80; if (atBottom) { forceFollow.current = false; follow.current = true; setNewMessages(false); if (incoming.current.length) showNew(); } else if (!forceFollow.current) follow.current = false; }} scrollEventThrottle={100}
-      onContentSizeChange={(width, height) => { paging.events.onContentSizeChange(width, height); if ((follow.current || forceFollow.current) && !paging.loading) { list.current?.scrollToOffset({ offset: 0, animated: false }); forceFollow.current = false; } }}
-      ListFooterComponent={<View style={{ paddingVertical: 12 }}>{paging.loading && <LoadingSpinner visible />}{paging.failed && <Button title="Retry" kind="text" disabled={!enabled} onPress={paging.retry} />}</View>}
+      onScrollBeginDrag={() => { forceFollow.current = false; follow.current = false; }}
+      onScroll={event => { const { contentOffset } = event.nativeEvent; const atBottom = contentOffset.y < 80; if (atBottom) { forceFollow.current = false; follow.current = true; setNewMessages(false); if (incoming.current.length) showNew(); } else if (!forceFollow.current) follow.current = false; }} scrollEventThrottle={100}
+      onContentSizeChange={(width, height) => { if ((follow.current || forceFollow.current) && !paging.loading) { list.current?.scrollToOffset({ offset: 0, animated: false }); forceFollow.current = false; } }}
+      ListFooterComponent={<View style={{ paddingVertical: 12 }}>{paging.loading && <LoadingSpinner visible />}{paging.canLoadMore && !paging.failed && <Button title="Load older" kind="text" disabled={paging.loading} onPress={paging.loadMore} />}{paging.failed && <Button title="Retry" kind="text" disabled={!enabled} onPress={paging.retry} />}</View>}
       ListEmptyComponent={<Text style={[ui.caption, { paddingVertical: 24 }]}>{page ? 'Start the conversation.' : 'Loading messages…'}</Text>}
       renderItem={({ item, index }) => <ChatMessageRow message={item} own={item.sender_id === session.userId} active={enabled} showDate={index === newestFirst.length - 1 || new Date(newestFirst[index + 1].created_at).toDateString() !== new Date(item.created_at).toDateString()} onReport={kind => setReport({ message: item, kind })} onBlock={() => void control(() => block(item.sender_id, true))} />} />
     {newMessages && <Button title="New messages" kind="text" onPress={showNew} />}

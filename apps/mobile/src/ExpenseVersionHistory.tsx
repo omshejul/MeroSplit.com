@@ -98,10 +98,10 @@ export default function ExpenseVersionHistory({ session, groupId, expenseId, gro
     if (active) void load();
     return () => { mounted.current = false; controller.current?.abort(); };
   }, [scope, active, online, retry]);
-  const paging = useScrollPagination({ scope, cursor: shown?.next_before, enabled: active && online && !error, scrollRef: list, load: signal => load(shown?.next_before ?? undefined, signal).then(Boolean) });
+  const paging = useScrollPagination({ scope, cursor: shown?.next_before, enabled: active && online && !error, load: signal => load(shown?.next_before ?? undefined, signal).then(Boolean) });
   if (!active) return null;
   const rows: Row[] = shown?.items.flatMap(version => version.kind === 'created' ? [{ version }] : version.changes.map(change => ({ version, change }))) ?? [];
-  return <FlatList ref={list} {...paging.events} scrollEventThrottle={100} onEndReachedThreshold={0.3} data={rows} keyExtractor={({ version, change }) => `${version.id}:${change?.field || 'created'}`}
+  return <FlatList ref={list} scrollEventThrottle={100} onEndReachedThreshold={0.3} data={rows} keyExtractor={({ version, change }) => `${version.id}:${change?.field || 'created'}`}
     renderItem={({ item }) => <VersionHistoryRow {...item} now={now} />} contentContainerStyle={[pageContentStyle, { gap: 0 }]}
     ListHeaderComponent={<View style={styles.subtitle}><Text style={ui.body}>{title}</Text>{shown && !online && <Text style={ui.caption}>Downloaded version history. Connect to check for newer changes.</Text>}{shown && !!error && <ErrorText live>{error}</ErrorText>}</View>}
     ListEmptyComponent={error ? <View style={styles.status}><ErrorText live>{error}</ErrorText>{online && <Button title="Retry" onPress={() => setRetry(value => value + 1)} />}</View>
@@ -109,7 +109,7 @@ export default function ExpenseVersionHistory({ session, groupId, expenseId, gro
     ListFooterComponent={<View style={styles.status}>
       {shown?.legacy_gap && rows.length > 0 && <Text style={ui.caption}>Some earlier details weren’t recorded.</Text>}
       {shown?.next_before != null && !online && <Text style={ui.caption}>Earlier changes have not downloaded. Reconnect to finish.</Text>}
-      {paging.loading && <LoadingSpinner visible />}
+      {paging.loading && <LoadingSpinner visible />}{paging.canLoadMore && !paging.failed && <Button title="Load older" kind="text" disabled={paging.loading} onPress={paging.loadMore} />}
       {paging.failed && shown && <><ErrorText live>Could not load earlier changes.</ErrorText><Button title="Retry" kind="text" onPress={paging.retry} /></>}
     </View>} />;
 }

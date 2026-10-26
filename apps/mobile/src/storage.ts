@@ -11,6 +11,16 @@ export interface Database {
   withExclusiveTransactionAsync(task: (transaction: Database) => Promise<void>): Promise<void>;
 }
 
+// total_changes covers this connection; data_version covers native exclusive
+// transactions that commit through a separate SQLite connection.
+export async function storageRevision(db: Database): Promise<string> {
+  const [own, other] = await Promise.all([
+    db.getFirstAsync<{ n: number }>('SELECT total_changes() AS n'),
+    db.getFirstAsync<{ data_version: number }>('PRAGMA data_version'),
+  ]);
+  return `${own?.n ?? 0}:${other?.data_version ?? 0}`;
+}
+
 export async function migrate(db: Database): Promise<void> {
   const row = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
   if ((row?.user_version ?? 0) > 6) throw new Error('This database needs a newer app.');
@@ -103,10 +113,11 @@ export async function readVisibleGroup(db: Database, owner: string, id: string):
 export type MembershipReceipt = { id: string; version: number; disposition: 'left' | 'hidden' | 'restored' };
 export type AcceptedMembership = { commandId: string; receipt: MembershipReceipt };
 
-export async function reconcileGroupCache(db: Database, owner: string, authorized: Group[], acceptedMembership?: AcceptedMembership): Promise<string[]> {
+export async function reconcileGroupCache(db: Database, owner: string, authorized: Group[], acceptedMembership?: AcceptedMembership, current: () => boolean = () => true): Promise<string[]> {
   const visible = new Set(authorized.map(group => group.id)), unavailable: string[] = [];
   if (visible.size !== authorized.length) throw new Error('The group refresh was incomplete. Try again.');
   await db.withExclusiveTransactionAsync(async tx => {
+    if (!current()) throw new Error('The signed-in account changed.');
     if (acceptedMembership) {
       const { commandId, receipt } = acceptedMembership;
       const command = (await pendingCommands(tx, owner)).find(row => row.command_id === commandId);
@@ -138,6 +149,7 @@ export async function reconcileGroupCache(db: Database, owner: string, authorize
       }
       if (row.kind !== 'unavailable') unavailable.push(row.id);
     }
+    if (!current()) throw new Error('The signed-in account changed.');
   });
   return unavailable;
 }

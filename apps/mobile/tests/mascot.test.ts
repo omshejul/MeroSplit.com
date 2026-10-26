@@ -118,7 +118,7 @@ test('production canonical refresh marker clears immediately and only verifies a
   let marker = 'owner1', release!: () => void;
   const loaded = new Promise<void>(resolve => { release = resolve; });
   const env = { setVerifiedEmptyOwner: (value: string) => { marker = value; }, getDatabase: async () => ({}), accountOwner: () => scope, readProfile: async () => {}, syncOutbox: async () => {}, retryAccountMediaUploads: async () => 0, refreshGroups: async () => { if (failed) throw Error('Offline'); return []; }, load: () => loaded, ownerRef: { current: scope }, activeSessionRef: { current: active }, activeGroupRef: { current: null }, ApiError: class extends Error {} };
-  const sync = productionFunction('App.tsx', 'syncAccount', env);
+  const sync = productionFunction('App.tsx', 'runAccountRefresh', { ...env, authHeldRef: {current:false}, setSyncing(){}, setSyncProblem(){}, request:async()=>({needs_invitation:false}), setNeedsInvitation(){}, downloadOffline(){}, publishIfChanged:async()=>{} });
   const refreshing = sync(active); assert.equal(marker, ''); release(); await refreshing; assert.equal(marker, scope);
   failed = true;
   await assert.rejects(sync(active), /Offline/); assert.equal(marker, '');

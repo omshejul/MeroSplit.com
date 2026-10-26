@@ -22,7 +22,7 @@ export type ActivityPage = { read_mode: 'activity'; revision: string; items: Act
 export type HistoryResource = 'bills' | 'activity' | 'settlements' | 'attempts' | 'transactions';
 export type HistoryWindow = { next_cursor: string | null; cursor?: string | null; previous?: (string | null)[]; query?: string };
 export type Group = {
-  read_mode?: 'summary'; focused_expense?: Expense; focused_settlement?: Settlement; history?: Partial<Record<HistoryResource, HistoryWindow>>; transactions?: GroupTransaction[];
+  attribution_version?: number; read_mode?: 'summary'; focused_expense?: Expense; focused_settlement?: Settlement; history?: Partial<Record<HistoryResource, HistoryWindow>>; transactions?: GroupTransaction[];
   id: string; name: string; version: number; participants: Participant[]; expenses: Expense[];
   settlements: Settlement[]; balances: Amounts; transfers: Transfer[]; activity: unknown[];
   is_direct?: boolean; archived?: boolean; hidden?: boolean; owner_id?: number;

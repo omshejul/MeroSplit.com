@@ -81,3 +81,41 @@ test('Connection failures hide native diagnostics while HTTP conflicts keep thei
     await assert.rejects(request(session, '/groups/g'), error => error instanceof ApiError && error.status === 409 && error.message === 'Accepted revision changed.');
   } finally { globalThis.fetch = original; }
 });
+
+test('a newer accepted bill replaces a stale offline edit automatically and later commands continue', async () => {
+  const original = globalThis.fetch, raw = new DatabaseSync(':memory:'), db = sqliteAdapter(raw);
+  const edit: Command = { ...command, command_id: 'edit', method: 'PUT', path: '/groups/g/expenses/bill', body: { command_id: 'edit', id: 'bill', version: 1 } };
+  const latest = { ...group, version: 3, expenses: [{ id: 'bill', version: 2, description: 'Reuben latest' }] };
+  const calls: string[] = [];
+  globalThis.fetch = async (url, options) => {
+    const path = String(url).split('/api/v1')[1]; calls.push(`${options?.method ?? 'GET'} ${path}`);
+    if (options?.method === 'PUT') return Response.json({ detail: 'Expense changed; fetch the current revision before retrying' }, { status: 409 });
+    if (path === edit.path) return Response.json(latest.expenses[0]);
+    if (options?.method === 'POST') return Response.json({ id: 'g', version: 3 });
+    return Response.json(latest);
+  };
+  try {
+    await migrate(db); await saveGroup(db, owner, group, 'shared'); await enqueue(db, owner, edit);
+    await enqueue(db, owner, { ...command, command_id: 'later', body: { command_id: 'later' } });
+    await syncOutbox(db, session);
+    assert.equal((await pendingCommands(db, owner)).length, 0);
+    assert.equal((await readGroup(db, owner, 'g'))?.group.expenses[0].description, 'Reuben latest');
+    assert.equal(calls.filter(value => value.startsWith('PUT')).length, 1, 'never overwrite the newer server edit');
+    assert.ok(calls.includes('POST /groups'), 'later work is not blocked');
+    await enqueue(db, owner, { ...edit, command_id: 'old-conflict', state: 'conflict' });
+    await syncOutbox(db, session);
+    assert.equal((await pendingCommands(db, owner)).length, 0, 'existing conflict queues also recover automatically');
+  } finally { globalThis.fetch = original; raw.close(); }
+});
+
+test('a failed canonical read keeps the stale bill queued for automatic retry', async () => {
+  const original = globalThis.fetch, raw = new DatabaseSync(':memory:'), db = sqliteAdapter(raw);
+  globalThis.fetch = async (_url, options) => options?.method === 'PUT'
+    ? Response.json({ detail: 'Expense changed' }, { status: 409 }) : Response.json({ detail: 'Unavailable' }, { status: 503 });
+  try {
+    await migrate(db); await saveGroup(db, owner, group, 'shared');
+    await enqueue(db, owner, { ...command, method: 'PUT', path: '/groups/g/expenses/bill', body: { command_id: 'c', version: 1 } });
+    await assert.rejects(syncOutbox(db, session), /Unavailable/);
+    assert.equal((await pendingCommands(db, owner))[0].state, 'pending');
+  } finally { globalThis.fetch = original; raw.close(); }
+});

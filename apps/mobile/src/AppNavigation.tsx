@@ -54,7 +54,7 @@ export function AddExpenseButton({ disabled, onPress }: { disabled: boolean; onP
   const { colors } = useTheme();
   return <View pointerEvents="box-none" style={styles.floating}>
     <View pointerEvents="box-none" style={[pageWidthStyle, styles.floatingContent]}>
-      <FAB label="Add expense" accessibilityLabel="Add expense" disabled={disabled} onPress={onPress} color={colors.onPrimary} style={{ backgroundColor: colors.primary }} icon={({ size, color }) => <Icon name="add" size={size} color={color} />} />
+      <FAB animated={false} label="Add expense" accessibilityLabel="Add expense" disabled={disabled} onPress={onPress} color={colors.onPrimary} style={{ backgroundColor: colors.primary }} icon={({ size, color }) => <Icon name="add" size={size} color={color} />} />
     </View>
   </View>;
 }

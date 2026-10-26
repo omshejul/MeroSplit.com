@@ -22,14 +22,12 @@ import { SectionHeading, AmountText, Avatar, balanceColor, Button, Disclosure, I
 type Transfer = { sender: string; recipient: string; amount: string };
 type Props = {
   categoryIcons?: ExpenseIcons; noticeVisibility?: NoticeVisibility; header?: React.ReactNode;
-  group: Group; accepted: Group; durable?: boolean; pending: Command[]; busy: boolean; selfId: string;
+  group: Group; accepted: Group; pending: Command[]; busy: boolean; selfId: string;
   onLoadBalanceGroup?: (expected: Group) => Promise<BalanceSource>;
   onHistoryPage?: (resource: HistoryResource, direction: 'next' | 'previous' | 'search', query?: string, signal?: AbortSignal) => Promise<boolean>;
   pagingScope?: string; active?: boolean; online?: boolean; onRefresh?: () => void; refreshing?: boolean; onVisibleBills?: (ids: string[]) => void;
   onExpense: (expense: BillRow) => void; onPayment: (payment: Settlement) => void; onSettle: (transfer?: Transfer) => void;
   onReverse: (settlement: Settlement) => void;
-  onSync: () => void; onDiscard: (command: Command) => void;
-  onReview: (command: Command) => void;
 };
 export const position = (name: string, value: string) => BigInt(value) > 0n ? `${name} ${name === 'You' ? 'are' : 'is'} owed ${formatMoney(value)}` : BigInt(value) < 0n ? `${name} ${name === 'You' ? 'owe' : 'owes'} ${formatMoney((-BigInt(value)).toString())}` : `${name} ${name === 'You' ? 'are' : 'is'} settled up`;
 const displayDate = (value?: string | null) => {
@@ -40,7 +38,7 @@ const displayDate = (value?: string | null) => {
 const billImpact = (value: string) => BigInt(value) === 0n ? 'No balance impact' : `Balance ${BigInt(value) > 0n ? '+' : '−'}${formatMoney((BigInt(value) < 0n ? -BigInt(value) : BigInt(value)).toString())}`;
 const participantName = (participants: Participant[], selfId: string, id: string) => id === selfId ? 'You' : participants.find(person => person.id === id)?.name ?? 'Former member';
 function PagingFooter({ paging }: { paging: ReturnType<typeof useScrollPagination> }) {
-  return <View style={{ paddingVertical: 12, gap: 8 }}>{paging.loading && <LoadingSpinner visible />}{paging.failed && <><Text>Could not load earlier records.</Text><Button title="Retry" kind="text" onPress={paging.retry} /></>}</View>;
+  return <View style={{ paddingVertical: 12, gap: 8 }}>{paging.loading && <LoadingSpinner visible />}{paging.canLoadMore && !paging.failed && <Button title="Load older" kind="text" disabled={paging.loading} onPress={paging.loadMore} />}{paging.failed && <><Text>Could not load earlier records.</Text><Button title="Retry" kind="text" onPress={paging.retry} /></>}</View>;
 }
 
 function LegacyPayments({ group, selfId, accepted, busy, onPayment, onPage, scope, enabled }: {
@@ -48,23 +46,12 @@ function LegacyPayments({ group, selfId, accepted, busy, onPayment, onPage, scop
 }) {
   const ref = useRef<React.ComponentRef<typeof ScrollView>>(null), payments = personalSettlements(group, selfId);
   const paging = useScrollPagination({ scope: scope + '|payments', cursor: group.history?.settlements?.next_cursor,
-    enabled: enabled && !busy, scrollRef: ref, load: signal => onPage?.('settlements', 'next', undefined, signal) ?? Promise.resolve(false) });
-  const { onEndReached, ...events } = paging.events;
-  return <ScrollView ref={ref} {...events} nestedScrollEnabled scrollEventThrottle={100} style={{ maxHeight: 320 }}>
+    enabled: enabled && !busy, load: signal => onPage?.('settlements', 'next', undefined, signal) ?? Promise.resolve(false) });
+  return <ScrollView ref={ref} nestedScrollEnabled scrollEventThrottle={100} style={{ maxHeight: 320 }}>
     {payments.map(payment => <PaymentRow key={payment.id} payment={payment} accepted={accepted} group={group} selfId={selfId} busy={busy} onPayment={onPayment} />)}
     {!payments.length && <Text>{group.history?.settlements?.next_cursor ? 'No payments on this page.' : 'No payments recorded.'}</Text>}
     <PagingFooter paging={paging} />
   </ScrollView>;
-}
-
-function PendingChangeRow({ command, busy, onReview, onDiscard }: { command: Command; busy: boolean; onReview: Props['onReview']; onDiscard: Props['onDiscard'] }) {
-  const { palette: colors, ui } = useUI();
-  return <View style={s.section}>
-    <Text style={ui.rowTitle}>{String(command.body.description ?? 'Group change')}</Text>
-    <Text style={[ui.caption, { color: colors.warning }]}>{command.state === 'pending' ? 'Waiting to sync' : command.error ?? 'Needs review'}</Text>
-    {command.state !== 'pending' && ['POST', 'PUT'].includes(command.method) && /\/expenses(?:\/[^/]+)?$/.test(command.path) && <Button title="Review my saved change" disabled={busy} onPress={() => onReview(command)} />}
-    <Button kind="text" title={command.path === '/groups' ? 'Discard unsent group' : 'Discard this saved change'} disabled={busy} onPress={() => onDiscard(command)} />
-  </View>;
 }
 
 function PersonalTransferRow({ transfer, group, selfId, disabled, onSettle, onExplain }: { transfer: Transfer; group: Group; selfId: string; disabled: boolean; onSettle: Props['onSettle']; onExplain: (transfer: Transfer, restoreFocus: () => void) => void }) {
@@ -174,7 +161,7 @@ function BillSearch({ value, onChange, onSearch, showSubmit, busy, autoFocus }: 
   </View>;
 }
 
-export default function GroupScreen({ categoryIcons, header, noticeVisibility, group, accepted, pending, durable = true, busy, selfId, pagingScope = group.id, active = true, online = true, onRefresh, refreshing = false, onVisibleBills, onLoadBalanceGroup, onHistoryPage, onExpense, onPayment, onSettle, onSync, onDiscard, onReview }: Props) {
+export default function GroupScreen({ categoryIcons, header, noticeVisibility, group, accepted, pending, busy, selfId, pagingScope = group.id, active = true, online = true, onRefresh, refreshing = false, onVisibleBills, onLoadBalanceGroup, onHistoryPage, onExpense, onPayment, onSettle }: Props) {
   const { ui } = useUI();
   const [explanation, setExplanation] = useState<BalanceSelection | null>(null);
   const historyResource = group.transactions ? 'transactions' : 'bills';
@@ -193,13 +180,13 @@ export default function GroupScreen({ categoryIcons, header, noticeVisibility, g
   const visible = useRef(onVisibleBills); visible.current = onVisibleBills;
   const viewable = useRef(({ viewableItems }: { viewableItems: { isViewable: boolean; item: GroupTransaction }[] }) => visible.current?.(viewableItems.filter(row => row.isViewable && row.item.kind === 'bill').map(row => row.item.kind === 'bill' ? row.item.bill.id : '')));
   const paging = useScrollPagination({ scope: `${pagingScope}|${group.version}|${historyResource}|${historyWindow?.query || ''}`,
-    cursor: historyWindow?.next_cursor, enabled: active && online && !busy, scrollRef: list,
+    cursor: historyWindow?.next_cursor, enabled: active && online && !busy,
     load: signal => onHistoryPage?.(historyResource, 'next', undefined, signal) ?? Promise.resolve(false) });
   const visibility = noticeVisibility ? { ...noticeVisibility, viewport, scrollEpoch } : undefined;
   return <View ref={frame} role="region" accessibilityLabel={group.name} style={{ flex: 1 }}>
-    <FlatList ref={list} data={rows} {...paging.events} nestedScrollEnabled scrollEventThrottle={100} onEndReachedThreshold={0.3}
-      onLayout={event => { paging.events.onLayout(event); frame.current?.measureInWindow((x, y, width, height) => setViewport({ x, y, width, height })); }}
-      onScroll={event => { paging.events.onScroll(event); setScrollEpoch(value => value + 1); }}
+    <FlatList ref={list} data={rows} nestedScrollEnabled scrollEventThrottle={100} onEndReachedThreshold={0.3}
+      onLayout={event => { frame.current?.measureInWindow((x, y, width, height) => setViewport({ x, y, width, height })); }}
+      onScroll={event => { setScrollEpoch(value => value + 1); }}
       onViewableItemsChanged={viewable.current} onRefresh={onRefresh} refreshing={refreshing}
       keyExtractor={row => row.kind === 'bill' ? `bill:${row.bill.id}` : `payment:${row.payment.id}`}
       contentContainerStyle={[pageContentStyle, { gap: 0, paddingBottom: 104 }]} renderItem={({ item: row }) => row.kind === 'payment'
@@ -207,13 +194,6 @@ export default function GroupScreen({ categoryIcons, header, noticeVisibility, g
         : <BillTimelineRow categoryIcons={categoryIcons} expense={row.bill} group={group} selfId={selfId} busy={busy} onExpense={onExpense} noticeVisibility={group === accepted ? visibility : undefined} />}
       ListHeaderComponent={<View style={s.content}>{header}
     {group.archived && <Text style={ui.notice}>Archived. Reopen in settings to make changes.</Text>}
-    {pending.length > 0 && <View style={s.section}>
-      <Text style={[ui.notice, ui.warning]}>{needsAttention ? 'Some changes need your attention.' : durable ? 'Waiting to sync.' : 'Not confirmed. Keep this tab open and reconnect.'}</Text>
-      <Disclosure title={`${pending.length} ${durable ? 'saved' : 'temporary'} ${pending.length === 1 ? 'change' : 'changes'}`} initialOpen={needsAttention}>
-        <Button title="Retry sync" disabled={busy} onPress={onSync} />
-        {pending.map(command => <PendingChangeRow key={command.command_id} command={command} busy={busy} onReview={onReview} onDiscard={onDiscard} />)}
-      </Disclosure>
-    </View>}
     {!transfers.length && <Text style={celebrateSettled ? ui.numeric : ui.caption}>{celebrateSettled ? '🎉 All settled' : 'All settled'}</Text>}
     {transfers.map(transfer => <PersonalTransferRow key={`${transfer.sender}:${transfer.recipient}`} transfer={transfer} group={group} selfId={selfId} disabled={busy || !!group.archived || pending.length > 0} onSettle={onSettle} onExplain={(transfer, restoreFocus) => setExplanation({ group, accepted, commands: pending, selfId, transfer, restoreFocus, load: onLoadBalanceGroup })} />)}
     {/* Search opens from the heading line; an active query or typed text keeps it open. */}
@@ -235,7 +215,7 @@ export default function GroupScreen({ categoryIcons, header, noticeVisibility, g
 }
 function RecordAttribution({ action, name }: { action: string; name?: string | null }) {
   const { ui } = useUI();
-  return <Text style={ui.caption}>{action} by {name || 'unknown'}</Text>;
+  return <Text style={ui.caption}>{name === undefined ? `${action === 'Added' ? 'Creator' : action === 'Marked paid' ? 'Recorder' : 'Reversal'} details not downloaded` : `${action} by ${name || 'unknown'}`}</Text>;
 }
 
 export function PaymentDetail({ payment, group, selfId, busy, canReverse, onReverse }: { payment: Settlement; group: Group; selfId: string; busy: boolean; canReverse: boolean; onReverse: () => void }) {

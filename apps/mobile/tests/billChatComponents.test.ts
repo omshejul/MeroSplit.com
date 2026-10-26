@@ -115,8 +115,7 @@ test('Actual screen callback reopens older paging after an empty chat fills, the
     reads[4].resolve(response(messages(6, 55), 'after55', 'before6')); await tick();
     tree = app.render(); await app.commit(); find(tree, 'ChatControls').props.onClose(); tree = app.render(); await app.commit();
     const flat = find(tree, 'FlatList'), nativeEvent = { contentOffset: { y: 0 }, contentSize: { height: 4000 }, layoutMeasurement: { height: 500 } };
-    flat.props.onLayout({ nativeEvent: { layout: { height: 500 } } });
-    flat.props.onScroll({ nativeEvent }); flat.props.onScrollBeginDrag();
+    flat.props.ListFooterComponent.children.flat(Infinity).find((node: any) => node?.props?.title === 'Load older').props.onPress();
     flat.props.onScroll({ nativeEvent: { ...nativeEvent, contentOffset: { y: 3500 } } }); await tick();
     assert.equal(reads.length, 6, 'Actual screen cursor must allow the older-page request after unblock');
     assert.equal(new URL('https://example.test' + reads[5].url).searchParams.get('before'), 'before6');

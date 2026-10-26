@@ -94,10 +94,12 @@ test('actual App callback adoption opens methods but only the authenticated hook
   const source = readFileSync(new URL('../App.tsx', import.meta.url), 'utf8');
   const values: Record<string, unknown> = {}, googleReturn = { current: 'connect' };
   const scope: Record<string, unknown> = { session: null, googleReturn, ownerRef: {}, activeSessionRef: {},
+    publishedStorage: {current: {scope:'1',view:'old',changes:'old'}}, loadGeneration:{current:0},
     accountOwner: (session: any) => session.userId, activityOwner: {}, groupVersions: {}, load: async () => {},
     setNotice() {} };
   for (const name of new Set(source.match(/\bset[A-Z]\w+/g))) scope[name] = (value: unknown) => { values[name] = value; };
   appConnect(scope, 'changeScope')(a);
+  assert.deepEqual((scope.publishedStorage as any).current,{scope:'',view:'',changes:''});assert.equal((scope.loadGeneration as any).current,1);
   assert.equal(values.setScreen, 'signInMethods');assert.equal(values.setTab, 'Account');
   assert.equal(googleReturn.current, null);assert.equal('setConnected' in values, false);
   const h = harness();try {
