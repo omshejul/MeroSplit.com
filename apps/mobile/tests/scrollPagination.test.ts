@@ -21,78 +21,54 @@ function fixture(load: (signal: AbortSignal) => Promise<boolean | null>, web = f
     commit: async () => { const pending = effects; effects = []; pending.forEach(fn => fn()); await tick(); },
     advance: (ms: number) => { now += ms; }, wheel: () => listeners.get('wheel')?.(), unmount: () => cleanup.forEach(fn => fn?.()) };
 }
-const metrics = (paging: any, y = 500, content = 1000) => paging.events.onScroll({ nativeEvent: { contentOffset: { y }, contentSize: { height: content }, layoutMeasurement: { height: 500 } } });
 
-test('mount, end callbacks and programmatic restoration cannot fetch without a human gesture', async () => {
+test('mount and cursor changes never fetch without an explicit Load older tap', async () => {
   let calls = 0; const app = fixture(async () => { calls++; return true; });
-  let paging = app.render(); await app.commit();
-  metrics(paging); paging.events.onEndReached(); await tick(); assert.equal(calls, 0);
-  paging.events.onScrollBeginDrag(); await tick(); assert.equal(calls, 1);
-  paging = app.render({ cursor: 'older' }); await app.commit();
-  paging.events.onContentSizeChange(320, 1500); metrics(paging, 1000, 1500); metrics(paging, 1001, 1500); paging.events.onEndReached();
-  await tick(); assert.equal(calls, 1);
-  paging.events.onScrollBeginDrag(); await tick(); assert.equal(calls, 2);
-  app.unmount();
+  let paging = app.render(); await app.commit(); assert.equal(calls, 0); assert.equal(paging.canLoadMore, true);
+  paging.loadMore(); await tick(); assert.equal(calls, 1);
+  paging = app.render({ cursor: 'older' }); await app.commit(); assert.equal(calls, 1);
+  paging.loadMore(); await tick(); assert.equal(calls, 2); app.unmount();
 });
 
-test('single flight, repeated cursors and exhaustion stop duplicate requests', async () => {
+test('double taps, repeated cursors and exhaustion stop duplicate requests', async () => {
   let finish!: (added: boolean) => void, calls = 0;
   const app = fixture(() => { calls++; return new Promise(resolve => { finish = resolve; }); });
-  let paging = app.render(); await app.commit(); metrics(paging); paging.events.onScrollBeginDrag();
-  paging.events.onEndReached(); paging.events.onTouchMove(); assert.equal(calls, 1);
+  let paging = app.render(); await app.commit(); paging.loadMore(); paging.loadMore(); assert.equal(calls, 1);
   assert.equal(app.render().loading, true); finish(true); await tick();
-  paging = app.render(); await app.commit(); paging.events.onScrollBeginDrag(); assert.equal(calls, 1);
-  paging = app.render({ cursor: null }); await app.commit(); paging.events.onScrollBeginDrag(); assert.equal(calls, 1);
-  app.unmount();
+  paging = app.render(); assert.equal(paging.canLoadMore, false); paging.loadMore(); assert.equal(calls, 1);
+  paging = app.render({ cursor: null }); await app.commit(); paging.loadMore(); assert.equal(calls, 1); app.unmount();
 });
 
-test('cancel and re-enable the same cursor re-arms it and ignores its late result', async () => {
+test('cancel and re-enable the same cursor ignores its late result', async () => {
   const pending: { signal: AbortSignal; resolve: (added: boolean) => void }[] = [];
   const app = fixture(signal => new Promise(resolve => pending.push({ signal, resolve })));
-  let paging = app.render(); await app.commit(); metrics(paging); paging.events.onScrollBeginDrag();
+  let paging = app.render(); await app.commit(); paging.loadMore();
   app.render({ enabled: false }); await app.commit(); assert.equal(pending[0].signal.aborted, true);
-  paging = app.render({ enabled: true }); await app.commit(); paging.events.onScrollBeginDrag(); assert.equal(pending.length, 2);
+  paging = app.render({ enabled: true }); await app.commit(); paging.loadMore(); assert.equal(pending.length, 2);
   pending[0].resolve(true); await tick(); assert.equal(app.render().loading, true);
-  pending[1].resolve(true); await tick(); assert.equal(app.render().loading, false);
-  app.unmount();
+  pending[1].resolve(true); await tick(); assert.equal(app.render().loading, false); app.unmount();
 });
 
-test('scope change aborts old work and requires a fresh gesture', async () => {
+test('scope change aborts old work and requires a fresh tap', async () => {
   let signal!: AbortSignal, calls = 0;
   const app = fixture(value => { signal = value; calls++; return new Promise(() => {}); });
-  let paging = app.render(); await app.commit(); metrics(paging); paging.events.onScrollBeginDrag();
+  let paging = app.render(); await app.commit(); paging.loadMore();
   paging = app.render({ scope: 'another-account|another-group|filter' }); await app.commit();
-  assert.equal(signal.aborted, true); metrics(paging); paging.events.onEndReached(); assert.equal(calls, 1);
-  paging.events.onScrollBeginDrag(); assert.equal(calls, 2); app.unmount();
+  assert.equal(signal.aborted, true); assert.equal(calls, 1);
+  paging.loadMore(); assert.equal(calls, 2); app.unmount();
 });
 
-test('failed page is held until explicit Retry and retains the same cursor', async () => {
+test('failed pages retain their cursor for explicit Retry', async () => {
   let calls = 0; const app = fixture(async () => { calls++; if (calls === 1) throw Error('Offline'); return true; });
-  let paging = app.render(); await app.commit(); metrics(paging); paging.events.onScrollBeginDrag(); await tick();
-  paging = app.render(); await app.commit(); assert.equal(paging.failed, true);
-  paging.events.onScrollBeginDrag(); paging.events.onEndReached(); await tick(); assert.equal(calls, 1);
+  let paging = app.render(); await app.commit(); paging.loadMore(); await tick();
+  paging = app.render(); await app.commit(); assert.equal(paging.failed, true); assert.equal(calls, 1);
   paging.retry(); await tick(); assert.equal(calls, 2); assert.equal(app.render().failed, false); app.unmount();
 });
 
-test('empty or fully filtered pages advance at most three pages per gesture', async () => {
-  let calls = 0; const app = fixture(async () => { calls++; return false; });
-  let paging = app.render(); await app.commit(); metrics(paging, 0, 100); paging.events.onScrollBeginDrag(); await tick();
-  for (let i = 1; i < 6; i++) { paging = app.render({ cursor: `cursor-${i}` }); await app.commit(); }
-  assert.equal(calls, 3); paging.events.onScrollBeginDrag(); await tick(); assert.equal(calls, 4); app.unmount();
-});
-
-test('a busy reader rearms without error and web wheel handles short content', async () => {
-  let calls = 0; const app = fixture(async () => { calls++; return calls === 1 ? null : true; }, true);
-  let paging = app.render(); await app.commit(); metrics(paging, 0, 100); paging.events.onEndReached(); assert.equal(calls, 0);
-  app.wheel(); await tick(); paging = app.render(); await app.commit(); assert.equal(paging.failed, false);
-  app.wheel(); await tick(); assert.equal(calls, 2); app.unmount(); app.wheel(); assert.equal(calls, 2);
-});
-
-
-test('a stale gesture does not authorize later programmatic end callbacks', async () => {
-  let calls = 0; const app = fixture(async () => { calls++; return true; });
-  const paging = app.render(); await app.commit(); metrics(paging, 0, 2000);
-  paging.events.onScrollBeginDrag(); app.advance(3000);
-  metrics(paging, 1500, 2000); paging.events.onEndReached(); await tick(); assert.equal(calls, 0);
-  paging.events.onScrollBeginDrag(); await tick(); assert.equal(calls, 1); app.unmount();
+test('empty pages and busy readers never automatically drain the next cursor', async () => {
+  let calls = 0; const app = fixture(async () => { calls++; return calls === 1 ? null : false; });
+  let paging = app.render(); await app.commit(); paging.loadMore(); await tick();
+  paging = app.render(); assert.equal(paging.failed, false); paging.loadMore(); await tick(); assert.equal(calls, 2);
+  paging = app.render({ cursor: 'next-page' }); await app.commit(); assert.equal(calls, 2);
+  assert.equal(paging.canLoadMore, true); app.unmount();
 });

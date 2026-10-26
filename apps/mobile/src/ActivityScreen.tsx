@@ -25,13 +25,13 @@ export default function ActivityScreen({ categoryIcons = {}, onVisibleExpenses, 
   const visible = useRef(onVisibleExpenses); visible.current = onVisibleExpenses;
   const viewable = useRef(({ viewableItems }: { viewableItems: { isViewable: boolean; item: ActivityItem }[] }) => visible.current?.(viewableItems.filter(row => row.isViewable && row.item.bill && !row.item.bill.deleted).map(({ item }) => ({ ...item.bill!, id: item.bill!.id, title: item.bill!.description, groupId: item.group.id }))));
   const paging = useScrollPagination({ scope: pagingScope, cursor, enabled: active && online && !busy && !error,
-    scrollRef: list, load: signal => onLoadMore?.(signal) ?? Promise.resolve(false) });
-  return <FlatList onViewableItemsChanged={viewable.current} ref={list} {...paging.events} data={items} keyExtractor={item => item.id} scrollEventThrottle={100} onEndReachedThreshold={0.3}
+    load: signal => onLoadMore?.(signal) ?? Promise.resolve(false) });
+  return <FlatList onViewableItemsChanged={viewable.current} ref={list} data={items} keyExtractor={item => item.id} scrollEventThrottle={100} onEndReachedThreshold={0.3}
     contentContainerStyle={[pageContentStyle, { gap: 0 }]} onRefresh={onRefresh} refreshing={busy}
     ListHeaderComponent={<>{header}{error ? <View style={s.message}><ErrorText live>{error}</ErrorText><Button title="Try again" disabled={busy} onPress={onRefresh} /></View> : null}</>}
     ListEmptyComponent={showEmpty && !hasMore && !error ? <View style={s.empty}><Mascot size="empty" visible={emptyVerified && !busy} /><Text accessibilityLiveRegion="polite" style={ui.caption}>{busy ? 'Loading activity…' : 'No activity yet'}</Text></View> : undefined}
     renderItem={({ item, index }) => <ActivityRow categoryIcons={categoryIcons} item={item} busy={busy} onOpen={onOpen} showDay={index === 0 || activityDay(items[index - 1].created_at) !== activityDay(item.created_at)} />}
-    ListFooterComponent={<>{footer}<View style={s.message}>{paging.loading && <LoadingSpinner visible />}{paging.failed && <><ErrorText live>Could not load earlier activity.</ErrorText><Button title="Retry" kind="text" onPress={paging.retry} /></>}</View></>} />;
+    ListFooterComponent={<>{footer}<View style={s.message}>{paging.loading && <LoadingSpinner visible />}{paging.canLoadMore && !paging.failed && <Button title="Load older" kind="text" disabled={paging.loading} onPress={paging.loadMore} />}{paging.failed && <><ErrorText live>Could not load earlier activity.</ErrorText><Button title="Retry" kind="text" onPress={paging.retry} /></>}</View></>} />;
 }
 
 function ActivityRow({ categoryIcons = {}, item, busy, showDay, onOpen }: {

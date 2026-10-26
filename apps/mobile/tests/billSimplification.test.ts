@@ -320,17 +320,16 @@ test('removed payer controls stay locked and changing historical amounts is stil
 });
 
 
-test('opening a cached bill/payment fetches actor detail once, merges it into the rendered record and retains offline data', async () => {
+test('cached bill/payment attribution needs no detail request, while absent records still fetch', async () => {
   const calls: string[] = [], active = { token: 'synthetic' };
-  const env = { isOnline: () => true, request: async (_session: any, path: string) => { calls.push(path); return path.includes('/expenses/') ? { id: 'bill', group_id: 'g', group_version: 4, added_by: 'Actual creator' } : { id: 'payment', group_version: 4, recorded_by_name: 'Actual recorder' }; } };
-  const legacy = { id: 'g', version: 4, expenses: [{ id: 'bill' }], settlements: [{ id: 'payment' }] };
+  const env = { request: async (_session: any, path: string) => { calls.push(path); return path.includes('/expenses/') ? { id: 'other-bill', group_id: 'g', group_version: 4, added_by: 'Creator' } : { id: 'other-payment', group_version: 4, recorded_by_name: 'Recorder' }; } };
+  const saved = { id: 'g', version: 4, expenses: [{ id: 'bill', added_by: 'Creator' }], settlements: [{ id: 'payment', recorded_by_name: 'Recorder' }] };
   const withBill = appAction('withBill', env), withPayment = appAction('withPayment', env);
-  const bill = await withBill(active, legacy, 'bill'); assert.equal(bill.expenses[0].added_by, 'Actual creator');
-  assert.equal(await withBill(active, bill, 'bill'), bill); assert.equal(calls.length, 1);
-  const payment = await withPayment(active, legacy, 'payment'); assert.equal(payment.settlements[0].recorded_by_name, 'Actual recorder');
-  assert.equal(await withPayment(active, payment, 'payment'), payment); assert.equal(calls.length, 2);
-  env.isOnline = () => false;
-  assert.equal(await withBill(active, legacy, 'bill'), legacy); assert.equal(await withPayment(active, legacy, 'payment'), legacy); assert.equal(calls.length, 2);
+  assert.equal(await withBill(active, saved, 'bill'), saved);
+  assert.equal(await withPayment(active, saved, 'payment'), saved); assert.equal(calls.length, 0);
+  assert.equal((await withBill(active, saved, 'other-bill')).focused_expense.added_by, 'Creator');
+  assert.equal((await withPayment(active, saved, 'other-payment')).focused_settlement.recorded_by_name, 'Recorder');
+  assert.equal(calls.length, 2);
 });
 
 
