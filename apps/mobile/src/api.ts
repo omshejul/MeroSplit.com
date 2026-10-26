@@ -39,24 +39,12 @@ export async function request<T>(session: Session, path: string, method = 'GET',
   } finally { clearTimeout(timer); signal?.removeEventListener('abort', cancel); }
 }
 
-// An edit based on an older bill never overwrites a newer accepted version.
-// Read both the exact bill and the group before atomically replacing its projection.
-async function useLatestBill(db: Database, session: Session, command: Command, mode: 'full' | 'summary'): Promise<boolean> {
-  if (command.method !== 'PUT' || !/^\/groups\/[^/]+\/expenses\/[^/]+$/.test(command.path) || !Number.isSafeInteger(command.body.version)) return false;
-  const latest = await request<Expense>(session, command.path);
-  if (latest.id !== command.path.split('/').at(-1) || !Number.isSafeInteger(latest.version) || latest.version <= Number(command.body.version)) return false;
-  const group = await fetchGroup(session, command.group_id, mode);
-  await acceptCommand(db, accountOwner(session), command.command_id, group);
-  return true;
-}
-
 // Never replay a command under another account or backend. GET follows the
 // idempotent write so a lost response can be recovered by retrying the same ID.
 export async function syncOutbox(db: Database, session: Session, mode: 'full' | 'summary' = 'full', stopAfterCommandId?: string): Promise<Record<string, unknown>[]> {
   const owner = accountOwner(session);
   const receipts: Record<string, unknown>[] = [];
   for (const command of await pendingCommands(db, owner)) {
-    if (command.state === 'conflict' && await useLatestBill(db, session, command, mode)) { if (command.command_id === stopAfterCommandId) break; continue; }
     if (command.state !== 'pending') throw new Error('Resolve the earlier rejected/conflicting change before syncing later commands.');
     let writeAccepted = false;
     try {
@@ -79,7 +67,6 @@ export async function syncOutbox(db: Database, session: Session, mode: 'full' | 
       receipts.push(receipt);
       if (command.command_id === stopAfterCommandId) break;
     } catch (error) {
-      if (!writeAccepted && error instanceof ApiError && error.status === 409 && await useLatestBill(db, session, command, mode)) { if (command.command_id === stopAfterCommandId) break; continue; }
       if (!writeAccepted && error instanceof ApiError && error.status >= 400 && error.status < 500 && error.status !== 401 && error.status !== 429) {
         await markCommand(db, owner, command.command_id, error.status === 409 ? 'conflict' : 'rejected', error.message);
       }
