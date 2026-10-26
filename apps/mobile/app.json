@@ -10,7 +10,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.omshejul.splitdumb",
-      "buildNumber": "27",
+      "buildNumber": "28",
       "associatedDomains": [
         "applinks:merosplit.com",
         "applinks:merosplit.omshejul.com"
@@ -34,7 +34,7 @@
     },
     "android": {
       "package": "com.omshejul.splitdumb",
-      "versionCode": 26,
+      "versionCode": 27,
       "intentFilters": [
         {
           "action": "VIEW",
