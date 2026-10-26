@@ -1221,7 +1221,6 @@ function AppContent() {
         <View><ProfileSettings key={`profile-settings|${owner}`} name={myName} vpa={vpa} busy={busy} onSaveName={saveName} onSaveUPI={saveUPI} onAppearance={value => perform(() => changeAppearance(value), false)} onColorFamily={value => perform(() => changeColorFamily(value), false)} />
           <SettingsRow rowRef={methodsRow} label="Sign-in methods" icon="key" disabled={busy || expired} onPress={() => navigate('signInMethods')} />
           <AccountNotifications key={`account-notifications|${owner}`} session={session} push={push} busy={busy} onBusyChange={value => { lock.current = value; setBusy(value); }} />
-          <AppUpdates key={`app-updates|${owner}`} busy={busy} online={online} onRestart={restartUpdate} />
           <MCPSettings key={`mcp-settings|${owner}`} session={session} busy={busy} onBusyChange={value => { lock.current = value; setBusy(value); }} />
         <View><SettingsRow label="Import from Splitwise" icon="import" disabled={busy} onPress={() => navigate('import')} />
           <ExportData key={`export-data|${owner}`} busy={busy} onExport={() => perform(exportData)} /></View>
@@ -1242,6 +1241,7 @@ function AppContent() {
           <SettingsRow label="Sign out" icon="back" chevron={false} disabled={busy} onPress={() => confirm('Sign out?', storageIsDurable() ? 'Saved changes stay on this device for your next sign-in to this account.' : 'Export any temporary unsent changes before leaving. They will end when this tab closes.', async () => { await draftWrites.current; await flushChatWrites(); await endPushSession(session); await clearMediaPreviews(); await saveSession(null); changeScope(null); })} />
           <DeleteAccount email={session.email} busy={busy} onDelete={body => perform(() => deleteAccount(body))} />
         </View></View>
+        <AppUpdates key={`app-updates|${owner}`} busy={busy} online={online} onRestart={restartUpdate} />
       </>}
     </ScrollView>}
     {showAddExpense && <AddExpenseButton disabled={busy} onPress={() => launch(() => openExpense())} />}
