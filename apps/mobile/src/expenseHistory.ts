@@ -28,6 +28,7 @@ export function historyTime(value: string, now = Date.now()) {
   if (!Number.isFinite(timestamp)) return 'Time not recorded';
   const seconds = Math.max(0, Math.floor((now - timestamp) / 1000));
   if (seconds < 60) return 'Just now';
-  const [unit, duration] = seconds < 3600 ? ['minute', 60] : seconds < 86400 ? ['hour', 3600] : ['day', 86400];
-  return new Intl.RelativeTimeFormat('en', { numeric: 'auto', style: 'short' }).format(-Math.floor(seconds / Number(duration)), unit as Intl.RelativeTimeFormatUnit);
+  const [unit, duration] = seconds < 3600 ? ['min.', 60] : seconds < 86400 ? ['hr.', 3600] : ['days', 86400];
+  const amount = Math.floor(seconds / Number(duration));
+  return unit === 'days' && amount === 1 ? 'yesterday' : `${amount} ${unit} ago`;
 }
