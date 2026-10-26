@@ -17,7 +17,7 @@ import type { Group, Participant } from './types';
 import { addPerson, currentEmailInvite, emailInvitationRequest, personRequest, saveContact, sendInvitation } from './members';
 import type { AddPersonRequest, EmailInviteRequest } from './members';
 import { EmailField, TextField } from './FormFields';
-import { Avatar, Button, Disclosure, IconAction, useUI } from './ui';
+import { Avatar, Button, Disclosure, IconAction, SettingsRow, useUI } from './ui';
 
 const CopyLinkIcon = (props: { size: number; color: string }) => <MaterialCommunityIcons {...props} name="content-copy" accessible={false} />;
 
@@ -85,6 +85,20 @@ function MemberRow({ group, person, selfId, organizer, disabled, working, feedba
     {canAddEmail && <IconAction name="mail" label={`Add email and invite ${person.name}`} disabled={disabled} onPress={onAddEmail} />}
     {removable && <IconAction name="remove" label={`Remove ${person.name}`} hint={reason || undefined} disabled={disabled || blocked || !!group.archived} onPress={onRemove} />}
   </View>;
+}
+
+function PreviousMembersDialog({ people, onClose }: { people: Participant[]; onClose: () => void }) {
+  const { ui } = useUI();
+  return <KeyboardDialog visible onDismiss={onClose} maxHeight={480}>
+    <Dialog.Title aria-level={2}>Previous members</Dialog.Title>
+    <DialogScrollBody maxHeight={300} gap={0}>
+      {people.filter(person => person.removed).map(person => <View key={person.id} style={ui.row}>
+        <Avatar name={person.name} />
+        <View style={ui.rowBody}><Text style={ui.rowTitle}>{person.name}</Text></View>
+      </View>)}
+    </DialogScrollBody>
+    <CancelDialogActions cancelTitle="Done" disabled={false} onCancel={onClose} />
+  </KeyboardDialog>;
 }
 
 function AddPersonDialog({ visible, disabled, working, archived, name, email, onName, onEmail, onClose, onSave, onLink, feedback }: {
@@ -167,6 +181,8 @@ export default function MembersScreen(props: Props) {
 
 function MemberSettings({ group, selfId, busy, addPersonRequest = 0, onAction, onMembership }: Props) {
   const { ui } = useUI();
+  const [showPrevious, setShowPrevious] = useState(false);
+  const previousMembers = group.participants.filter(person => person.removed);
   const [newName, setNewName] = useState(''), [newEmail, setNewEmail] = useState(''), [addingPerson, setAddingPerson] = useState(false);
   const pendingPerson = useRef<AddPersonRequest | null>(null), lastAddRequest = useRef(addPersonRequest);
   const addTrigger = useRef<HTMLElement | null>(null);
@@ -360,12 +376,14 @@ function MemberSettings({ group, selfId, busy, addPersonRequest = 0, onAction, o
       <FeedbackNote section="group-link" feedback={feedback} />
     </View>}
     <View>
-      {group.participants.map(person => <MemberRow key={person.id} group={group} person={person} selfId={selfId} organizer={organizer} disabled={disabled} working={working} feedback={feedback}
+      {group.participants.filter(person => !person.removed).map(person => <MemberRow key={person.id} group={group} person={person} selfId={selfId} organizer={organizer} disabled={disabled} working={working} feedback={feedback}
         cooldown={inviteCooldowns[person.id] ?? 0} contactChanged={person.id === directPerson?.id && emailChanged}
         onRename={() => editName(person)} onAddEmail={() => editPersonEmail(person)} onSend={() => sendEmailInvite(person)} onRemove={() => confirm(
             `Remove ${person.name}?`, `${person.user_id != null ? 'They will lose access to this group. ' : ''}Existing bills and payment history remain.`,
             () => void perform('members', async () => { await onAction(`/participants/${person.id}/remove`, {}); }, 'Person removed.'), 'Remove')} />)}
     </View>
+    {previousMembers.length > 0 && <SettingsRow icon="people" label="Previous members" value={String(previousMembers.length)} onPress={() => setShowPrevious(true)} />}
+    {showPrevious && previousMembers.length > 0 && <PreviousMembersDialog people={previousMembers} onClose={() => setShowPrevious(false)} />}
     {directPerson && <Disclosure title="Contact email">
       <Field label="Email (optional)" value={email} onChange={value => { setContactEmail(value); setFeedback(null); }} disabled={disabled || !!group.archived} keyboardType="email-address" maxLength={254} />
       {emailChanged && <Button title="Save contact" disabled={disabled || !!group.archived} onPress={() => void perform('contact', async () => {
