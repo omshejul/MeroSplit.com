@@ -14,7 +14,7 @@ export default function AppUpdates({ busy, online, onRestart }: { busy: boolean;
   const [open, setOpen] = useState(false), [phase, setPhase] = useState<Phase>('idle'), [error, setError] = useState(''), [rollback, setRollback] = useState(false);
   const flight = useRef(false), live = useRef(true);
   useEffect(() => { live.current = true; return () => { live.current = false; }; }, []);
-  const supported = Platform.OS !== 'web' && !__DEV__ && Updates.isEnabled && !!Updates.runtimeVersion && Updates.channel === 'merosplit-1-1-testing';
+  const supported = Platform.OS !== 'web' && !__DEV__ && Updates.isEnabled && !!Updates.runtimeVersion && Updates.channel === 'merosplit-production';
   const working = native.isStartupProcedureRunning || phase === 'checking' || phase === 'downloading' || phase === 'applying' || native.isChecking || native.isDownloading || native.isRestarting;
   const ready = native.isUpdatePending || phase === 'ready', available = phase === 'available' || phase === 'idle' && native.isUpdateAvailable;
   const restoring = rollback || native.downloadedUpdate?.type === Updates.UpdateInfoType.ROLLBACK || native.availableUpdate?.type === Updates.UpdateInfoType.ROLLBACK;
