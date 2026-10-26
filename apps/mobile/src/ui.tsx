@@ -142,10 +142,10 @@ function usePressFeedback(disabled: boolean) {
   return { onPressIn: () => { if (!disabled && motion.active) setPressed(true); }, onPressOut: () => setPressed(false),
     pressedStyle: { opacity: pressed && !disabled && motion.active ? 0.65 : 1 } };
 }
-export function Button({ title, onPress, disabled = false, kind = 'secondary', icon, accessibilityLabel, compact = false, small = false, style, contentStyle }: { contentStyle?: React.ComponentProps<typeof PaperButton>['contentStyle']; style?: React.ComponentProps<typeof PaperButton>['style']; compact?: boolean; small?: boolean; title: string; accessibilityLabel?: string; onPress: () => void; disabled?: boolean; kind?: 'primary' | 'secondary' | 'text' | 'danger' | 'outlined'; icon?: IconName | ((props: { size: number; color: string }) => React.ReactNode) }) {
+export function Button({ title, onPress, disabled = false, kind = 'secondary', icon, accessibilityLabel, compact = false, small = false, maxFontSizeMultiplier, style, contentStyle }: { maxFontSizeMultiplier?: number; contentStyle?: React.ComponentProps<typeof PaperButton>['contentStyle']; style?: React.ComponentProps<typeof PaperButton>['style']; compact?: boolean; small?: boolean; title: string; accessibilityLabel?: string; onPress: () => void; disabled?: boolean; kind?: 'primary' | 'secondary' | 'text' | 'danger' | 'outlined'; icon?: IconName | ((props: { size: number; color: string }) => React.ReactNode) }) {
   const { palette: colors, dark } = useUI();
   const { pressedStyle, ...press } = usePressFeedback(disabled);
-  return <PaperButton {...press} hitSlop={{ top: small ? 8 : 6, bottom: small ? 8 : 6 }} compact={compact || small} accessibilityLabel={accessibilityLabel ?? title} mode={kind === 'text' ? 'text' : kind === 'outlined' ? 'outlined' : kind === 'secondary' ? 'contained-tonal' : 'contained'} onPress={onPress} disabled={disabled}
+  return <PaperButton {...press} maxFontSizeMultiplier={maxFontSizeMultiplier} hitSlop={{ top: small ? 8 : 6, bottom: small ? 8 : 6 }} compact={compact || small} accessibilityLabel={accessibilityLabel ?? title} mode={kind === 'text' ? 'text' : kind === 'outlined' ? 'outlined' : kind === 'secondary' ? 'contained-tonal' : 'contained'} onPress={onPress} disabled={disabled}
     icon={typeof icon === 'function' ? icon : icon ? ({ size, color }) => <Icon name={icon} size={small ? 16 : size} color={color} /> : undefined}
     buttonColor={kind === 'danger' ? colors.error : small ? dark ? '#303030' : '#E8E8E8' : undefined} textColor={kind === 'text' || small ? colors.text : kind === 'outlined' ? colors.accent : undefined} style={[{ borderRadius: small ? 6 : radii.button, minWidth: compact && icon ? 64 : 80, ...(kind === 'outlined' && { borderWidth: 1, borderColor: colors.accent }) }, pressedStyle, style]} contentStyle={[{ minHeight: small ? 28 : 36, ...(small && { paddingLeft: icon ? 4 : 0 }) }, contentStyle]} labelStyle={{ fontSize: 14, lineHeight: 20, fontWeight: '500', marginVertical: 0, marginHorizontal: compact && icon ? 4 : 20, ...(small && { marginLeft: icon ? 6 : 12, marginRight: 12 }) }}>{title}</PaperButton>;
 }
@@ -205,9 +205,9 @@ const makeUI = (colors: Palette, fontFamily?: string) => StyleSheet.create({
   rowSub: { fontFamily, fontSize: 14, lineHeight: 20, color: colors.muted },
   avatar: { width: 36, height: 36, borderRadius: radii.control, backgroundColor: colors.soft, alignItems: 'center', justifyContent: 'center' },
   initials: { fontFamily, fontSize: 17, fontWeight: '600', color: colors.accent },
-  notice: { fontFamily, backgroundColor: colors.surface, borderLeftWidth: 3, borderLeftColor: colors.accent, borderRadius: radii.surface, padding: 12, color: colors.text, fontSize: 14, lineHeight: 21 },
-  success: { color: colors.positive, borderLeftColor: colors.positive },
-  warning: { color: colors.warning, borderLeftColor: colors.warning },
+  notice: { fontFamily, backgroundColor: colors.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line, borderRadius: radii.surface, padding: 12, color: colors.text, fontSize: 14, lineHeight: 21 },
+  success: { color: colors.positive },
+  warning: { color: colors.warning },
   error: { fontFamily, color: colors.error, fontSize: 15, lineHeight: 22 },
   disclosure: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
   disclosureHeading: { minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },

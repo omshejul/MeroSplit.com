@@ -21,6 +21,7 @@ function production(file: string, extra: Record<string, any> = {}) {
   const env: Record<string, any> = {
     ...members, confirmedGroupInvite, copyText: async (value: string | Promise<string>) => { await value; }, React: { Fragment: 'Fragment', createElement: (type: any, props: any, ...children: any[]) => ({ type, props: props ?? {}, children }) },
     __DEV__: false, SettingsRow: 'SettingsRow', Platform: { OS: 'native' }, View: 'View', Text: 'Text', Pressable: 'Pressable', Button: 'Button', Avatar: 'Avatar', Icon: 'Icon', IconAction: 'IconAction',
+    Constants: { platform: { ios: { buildNumber: '27' }, android: { versionCode: 26 } } }, requireOptionalNativeModule: () => ({ nativeApplicationVersion: '1.2', nativeBuildVersion: '27' }),
     Disclosure: 'Disclosure', EmailField: 'EmailField', TextField: 'TextField', GroupMembershipActions: 'GroupMembershipActions', KeyboardDialog: 'KeyboardDialog', SendInviteDialog: 'SendInviteDialog',
     Modal: 'Modal', ScrollView: 'ScrollView', AppFrame: 'AppFrame', ScreenHeader: 'ScreenHeader', pageContentStyle: {}, ApiError, LoadingSpinner: 'LoadingSpinner', DialogFocus: 'DialogFocus', DialogScrollBody: 'DialogScrollBody', CancelDialogActions: 'CancelDialogActions', ErrorText: 'ErrorText', Dialog: Object.assign(() => {}, { Title: 'Dialog.Title' }),
     Keyboard: { dismiss() {} }, StyleSheet: { create: (value: any) => value, hairlineWidth: 1 }, Crypto: { randomUUID: () => `id-${++nextId}` }, useUI: () => ({ ui: {}, palette: {} }),
@@ -312,7 +313,7 @@ test('Copy link uses the platform helper, exposes no URL and reports clipboard f
 
 
 function updateModule() {
- const calls:string[]=[], state:any={currentlyRunning:{isEmergencyLaunch:false},isUpdatePending:false,isUpdateAvailable:false};
+ const calls:string[]=[], state:any={currentlyRunning:{isEmergencyLaunch:false,isEmbeddedLaunch:true},isUpdatePending:false,isUpdateAvailable:false};
  const module:any={isEnabled:true,runtimeVersion:'native-fingerprint',channel:'merosplit-production',UpdateInfoType:{ROLLBACK:'rollback'},useUpdates:()=>state,
   checkForUpdateAsync:async()=>{calls.push('check');return{isAvailable:true,isRollBackToEmbedded:false};},
   fetchUpdateAsync:async()=>{calls.push('download');return{isNew:true,isRollBackToEmbedded:false};},reloadAsync:async()=>{calls.push('reload');}};
@@ -359,6 +360,43 @@ test('manual update controls reject the old testing channel, missing runtime and
   const tree=app.render('AppUpdates',{busy:false,online:true,onRestart:async()=>{assert.fail();}});
   assert.equal(button(tree,'Check'),undefined);assert.deepEqual(native.calls,[]);app.unmount();
  }
+});
+
+test('update footer reports the installed binary and running update, never a pending download or mutable manifest version', () => {
+ const native=updateModule();native.state.currentlyRunning.updateId='embedded-id';native.state.isUpdatePending=true;
+ const app=production('AppUpdates.tsx',{Updates:native.module,Constants:{expoConfig:{version:'99.9',ios:{buildNumber:'999'}}}});
+ const props={busy:false,online:true,onRestart:async()=>{assert.fail();}};
+ let tree=app.render('AppUpdates',props);
+ assert.ok(JSON.stringify(tree).includes('Version 1.2 (27)'));assert.ok(JSON.stringify(tree).includes('Built-in version'));
+ assert.ok(!JSON.stringify(tree).includes('Update installed'));assert.ok(!JSON.stringify(tree).includes('99.9'));
+ assert.equal(nodes(tree).some(node=>node.type==='SettingsRow'),false);
+ native.state.currentlyRunning.isEmbeddedLaunch=false;native.state.currentlyRunning.updateId='actual-downloaded-update';
+ tree=app.render('AppUpdates',props);assert.ok(JSON.stringify(tree).includes('Update installed'));
+ assert.ok(!JSON.stringify(tree).includes('actual-downloaded-update'),'technical update IDs stay out of the footer');
+ app.unmount();
+ const fallback=production('AppUpdates.tsx',{Updates:native.module,Platform:{OS:'ios'},requireOptionalNativeModule:()=>null,Constants:{platform:{ios:{buildNumber:'42'}},expoConfig:{version:'99.9',ios:{buildNumber:'999'}}}});
+ tree=fallback.render('AppUpdates',props);assert.ok(JSON.stringify(tree).includes('Build 42'));assert.ok(!JSON.stringify(tree).includes('99.9'));fallback.unmount();
+ const web=production('AppUpdates.tsx',{Updates:native.module,Platform:{OS:'web'}});
+ tree=web.render('AppUpdates',props);assert.equal(button(tree,'Check for update'),undefined);assert.ok(JSON.stringify(tree).includes('reload the page'));assert.ok(!JSON.stringify(tree).includes('Version 1.2'));web.unmount();
+});
+
+test('footer Check starts one existing check and opens progress, while a downloaded update still needs explicit Restart', async () => {
+ const native=updateModule(),app=production('AppUpdates.tsx',{Updates:native.module});let restarts=0;
+ const props={busy:false,online:true,onRestart:async()=>{restarts++;}};
+ let tree=app.render('AppUpdates',props);button(tree,'Check for update').props.onPress();button(tree,'Check for update').props.onPress();await tick();
+ tree=app.render('AppUpdates',props);assert.equal(component(tree,'KeyboardDialog').props.visible,true);assert.deepEqual(native.calls,['check']);
+ native.state.isUpdatePending=true;button(app.render('AppUpdates',props),'Check for update').props.onPress();await tick();assert.equal(restarts,0);
+ button(app.render('AppUpdates',props),'Restart').props.onPress();await tick();assert.equal(restarts,1);app.unmount();
+});
+
+test('Account mounts exactly one update footer after all settings and account actions', () => {
+ const source=ts.createSourceFile('App.tsx',readFileSync(new URL('../App.tsx',import.meta.url),'utf8'),ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
+ const entries:ts.JsxSelfClosingElement[]=[];
+ function visit(node:ts.Node){if(ts.isJsxSelfClosingElement(node)&&node.tagName.getText(source)==='AppUpdates')entries.push(node);ts.forEachChild(node,visit);}
+ visit(source);assert.equal(entries.length,1);
+ const footer=entries[0],parent=footer.parent;assert.ok(ts.isJsxFragment(parent));
+ assert.equal(parent.children.filter(node=>!ts.isJsxText(node)).at(-1),footer);
+ const content=parent.getText(source);assert.ok(content.indexOf('<DeleteAccount')<content.indexOf('<AppUpdates'));
 });
 
 test('update checks and downloads report failures, preserve retry, and block offline or unsupported builds', async () => {
