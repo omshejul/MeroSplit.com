@@ -152,3 +152,18 @@ test('auth-held and revoked access require attention even with pending work; off
  assert.equal(syncStatus({ ...base, commands: [], reviewRequired: true }).label, 'Needs attention');
  assert.equal(syncStatus({ ...base, reviewRequired: false, problem: false }).label, 'Saved on device');
 });
+
+test('temporary storage alone does not demand attention; unsent work still does', () => {
+ const idle = { commands: [] as Command[], pendingFiles: 0, drafts: false, confirmedAt: '2026-10-26T10:00:00Z', durable: false, syncing: false, problem: false };
+ assert.equal(syncStatus(idle).label, 'Synced');
+ assert.doesNotMatch(syncStatus(idle).detail, /export|keep this tab open|temporary/i);
+ assert.equal(syncStatus({ ...idle, syncing: true }).label, 'Syncing');
+ assert.equal(syncStatus({ ...idle, online: false }).label, 'Offline');
+ for (const localWork of [{ commands: [bill] }, { drafts: true }, { pendingFiles: 1 }]) {
+  const status = syncStatus({ ...idle, ...localWork });
+  assert.equal(status.label, 'Needs attention');
+  assert.match(status.detail, /closing or reloading/);
+ }
+ assert.equal(syncStatus({ ...idle, problem: true }).label, 'Needs attention', 'real sync failures remain visible');
+ assert.equal(syncStatus({ ...idle, reviewRequired: true }).label, 'Needs attention', 'account/access review remains visible');
+});

@@ -9,7 +9,12 @@ export async function openBrowserStorage(
 ): Promise<{ db: Database; durable: boolean }> {
   let db: Database;
   try { db = await openPersistent(); }
-  catch { db = await openMemory(); await migrate(db); return { db, durable: false }; }
+  catch {
+    // Retry a transient open failure once, before any temporary data exists.
+    await new Promise(resolve => setTimeout(resolve, 250));
+    try { db = await openPersistent(); }
+    catch { db = await openMemory(); await migrate(db); return { db, durable: false }; }
+  }
   // A migration failure must never hide potentially recoverable durable data.
   await migrate(db); return { db, durable: true };
 }

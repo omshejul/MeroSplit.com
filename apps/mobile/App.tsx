@@ -584,11 +584,11 @@ function AppContent() {
     return () => { listener.remove(); if (Platform.OS === 'web') { document.removeEventListener('visibilitychange', update); window.removeEventListener('resize', measureViewport); window.removeEventListener('pointerdown', notices.engage); window.removeEventListener('keydown', notices.engage); } };
   }, []);
   useEffect(() => {
-    if (Platform.OS !== 'web' || storageIsDurable() || !commands.length && !hasDrafts) return;
+    if (Platform.OS !== 'web' || storageIsDurable() || !commands.length && !hasDrafts && !pendingFiles) return;
     const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ''; };
     window.addEventListener('beforeunload', warn);
     return () => window.removeEventListener('beforeunload', warn);
-  }, [commands.length, hasDrafts]);
+  }, [commands.length, hasDrafts, pendingFiles]);
   useEffect(() => {
     const update = () => setOnline(isOnline());
     if (Platform.OS !== 'web') return subscribeConnection(update);

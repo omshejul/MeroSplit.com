@@ -71,3 +71,13 @@ test('Browser OTP uses same-origin cookies, fresh CSRF and no bearer credentials
     assert.throws(() => sessionRequest({ ...session, baseUrl: 'https://another.test' }, '/api/v1/groups'), /account server/);
   } finally { Object.assign(globalThis, { window: originalWindow, document: originalDocument, fetch: originalFetch }); }
 });
+
+test('a transient persistent-storage open failure retries once before using temporary storage', async () => {
+ const raw = new DatabaseSync(':memory:'), db = sqliteAdapter(raw); let opens = 0, fallback = 0;
+ try {
+  const result = await openBrowserStorage(async () => { if (++opens === 1) throw Error('Transient storage lock'); return db; }, async () => { fallback++; return db; }, migrate);
+  assert.equal(opens, 2); assert.equal(fallback, 0); assert.equal(result.durable, true);
+  await saveDraft(result.db, 'one', 'retained', { amount: '200' });
+  assert.deepEqual(await readDraft(db, 'one', 'retained'), { amount: '200' });
+ } finally { raw.close(); }
+});

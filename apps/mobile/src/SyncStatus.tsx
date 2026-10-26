@@ -20,6 +20,7 @@ export default function SyncStatus(props: { commands: Command[]; pendingFiles: n
     <DialogFocus active={open} label="Sync details" onEscape={() => setOpen(false)} style={{ gap: 8, maxWidth: 256 }}>
       <Text accessibilityRole="header" aria-level={2} style={ui.rowTitle}>{label}</Text>
       <Text style={ui.body}>{updates ? 'New changes are available.' : status.detail}</Text>
+      {!props.durable && !props.commands.length && !props.pendingFiles && !props.drafts && <Text style={ui.body}>This tab is using temporary storage. Your synced records are safe on the server.</Text>}
       {props.updatesAvailable && <Button title="Show updates" kind="text" onPress={() => { setOpen(false); props.onShowUpdates?.(); }} />}
       {status.label === 'Needs attention' && <Button title="View saved changes" kind="text" onPress={() => { setOpen(false); props.onPress(); }} />}
     </DialogFocus>
