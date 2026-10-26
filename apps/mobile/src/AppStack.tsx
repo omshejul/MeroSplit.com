@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useRef, useState, useSyncExternalStore } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Platform } from 'react-native';
 import { Dialog } from 'react-native-paper';
 import { NavigationContainer, StackActions, getStateFromPath, useIsFocused, useNavigationContainerRef, usePreventRemove, type NavigationAction } from '@react-navigation/native';
@@ -59,20 +59,35 @@ export function useAppNavigation() {
       go(routeParents(current).at(-1)?.name ?? (signedIn ? 'home' : 'login'));
     }
   }
-  return { ref, route, go, back };
+  function complete(name: Screen, params?: RouteParams) {
+    if (ref.getCurrentRoute()?.key === route.key) go(name, params);
+  }
+  return { ref, route, go, back, complete };
 }
 
 function RouteScene({ route, navigation }: NativeStackScreenProps<Routes, Screen>) {
   const { render, blocked } = useContext(SceneContext), focused = useIsFocused();
   const [localBlocked, setLocalBlocked] = useState(false), [pending, setPending] = useState<NavigationAction | null>(null);
+  const [deferred, setDeferred] = useState<NavigationAction | null>(null);
   const [queued, setQueued] = useState(false), committed = useRef(false);
   const onQueued = useCallback(() => { committed.current = true; setQueued(true); }, []);
   const draft = route.name === 'expense' && !queued;
-  usePreventRemove(blocked || localBlocked || draft, ({ data }) => {
-    // App completion handlers can return after their durable action has committed.
-    if ((data.action as AppAction).appNavigation && (!draft || committed.current)) { navigation.dispatch(data.action); return; }
-    if ((data.action as AppAction).appNavigation && draft) { setPending(data.action); return; }
+  useEffect(() => {
+    if (!deferred) return;
+    if (!focused || !navigation.isFocused()) { setDeferred(null); return; }
     if (blocked || localBlocked) return;
+    setDeferred(null);
+    if (draft && !committed.current) setPending(deferred);
+    else navigation.dispatch(deferred);
+  }, [deferred, blocked, localBlocked, draft, focused, navigation]);
+  usePreventRemove(blocked || localBlocked || draft, ({ data }) => {
+    if (blocked || localBlocked) {
+      // Completion and link actions share the same locks. Replay only while
+      // this scene is still current, after its form and app work have settled.
+      if ((data.action as AppAction).appNavigation) setDeferred(data.action);
+      return;
+    }
+    if (!draft || committed.current) { navigation.dispatch(data.action); return; }
     setPending(data.action);
   });
   return <ScreenRemovalLock.Provider value={setLocalBlocked}>

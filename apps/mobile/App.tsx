@@ -517,7 +517,7 @@ function AppContent() {
       if (!session || record.decision !== (paid ? 'paid' : 'unpaid')) throw new Error('Review the saved payment again.');
       const active = session, group = await resolvePaymentReturn(await getDatabase(), active, record);
       if (activeSessionRef.current?.token !== active.token) return;
-      setTransfer(undefined); navigate('group', { groupId: group.id });
+      setTransfer(undefined); navigation.complete('group', { groupId: group.id });
       setActivity(null); activityOwner.current = '';
       setNotice(paid ? `Recorded ${formatMoney(record.amount)} paid to ${record.payeeName}.` : 'Unpaid attempt cancelled.', paid ? 'success' : 'info');
     }, false);
@@ -779,7 +779,7 @@ function AppContent() {
       if (selected.group.archived) throw new Error('Reopen this group in settings before making changes.');
       await draftWrites.current;
       await queue(command(expenseId ? 'PUT' : 'POST', `/groups/${groupId}/expenses${expenseId ? `/${value.id}` : ''}`, expensePayload(value, !!expenseId)), reviewCommand?.command_id, attachment, onQueued);
-      setReviewCommand(null); setReviewInput(undefined); navigate('group');
+      setReviewCommand(null); setReviewInput(undefined); navigation.complete('group');
       if (session && isOnline()) {
         const waiting = await retryAccountMediaUploads(await getDatabase(), session);
         try { await refreshGroups(await getDatabase(), session, 'summary'); } catch { /* A saved bill never needs to be created again after a file retry. */ }
@@ -805,7 +805,7 @@ function AppContent() {
         catch (error) { if (!storageIsDurable() || error instanceof ApiError && error.status < 500) throw error; }
       }
       await queue(command('POST', `/groups/${groupId}/settlements`, { id: paymentId, ...value, date, ...(attempt ? { attempt_id: attempt.id } : {}) }));
-      navigate('group');
+      navigation.complete('group');
     });
   }
   async function reviewChange(value: Command) {

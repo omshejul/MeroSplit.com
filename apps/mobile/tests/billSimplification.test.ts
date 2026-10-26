@@ -52,6 +52,7 @@ test('One Export data action invokes once, has no chooser and blocks repeats unt
 });
 
 function appAction(name: string, env: Record<string, any>) {
+  env.navigation ??= { complete: env.navigate };
   const source = ts.createSourceFile('App.tsx', readFileSync(new URL('../App.tsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   const app = source.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === 'AppContent') as ts.FunctionDeclaration;
   const fn = app.body!.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === name)!;

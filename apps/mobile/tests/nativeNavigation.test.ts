@@ -28,12 +28,13 @@ function module(env: Record<string, any> = {}) {
 function navigationHarness() {
   const router = StackRouter({ initialRouteName: 'home' });
   const config = { routeNames: routes.screenNames, routeParamList: { home: { tab: 'Groups' } }, routeGetIdList: {} };
-  let state = router.getInitialState(config), actions: any[] = [];
+  let state = router.getInitialState(config), actions: any[] = [], intercept: ((action: any) => void) | undefined;
+  const apply = (action: any) => { const next = router.getStateForAction(state, action, config); if (next) state = next.stale === false ? next : router.getRehydratedState(next, config); };
   const ref: any = { isReady: () => true, addListener: () => () => {}, getRootState: () => state, getCurrentRoute: () => state.routes[state.index], canGoBack: () => state.index > 0,
-    goBack: () => ref.dispatch(CommonActions.goBack()), dispatch: (action: any) => { actions.push(action); const next = router.getStateForAction(state, action, config); if (next) state = next.stale === false ? next : router.getRehydratedState(next, config); } };
+    goBack: () => ref.dispatch(CommonActions.goBack()), dispatch: (action: any) => { actions.push(action); if (intercept) intercept(action); else apply(action); } };
   ref.current = ref;
   const api = module({ useNavigationContainerRef: () => ref, useSyncExternalStore: (_subscribe: any, snapshot: any) => snapshot() });
-  return { navigation: () => api.useAppNavigation(), state: () => state, names: () => state.routes.map((route: any) => route.name), actions,
+  return { apply, intercept: (handler: (action: any) => void) => { intercept = handler; }, navigation: () => api.useAppNavigation(), state: () => state, names: () => state.routes.map((route: any) => route.name), actions,
     reset: (route: routes.AppRoute) => ref.dispatch(CommonActions.reset({ index: 0, routes: [route] })) };
 }
 
@@ -65,15 +66,17 @@ test('save returns to existing group; cross-group and cold entries have real fal
   h.navigation().back(true); assert.equal(h.navigation().route.name, 'home');
 });
 
-function sceneHarness(name: routes.Screen = 'expense') {
+function sceneHarness(name: routes.Screen = 'expense', accept: (action: any) => void = () => {}, key = 'exact-form-instance', current = () => true) {
   let cursor = 0, values: any[] = [], prevent = false, callback: any, focused = true, blocked = false;
-  const dispatched: any[] = [], rendered: any[] = [];
-  const api = module({ useState: (initial: any) => { const id = cursor++; if (!(id in values)) values[id] = initial; return [values[id], (value: any) => values[id] = value]; },
+  const dispatched: any[] = [], rendered: any[] = [], effects: (() => void)[] = [];
+  const dispatch = (action: any) => { dispatched.push(action); accept(action); };
+  const navigation = { dispatch, isFocused: () => focused && current() };
+  const api = module({ useEffect: (fn: () => void) => effects.push(fn), useState: (initial: any) => { const id = cursor++; if (!(id in values)) values[id] = initial; return [values[id], (value: any) => values[id] = value]; },
     useRef: (initial: any) => values[cursor++] ??= { current: initial }, useContext: () => ({ render: (...args: any[]) => { rendered.push(args); return { type: 'Form', props: {}, children: [] }; }, blocked }),
     useIsFocused: () => focused, usePreventRemove: (enabled: boolean, fn: any) => { prevent = enabled; callback = fn; } });
-  const route = { key: 'exact-form-instance', name, params: { groupId: 'g' } };
-  return { render: () => { cursor = 0; return api.RouteScene({ route, navigation: { dispatch: (action: any) => dispatched.push(action) } }); },
-    remove: (action: any) => { if (prevent) callback({ data: { action } }); else dispatched.push(action); }, dispatched, rendered,
+  const route = { key, name, params: { groupId: 'g' } };
+  return { render: () => { cursor = 0; return api.RouteScene({ route, navigation }); },
+    remove: (action: any) => { if (prevent) callback({ data: { action } }); else dispatch(action); }, dispatched, rendered, flush: () => effects.splice(0).forEach(fn => fn()),
     blocked: (value: boolean) => { blocked = value; }, focus: (value: boolean) => { focused = value; }, prevented: () => prevent };
 }
 
@@ -92,7 +95,8 @@ test('busy/local payment and attachment work block user removal; committed save 
   const h = sceneHarness(); h.blocked(true); h.render(); h.remove({ type: 'GO_BACK' }); assert.equal(h.dispatched.length, 0);
   let tree = h.render(); assert.equal(nodes(tree).find(node => node.type === 'KeyboardDialog').props.visible, false);
   h.blocked(false); tree = h.render(); nodes(tree).find(node => node.type === 'Lock').props.value(true); h.render(); h.remove({ type: 'GO_BACK' }); assert.equal(h.dispatched.length, 0);
-  h.rendered.at(-1)[2](); h.render(); const saved = { ...StackActions.popTo('group'), appNavigation: true }; h.remove(saved); assert.equal(h.dispatched[0], saved);
+  h.rendered.at(-1)[2](); h.render(); const saved = { ...StackActions.popTo('group'), appNavigation: true }; h.remove(saved); h.render(); h.flush(); assert.equal(h.dispatched.length, 0);
+  nodes(h.render()).find(node => node.type === 'Lock').props.value(false); h.render(); h.flush(); assert.equal(h.dispatched[0], saved);
   const payment = sceneHarness('settle'); tree = payment.render(); nodes(tree).find(node => node.type === 'Lock').props.value(true); payment.render(); payment.remove({ type: 'GO_BACK' }); assert.equal(payment.dispatched.length, 0);
 });
 
@@ -173,4 +177,85 @@ test('account switch and logout remove all old route keys through the native rou
     assert.deepEqual(next.routes.map((route: any) => route.name), [entry]);
     assert.ok(next.routes.every((route: any) => !old.routes.some((previous: any) => previous.key === route.key)));
   }
+});
+
+
+for (const lock of ['global', 'local'] as const) for (const destination of ['group', 'cross-group'] as const) {
+  test(`app ${destination} navigation respects ${lock} payment lock and returns only after release`, () => {
+    const h = navigationHarness(); h.navigation().go('group', { groupId: 'g' }); h.navigation().go('settle');
+    const key = h.navigation().route.key!, original = h.state();
+    const scene = sceneHarness('settle', h.apply, key, () => h.navigation().route.key === key);
+    let tree = scene.render();
+    if (lock === 'global') scene.blocked(true); else nodes(tree).find(node => node.type === 'Lock').props.value(true);
+    scene.render(); h.intercept(scene.remove);
+    h.navigation().go('group', destination === 'cross-group' ? { groupId: 'other' } : undefined);
+    scene.render(); scene.flush();
+    assert.equal(h.state(), original, 'generic go/popTo/reset must not remove a locked payment scene');
+    if (lock === 'global') scene.blocked(false); else nodes(scene.render()).find(node => node.type === 'Lock').props.value(false);
+    scene.render(); scene.flush();
+    assert.equal(h.navigation().route.name, 'group');
+    assert.equal(h.navigation().route.params.groupId, destination === 'cross-group' ? 'other' : 'g');
+  });
+}
+
+test('a deferred save completion cannot remove another screen after focus or account changes', () => {
+  const h = navigationHarness(); h.navigation().go('group', { groupId: 'g' }); h.navigation().go('settle');
+  const key = h.navigation().route.key!;
+  const scene = sceneHarness('settle', h.apply, key, () => h.navigation().route.key === key);
+  scene.blocked(true); scene.render(); h.intercept(scene.remove); h.navigation().go('group'); scene.render(); scene.flush();
+  h.apply(CommonActions.reset({ index: 0, routes: [{ name: 'home', params: { tab: 'Account' } }] }));
+  const other = h.state(); scene.blocked(false); scene.focus(false); scene.render(); scene.flush();
+  scene.focus(true); scene.render(); scene.flush();
+  assert.equal(h.state(), other); assert.equal(scene.dispatched.length, 0, 'a stale completion has no current scene to remove');
+});
+
+
+test('committed bill completion waits for both locks and retains the real parent route', () => {
+  const h = navigationHarness(); h.navigation().go('group', { groupId: 'g' }); const groupKey = h.navigation().route.key;
+  h.navigation().go('expense', { expenseId: null }); const key = h.navigation().route.key!;
+  const scene = sceneHarness('expense', h.apply, key, () => h.navigation().route.key === key);
+  scene.blocked(true); nodes(scene.render()).find(node => node.type === 'Lock').props.value(true); scene.render();
+  scene.rendered.at(-1)[2](); scene.render(); h.intercept(scene.remove); h.navigation().go('group'); scene.render(); scene.flush();
+  assert.equal(h.navigation().route.name, 'expense');
+  scene.blocked(false); scene.render(); scene.flush(); assert.equal(h.navigation().route.name, 'expense');
+  nodes(scene.render()).find(node => node.type === 'Lock').props.value(false); scene.render(); scene.flush();
+  assert.equal(h.navigation().route.key, groupKey); assert.equal(scene.dispatched.length, 1);
+});
+
+test('a deferred generic action still asks to discard an uncommitted bill after locks release', () => {
+  const scene = sceneHarness(); scene.blocked(true); scene.render(); scene.remove({ ...StackActions.popTo('group'), appNavigation: true });
+  scene.render(); scene.flush(); assert.equal(scene.dispatched.length, 0);
+  scene.blocked(false); scene.render(); scene.flush(); const tree = scene.render();
+  assert.equal(nodes(tree).find(node => node.type === 'KeyboardDialog').props.visible, true); assert.equal(scene.dispatched.length, 0);
+});
+
+test('actual payment Save commits before returning and waits for app and form locks', async () => {
+  const h = navigationHarness(); h.navigation().go('group', { groupId: 'g' }); h.navigation().go('settle');
+  const key = h.navigation().route.key!, scene = sceneHarness('settle', h.apply, key, () => h.navigation().route.key === key);
+  nodes(scene.render()).find(node => node.type === 'Lock').props.value(true); scene.render(); h.intercept(scene.remove);
+  const source = ts.createSourceFile('App.tsx', readFileSync(new URL('../App.tsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  let declaration: ts.FunctionDeclaration | undefined;
+  function visit(node: ts.Node) { if (ts.isFunctionDeclaration(node) && node.name?.text === 'savePayment') declaration = node; ts.forEachChild(node, visit); } visit(source);
+  let committed = false; const completion = h.navigation();
+  const save = new Function('env', `with(env){${ts.transpile(declaration!.getText(source), { target: ts.ScriptTarget.ES2022 })};return savePayment;}`)({
+    selected: { group: { archived: false } }, selfId: 'self', pending: [], session: null, uuid: () => 'payment-id', groupId: 'g',
+    command: (_method: string, path: string, body: any) => ({ path, body }),
+    queue: async (command: any) => { assert.equal(command.path, '/groups/g/settlements'); assert.equal(command.body.id, 'payment-id'); committed = true; },
+    navigation: { complete: (name: routes.Screen) => { assert.equal(committed, true); completion.complete(name); } },
+    perform: async (work: () => Promise<void>) => { scene.blocked(true); scene.render(); try { await work(); } finally { scene.blocked(false); scene.render(); scene.flush(); } },
+  });
+  await save({ sender: 'self', recipient: 'other', amount: '100' });
+  assert.equal(h.navigation().route.key, key, 'form saving remains a removal boundary after App.perform finishes');
+  nodes(scene.render()).find(node => node.type === 'Lock').props.value(false); scene.render(); scene.flush();
+  assert.deepEqual(h.names(), ['home', 'group']);
+});
+
+
+test('an old completion cannot navigate a different current route or a later account', () => {
+  const h = navigationHarness(); h.navigation().go('group', { groupId: 'g' }); h.navigation().go('settle');
+  const old = h.navigation();
+  h.navigation().go('group', { groupId: 'other' }); const other = h.state();
+  old.complete('group'); assert.equal(h.state(), other);
+  h.reset({ name: 'home', params: { tab: 'Account' } }); const account = h.state();
+  old.complete('group', { groupId: 'g' }); assert.equal(h.state(), account);
 });
