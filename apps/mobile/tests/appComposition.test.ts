@@ -20,7 +20,7 @@ function appFrame(node: ts.Node): ts.JsxElement | undefined {
   if (ts.isJsxElement(node) && node.openingElement.tagName.getText(source) === 'AppFrame') return node;
   return ts.forEachChild(node, appFrame);
 }
-const main = appFrame(app)!;
+const main = app.body!;
 function pageScroll(node: ts.Node): ts.JsxElement | undefined {
   if (ts.isJsxElement(node) && node.openingElement.tagName.getText(source) === 'ScrollView') return node;
   return ts.forEachChild(node, pageScroll);
@@ -33,7 +33,7 @@ const render = new Function('env', `with(env) { ${code} }`);
 
 test('Me mounts Connect MCP on native and web, with current account key, session and shared busy lock', () => {
   const MCPSettings = Symbol('Connect MCP');
-  const env: Record<string, any> = { React, MCPSettings, screen: 'home', tab: 'Account', owner: 'account-one',
+  const env: Record<string, any> = { React, MCPSettings, savedChangesView: null, focused: true, methodsRow: { current: null }, navigate() {}, screen: 'home', tab: 'Account', owner: 'account-one',
     session: { email: 'one@example.invalid', token: 'synthetic-one' }, busy: false, lock: { current: false },
     myName: 'One', vpa: '', push: {}, unavailable: [], commands: [], groups: [], expired: false,
     legacy: [], legacySelf: {}, recoveries: [], ui: {}, saveName() {}, saveUPI() {},
@@ -48,11 +48,11 @@ test('Me mounts Connect MCP on native and web, with current account key, session
       const mounted = elements(render(env)).filter(node => node.type === MCPSettings);
       assert.equal(mounted.length, 1, `${os} Me must mount Connect MCP, not merely import it`);
       const updates = elements(render(env)).filter(node => node.type === 'AppUpdates');
-      assert.equal(updates.length, 1); assert.equal(updates[0].props.key, env.owner); assert.equal(updates[0].props.busy, busy); assert.equal(updates[0].props.onRestart, env.restartUpdate);
+      assert.equal(updates.length, 1); assert.equal(updates[0].props.key, `app-updates|${env.owner}`); assert.equal(updates[0].props.busy, busy); assert.equal(updates[0].props.onRestart, env.restartUpdate);
       const exports = elements(render(env)).filter(node => node.type === 'ExportData');
-      assert.equal(exports.length, 1); assert.equal(exports[0].props.key, env.owner); assert.equal(exports[0].props.busy, busy);
+      assert.equal(exports.length, 1); assert.equal(exports[0].props.key, `export-data|${env.owner}`); assert.equal(exports[0].props.busy, busy);
       const settings = mounted[0];
-      assert.equal(settings.props.key, env.owner);
+      assert.equal(settings.props.key, `mcp-settings|${env.owner}`);
       assert.equal(settings.props.session, env.session);
       assert.equal(settings.props.busy, busy);
       for (const value of [true, false]) {
@@ -64,7 +64,7 @@ test('Me mounts Connect MCP on native and web, with current account key, session
   }
   const next = { ...env, owner: 'account-two', session: { email: 'two@example.invalid', token: 'synthetic-two' } };
   const changed = elements(render(next)).find(node => node.type === MCPSettings)!;
-  assert.equal(changed.props.key, next.owner);
+  assert.equal(changed.props.key, `mcp-settings|${next.owner}`);
   assert.equal(changed.props.session, next.session);
   for (const away of [{ screen: 'group' }, { tab: 'Groups' }, { session: null }]) {
     assert.equal(elements(render({ ...env, ...away })).some(node => node.type === MCPSettings || node.type === 'ExportData'), false);
@@ -78,13 +78,13 @@ test('Activity discovers unread chats before a bill is opened and resolves the a
   assert.ok(expression?.expression, 'Activity must mount the unread inbox');
   const evaluate = new Function('env', `with(env){${ts.transpile('return (' + expression.expression.getText(source) + ');', { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React })}}`);
   const selected: any[] = [];
-  const tree = evaluate({ React, ChatInbox: 'ChatInbox', screen: 'home', tab: 'Activity', session: { token: 'current' }, owner: 'one', foreground: true, authHeld: false, expired: false, online: true, busy: false, openActivityTarget: async (...args: any[]) => { selected.push(args); } });
+  const tree = evaluate({ React, ChatInbox: 'ChatInbox', focused: true, screen: 'home', tab: 'Activity', session: { token: 'current' }, owner: 'one', foreground: true, authHeld: false, expired: false, online: true, busy: false, openActivityTarget: async (...args: any[]) => { selected.push(args); } });
   const entry = elements(tree).find(node => node.type === 'ChatInbox')!;
   assert.equal(entry.props.key, 'one'); assert.equal(entry.props.active, true); assert.equal(selected.length, 0);
   entry.props.onOpen('g', 'b'); assert.deepEqual(selected, [[{ kind: 'bill', groupId: 'g', expenseId: 'b' }, true]]);
   const declaration = app.body!.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === 'openActivityTarget')!;
   const calls: string[] = [], active = { token: 'current' };
-  const scope = { session: active, activeSessionRef: { current: active }, perform: async (fn: () => Promise<void>) => fn(), fetchGroup: async () => { calls.push('group-read'); return { id: 'g' }; }, withBill: async (_session: any, group: any, id: string) => { calls.push('bill-read-' + id); return group; }, getDatabase: async () => ({}), accountOwner: () => 'one', saveGroup: async () => {}, setGroupId() {}, setExpenseId() {}, setSettlementId() {}, setScreen: (screen: string) => calls.push(screen) };
+  const scope = { session: active, activeSessionRef: { current: active }, perform: async (fn: () => Promise<void>) => fn(), fetchGroup: async () => { calls.push('group-read'); return { id: 'g' }; }, withBill: async (_session: any, group: any, id: string) => { calls.push('bill-read-' + id); return group; }, getDatabase: async () => ({}), accountOwner: () => 'one', saveGroup: async () => {}, navigate: (screen: string) => calls.push(screen) };
   const open = new Function('env', `with(env){${ts.transpile(declaration.getText(source), { target: ts.ScriptTarget.ES2022 })};return openActivityTarget;}`)(scope);
   await open(selected[0][0], true); assert.deepEqual(calls, ['group-read', 'bill-read-b', 'billChat']);
 });

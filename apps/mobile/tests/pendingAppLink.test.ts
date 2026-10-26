@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import ts from 'typescript';
-import { readAppLink, writeAppLink } from '../src/browserLinks.web.ts';
+import { readAppLink } from '../src/browserLinks.web.ts';
 import type { AppLink } from '../src/browserLinks.ts';
 
 const file = ts.createSourceFile('App.tsx', readFileSync(new URL('../App.tsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
@@ -19,7 +19,6 @@ function effect(marker: string) {
   return (productionNode(node => ts.isCallExpression(node) && node.expression.getText(file) === 'useEffect' && !!node.arguments[0]?.getText(file).includes(marker)) as ts.CallExpression).arguments[0];
 }
 const openLink = effect('const active = session, target = appLink;');
-const syncURL = effect("['group', 'expenseDetail', 'billChat', 'expenseVersions'].includes(screen)");
 const queueCheck = productionNode(node => ts.isFunctionDeclaration(node) && node.name?.text === 'queueCookieCheck');
 const groupId = '11111111-1111-4111-8111-111111111111';
 const groupURL = `https://merosplit.test/app/groups/${groupId}`;
@@ -41,25 +40,25 @@ function appHarness() {
     draftWrites:{current:Promise.resolve()},launch:(fn:()=>Promise<unknown>)=>{pending=fn();},fetchGroup:()=>{state.fetches++;return fetch();},
     withBill:async(_s: unknown,group: unknown)=>group,getDatabase:async()=>({}),accountOwner:()=>session.userId,saveGroup:async()=>{state.saves++;},readVisibleGroup:async()=>null,
     request:async()=>{state.claims++;return {id:groupId};},uuid:()=>'synthetic-command',
-    setGroupId:(id:string)=>{state.groupId=id;},setTab:()=>{},setExpenseId:(id:string|null)=>{state.expenseId=id;},setDraft:()=>{},setScreen:(screen:string)=>{state.screen=screen;},
+    navigate:(screen:string,params:any={})=>{state.screen=screen;state.groupId=params.groupId??null;state.expenseId=params.expenseId??null;},
     setAppLink:(next:AppLink|null|((current:AppLink|null)=>AppLink|null))=>{state.appLink=typeof next==='function'?next(state.appLink):next;},
     setNotice:(notice:string)=>{state.notice=notice;},setCheckingCookie:(value:boolean)=>{state.checkingCookie=value;},pauseAccountRequests:()=>Promise.resolve()};
-  const view=()=>({...env,...state,authHeld:state.checkingCookie,writeAppLink});
-  return {state,activeSessionRef,open:()=>{actual(openLink,view())();return pending;},sync:()=>actual(syncURL,view())(),
+  const view=()=>({...env,...state,authHeld:state.checkingCookie});
+  return {state,activeSessionRef,open:()=>{actual(openLink,view())();return pending;},
     check:()=>actual(queueCheck,env)(),resume:()=>{activeSessionRef.current=session;authHeldRef.current=false;cookieCheck.current=false;state.checkingCookie=false;},
     fail:(error:Error)=>{fetch=async()=>{throw error;};}};
 }
 
 test('a normal group deep link opens the group and keeps its URL',async()=>browserScenario(async(app,browser)=>{
-  await app.open();app.sync();
+  await app.open();
   assert.equal(app.state.screen,'group');assert.equal(app.state.appLink,null);assert.equal(browser.location.href,groupURL);
 }));
 
 test('a session check cannot discard a pending group URL; opening retries after validation',async()=>browserScenario(async(app,browser)=>{
   const target=app.state.appLink,pending=app.open();app.check();await pending;
   assert.equal(app.state.screen,'home');assert.equal(app.state.saves,0);assert.equal(app.state.appLink,target);
-  app.resume();app.sync();assert.equal(browser.location.href,groupURL);
-  await app.open();app.sync();
+  app.resume();assert.equal(browser.location.href,groupURL);
+  await app.open();
   assert.equal(app.state.screen,'group');assert.equal(app.state.saves,1);assert.equal(app.state.appLink,null);assert.equal(browser.location.href,groupURL);
 }));
 
@@ -76,7 +75,7 @@ test('a pending group does not repeatedly fetch while its account is held or unv
 
 test('an obsolete account response cannot discard the destination or save its group',async()=>browserScenario(async(app,browser)=>{
   const target=app.state.appLink,pending=app.open();app.activeSessionRef.current={...app.activeSessionRef.current!,token:'new-account-session'};await pending;
-  assert.equal(app.state.appLink,target);assert.equal(app.state.saves,0);app.sync();assert.equal(browser.location.href,groupURL);
+  assert.equal(app.state.appLink,target);assert.equal(app.state.saves,0);assert.equal(browser.location.href,groupURL);
 }));
 
 test('finishing an older group request cannot clear a newer queued destination',async()=>browserScenario(async(app)=>{
@@ -85,8 +84,8 @@ test('finishing an older group request cannot clear a newer queued destination',
 }));
 
 test('a definitive missing group clears its link and reports unavailable',async()=>browserScenario(async(app,browser)=>{
-  app.fail(new ApiError(404));await app.open();app.sync();
-  assert.equal(app.state.appLink,null);assert.match(app.state.notice,/unavailable/);assert.equal(browser.location.pathname,'/app/');
+  app.fail(new ApiError(404));await app.open();
+  assert.equal(app.state.appLink,null);assert.match(app.state.notice,/unavailable/);assert.equal(app.state.screen,'home');
 }));
 
 test('a normal network failure clears the link instead of automatically retrying forever',async()=>browserScenario(async(app)=>{

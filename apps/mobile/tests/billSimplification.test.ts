@@ -26,7 +26,7 @@ const tick = async () => { for (let i = 0; i < 15; i++) await Promise.resolve();
 function harness(file: string, name: string, extra: Record<string, any> = {}) {
   let cursor = 0, states: any[] = [], effects: (() => void)[] = [], cleanups: Record<number, () => void> = {};
   const deps: Record<number, any[]> = {};
-  const env: Record<string, any> = { React, Dialog, validUPIAddress, View: 'View', ScrollView: 'ScrollView', KeyboardDialog: 'KeyboardDialog', Pressable: 'Pressable', Text: 'Text', LoadingSpinner: 'LoadingSpinner', NotificationSwitch: 'NotificationSwitch', PushSettings: 'PushSettings', BalanceStatements: 'BalanceStatements', DialogScrollBody: 'DialogScrollBody', Form: 'Form', SectionHeading: 'SectionHeading', Button: 'Button', Icon: 'Icon', SettingsRow: 'SettingsRow', BillPeople: 'BillPeople', DraftAttachment: 'DraftAttachment', LocalAttachment: 'LocalAttachment', AmountField: 'AmountField', TextField: 'TextField', DateField: 'DateField', ErrorText: 'ErrorText', Checkbox: { Item: 'Checkbox' }, RadioChoice: 'RadioChoice', Crypto: { randomUUID: () => 'bill-id' }, StyleSheet: { create: (value: any) => value }, Keyboard: { dismiss() {} }, useWindowDimensions: () => ({ height: 667 }), useSafeAreaInsets: () => ({ top: 20, bottom: 0 }), Platform: { OS: 'native' }, requestAnimationFrame: (fn: () => void) => fn(), useUI: () => ({ ui: {} }), formatMoney, integer, rupeesToPaise, validateExpense, ...extra,
+  const env: Record<string, any> = { React, Dialog, useScreenRemovalLock() {}, validUPIAddress, View: 'View', ScrollView: 'ScrollView', KeyboardDialog: 'KeyboardDialog', Pressable: 'Pressable', Text: 'Text', LoadingSpinner: 'LoadingSpinner', NotificationSwitch: 'NotificationSwitch', PushSettings: 'PushSettings', BalanceStatements: 'BalanceStatements', DialogScrollBody: 'DialogScrollBody', Form: 'Form', SectionHeading: 'SectionHeading', Button: 'Button', Icon: 'Icon', SettingsRow: 'SettingsRow', BillPeople: 'BillPeople', DraftAttachment: 'DraftAttachment', LocalAttachment: 'LocalAttachment', AmountField: 'AmountField', TextField: 'TextField', DateField: 'DateField', ErrorText: 'ErrorText', Checkbox: { Item: 'Checkbox' }, RadioChoice: 'RadioChoice', Crypto: { randomUUID: () => 'bill-id' }, StyleSheet: { create: (value: any) => value }, Keyboard: { dismiss() {} }, useWindowDimensions: () => ({ height: 667 }), useSafeAreaInsets: () => ({ top: 20, bottom: 0 }), Platform: { OS: 'native' }, requestAnimationFrame: (fn: () => void) => fn(), useUI: () => ({ ui: {} }), formatMoney, integer, rupeesToPaise, validateExpense, ...extra,
     useState: (initial: any) => { const id = cursor++; if (!(id in states)) states[id] = typeof initial === 'function' ? initial() : initial; return [states[id], (value: any) => { states[id] = typeof value === 'function' ? value(states[id]) : value; }]; },
     useRef: (initial: any) => { const id = cursor++; return states[id] ??= { current: initial }; },
     useEffect: (fn: () => any, values: any[]) => { const id = cursor++; if (!deps[id] || values.some((value, i) => value !== deps[id][i])) { effects.push(() => { cleanups[id]?.(); cleanups[id] = fn(); }); deps[id] = values; } },
@@ -1063,17 +1063,17 @@ test('stale current push binding stays off in the channel view and last local Em
 
 
 function billDiscardDialog(env: Record<string, any>) {
-  const source = ts.createSourceFile('App.tsx', readFileSync(new URL('../App.tsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
-  let expression: ts.BinaryExpression | undefined;
-  function visit(node: ts.Node) { if (ts.isBinaryExpression(node) && ts.isJsxElement(node.right) && node.right.openingElement.tagName.getText(source) === 'KeyboardDialog' && node.getText(source).includes('discardBill')) expression = node; ts.forEachChild(node, visit); }
+  const source = ts.createSourceFile('AppStack.tsx', readFileSync(new URL('../src/AppStack.tsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  let expression: ts.JsxElement | undefined;
+  function visit(node: ts.Node) { if (ts.isJsxElement(node) && node.openingElement.tagName.getText(source) === 'KeyboardDialog') expression = node; ts.forEachChild(node, visit); }
   visit(source); assert.ok(expression);
   const code = ts.transpile(`const dialog = ${expression!.getText(source)}`, { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React });
-  return new Function('env', `with(env){${code};return dialog;}`)({ React, Dialog, busy: false, KeyboardDialog: 'KeyboardDialog', DialogFocus: 'DialogFocus', CancelDialogActions: 'CancelDialogActions', Button: 'Button', ...env });
+  return new Function('env', `with(env){${code};return dialog;}`)({ React, Dialog, blocked: false, localBlocked: false, pending: env.discardBill ? { type: 'GO_BACK' } : null, setPending: (value: unknown) => env.setDiscardBill(!!value), KeyboardDialog: 'KeyboardDialog', DialogFocus: 'DialogFocus', CancelDialogActions: 'CancelDialogActions', Button: 'Button', ...env, navigation: { dispatch: () => env.navigate('group') } });
 }
 
 test('Back asks to discard the bill, Cancel retains the form and Discard leaves with the trash action', () => {
   let open = false; const screens: string[] = [];
-  const env = { screen: 'expense', setDiscardBill: (value: boolean) => { open = value; }, navigate: (value: string) => screens.push(value) };
+  const env = { screen: 'expense', session: {}, navigation: { back: () => { open = true; } }, setDiscardBill: (value: boolean) => { open = value; }, navigate: (value: string) => screens.push(value) };
   appAction('back', env)(); assert.equal(open, true); assert.deepEqual(screens, []);
   const tree = billDiscardDialog({ ...env, discardBill: open });
   assert.ok(nodes(tree).some(node => node.children.includes('Do you want to discard the draft?')));
@@ -1128,7 +1128,7 @@ test('actual bill save transfers file ownership at commit, retaining exact queue
       assert.equal(existsSync(file), true, 'a failed save never clears the recoverable file');
       assert.equal((await pendingCommands(base, owner)).length, phase === 'before commit' ? 0 : 1);
       assert.equal(!!await pendingMediaUpload(base, session, attachment.path), phase === 'after commit');
-      const backEnv = { screen: 'expense', setDiscardBill: (value: boolean) => { discardOpen = value; }, navigate: env.navigate };
+      const backEnv = { screen: 'expense', session: {}, navigation: { back: () => { discardOpen = true; } }, setDiscardBill: (value: boolean) => { discardOpen = value; }, navigate: env.navigate };
       appAction('back', backEnv)();
       nodes(billDiscardDialog({ ...backEnv, discardBill: discardOpen })).find(node => node.type === 'CancelDialogActions')!.props.onCancel();
       assert.equal(discardOpen, false); assert.deepEqual(screens, []); assert.equal(existsSync(file), true);

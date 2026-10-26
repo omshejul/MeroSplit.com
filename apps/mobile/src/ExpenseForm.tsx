@@ -1,4 +1,5 @@
 import Form from './Form';
+import { useScreenRemovalLock } from './screenRemoval';
 import React, { useEffect, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Checkbox, Text, TouchableRipple } from 'react-native-paper';
@@ -118,6 +119,7 @@ export default function ExpenseForm({ group, expense, selfId, busy, onSave }: Pr
     }).catch(() => {});
   }, []);
   const lock = useRef(false), disabled = busy || saving || fileBusy || handedOff.current;
+  useScreenRemovalLock(saving || fileBusy);
   const acceptedExpense = group.expenses.find(value => value.id === draft.id);
   const label = (id: string) => {
     const person = group.participants.find(value => value.id === id)!;

@@ -618,7 +618,7 @@ test('actual App join callback adopts only the active account and ignores late a
     const env={session,activeSessionRef:active,accountOwner:(v:any)=>v.userId,
       fetchGroup:async()=>{calls.push('fetch');if(changeAt==='fetch')active.current.token='B';return{id:'g'};},
       getDatabase:async()=>({}),saveGroup:async(_db:any,owner:any)=>{assert.equal(owner,'a');calls.push('save');if(changeAt==='save')active.current.token='B';},
-      forgetGroupInvite:()=>calls.push('forget'),saveGroupInvite:async()=>{},setAppLink(){},setGroupId(){calls.push('open');},setTab(){},setScreen(){},load:async()=>calls.push('load')};
+      forgetGroupInvite:()=>calls.push('forget'),saveGroupInvite:async()=>{},setAppLink(){},navigate(){calls.push('open');},load:async()=>calls.push('load')};
     const code=ts.transpile('const done='+callback!.getText(source),{target:ts.ScriptTarget.ES2022});
     const run=new Function('env',`with(env){${code};return done;}`)(env);await run('g');
     assert.deepEqual(calls,changeAt==='none'?['fetch','save','forget','open','load']:changeAt==='before'?[]:changeAt==='fetch'?['fetch']:['fetch','save']);
