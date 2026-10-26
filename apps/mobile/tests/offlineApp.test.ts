@@ -25,6 +25,28 @@ test('actual App portal siblings have stable distinct account-scoped identities'
  visit(file);assert.equal(keys.length,3);assert.equal(new Set(keys).size,3,'separate sibling portal types must never share React keys');
 });
 
+test('actual App account component keys stay distinct and remount on owner change', () => {
+ const names=['ProfileSettings','AccountNotifications','AppUpdates','MCPSettings','ExportData'];
+ const keys=new Map<string,(owner:string)=>string>();
+ function visit(node:ts.Node) {
+  if(ts.isJsxSelfClosingElement(node) && names.includes(node.tagName.getText(file))) {
+   const name=node.tagName.getText(file);
+   assert.equal(keys.has(name),false,`${name} must have one Account call site`);
+   const attr=node.attributes.properties.find(value=>ts.isJsxAttribute(value)&&value.name.getText(file)==='key') as ts.JsxAttribute;
+   assert.ok(attr?.initializer && ts.isJsxExpression(attr.initializer));
+   keys.set(name,new Function('owner',`return ${(attr.initializer as ts.JsxExpression).expression!.getText(file)};`) as (owner:string)=>string);
+  }
+  ts.forEachChild(node,visit);
+ }
+ visit(file);assert.equal(keys.size,5);
+ for(const owner of ['server|first','server|second']) {
+  const actual=[...keys.values()].map(key=>key(owner));
+  assert.equal(new Set(actual).size,5,'Account component identities must not collide');
+  actual.forEach((value,index)=>{assert.ok(value.includes(owner));assert.equal(value,[...keys.values()][index](owner));});
+ }
+ for(const key of keys.values())assert.notEqual(key('server|first'),key('server|second'),'account change must remount every keyed component');
+});
+
 test('actual App groupAction persists offline member once and returns pending, never a forged server/link acknowledgement', async () => {
  const raw=new DatabaseSync(':memory:'),db=sqliteAdapter(raw);let sends=0;let id=0;
  try {
