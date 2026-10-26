@@ -1,0 +1,37 @@
+# Development
+
+Use Python 3.12+, uv, PostgreSQL 17, Node 24 and pnpm 12.14.0. Dependency versions are locked in the API and mobile lockfiles. Keep the Expo and React Native versions pinned by the project.
+
+## API
+
+Copy the variable names from `apps/api/.env.example` into your private environment. Set a local `DATABASE_URL`, a private `DJANGO_SECRET_KEY`, `DEBUG=true` and suitable local `ALLOWED_HOSTS`. Environment files are not loaded automatically by these commands.
+
+```sh
+uv sync --project apps/api --frozen
+apps/api/.venv/bin/python apps/api/manage.py migrate
+apps/api/.venv/bin/python apps/api/manage.py runserver 0.0.0.0:8000
+apps/api/.venv/bin/python -m pytest apps/api/ledger -q
+apps/api/.venv/bin/ruff check apps/api
+```
+
+Use a disposable local PostgreSQL database for tests. Configure your own email provider for interactive sign-in; isolated tests use fake delivery boundaries. Optional Google/Apple login and private store reviewer configuration are disabled unless configured. Never use a real customer account as a fixture.
+
+## Mobile and web
+
+```sh
+cd apps/mobile
+corepack pnpm@12.14.0 install --frozen-lockfile
+corepack pnpm@12.14.0 typecheck
+corepack pnpm@12.14.0 test
+corepack pnpm@12.14.0 start
+```
+
+Set `EXPO_PUBLIC_API_URL` for your local API. Android's emulator can reach the host at `http://10.0.2.2:8000`; use the appropriate host address for other targets. Native modules require a development build rather than Expo Go. Platform SDKs and signing are separate prerequisites.
+
+## Conventions
+
+Django allauth owns identity and sessions. Account linking is explicit. Keep account-scoped cache/queue ownership, stable participant IDs, idempotency and linked reversals intact. Native-stack navigation owns page transitions and unsaved-change guards. See [the API contract](../API_CONTRACT.md) for domain behavior.
+
+## UPI handoff
+
+The client can hand off to installed payment apps through `apps/mobile/src/upi.ts`. A handler check only establishes that an app can open the URI. Launch, cancellation and return do not prove a bank payment occurred. Recording bookkeeping and moving money are separate actions.

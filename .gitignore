@@ -11,8 +11,6 @@ build/
 apps/mobile/android/
 apps/mobile/ios/
 *.sqlite*
-.dev/*request*.txt
-research/raw/emulator_setup/*.log
 .DS_Store
 *.tsbuildinfo
 *.jks
@@ -21,9 +19,10 @@ research/raw/emulator_setup/*.log
 *.pem
 *.key
 .coverage
-.dev/DEPLOYMENT_STATUS.md
 
 apps/api/web-dist/
 
 # Private research evidence must stay outside tracked source.
 /research/
+
+/.dev/
