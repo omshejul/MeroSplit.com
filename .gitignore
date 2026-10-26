@@ -24,3 +24,6 @@ research/raw/emulator_setup/*.log
 .dev/DEPLOYMENT_STATUS.md
 
 apps/api/web-dist/
+
+# Private research evidence must stay outside tracked source.
+/research/
