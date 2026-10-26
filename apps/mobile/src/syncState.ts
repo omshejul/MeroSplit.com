@@ -3,7 +3,8 @@ export type SyncState = 'Synced' | 'Saved on device' | 'Syncing' | 'Needs attent
 export function syncStatus({ commands, pendingFiles = 0, drafts = false, confirmedAt, durable, syncing, problem, reviewRequired = false }: { commands: Command[]; pendingFiles?: number; drafts?: boolean; confirmedAt: string | null; durable: boolean; syncing: boolean; problem: boolean; reviewRequired?: boolean }): { label: SyncState; detail: string } {
   if (!durable) return { label: 'Needs attention', detail: 'Storage is temporary. Keep this tab open and export unsent changes.' };
   if (reviewRequired) return { label: 'Needs attention', detail: 'Sign in again or review changed group access. Saved changes stay on this device.' };
-  if (commands.some(value => value.state !== 'pending') || problem && pendingFiles > 0) return { label: 'Needs attention', detail: 'A saved change needs review. Later changes are kept on this device.' };
+  if (commands.some(value => value.state !== 'pending')) return { label: 'Needs attention', detail: 'A saved change needs review. Later changes are kept on this device.' };
+  if (problem && pendingFiles > 0) return { label: 'Needs attention', detail: 'Files are waiting to upload. Your saved files are kept on this device.' };
   if (syncing) return { label: 'Syncing', detail: 'Checking the server. Saved changes stay on this device until confirmed.' };
   if (commands.length || pendingFiles) return { label: 'Saved on device', detail: `${commands.length + pendingFiles} ${commands.length + pendingFiles === 1 ? 'change' : 'changes'} saved here. They will sync when a connection is available.` };
   if (drafts) return { label: 'Saved on device', detail: 'An unfinished draft is saved here. Finish and save it to sync.' };
