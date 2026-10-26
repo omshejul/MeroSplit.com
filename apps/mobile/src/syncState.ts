@@ -1,7 +1,7 @@
 import type { Command } from './types';
 export type SyncState = 'Synced' | 'Saved on device' | 'Syncing' | 'Needs attention' | 'Offline';
 export function syncStatus({ commands, pendingFiles = 0, drafts = false, confirmedAt, durable, syncing, problem, reviewRequired = false, online = true }: { commands: Command[]; pendingFiles?: number; drafts?: boolean; confirmedAt: string | null; durable: boolean; syncing: boolean; problem: boolean; reviewRequired?: boolean; online?: boolean }): { label: SyncState; detail: string } {
-  if (!durable) return { label: 'Needs attention', detail: 'Storage is temporary. Keep this tab open and export unsent changes.' };
+  if (!durable && (commands.length || pendingFiles || drafts)) return { label: 'Needs attention', detail: 'This tab has unsent changes or a draft in temporary storage. Save and sync, or export your work, before closing or reloading.' };
   if (reviewRequired) return { label: 'Needs attention', detail: 'Sign in again or review changed group access. Saved changes stay on this device.' };
   if (!online) return { label: 'Offline', detail: commands.length || pendingFiles ? `${commands.length + pendingFiles} unsent ${commands.length + pendingFiles === 1 ? 'change is' : 'changes are'} saved on this device. They will sync when you reconnect with the app open.` : 'No connection. Downloaded records are available here. Nothing is waiting to sync.' };
   if (commands.some(value => value.state !== 'pending')) return { label: 'Needs attention', detail: 'A saved change needs review. Later changes are kept on this device.' };
