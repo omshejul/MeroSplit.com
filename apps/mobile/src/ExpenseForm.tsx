@@ -110,9 +110,12 @@ export default function ExpenseForm({ group, expense, selfId, busy, onSave }: Pr
   const [fileBusy, setFileBusy] = useState(false);
   const draftRef = useRef(draft);
   const handedOff = useRef(false);
+  const pendingSave = useRef<Promise<void> | null>(null);
   useEffect(() => () => {
     const file = draftRef.current.attachment?.file;
-    if (file && !handedOff.current) void clearStagedMedia(file).catch(() => {});
+    if (file) void Promise.resolve(pendingSave.current).catch(() => {}).then(() => {
+      if (!handedOff.current) return clearStagedMedia(file);
+    }).catch(() => {});
   }, []);
   const lock = useRef(false), disabled = busy || saving || fileBusy || handedOff.current;
   const acceptedExpense = group.expenses.find(value => value.id === draft.id);
@@ -158,8 +161,9 @@ export default function ExpenseForm({ group, expense, selfId, busy, onSave }: Pr
         throw new Error('Keep removed people’s paid amounts and shares unchanged.');
       }
       lock.current = true; setSaving(true);
-      await onSave({ id: draft.id, version: draft.expenseVersion, description: draft.description.trim(), total, ...vectors, split,
-        date: draft.date, notes: draft.notes, category: expense?.category ?? 'general', category_auto: expense?.category_auto ?? ['', 'general', 'other'].includes((expense?.category ?? '').trim().toLowerCase()), deleted: false }, draft.attachment, () => { handedOff.current = true; });
+      pendingSave.current = Promise.resolve().then(() => onSave({ id: draft.id, version: draft.expenseVersion, description: draft.description.trim(), total, ...vectors, split,
+        date: draft.date, notes: draft.notes, category: expense?.category ?? 'general', category_auto: expense?.category_auto ?? ['', 'general', 'other'].includes((expense?.category ?? '').trim().toLowerCase()), deleted: false }, draft.attachment, () => { handedOff.current = true; }));
+      await pendingSave.current;
       handedOff.current = true;
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : 'Could not save the expense. Try again.';

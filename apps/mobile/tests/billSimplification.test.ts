@@ -1123,7 +1123,7 @@ test('actual bill save transfers file ownership at commit, retaining exact queue
       let tree = app.render(props); app.commit();
       await nodes(tree).find(node => node.type === 'DraftAttachment')!.props.onChange(attachment);
       payerFields(app, props).onChange({ amount: '10.00', description: 'Saved bill' });
-      find(app.render(props), 'title', 'Save bill').props.onPress(); await completion; await tick();
+      find(app.render(props), 'title', 'Save bill').props.onPress(); await Promise.resolve(); await completion; await tick();
       tree = app.render(props);
       assert.equal(existsSync(file), true, 'a failed save never clears the recoverable file');
       assert.equal((await pendingCommands(base, owner)).length, phase === 'before commit' ? 0 : 1);
@@ -1135,7 +1135,7 @@ test('actual bill save transfers file ownership at commit, retaining exact queue
       assert.equal(find(app.render(props), 'label', 'Amount (₹)').props.value, '10.00', 'Cancel keeps the current form and file');
       if (phase === 'before commit') {
         assert.equal(!!find(tree, 'title', 'Save bill').props.disabled, false, 'failed persistence remains recoverable');
-        failing = false; find(tree, 'title', 'Save bill').props.onPress(); await completion; await tick();
+        failing = false; find(tree, 'title', 'Save bill').props.onPress(); await Promise.resolve(); await completion; await tick();
       }
       const snapshot = async (connection: any) => JSON.stringify({ commands: await pendingCommands(connection, owner), media: await pendingMediaUpload(connection, session, attachment.path) });
       const queued = await snapshot(base); assert.equal((await pendingCommands(base, owner))[0].command_id, 'bill-command');
@@ -1151,3 +1151,49 @@ test('actual bill save transfers file ownership at commit, retaining exact queue
     } finally { raw.close(); rmSync(folder, { recursive: true, force: true }); }
   }
 });
+
+
+async function unmountBeforeBillCommit(commits: boolean) {
+  const folder = mkdtempSync(join(tmpdir(), 'bill-inflight-')), database = join(folder, 'cache.sqlite'), file = join(folder, 'staged.png'), bytes = 'pending save attachment';
+  writeFileSync(file, bytes); let raw = new DatabaseSync(database);
+  let entered!: () => void, release!: () => void;
+  const saving = new Promise<void>(resolve => { entered = resolve; }), decision = new Promise<void>(resolve => { release = resolve; });
+  try {
+    const base = sqliteAdapter(raw); await migrate(base);
+    const db = { ...base, withExclusiveTransactionAsync: (task: Parameters<typeof base.withExclusiveTransactionAsync>[0]) => base.withExclusiveTransactionAsync(async tx => {
+      await task(tx); entered(); await decision; if (!commits) throw Error('Commit failed');
+    }) };
+    const session = { baseUrl: 'https://inflight.invalid', userId: '7', email: 'seven@example.invalid', token: 'synthetic' }, owner = accountOwner(session);
+    const attachment = { id: 'file-id', path: '/groups/g/expenses/bill-id/attachments', file: { uri: pathToFileURL(file).href, name: 'receipt.png', type: 'image/png', size: Buffer.byteLength(bytes) } };
+    const env: Record<string, any> = { selected: { group: { ...group, version: 1 } }, session, owner, groupId: 'g', expenseId: null, reviewCommand: null,
+      perform: (action: any) => action(), draftWrites: { current: Promise.resolve() }, getDatabase: async () => db,
+      expensePayload, uuid: () => 'inflight-command', enqueueExpenseWithMedia, enqueue, enqueueBill, replaceCommand,
+      requireConnectionForTemporaryStorage() {}, load: async () => {}, setReviewCommand() {}, setReviewInput() {}, navigate() {}, isOnline: () => false };
+    env.command = appAction('command', env); env.queue = appAction('queue', env); env.saveExpense = appAction('saveExpense', env);
+    let completion: Promise<unknown> | undefined, cleanups = 0;
+    const app = harness('src/ExpenseForm.tsx', 'ExpenseForm', { clearStagedMedia: async (value: any) => { cleanups++; unlinkSync(fileURLToPath(value.uri)); } });
+    const props = { group, selfId: 'self', busy: false, onSave: (...args: any[]) => { const pending = env.saveExpense(...args); completion = pending.then(() => {}, () => {}); return pending; } };
+    const tree = app.render(props); app.commit();
+    await nodes(tree).find(node => node.type === 'DraftAttachment')!.props.onChange(attachment);
+    payerFields(app, props).onChange({ amount: '10.00', description: 'Pending bill' });
+    find(app.render(props), 'title', 'Save bill').props.onPress(); await saving;
+    const snapshot = async (connection: any) => JSON.stringify({ commands: await pendingCommands(connection, owner), media: await pendingMediaUpload(connection, session, attachment.path) });
+    const queuedBeforeCommit = await snapshot(base);
+    app.unmount(); await tick();
+    const existedWhilePending = existsSync(file), cleanupsWhilePending = cleanups;
+    release(); await completion; await tick();
+    assert.equal(existedWhilePending, true, 'forced unmount must keep bytes until the save outcome is known');
+    assert.equal(cleanupsWhilePending, 0, 'cleanup cannot run while enqueue is still pending');
+    raw.close(); raw = new DatabaseSync(database); const reopened = sqliteAdapter(raw); await migrate(reopened);
+    if (commits) {
+      assert.equal(await snapshot(reopened), queuedBeforeCommit, 'late commit keeps the exact command, media intent and owner after reopen');
+      assert.equal(readFileSync(file, 'utf8'), bytes); assert.equal(cleanups, 0);
+    } else {
+      assert.deepEqual(await pendingCommands(reopened, owner), []); assert.equal(await pendingMediaUpload(reopened, session, attachment.path), null);
+      assert.equal(existsSync(file), false, 'unsubmitted file is cleaned only after the transaction fails'); assert.equal(cleanups, 1);
+    }
+  } finally { release(); raw.close(); rmSync(folder, { recursive: true, force: true }); }
+}
+
+test('forced unmount before enqueue commit preserves the file when the pending save later commits', () => unmountBeforeBillCommit(true));
+test('forced unmount before enqueue failure defers deletion until the pending save rolls back', () => unmountBeforeBillCommit(false));
