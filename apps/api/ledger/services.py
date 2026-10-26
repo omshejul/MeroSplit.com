@@ -3,6 +3,7 @@ import json
 from datetime import date
 
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 from ninja.errors import HttpError
 
@@ -98,7 +99,56 @@ def expense_dict(expense):
         "category_auto": expense.category_auto,
         "notes": expense.notes,
         "deleted": expense.deleted,
+        **({"added_by": expense._added_by} if hasattr(expense, "_added_by") else {}),
+        **({"reversal": expense._reversal} if hasattr(expense, "_reversal") else {}),
     }
+
+
+def attribute_records(group, expenses=(), settlements=(), participants=None):
+    """Attach current display names in two bounded queries, including authoritative nulls."""
+    if not expenses and not settlements:
+        return
+    names = getattr(group, "_attribution_names", None)
+    if names is None:
+        names = {person.user_id: participant_display_name(person) for person in
+                 (participants if participants is not None else group.participants.select_related("user")) if person.user_id}
+        group._attribution_names = names
+    creations = getattr(group, "_bill_creators", {})
+    reversals = getattr(group, "_record_reversals", {})
+    bill_ids = [str(bill.id) for bill in expenses if str(bill.id) not in creations]
+    reversed_ids = [str(row.id) for row in [*expenses, *settlements] if str(row.id) not in reversals and (getattr(row, "deleted", False) or getattr(row, "reversed", False))]
+    if bill_ids or reversed_ids:
+        events = group.changes.filter(
+            Q(kind="expense_saved", data__id__in=bill_ids, data__version=1)
+            | Q(kind__in=["expense_reversed", "settlement_reversed"]) & (Q(data__id__in=reversed_ids) | Q(data__settlement_id__in=reversed_ids))
+        ).order_by("id").values("kind", "data", "actor_id")
+        for row in events:
+            if row["kind"] == "expense_saved":
+                creations.setdefault(row["data"]["id"], None if row["data"].get("source") else names.get(row["actor_id"]))
+            else:
+                reversals[str(row["data"].get("settlement_id") or row["data"].get("id"))] = {"actor_name": names.get(row["actor_id"])}
+    for key in bill_ids:
+        creations.setdefault(key, None)
+    for key in reversed_ids:
+        reversals.setdefault(key, {"actor_name": None})
+    group._bill_creators, group._record_reversals = creations, reversals
+    for bill in expenses:
+        bill._added_by = creations.get(str(bill.id))
+        if bill.deleted:
+            bill._reversal = reversals.get(str(bill.id), {"actor_name": None})
+    for payment in settlements:
+        payment._recorded_by_name = names.get(payment.recorded_by_id) if payment.method != "splitwise_import" else None
+        if payment.reversed:
+            payment._reversal = reversals.get(str(payment.id), {"actor_name": None})
+
+
+def settlement_dict(payment):
+    return {"id": str(payment.id), "sender": str(payment.sender_id), "recipient": str(payment.recipient_id),
+            "amount": str(payment.amount), "method": payment.method, "recorded_by": payment.recorded_by_id,
+            "date": payment.date.isoformat() if payment.date else None, "attempt_id": str(payment.attempt_id) if payment.attempt_id else None,
+            "reversed": payment.reversed,
+            **({"recorded_by_name": payment._recorded_by_name} if hasattr(payment, "_recorded_by_name") else {}),
+            **({"reversal": payment._reversal} if hasattr(payment, "_reversal") else {})}
 
 
 def finance_state(participant_ids, expense_rows, settlement_rows, opening_balances=None):
@@ -134,6 +184,7 @@ def snapshot(group):
     participants = list(group.participants.select_related("user").order_by("id"))
     expenses = list(group.expenses.order_by("date", "id"))
     settlements = list(group.settlements.order_by("created_at", "id"))
+    attribute_records(group, expenses, settlements, participants)
     opening = OpeningBalance.objects.filter(group=group).first()
     finance = finance_state(
         [p.id for p in participants],
@@ -142,6 +193,7 @@ def snapshot(group):
         opening.balances if opening and opening.accepted else None,
     )
     result = {
+        "attribution_version": 1,
         "id": str(group.id),
         "name": group.name,
         "version": group.version,
@@ -154,20 +206,7 @@ def snapshot(group):
             for p in participants
         ],
         "expenses": [expense_dict(e) for e in expenses],
-        "settlements": [
-            {
-                "id": str(p.id),
-                "sender": str(p.sender_id),
-                "recipient": str(p.recipient_id),
-                "amount": str(p.amount),
-                "method": p.method,
-                "recorded_by": p.recorded_by_id,
-                "date": p.date.isoformat() if p.date else None,
-                "attempt_id": str(p.attempt_id) if p.attempt_id else None,
-                "reversed": p.reversed,
-            }
-            for p in settlements
-        ],
+        "settlements": [settlement_dict(payment) for payment in settlements],
         **finance,
         "activity": [
             {**row, "data": {key: value for key, value in row["data"].items() if key != "_history"}}

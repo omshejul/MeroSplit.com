@@ -76,3 +76,20 @@ def test_anonymized_reversal_and_unauthorized_details(client, group):
     outsider = authenticated_client(get_user_model().objects.create_user(username=uid()))
     for path in (f"expenses/{bill['id']}", f"settlements/{payment['id']}"):
         assert send(outsider, "get", f"/groups/{group[0]}/{path}").status_code == 404
+
+
+def test_creator_and_recorder_are_standard_summary_full_and_timeline_data(client, group):
+    bill, payment = records(client, group)
+    for suffix in ("", "/summary"):
+        saved = send(client, "get", f"/groups/{group[0]}{suffix}").json()
+        assert saved["attribution_version"] == 1
+        assert next(row for row in saved["expenses"] if row["id"] == bill["id"])["added_by"] == "Recorder"
+        assert next(row for row in saved["settlements"] if row["id"] == payment["id"])["recorded_by_name"] == "Recorder"
+        if suffix:
+            assert next(row["bill"] for row in saved["transactions"] if row["kind"] == "bill")["added_by"] == "Recorder"
+    Change.objects.filter(kind="expense_saved", data__id=bill["id"]).update(actor=None)
+    Settlement.objects.filter(pk=payment["id"]).update(recorded_by=None)
+    for suffix in ("", "/summary"):
+        saved = send(client, "get", f"/groups/{group[0]}{suffix}").json()
+        assert saved["expenses"][0]["added_by"] is None
+        assert saved["settlements"][0]["recorded_by_name"] is None

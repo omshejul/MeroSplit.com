@@ -16,7 +16,7 @@ from ninja.errors import HttpError
 
 from .models import Change, Expense, Group, Invite, OpeningBalance, Participant, PaymentProfile, Settlement
 from .profiles import participant_display_name
-from .services import expense_dict, finance_state, visible_group
+from .services import attribute_records, expense_dict, finance_state, settlement_dict, visible_group
 from .store_review import groups_for_actor
 
 CURSOR_SALT = "merosplit.group-history.v1"
@@ -116,14 +116,14 @@ def _page(actor, group, resource, limit=50, cursor=None, supplied=None):
     except (ValidationError, ValueError, TypeError) as exc:
         raise HttpError(422, "Invalid history position") from exc
     more, rows = len(rows) > limit, rows[:limit]
+    if resource in {"bills", "settlements"}:
+        attribute_records(group, expenses=rows if resource == "bills" else (), settlements=rows if resource == "settlements" else ())
     items = []
     for row in rows:
         if resource == "bills":
             items.append(expense_dict(row))
         elif resource == "settlements":
-            items.append({"id": str(row.id), "sender": str(row.sender_id), "recipient": str(row.recipient_id),
-                          "amount": str(row.amount), "method": row.method, "recorded_by": row.recorded_by_id,
-                          "date": row.date.isoformat() if row.date else None, "attempt_id": str(row.attempt_id) if row.attempt_id else None, "reversed": row.reversed})
+            items.append(settlement_dict(row))
         elif resource == "attempts":
             payment = getattr(row, "settlement", None)
             items.append({"id": str(row.id), "sender": str(row.sender_id), "recipient": str(row.recipient_id),
@@ -148,12 +148,6 @@ def history_page(actor, group_id, resource, *, limit=50, cursor=None, version=No
     group = visible_group(actor, group_id, lock=True)
     _check_version(group, version)
     return transaction_page(actor, group, limit, cursor, (filters or {}).get("q", "")) if resource == "transactions" else _page(actor, group, resource, limit, cursor, filters)
-
-
-def settlement_dict(payment):
-    return {"id": str(payment.id), "sender": str(payment.sender_id), "recipient": str(payment.recipient_id),
-            "amount": str(payment.amount), "method": payment.method, "recorded_by": payment.recorded_by_id,
-            "date": payment.date.isoformat() if payment.date else None, "attempt_id": str(payment.attempt_id) if payment.attempt_id else None, "reversed": payment.reversed}
 
 
 def detail_actor(group, actor_id):
@@ -202,8 +196,8 @@ def settlement_detail(actor, group_id, settlement_id, *, version=None):
     payment = group.settlements.filter(pk=settlement_id).first()
     if not payment:
         raise HttpError(404, "Payment record not found")
-    result = {**settlement_dict(payment), "read_mode": "detail", "group_id": str(group.id), "group_version": group.version,
-              "recorded_by_name": detail_actor(group, payment.recorded_by_id) if payment.method != "splitwise_import" else None}
+    attribute_records(group, settlements=[payment])
+    result = {**settlement_dict(payment), "read_mode": "detail", "group_id": str(group.id), "group_version": group.version}
     if payment.reversed and (reversal := reversal_record(group, "settlement_reversed", result)):
         result["reversal"] = reversal
     return result
@@ -264,11 +258,12 @@ def transaction_page(actor, group, limit=50, cursor=None, q=""):
     more, keys = len(keys) > limit, keys[:limit]
     bills = {row.id: row for row in group.expenses.filter(id__in=[key["id"] for key in keys if key["kind_order"] == 0])}
     payments = {row.id: row for row in group.settlements.filter(id__in=[key["id"] for key in keys if key["kind_order"] == 1])}
+    attribute_records(group, list(bills.values()), list(payments.values()))
     items = []
     for key in keys:
         if key["kind_order"] == 0:
             bill = expense_dict(bills[key["id"]])
-            items.append({"kind": "bill", "date": bill["date"], "bill": {field: bill[field] for field in ("id", "version", "description", "total", "paid", "shares", "date", "category", "category_auto", "deleted")}})
+            items.append({"kind": "bill", "date": bill["date"], "bill": {field: bill[field] for field in ("id", "version", "description", "total", "paid", "shares", "date", "category", "category_auto", "deleted", "added_by")}})
         else:
             payment = settlement_dict(payments[key["id"]])
             items.append({"kind": "payment", "date": payment["date"], "payment": payment})
@@ -395,9 +390,8 @@ def expense_detail(actor, group_id, expense_id, *, version=None):
     expense = group.expenses.filter(id=expense_id).first()
     if not expense:
         raise HttpError(404, "Expense not found")
-    creation = group.changes.filter(kind="expense_saved", data__id=str(expense.id), data__version=1).order_by("id").first()
-    result = {**expense_dict(expense), "read_mode": "detail", "group_id": str(group.id), "group_version": group.version,
-              "added_by": detail_actor(group, creation.actor_id) if creation and not creation.data.get("source") else None}
+    attribute_records(group, [expense])
+    result = {**expense_dict(expense), "read_mode": "detail", "group_id": str(group.id), "group_version": group.version}
     if expense.deleted and (reversal := reversal_record(group, "expense_reversed", result)):
         result["reversal"] = reversal
     return result
@@ -408,6 +402,7 @@ def group_summary(actor, group_id, *, limit=50):
     _limit(limit)
     group = visible_group(actor, group_id, lock=True)
     participants = list(group.participants.select_related("user").order_by("id"))
+    group._attribution_names = {person.user_id: participant_display_name(person) for person in participants if person.user_id}
     opening = OpeningBalance.objects.filter(group=group).first()
     finance = finance_state(
         [person.id for person in participants],
@@ -430,7 +425,7 @@ def group_summary(actor, group_id, *, limit=50):
                                                        participant__user__isnull=True, revoked=False, approved=False, expires_at__gt=timezone.now())
                    .select_related("claimant").order_by("participant_id", "-expires_at", "-id").distinct("participant_id")[:100]]
     return {
-        "read_mode": "summary", "id": str(group.id), "name": group.name, "version": group.version,
+        "read_mode": "summary", "attribution_version": 1, "id": str(group.id), "name": group.name, "version": group.version,
         "hidden": next(person.hidden for person in participants if person.user_id == actor.pk and not person.removed),
         "archived": group.archived, "is_direct": group.is_direct, "owner_id": group.owner_id,
         "participants": [{"id": str(person.id), "name": participant_display_name(person), "recorded_name": person.name,
