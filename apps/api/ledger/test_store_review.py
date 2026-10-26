@@ -323,3 +323,27 @@ def test_invalid_server_review_configuration_fails_without_exposing_credential(r
     monkeypatch.setenv("STORE_REVIEW_AUTH_JSON", json.dumps(entries))
     with pytest.raises(RuntimeError, match="STORE_REVIEW_AUTH_JSON"):
         runpy.run_path(str(settings.BASE_DIR / "config" / "settings.py"))
+
+
+def test_one_existing_reviewer_entry_works_for_both_native_clients_and_browser(reviewers, settings, mailbox):
+    users, pins = reviewers
+    settings.STORE_REVIEW_AUTH = [settings.STORE_REVIEW_AUTH[0]]
+    actor, pin = users[0], pins[0]
+    for browser in [False, False, True]:
+        EmailCodeChallenge.objects.update(requested_at=timezone.now() - timedelta(seconds=61))
+        client = Client(enforce_csrf_checks=browser)
+        if browser:
+            client.get("/_allauth/browser/v1/config")
+        csrf = client.cookies["csrftoken"].value if browser else None
+        request = post(client, "request", {"email": actor.email}, browser=browser, csrf=csrf)
+        assert request.status_code == 200
+        result = post(client, "confirm", {"challenge_id": request.json()["data"]["challenge_id"], "code": pin}, browser=browser, csrf=csrf)
+        assert result.status_code == 200 and result.json()["data"]["user"]["id"] == actor.pk
+        if browser:
+            assert client.cookies.get("sessionid")
+        else:
+            client.defaults["HTTP_X_SESSION_TOKEN"] = result.json()["meta"]["session_token"]
+        assert send(client, "get", "/me").status_code == 200
+    actor.refresh_from_db()
+    assert not actor.is_staff and not actor.is_superuser
+    assert mailbox == [] and not EmailAddress.objects.filter(user=actor, verified=True).exists()

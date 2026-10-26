@@ -1,3 +1,4 @@
+import { serverReachable } from './connectivity';
 import * as SQLite from 'expo-sqlite';
 import * as SecureStore from 'expo-secure-store';
 import { File, Paths } from 'expo-file-system';
@@ -9,7 +10,7 @@ import { isColorFamily, type ColorFamily } from './theme';
 
 let database: Promise<Database> | undefined;
 export function storageIsDurable(): boolean { return true; }
-export function isOnline(): boolean { return true; }
+export function isOnline(): boolean { return serverReachable(); }
 export function getDatabase(): Promise<Database> {
   database ??= (async () => {
     const db = await SQLite.openDatabaseAsync('splitdumb.db');

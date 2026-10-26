@@ -35,7 +35,16 @@ export function previewPending(accepted: Group, commands: Command[]): Group {
   if (group.focused_expense && !group.expenses.some(value => value.id === group.focused_expense!.id)) group.expenses.push(group.focused_expense);
   for (const command of commands.filter(row => row.group_id === accepted.id)) {
     const body = command.body;
-    if (/\/expenses(?:\/[^/]+)?$/.test(command.path) && command.method !== 'DELETE') {
+    if (command.method === 'POST' && command.path === `/groups/${group.id}/participants`) {
+      const id = String(body.id), name = String(body.name).trim();
+      if (!id || !name || group.participants.some(person => person.id === id)) throw new Error('Review this saved person before syncing.');
+      group.participants.push({ id, name, recorded_name: name, email: String(body.email ?? ''), account_email: null, user_id: null });
+      group.balances[id] = '0';
+    } else if (command.method === 'POST' && /^\/groups\/[^/]+\/participants\/[^/]+\/name$/.test(command.path)) {
+      const id = command.path.split('/').at(-2), person = group.participants.find(person => person.id === id);
+      if (!person || person.removed || person.user_id != null) throw new Error('Review this saved person before syncing.');
+      person.name = String(body.name).trim();
+    } else if (/\/expenses(?:\/[^/]+)?$/.test(command.path) && command.method !== 'DELETE') {
       const input = body as unknown as Omit<Expense, 'shares'>;
       const before = group.expenses.find(expense => expense.id === input.id);
       if (group.read_mode === 'summary' && command.method === 'PUT' && !before) throw new Error('Open this saved bill online to review its pending balance.');
@@ -50,10 +59,10 @@ export function previewPending(accepted: Group, commands: Command[]): Group {
       if (before && !before.deleted) group.balances = addExpense(group.balances, before.paid, before.shares, -1n);
       group.expenses = group.expenses.map(expense => expense.id === id ? { ...expense, deleted: true } : expense);
     } else if (command.path.endsWith('/settlements')) {
-      const { id, sender, recipient, amount } = body as Record<string, string>;
+      const { id, sender, recipient, amount, date } = body as Record<string, string>;
       if (!group.settlements.some(settlement => settlement.id === id)) {
         group.balances = addSettlement(group.balances, sender, recipient, amount);
-        group.settlements.push({ id, sender, recipient, amount, provenance: 'pending_manual' });
+        group.settlements.push({ id, sender, recipient, amount, date, provenance: 'pending_manual' });
       }
     } else if (command.path.endsWith('/reverse') && command.path.includes('/settlements/')) {
       const id = command.path.split('/').at(-2), settlement = group.settlements.find(value => value.id === id);

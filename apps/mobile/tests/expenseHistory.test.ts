@@ -2,6 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import ts from 'typescript';
+import { DatabaseSync } from 'node:sqlite';
+import { sqliteAdapter } from './sqlite.ts';
+import { migrate, saveGroup, readExpenseHistory, saveExpenseHistory, forgetExpenseHistory } from '../src/storage.ts';
 import { historyTime, historyValue, historyActions, historyLabels } from '../src/expenseHistory.ts';
 import { ApiError, accountOwner } from '../src/api.ts';
 import type { ExpenseVersion, ExpenseHistoryPage } from '../src/expenseHistory.ts';
@@ -9,15 +12,17 @@ import type { ExpenseVersion, ExpenseHistoryPage } from '../src/expenseHistory.t
 const session = { userId: '1', baseUrl: 'https://synthetic.invalid', email: 'a@example.invalid', token: 'synthetic' };
 const version = (id = 'edit'): ExpenseVersion => ({ id, sequence: 3, created_at: '2026-10-21T00:00:00Z', actor_name: 'Asha', currency: 'INR', names: { a: 'Asha', b: 'Noor' }, kind: 'edited', changes: [{ field: 'description', before: 'Dinner', after: 'Dinner at Olive' }], labels_recorded: true });
 const page = (id = 'edit'): ExpenseHistoryPage => ({ group_id: 'group', expense_id: 'bill', items: [version(id)], next_before: null, legacy_gap: false, version: 3 });
-const tick = async () => { for (let i = 0; i < 20; i++) await Promise.resolve(); };
+const tick = async () => { for (let i = 0; i < 150; i++) await Promise.resolve(); };
 function component(send: (...args: any[]) => Promise<any>) {
-  let cursor = 0;
+  const raw = new DatabaseSync(':memory:'), db = sqliteAdapter(raw);
+  const ready = (async () => { await migrate(db); for (const userId of ['1', '2']) await saveGroup(db, accountOwner({ ...session, userId }), { id:'group',name:'Dinner',version:3,participants:[],expenses:[],settlements:[],balances:{},transfers:[],activity:[] }, 'shared'); })();
+  let cursor = 0, invalidations = 0;
   const state: any[] = [], dependencies: Record<number, any[]> = {}, cleanup: Record<number, any> = {};
   let effects: (() => void)[] = [];
   const env = { React: { createElement: (type: any, props: any, ...children: any[]) => ({ type, props: props || {}, children }) },
     pageContentStyle: {}, Platform: { OS: 'native' }, View: 'View', Text: 'Text', FlatList: 'FlatList', LoadingSpinner: 'LoadingSpinner', Button: 'Button', ErrorText: 'ErrorText',
     StyleSheet: { create: (x: any) => x, hairlineWidth: 1 }, useUI: () => ({ ui: {}, palette: {} }),
-    historyTime, historyValue, historyActions, historyLabels, ApiError, accountOwner, request: send,
+    historyTime, historyValue, historyActions, historyLabels, ApiError, accountOwner, request: send, getDatabase: async () => { await ready; return db; }, readExpenseHistory, saveExpenseHistory, forgetExpenseHistory,
     setInterval: () => 1, clearInterval: () => {},
     useRef: (initial: any) => { const id = cursor++; return state[id] ??= { current: initial }; },
     useState: (initial: any) => { const id = cursor++; if (!(id in state)) state[id] = initial; return [state[id], (value: any) => { state[id] = typeof value === 'function' ? value(state[id]) : value; }]; },
@@ -29,8 +34,8 @@ function component(send: (...args: any[]) => Promise<any>) {
   const source = ts.createSourceFile('ExpenseVersionHistory.tsx', readFileSync(new URL('../src/ExpenseVersionHistory.tsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   const body = source.statements.filter(n => !ts.isImportDeclaration(n)).map(n => n.getText(source).replace(/^export (?:default )?/, '')).join('\n');
   const methods = new Function('env', `with(env){${ts.transpile(body, { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React })};return {ExpenseVersionHistory,VersionHistoryRow};}`)(env);
-  return { render: (changes: any = {}) => { cursor = 0; return methods.ExpenseVersionHistory({ session, groupId: 'group', expenseId: 'bill', title: 'Dinner', active: true, online: true, ...changes }); },
-    row: methods.VersionHistoryRow, commit: async () => { const run = effects; effects = []; run.forEach(fn => fn()); await tick(); }, unmount: () => Object.values(cleanup).forEach(fn => fn?.()) };
+  return { render: (changes: any = {}) => { cursor = 0; return methods.ExpenseVersionHistory({ session, groupId: 'group', expenseId: 'bill', groupVersion: 3, title: 'Dinner', active: true, online: true, onInvalidated: () => { invalidations++; }, ...changes }); },
+    row: methods.VersionHistoryRow, invalidations: () => invalidations, commit: async () => { const run = effects; effects = []; run.forEach(fn => fn()); await tick(); }, unmount: () => { Object.values(cleanup).forEach(fn => fn?.()); raw.close(); } };
 }
 
 test('actual payer and split allocations retain zero-share participants and recorded labels', () => {
@@ -74,12 +79,12 @@ test('late account or entity responses never render in the new scope', async () 
   app.unmount();
 });
 
-test('offline and inactive screens hide data, denied or failed reads clear previous rows', async () => {
+test('offline screen retains downloaded data, inactive or denied reads hide it', async () => {
   let fail = false, calls = 0;
   const app = component(async () => { calls++; if (fail) throw new ApiError(404, 'Denied'); return page(); });
   app.render(); await app.commit(); assert.equal(app.render().props.data.length, 1);
-  assert.equal(app.render({ online: false }).props.data.length, 0); await app.commit(); assert.equal(calls, 1);
-  fail = true; app.render(); await app.commit(); const tree = app.render(); assert.equal(tree.props.data.length, 0); assert.equal(tree.props.ListEmptyComponent.type, 'View');
+  assert.equal(app.render({ online: false }).props.data.length, 1); await app.commit(); assert.equal(calls, 1);
+  fail = true; app.render(); await app.commit(); const tree = app.render(); assert.equal(tree.props.data.length, 0); assert.equal(tree.props.ListEmptyComponent.type, 'View'); assert.equal(app.invalidations(),1,'history invalidation must also clear the parent acknowledgement');
   assert.equal(app.render({ active: false }), null); await app.commit(); app.unmount();
 });
 
@@ -97,7 +102,7 @@ test('empty bounded pages retain earlier-history navigation instead of claiming 
     calls++;
     if (!path.includes('?before=')) return { ...page(), items: [], next_before: 2 };
     assert.equal(path, '/groups/group/expenses/bill/versions?before=2&limit=20');
-    return page('earlier-real-edit');
+    return { ...page('earlier-real-edit'), items: [{ ...version('earlier-real-edit'), sequence:1 }] };
   });
   app.render(); await app.commit(); let tree = app.render();
   assert.equal(tree.props.ListEmptyComponent.children[0], 'No recorded changes on this page.');

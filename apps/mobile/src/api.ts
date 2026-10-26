@@ -1,8 +1,10 @@
+import { recordConnection } from './connectivity.ts';
 import type { Command, Expense, Group, LegacyRecovery, Session } from './types';
 import { sessionRequest } from './transport.ts';
 export { requestEmailCode, confirmEmailCode, signOut as endSession } from './transport.ts';
 export type { EmailCodeChallenge } from './transport.ts';
-import { acceptCommand, bindLegacyGroup, markCommand, pendingCommands, readGroup, readLegacyRecovery, readLegacySource, reconcileGroupCache, readVisibleGroup } from './storage.ts';
+import { acceptCommand, bindLegacyGroup, markCommand, pendingCommands, readGroup, readLegacyRecovery, readLegacySource, reconcileGroupCache, readVisibleGroup, listGroups, saveGroup, readExpenseHistory, saveExpenseHistory, forgetExpenseHistory } from './storage.ts';
+import type { ExpenseHistoryPage } from './expenseHistory';
 import type { AcceptedMembership, Database, MembershipReceipt } from './storage.ts';
 import { legacyMatchesServer, previewPending } from './ledger.ts';
 
@@ -27,7 +29,8 @@ export async function request<T>(session: Session, path: string, method = 'GET',
     const response = await sessionRequest(session, `/api/v1${path}`, {
       method, headers: { 'Content-Type': 'application/json' },
       body: body === undefined ? undefined : JSON.stringify(body), signal: controller.signal,
-    }).catch(() => { throw new Error('Could not connect. Keep this app open and retry when online.'); });
+    }).catch(() => { recordConnection(false); throw new Error('Could not connect. Your saved changes stay on this device.'); });
+    recordConnection(true);
     if (responseType === 'text' && response.ok) return await response.text() as T;
     if (!response.headers.get('content-type')?.includes('json')) throw new ApiError(response.ok ? 502 : response.status, 'The service is temporarily unavailable. Try again later.');
     const data = await response.json();
@@ -45,6 +48,7 @@ export async function syncOutbox(db: Database, session: Session, mode: 'full' | 
     if (command.state !== 'pending') throw new Error('Resolve the earlier rejected/conflicting change before syncing later commands.');
     let writeAccepted = false;
     try {
+      await db.runAsync('UPDATE outbox SET attempted=1 WHERE owner=? AND command_id=?', owner, command.command_id);
       const receipt = await request<Record<string, unknown>>(session, command.path, command.method, command.body);
       writeAccepted = true;
       const membership = command.method === 'POST' && [
@@ -140,4 +144,46 @@ export async function claimLegacyGroup(db: Database, session: Session, groupId: 
   }
   await bindLegacyGroup(db, owner, { ...source, selfId, status, reason }, canonical, commands);
   return { status, groupId, reason };
+}
+
+// Reuse the existing full-snapshot cache for offline reading. The index and
+// on-screen summary remain bounded; an interrupted download is never complete.
+export async function cacheOfflineGroups(db: Database, session: Session, current: () => boolean = () => true): Promise<void> {
+  const owner = accountOwner(session);
+  for (const row of await listGroups(db, owner)) {
+    if (!current()) throw new Error('The signed-in account changed.');
+    const full = await db.getFirstAsync<{ kind: string; version: number }>("SELECT kind,json_extract(snapshot,'$.version') AS version FROM groups_cache WHERE owner=? AND id=?", owner, row.group.id);
+    if (full?.kind === 'shared' && full.version >= row.group.version) continue;
+    const group = await fetchGroup(session, row.group.id, 'full');
+    if (!current()) throw new Error('The signed-in account changed.');
+    if (group.id !== row.group.id || group.read_mode || !Number.isSafeInteger(group.version) || group.version < row.group.version || !Array.isArray(group.participants) || !Array.isArray(group.expenses) || !Array.isArray(group.settlements) || !Array.isArray(group.activity) || !Array.isArray(group.transfers) || !group.balances) throw new Error('Some group records have not downloaded. Reconnect to finish.');
+    // The authoritative index may revoke membership while this GET is in flight.
+    await db.withExclusiveTransactionAsync(async tx => {
+      const authorized = await readVisibleGroup(tx, owner, group.id);
+      if (!current() || authorized?.kind !== 'shared' || authorized.group.version !== row.group.version) throw new Error('Group access changed while downloading. Refresh to continue.');
+      await saveGroup(tx, owner, group, 'shared');
+      if (!current()) throw new Error('The signed-in account changed.');
+    });
+  }
+  // One sequential, bounded pass. Partial pages persist and the next existing
+  // foreground sync resumes them; no complete checkpoint until every tail ends.
+  let pagesLeft = 20;
+  for (const row of await listGroups(db, owner)) {
+    const full = await db.getFirstAsync<{ version: number }>("SELECT json_extract(snapshot,'$.version') AS version FROM groups_cache WHERE owner=? AND id=? AND kind='shared'", owner, row.group.id);
+    if (!current() || !full || full.version < row.group.version) throw new Error('Records changed while downloading. Reconnect to finish.');
+    for (const expense of (await readGroup(db, owner, row.group.id))!.group.expenses) {
+      let history = await readExpenseHistory(db, owner, row.group.id, expense.id, full.version);
+      while (!history || history.next_before !== null) {
+        if (!current() || pagesLeft-- <= 0) throw new Error('Version history download is incomplete. Reconnect to finish.');
+        const before = history?.next_before ?? undefined;
+        try {
+          const page = await request<ExpenseHistoryPage>(session, `/groups/${row.group.id}/expenses/${expense.id}/versions?limit=50${before === undefined ? '' : `&before=${before}`}`);
+          history = await saveExpenseHistory(db, owner, row.group.id, expense.id, page, before, current);
+        } catch (error) {
+          if (current() && error instanceof ApiError && [401, 403, 404, 409].includes(error.status)) await forgetExpenseHistory(db, owner, row.group.id, expense.id);
+          throw error;
+        }
+      }
+    }
+  }
 }

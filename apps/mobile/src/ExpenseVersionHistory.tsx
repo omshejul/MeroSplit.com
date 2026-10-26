@@ -2,6 +2,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import { FlatList, StyleSheet, View } from 'react-native';
 import { Text } from 'react-native-paper';
 import { accountOwner, ApiError, request } from './api';
+import { getDatabase } from './native';
+import { readExpenseHistory, saveExpenseHistory, forgetExpenseHistory } from './storage';
 import { Button, ErrorText, useUI } from './ui';
 import LoadingSpinner from './LoadingSpinner';
 import { pageContentStyle } from './AppNavigation';
@@ -36,11 +38,11 @@ export function VersionHistoryRow({ version, change, now }: Row & { now?: number
   </View>;
 }
 
-export default function ExpenseVersionHistory({ session, groupId, expenseId, title, active, online }: {
-  session: Session; groupId: string; expenseId: string; title: string; active: boolean; online: boolean;
+export default function ExpenseVersionHistory({ session, groupId, expenseId, groupVersion, title, active, online, onInvalidated }: {
+  session: Session; groupId: string; expenseId: string; groupVersion: number; title: string; active: boolean; online: boolean; onInvalidated: () => void;
 }) {
-  const { ui } = useUI(), path = `/groups/${groupId}/expenses/${expenseId}/versions`;
-  const scope = `${accountOwner(session)}|${session.token}|${path}`;
+  const { ui } = useUI(), path = `/groups/${groupId}/expenses/${expenseId}/versions`, owner = accountOwner(session);
+  const scope = `${owner}|${session.token}|${path}|${groupVersion}`;
   const current = useRef(scope); current.current = scope;
   const [page, setPage] = useState<(ExpenseHistoryPage & { scope: string }) | null>(null);
   const [now, setNow] = useState(Date.now());
@@ -51,30 +53,40 @@ export default function ExpenseVersionHistory({ session, groupId, expenseId, tit
     return () => clearInterval(timer);
   }, [active]);
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [retry, setRetry] = useState(0);
-  const controller = useRef<AbortController | null>(null), mounted = useRef(false), allowed = useRef(active && online);
-  allowed.current = active && online;
-  const shown = active && online && page?.scope === scope ? page : null;
+  const controller = useRef<AbortController | null>(null), mounted = useRef(false), allowed = useRef(active), connected = useRef(online);
+  allowed.current = active; connected.current = online;
+  const shown = active && page?.scope === scope ? page : null;
   const list = useRef<FlatList<Row>>(null);
   async function load(before?: number, signal?: AbortSignal) {
     if (!allowed.current) return false;
     controller.current?.abort();
     const read = new AbortController(); controller.current = read;
+    const valid = () => mounted.current && !read.signal.aborted && current.current === scope && allowed.current;
     if (!before) setBusy(true); setError('');
     const abort = () => read.abort(); signal?.addEventListener('abort', abort, { once: true });
+    let fetched = false;
     try {
+      const db = await getDatabase(), cached = await readExpenseHistory(db, owner, groupId, expenseId, groupVersion);
+      if (!valid()) return false;
+      if (!before) setPage(cached ? { ...cached, scope } : null);
+      if (!connected.current) { if (!cached) setError('This version history has not downloaded. Reconnect to finish.'); return false; }
       const result = await request(session, path + (before ? `?before=${before}&limit=20` : '?limit=20'), 'GET', undefined, 'json', read.signal) as ExpenseHistoryPage;
-      if (!mounted.current || read.signal.aborted || current.current !== scope || !allowed.current) return false;
-      if (before && page?.scope === scope && result.version !== page.version) throw new ApiError(409, 'History changed. Refresh to see the latest.');
-      if (result.group_id !== groupId || result.expense_id !== expenseId) throw new Error('This history is unavailable.');
-      const added = before && page?.scope === scope ? result.items.filter(item => !page.items.some(old => old.id === item.id)) : result.items;
-      setPage(previous => ({ ...result, scope, items: before && previous?.scope === scope ? [...previous.items, ...result.items.filter(item => !previous.items.some(old => old.id === item.id))] : result.items,
-        legacy_gap: result.legacy_gap || !!(before && previous?.scope === scope && previous.legacy_gap) }));
-      return added.length > 0;
+      fetched = true;
+      if (!valid()) return false;
+      if (result.version !== groupVersion) throw new ApiError(409, 'History changed. Refresh to see the latest.');
+      const saved = await saveExpenseHistory(db, owner, groupId, expenseId, result, before, valid);
+      if (!valid()) return false;
+      setPage({ ...saved, scope });
+      return result.items.length > 0;
     } catch (cause) {
-      if (!mounted.current || read.signal.aborted || current.current !== scope || !allowed.current) return false;
-      if (before && !(cause instanceof ApiError && [401, 403, 404, 409].includes(cause.status))) throw cause;
-      setPage(null);
-      setError(cause instanceof ApiError && cause.status === 409 ? 'History changed. Refresh to see the latest.' : cause instanceof ApiError && [401, 403, 404].includes(cause.status) ? 'This history is no longer available.' : 'Could not load version history. Try again.');
+      if (!valid()) return false;
+      const denied = cause instanceof ApiError && [401, 403, 404, 409].includes(cause.status);
+      if (denied || fetched) {
+        setPage(null); onInvalidated();
+        await forgetExpenseHistory(await getDatabase(), owner, groupId, expenseId);
+        if (!valid()) return false;
+      }
+      setError(cause instanceof ApiError && cause.status === 409 ? 'History changed. Refresh to see the latest.' : denied ? 'This history is no longer available.' : 'Could not refresh version history. Downloaded changes are kept.');
       if (before) throw cause;
     } finally {
       signal?.removeEventListener('abort', abort);
@@ -82,8 +94,8 @@ export default function ExpenseVersionHistory({ session, groupId, expenseId, tit
     }
   }
   useEffect(() => {
-    mounted.current = true; setPage(null); setError('');
-    if (active && online) void load();
+    mounted.current = true; setPage(previous => previous?.scope === scope ? previous : null); setError('');
+    if (active) void load();
     return () => { mounted.current = false; controller.current?.abort(); };
   }, [scope, active, online, retry]);
   const paging = useScrollPagination({ scope, cursor: shown?.next_before, enabled: active && online && !error, scrollRef: list, load: signal => load(shown?.next_before ?? undefined, signal).then(Boolean) });
@@ -91,11 +103,12 @@ export default function ExpenseVersionHistory({ session, groupId, expenseId, tit
   const rows: Row[] = shown?.items.flatMap(version => version.kind === 'created' ? [{ version }] : version.changes.map(change => ({ version, change }))) ?? [];
   return <FlatList ref={list} {...paging.events} scrollEventThrottle={100} onEndReachedThreshold={0.3} data={rows} keyExtractor={({ version, change }) => `${version.id}:${change?.field || 'created'}`}
     renderItem={({ item }) => <VersionHistoryRow {...item} now={now} />} contentContainerStyle={[pageContentStyle, { gap: 0 }]}
-    ListHeaderComponent={<View style={styles.subtitle}><Text style={ui.body}>{title}</Text></View>}
-    ListEmptyComponent={!online ? <Text style={ui.body}>Go online to view version history.</Text> : error ? <View style={styles.status}><ErrorText live>{error}</ErrorText><Button title="Retry" onPress={() => setRetry(value => value + 1)} /></View>
+    ListHeaderComponent={<View style={styles.subtitle}><Text style={ui.body}>{title}</Text>{shown && !online && <Text style={ui.caption}>Downloaded version history. Connect to check for newer changes.</Text>}{shown && !!error && <ErrorText live>{error}</ErrorText>}</View>}
+    ListEmptyComponent={error ? <View style={styles.status}><ErrorText live>{error}</ErrorText>{online && <Button title="Retry" onPress={() => setRetry(value => value + 1)} />}</View>
       : busy || !shown ? <LoadingSpinner visible /> : <Text style={ui.body}>{shown.next_before ? 'No recorded changes on this page.' : 'No version history was recorded.'}</Text>}
     ListFooterComponent={<View style={styles.status}>
       {shown?.legacy_gap && rows.length > 0 && <Text style={ui.caption}>Some earlier details weren’t recorded.</Text>}
+      {shown?.next_before != null && !online && <Text style={ui.caption}>Earlier changes have not downloaded. Reconnect to finish.</Text>}
       {paging.loading && <LoadingSpinner visible />}
       {paging.failed && shown && <><ErrorText live>Could not load earlier changes.</ErrorText><Button title="Retry" kind="text" onPress={paging.retry} /></>}
     </View>} />;

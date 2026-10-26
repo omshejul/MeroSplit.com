@@ -33,7 +33,7 @@ export type Group = {
 };
 export type CachedGroup = { group: Group; kind: 'local' | 'shared' | 'unavailable' };
 export type Command = {
-  command_id: string; group_id: string; base_version?: number | null; method: 'POST' | 'PUT' | 'DELETE'; path: string;
+  command_id: string; group_id: string; base_version?: number | null; attempted?: boolean; method: 'POST' | 'PUT' | 'DELETE'; path: string;
   body: Record<string, unknown>; state: 'pending' | 'conflict' | 'rejected'; error: string | null;
 };
 export type Session = { token: string; userId: string; email: string; baseUrl: string; displayName?: string };

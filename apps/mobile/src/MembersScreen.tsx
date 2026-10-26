@@ -304,7 +304,7 @@ function MemberSettings({ group, selfId, busy, addPersonRequest = 0, onAction, o
       const request = pendingName.current?.personId === person.id && pendingName.current.name === name ? pendingName.current : { personId: person.id, name, id: Crypto.randomUUID() };
       pendingName.current = request;
       const result = await latestAction.current(`/participants/${person.id}/name`, { command_id: request.id, name });
-      if (result.id !== current.id || !Number.isSafeInteger(result.version) || Number(result.version) < 1) throw new Error('Could not confirm the name. Try again.');
+      if (result.id !== current.id || result.pending !== true && (!Number.isSafeInteger(result.version) || Number(result.version) < 1)) throw new Error('Could not confirm the name. Try again.');
       pendingName.current = null;
       if (mounted.current && latestGroup.current.id === current.id) closeName();
     });
@@ -335,7 +335,7 @@ function MemberSettings({ group, selfId, busy, addPersonRequest = 0, onAction, o
       const result = await addPerson(group.id, request, onAction);
       pendingPerson.current = null;
       setNewName(''); setNewEmail(''); closeAddPerson();
-      if (request.email && !result.linked) setInvitePerson({ id: request.id, name: request.name, email: request.email });
+      if (request.email && !result.linked && !result.pending) setInvitePerson({ id: request.id, name: request.name, email: request.email });
     });
   }
 
