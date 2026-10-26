@@ -76,6 +76,9 @@ test('status derives from durable pending work, conflicts, actual persisted ackn
   assert.equal(syncStatus({ ...base, pendingFiles: 1 }).label, 'Saved on device');
   assert.equal(syncStatus({ ...base, drafts: true }).label, 'Saved on device');
   assert.equal(syncStatus({ ...base, pendingFiles: 1, problem: true }).label, 'Needs attention');
+  assert.equal(syncStatus({ ...base, pendingFiles: 1, problem: true }).detail, 'Files are waiting to upload. Your saved files are kept on this device.');
+  assert.equal(syncStatus({ ...base, pendingFiles: 1, problem: true, commands: [{ ...bill, state: 'rejected' }] }).detail, 'A saved change needs review. Later changes are kept on this device.');
+  assert.match(syncStatus({ ...base, pendingFiles: 1, problem: true, reviewRequired: true }).detail, /Sign in again/);
   assert.equal(syncStatus({ ...base, commands: [bill], syncing: true }).label, 'Syncing');
   assert.equal(syncStatus({ ...base, commands: [{ ...bill, state: 'conflict' }], syncing: true }).label, 'Needs attention');
   assert.equal(syncStatus({ ...base, commands: [bill], durable: false }).label, 'Needs attention');
