@@ -9,7 +9,7 @@ import TabBarSurface from './TabBarSurface';
 
 export function AppFrame({ children, onTouchStart }: { children: React.ReactNode; onTouchStart?: () => void }) {
   const { palette, dark } = useUI();
-  return <SafeAreaView style={{ flex: 1, backgroundColor: palette.background }} edges={['top', 'bottom']} onTouchStart={onTouchStart}>
+  return <SafeAreaView style={{ flex: 1, backgroundColor: palette.background }} edges={Platform.OS === 'web' ? ['top', 'right', 'bottom', 'left'] : ['top', 'bottom']} onTouchStart={onTouchStart}>
     <StatusBar style={dark ? 'light' : 'dark'} />
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>{children}</KeyboardAvoidingView>
   </SafeAreaView>;

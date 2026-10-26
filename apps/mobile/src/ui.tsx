@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import { Animated, Appearance, Platform, Pressable, StyleSheet, useColorScheme, View } from 'react-native';
 import { Button as PaperButton, IconButton as PaperIconButton, List, Tooltip, MD3DarkTheme, MD3LightTheme, PaperProvider, ThemeProvider, Text, useTheme, configureFonts } from 'react-native-paper';
 import type { MD3Theme } from 'react-native-paper';
@@ -8,6 +8,7 @@ export type { AppearancePreference } from './native';
 import { isDarkOnly, lookColors, type ColorFamily, type Palette, type ThemeColors } from './theme';
 export type { ColorFamily, Palette } from './theme';
 import { useSavedChoice } from './savedChoice';
+import { initialBrowserAppearance, initialBrowserColorFamily, syncBrowserTheme } from './browserTheme';
 import { useFonts } from 'expo-font';
 import { appFontFamily, appFontFaces } from './typography';
 import FieldLabel from './FieldLabel';
@@ -115,8 +116,8 @@ function LibraryIcon({ name, color, size }: { name: string; color?: string; size
 export function UIProvider({ children }: { children: React.ReactNode }) {
   const [fontsLoaded] = useFonts(appFontFaces);
   const system = useColorScheme();
-  const [appearance, changeAppearance] = useSavedChoice<AppearancePreference>('system', savedAppearance, saveAppearance);
-  const [colorFamily, changeColorFamily] = useSavedChoice<ColorFamily>('basic', savedColorFamily, saveColorFamily);
+  const [appearance, changeAppearance] = useSavedChoice<AppearancePreference>(initialBrowserAppearance(), savedAppearance, saveAppearance);
+  const [colorFamily, changeColorFamily] = useSavedChoice<ColorFamily>(initialBrowserColorFamily(), savedColorFamily, saveColorFamily);
   const [motion, setMotion] = useState<MotionPreference>({ enabled: false, active: false });
   useEffect(() => observeMotionPreference(value => setMotion(previous => previous.enabled === value.enabled && previous.active === value.active ? previous : value)), []);
   // Native controls and system bars follow the look; leaving Obsidian restores the saved mode.
@@ -129,6 +130,7 @@ export function UIProvider({ children }: { children: React.ReactNode }) {
       ui: makeUI(colors.palette, fontsLoaded ? appFontFamily : undefined), inputColors: makeInputColors(colors.palette), appearance, changeAppearance, colorFamily, changeColorFamily, motion, animation: { scale: motion.enabled ? motionDuration.paperScale : 0 },
     };
   }, [dark, appearance, changeAppearance, colorFamily, changeColorFamily, motion, fontsLoaded]);
+  useLayoutEffect(() => syncBrowserTheme(value.palette.background, dark), [value.palette.background, dark]);
   // PaperProvider overwrites animation.scale. Its public ThemeProvider also
   // supplies the corrected theme to Portals, without replacing their owner.
   return <PaperProvider theme={value} settings={{ icon: LibraryIcon, rippleEffectEnabled: false }}><ThemeProvider theme={value}>{children}</ThemeProvider></PaperProvider>;
@@ -140,12 +142,12 @@ function usePressFeedback(disabled: boolean) {
   return { onPressIn: () => { if (!disabled && motion.active) setPressed(true); }, onPressOut: () => setPressed(false),
     pressedStyle: { opacity: pressed && !disabled && motion.active ? 0.65 : 1 } };
 }
-export function Button({ title, onPress, disabled = false, kind = 'secondary', icon, accessibilityLabel, compact = false, style, contentStyle }: { contentStyle?: React.ComponentProps<typeof PaperButton>['contentStyle']; style?: React.ComponentProps<typeof PaperButton>['style']; compact?: boolean; title: string; accessibilityLabel?: string; onPress: () => void; disabled?: boolean; kind?: 'primary' | 'secondary' | 'text' | 'danger' | 'outlined'; icon?: IconName | ((props: { size: number; color: string }) => React.ReactNode) }) {
-  const { palette: colors } = useUI();
+export function Button({ title, onPress, disabled = false, kind = 'secondary', icon, accessibilityLabel, compact = false, small = false, style, contentStyle }: { contentStyle?: React.ComponentProps<typeof PaperButton>['contentStyle']; style?: React.ComponentProps<typeof PaperButton>['style']; compact?: boolean; small?: boolean; title: string; accessibilityLabel?: string; onPress: () => void; disabled?: boolean; kind?: 'primary' | 'secondary' | 'text' | 'danger' | 'outlined'; icon?: IconName | ((props: { size: number; color: string }) => React.ReactNode) }) {
+  const { palette: colors, dark } = useUI();
   const { pressedStyle, ...press } = usePressFeedback(disabled);
-  return <PaperButton {...press} hitSlop={{ top: 6, bottom: 6 }} compact={compact} accessibilityLabel={accessibilityLabel ?? title} mode={kind === 'text' ? 'text' : kind === 'outlined' ? 'outlined' : kind === 'secondary' ? 'contained-tonal' : 'contained'} onPress={onPress} disabled={disabled}
-    icon={typeof icon === 'function' ? icon : icon ? ({ size, color }) => <Icon name={icon} size={size} color={color} /> : undefined}
-    buttonColor={kind === 'danger' ? colors.error : undefined} textColor={kind === 'text' ? colors.text : kind === 'outlined' ? colors.accent : undefined} style={[{ borderRadius: radii.button, minWidth: compact && icon ? 64 : 80, ...(kind === 'outlined' && { borderWidth: 1, borderColor: colors.accent }) }, pressedStyle, style]} contentStyle={[{ minHeight: 36 }, contentStyle]} labelStyle={{ fontSize: 14, lineHeight: 20, fontWeight: '500', marginVertical: 0, marginHorizontal: compact && icon ? 4 : 20 }}>{title}</PaperButton>;
+  return <PaperButton {...press} hitSlop={{ top: small ? 8 : 6, bottom: small ? 8 : 6 }} compact={compact || small} accessibilityLabel={accessibilityLabel ?? title} mode={kind === 'text' ? 'text' : kind === 'outlined' ? 'outlined' : kind === 'secondary' ? 'contained-tonal' : 'contained'} onPress={onPress} disabled={disabled}
+    icon={typeof icon === 'function' ? icon : icon ? ({ size, color }) => <Icon name={icon} size={small ? 16 : size} color={color} /> : undefined}
+    buttonColor={kind === 'danger' ? colors.error : small ? dark ? '#303030' : '#E8E8E8' : undefined} textColor={kind === 'text' || small ? colors.text : kind === 'outlined' ? colors.accent : undefined} style={[{ borderRadius: small ? 6 : radii.button, minWidth: compact && icon ? 64 : 80, ...(kind === 'outlined' && { borderWidth: 1, borderColor: colors.accent }) }, pressedStyle, style]} contentStyle={[{ minHeight: small ? 28 : 36, ...(small && { paddingLeft: icon ? 4 : 0 }) }, contentStyle]} labelStyle={{ fontSize: 14, lineHeight: 20, fontWeight: '500', marginVertical: 0, marginHorizontal: compact && icon ? 4 : 20, ...(small && { marginLeft: icon ? 6 : 12, marginRight: 12 }) }}>{title}</PaperButton>;
 }
 export function IconAction({ name, label, onPress, disabled = false, hint }: { name: IconName; label: string; onPress: () => void; disabled?: boolean; hint?: string }) {
   const { pressedStyle, ...press } = usePressFeedback(disabled);
