@@ -10,7 +10,7 @@ export async function signOut(session: Session): Promise<void> {
   try {
     const response = await sessionRequest(session, '/_allauth/app/v1/auth/session', { method: 'DELETE', signal: controller.signal })
       .catch(() => { throw new Error('Could not connect to sign out. Your saved changes remain on this device. Try again when online.'); });
-    if (!response.ok && response.status !== 401) throw new Error('Could not sign out. Try again.');
+    if (!response.ok && response.status !== 401 && response.status !== 410) throw new Error('Could not sign out. Try again.');
   } finally { clearTimeout(timer); }
 }
 
