@@ -1,5 +1,5 @@
 import React from 'react';
-import { ActivityIndicator, Animated, Image, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
+import { Animated, Image, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { Text } from 'react-native-paper';
@@ -32,7 +32,7 @@ export function ScreenHeader({ title, busy, onBack, onFeedback, brand = false, c
     </View>
     {children}
     {onFeedback && <IconAction name="feedback" label="Feedback" onPress={onFeedback} />}
-    <View pointerEvents={status ? 'box-none' : 'none'} style={styles.working}>{status ?? (busy && <ActivityIndicator accessibilityLabel="Working" color={palette.accent} />)}</View>
+    <View pointerEvents={status ? 'box-none' : 'none'} style={styles.working}>{status}</View>
   </View>;
 }
 

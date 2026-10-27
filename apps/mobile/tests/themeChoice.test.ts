@@ -217,7 +217,7 @@ test('header keeps one fixed trailing slot without moving back or action buttons
   const working = nodes(busy).find(node => node.props.style === styles.working)!;
   assert.equal(styles.titleArea.minWidth, 0); assert.equal(styles.titleArea.overflow, 'hidden');
   assert.equal(styles.working.width, 44); assert.equal(styles.working.height, 44); assert.equal(working.props.pointerEvents, 'none');
-  assert.equal(nodes(working)[1].props.accessibilityLabel, 'Working'); assert.ok(!nodes(idle).some(node => node.type === 'ActivityIndicator'));
+  assert.ok(!nodes(busy).some(node => node.type === 'ActivityIndicator')); assert.ok(!nodes(idle).some(node => node.type === 'ActivityIndicator'));
   const activity = readFileSync(new URL('../src/ActivityScreen.tsx', import.meta.url), 'utf8');
   assert.doesNotMatch(activity, /ActivityIndicator/);
 });

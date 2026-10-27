@@ -392,14 +392,14 @@ function notificationPanel(initial: { expense_updates: boolean; email_reminders:
     saved: (at: number) => { const next = pending[at].value; if (preferences?.email_reminders && !next.email_reminders && !push.state.enabled) next.expense_updates = false; preferences = { ...next, notifications_enabled: next.expense_updates && (next.email_reminders || push.state.enabled) }; pending[at].resolve({ ...preferences }); }, restore: () => { preferences = { expense_updates: false, email_reminders: true }; } };
 }
 
-test('master hides channels while off and each explicit ON restores both defaults after confirmation', async () => {
+test('master hides channels while off and each explicit ON shows both defaults immediately', async () => {
   const panel = notificationPanel({ expense_updates: false, email_reminders: true }), { app, props } = panel;
   app.render(props); app.commit(); await tick(); let tree = app.render(props);
   assert.equal(notificationToggle(tree, 'Notifications').props.checked, false);
   assert.equal(notificationToggle(tree, 'Email notifications'), undefined);
   assert.ok(!nodes(tree).some(node => node.type === 'PushSettings'));
   notificationToggle(tree, 'Notifications').props.onChange(true); tree = app.render(props);
-  assert.equal(notificationToggle(tree, 'Notifications').props.checked, false);
+  assert.equal(notificationToggle(tree, 'Notifications').props.checked, true);
   assert.equal(notificationToggle(tree, 'Notifications').props.disabled, true);
   assert.deepEqual(panel.pending[0].value, { expense_updates: true, email_reminders: true });
   panel.saved(0); await tick(); tree = app.render(props);
@@ -413,17 +413,20 @@ test('master hides channels while off and each explicit ON restores both default
   notificationToggle(tree, 'Notifications').props.onChange(true); panel.saved(3); await tick(); tree = app.render(props);
   assert.equal(notificationToggle(tree, 'Email notifications').props.checked, true, 'each master ON restores Email, not the previous manual OFF');
   assert.equal(panel.pushCalls, 0, 'an already valid push binding does not ask permission again');
-  assert.deepEqual(panel.changes, [true, false, true, false, true, false, true, false]);
+  assert.deepEqual(panel.changes, [], 'notification saves do not lock the parent page');
   app.unmount();
 });
 
-test('Notifications keeps confirmed state on failed save, locks duplicate writes and subcontrols, then permits retry', async () => {
+test('Notifications updates immediately, rolls back failures and prevents duplicate writes without locking the page', async () => {
   const panel = notificationPanel({ expense_updates: true, email_reminders: true }), { app, props } = panel;
   app.render(props); app.commit(); await tick(); let tree = app.render(props);
   const change = notificationToggle(tree, 'Notifications').props.onChange;
   change(false); change(false); assert.equal(panel.pending.length, 1); tree = app.render(props);
-  assert.equal(notificationToggle(tree, 'Email notifications').props.disabled, true);
-  assert.equal(nodes(tree).find(node => node.type === 'PushSettings')!.props.busy, true);
+  assert.equal(notificationToggle(tree, 'Notifications').props.checked, false);
+  assert.equal(notificationToggle(tree, 'Notifications').props.disabled, true);
+  assert.equal(notificationToggle(tree, 'Email notifications'), undefined);
+  assert.equal(find(tree, 'title', 'Done').props.disabled, false);
+  assert.deepEqual(panel.changes, []);
   panel.pending[0].reject(Error('offline')); await tick(); tree = app.render(props);
   assert.equal(notificationToggle(tree, 'Notifications').props.checked, true);
   assert.equal(notificationToggle(tree, 'Email notifications').props.checked, true);
@@ -431,7 +434,7 @@ test('Notifications keeps confirmed state on failed save, locks duplicate writes
   tree = app.render({ ...props, busy: true }); notificationToggle(tree, 'Notifications').props.onChange(false); assert.equal(panel.pending.length, 1);
   tree = app.render(props); notificationToggle(tree, 'Notifications').props.onChange(false); panel.saved(1); await tick();
   assert.equal(notificationToggle(app.render(props), 'Notifications').props.checked, false);
-  assert.equal(panel.pushCalls, 0); assert.equal(panel.changes.at(-1), false); app.unmount();
+  assert.equal(panel.pushCalls, 0); assert.deepEqual(panel.changes, []); app.unmount();
 });
 
 test('Unavailable notification preferences show error and Retry without inventing OFF state', async () => {
@@ -805,7 +808,7 @@ test('uncertain feedback preserves the exact submission through close/reopen and
   app.unmount();
 });
 
-test('header keeps Feedback usable in its fixed slot alongside the busy spinner', () => {
+test('header keeps Feedback usable without a global spinner', () => {
   let opens = 0;
   const env = { IconAction: 'IconAction', ActivityIndicator: 'ActivityIndicator', radii: { navigation: 20, surface: 16 }, pageWidthStyle: {}, useUI: () => ({ palette: {} }) };
   const app = harness('src/AppNavigation.tsx', 'ScreenHeader', env), props = { title: 'Groups', busy: false, onFeedback: () => opens++ };
@@ -815,7 +818,7 @@ test('header keeps Feedback usable in its fixed slot alongside the busy spinner'
   const slot = nodes(tree).find(node => node.props.style?.width === 44 && node.props.style?.height === 44)!;
   tree = app.render({ ...props, busy: true });
   assert.ok(find(tree, 'label', 'Feedback')); find(tree, 'label', 'Feedback').props.onPress(); assert.equal(opens, 2);
-  assert.equal(nodes(tree).filter(node => node.type === 'ActivityIndicator').length, 1);
+  assert.equal(nodes(tree).filter(node => node.type === 'ActivityIndicator').length, 0);
   assert.deepEqual(nodes(tree).find(node => node.props.style?.width === 44 && node.props.style?.height === 44)!.props.style, slot.props.style);
   assert.ok(!find(app.render({ title: 'Payment', busy: false }), 'label', 'Feedback'));
 });
@@ -998,16 +1001,16 @@ test('last Push OFF mutes the account and hides both choices, including another 
   panel.app.unmount();
 });
 
-test('master stays confirmed OFF during push registration and confirmed defaults survive reload', async () => {
+test('master updates immediately during push registration and confirmed defaults survive reload', async () => {
   const panel = notificationPanel({ expense_updates: false, email_reminders: false }); let finish!: () => void;
   panel.props.push.state.enabled = false;
   panel.props.push.enable = () => new Promise<boolean>(resolve => { finish = () => { panel.props.push.state.enabled = true; resolve(true); }; });
   panel.app.render(panel.props); panel.app.commit(); await tick();
   notificationToggle(panel.app.render(panel.props), 'Notifications').props.onChange(true);
   panel.saved(0); await tick(); let tree = panel.app.render(panel.props);
-  assert.equal(notificationToggle(tree, 'Notifications').props.checked, false);
-  assert.equal(notificationToggle(tree, 'Email notifications'), undefined);
-  assert.equal(nodes(tree).find(node => node.type === 'LoadingSpinner')!.props.visible, true);
+  assert.equal(notificationToggle(tree, 'Notifications').props.checked, true);
+  assert.equal(notificationToggle(tree, 'Email notifications').props.checked, true);
+  assert.ok(!nodes(tree).some(node => node.type === 'LoadingSpinner'));
   finish(); await tick(); tree = panel.app.render(panel.props);
   assert.equal(notificationToggle(tree, 'Notifications').props.checked, true);
   const saved = panel.savedPreferences; panel.app.unmount();
@@ -1214,5 +1217,44 @@ test('first-split UPI copy stays optional and saves only a valid address', async
   tree = app.render(props); find(tree, 'title', 'Add UPI ID').props.onPress(); await tick();
   assert.equal(saved, 'friend@bank'); assert.equal(dismissed, 2);
   const name = app.render({ ...props, needsName: true }); assert.ok(JSON.stringify(name).includes('Your name')); assert.ok(!JSON.stringify(name).includes('Your money needs directions.'));
+  app.unmount();
+});
+
+test('a pending automatic payment review leaves amount, people and Record usable without a spinner', async () => {
+  let finishReview!: () => void, finishSave!: () => void, saves = 0;
+  let confirmation: any[] = [];
+  const env = { useMemo: (fn: () => unknown) => fn(), useUI: () => ({ ui: {}, palette: {} }), isPersonalPayment, paymentReturnNeedsConfirmation, addSettlement: () => {},
+    AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) },
+    Alert: { alert: (_title: string, _body: string, actions: any[]) => confirmation = actions },
+    PaymentAddress: 'PaymentAddress', PaymentHelpDialog: 'PaymentHelpDialog', UPIAppChooser: 'UPIAppChooser', WebPaymentQuote: 'WebPaymentQuote' };
+  const app = harness('src/SettleForm.tsx', 'SettleForm', env);
+  const props = { group: { ...group, transfers: [], balances: { self: '20000', other: '-20000' } }, selfId: 'self', busy: false,
+    initial: { sender: 'other', recipient: 'self', amount: '20000' },
+    onReviewAttempt: () => new Promise<void>(resolve => finishReview = resolve),
+    onSave: () => { saves++; return new Promise<void>(resolve => finishSave = resolve); } };
+  app.render(props); app.commit(); let tree = app.render(props);
+  assert.equal(nodes(tree).find(n => n.type === 'AmountField')!.props.editable, true);
+  assert.equal(nodes(tree).find(n => n.type === 'DetailDialog')!.props.busy, false);
+  const record = nodes(tree).find(n => n.props.title?.startsWith('Record '))!;
+  assert.equal(record.props.disabled, false); assert.ok(!nodes(tree).some(n => n.type === 'LoadingSpinner'));
+  record.props.onPress(); confirmation.find(action => action.text === 'Record payment').onPress();
+  confirmation.find(action => action.text === 'Record payment').onPress(); assert.equal(saves, 1);
+  tree = app.render(props); assert.ok(find(tree, 'title', 'Recording…').props.disabled);
+  finishSave(); await tick(); tree = app.render(props);
+  assert.equal(nodes(tree).find(n => n.type === 'AmountField')!.props.editable, true);
+  finishReview(); await tick(); app.unmount();
+});
+
+test('background payment review failure is quiet and leaves manual recording available', async () => {
+  const app = harness('src/SettleForm.tsx', 'SettleForm', {
+    useMemo: (fn: () => unknown) => fn(), useUI: () => ({ ui: {}, palette: {} }), isPersonalPayment, paymentReturnNeedsConfirmation,
+    AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) },
+    PaymentAddress: 'PaymentAddress', PaymentHelpDialog: 'PaymentHelpDialog', UPIAppChooser: 'UPIAppChooser', WebPaymentQuote: 'WebPaymentQuote',
+  });
+  const props = { group: { ...group, transfers: [] }, selfId: 'self', busy: false,
+    initial: { sender: 'other', recipient: 'self', amount: '20000' }, onReviewAttempt: async () => { throw Error('Offline'); } };
+  app.render(props); app.commit(); await tick(); const tree = app.render(props);
+  assert.equal(nodes(tree).find(n => n.props.title?.startsWith('Record '))!.props.disabled, false);
+  assert.ok(!nodes(tree).some(n => n.type === 'LoadingSpinner' || n.type === 'ErrorText'));
   app.unmount();
 });

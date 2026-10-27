@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Image, Platform, ScrollView, View } from 'react-native';
+import { Image, Platform, ScrollView, View } from 'react-native';
 import { Text } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { IconAction, useUI } from './ui';
@@ -17,7 +17,6 @@ export default function SignInLayout({ children, busy, onBack }: { children: Rea
     return () => viewport.removeEventListener('resize', resize);
   }, []);
   return <View testID="signin-viewport" style={{ flex: 1, ...(visualHeight !== undefined && { maxHeight: Math.max(0, visualHeight - insets.top - insets.bottom) }) }} onLayout={event => setHeight(event.nativeEvent.layout.height)}>
-    <View pointerEvents="none" style={{ position: 'absolute', top: 8, right: 16, width: 44, height: 44, alignItems: 'center', justifyContent: 'center', zIndex: 1 }}>{busy && <ActivityIndicator accessibilityLabel="Working" color={palette.accent} />}</View>
     <ScrollView role="main" keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag"
       contentContainerStyle={{ flexGrow: 1, paddingHorizontal: 24, paddingTop: signInTopPadding(height, contentHeight), paddingBottom: 24 }}>
       <View testID="signin-group" style={{ width: '100%', maxWidth: 380, alignSelf: 'center', gap: 24 }} onLayout={event => setContentHeight(event.nativeEvent.layout.height)}>
