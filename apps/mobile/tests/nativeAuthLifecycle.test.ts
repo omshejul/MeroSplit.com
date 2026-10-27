@@ -55,6 +55,7 @@ function harness() {
     fetchGroup: async (_value: Session, id: string) => ({ id, is_direct: false }),
     accountOwner: (value: Session) => `${value.baseUrl}|${value.userId}`,
     saveGroup: async (_db: unknown, owner: string, group: { id: string }) => { scopedWrites.push({ owner, id: group.id }); },
+    saveReadGroup: async (active: Session, group: { id: string }, current: () => boolean) => { if (!current() || env.activeSessionRef.current?.token !== active.token) return false; scopedWrites.push({ owner: `${active.baseUrl}|${active.userId}`, id: group.id }); return true; },
     load: async (owner: string) => { events.push(`load:${owner}`); },
     forgetEmailProof: () => { events.push('forget-proof'); },
     setEmailEntry: (value: Entry | null) => { state.entry = value; },

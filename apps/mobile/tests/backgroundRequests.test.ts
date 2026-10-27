@@ -22,12 +22,12 @@ function fixture() {
   const response = deferred<any>(), active = { token: 'A' }, group = { id: 'g', version: 1 };
   const state: any = { busy: false, reading: 0, route: {}, navigations: [], saved: [] };
   const env: any = { ApiError, session: active, selected: { group }, pending: [], lock: { current: false },
-    browseCurrent: { current: 'route-one' }, activeSessionRef: { current: active }, ownerRef: { current: 'owner' }, owner: 'owner',
+    scopeGeneration: { current: 0 }, browseCurrent: { current: 'route-one' }, activeSessionRef: { current: active }, ownerRef: { current: 'owner' }, owner: 'owner',
     profileRevision: { current: 0 }, opening: { current: null }, openRequests: { current: new Map() }, submissions: { current: new Set() }, authHeldRef: { current: false }, navigation: { ref: { getRootState: () => state.route, getCurrentRoute: () => ({ key: state.route.key ?? 'route-one' }) } },
     setBusyRoutes: (v: string[]) => state.busy = v.length > 0,
     setReading: (v: any) => state.reading = typeof v === 'function' ? v(state.reading) : v,
     setBusy: (v: boolean) => state.busy = v, setNotice() {}, setExpired() {}, publishIfChanged: async () => {},
-    withBill: () => response.promise, withPayment: () => response.promise, getDatabase: async () => ({}), accountOwner: () => 'owner', readVisibleGroup: async () => null,
+    withBill: () => response.promise, withPayment: () => response.promise, getDatabase: async () => ({ withExclusiveTransactionAsync: async (work: any) => work({}) }), accountOwner: () => 'owner', readVisibleGroup: async () => null,
     saveGroup: async (_db: any, _owner: any, value: any) => state.saved.push(value), navigate: (...args: any[]) => state.navigations.push(args),
   };
   env.setSubmission = production('setSubmission', env); env.perform = production('perform', env);

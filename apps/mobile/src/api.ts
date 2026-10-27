@@ -42,24 +42,27 @@ export async function request<T>(session: Session, path: string, method = 'GET',
 // Never replay a command under another account or backend. GET follows the
 // idempotent write so a lost response can be recovered by retrying the same ID.
 const outboxSyncs = new WeakMap<Database, Map<string, Promise<Record<string, unknown>[]>>>();
-export async function syncOutbox(db: Database, session: Session, mode: 'full' | 'summary' = 'full', stopAfterCommandId?: string): Promise<Record<string, unknown>[]> {
+export async function syncOutbox(db: Database, session: Session, mode: 'full' | 'summary' = 'full', stopAfterCommandId?: string, current: () => boolean = () => true): Promise<Record<string, unknown>[]> {
   let jobs = outboxSyncs.get(db);
   if (!jobs) { jobs = new Map(); outboxSyncs.set(db, jobs); }
-  const key = `${accountOwner(session)}|${session.token}`, previous = jobs.get(key);
+  const key = accountOwner(session), previous = jobs.get(key);
   // Each caller re-reads the queue after earlier replay settles. Do not return an
   // older caller's receipts for a newly queued action or skip a conflict hold.
-  const job = (previous ?? Promise.resolve()).catch(() => {}).then(() => drainOutbox(db, session, mode, stopAfterCommandId));
+  const job = (previous ?? Promise.resolve()).catch(() => {}).then(() => drainOutbox(db, session, mode, stopAfterCommandId, current));
   jobs.set(key, job);
   try { return await job; } finally { if (jobs.get(key) === job) jobs.delete(key); }
 }
-async function drainOutbox(db: Database, session: Session, mode: 'full' | 'summary', stopAfterCommandId?: string): Promise<Record<string, unknown>[]> {
+async function drainOutbox(db: Database, session: Session, mode: 'full' | 'summary', stopAfterCommandId: string | undefined, current: () => boolean): Promise<Record<string, unknown>[]> {
+  if (!current()) throw new Error('The signed-in account changed.');
   const owner = accountOwner(session);
   const receipts: Record<string, unknown>[] = [];
   for (const command of await pendingCommands(db, owner)) {
+    if (!current()) throw new Error('The signed-in account changed.');
     if (command.state !== 'pending') throw new Error('Resolve the earlier rejected/conflicting change before syncing later commands.');
     let writeAccepted = false;
     try {
       await db.runAsync('UPDATE outbox SET attempted=1 WHERE owner=? AND command_id=?', owner, command.command_id);
+      if (!current()) throw new Error('The signed-in account changed.');
       const receipt = await request<Record<string, unknown>>(session, command.path, command.method, command.body);
       writeAccepted = true;
       const membership = command.method === 'POST' && [
@@ -76,7 +79,7 @@ async function drainOutbox(db: Database, session: Session, mode: 'full' | 'summa
         await acceptCommand(db, owner, command.command_id, group);
       }
       receipts.push(receipt);
-      if (command.command_id === stopAfterCommandId) break;
+      if (!current() || command.command_id === stopAfterCommandId) break;
     } catch (error) {
       if (!writeAccepted && error instanceof ApiError && error.status >= 400 && error.status < 500 && error.status !== 401 && error.status !== 429) {
         await markCommand(db, owner, command.command_id, error.status === 409 ? 'conflict' : 'rejected', error.message);
