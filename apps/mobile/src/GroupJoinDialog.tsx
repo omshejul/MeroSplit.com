@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Modal, ScrollView, View } from 'react-native';
 import { Text } from 'react-native-paper';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as Crypto from 'expo-crypto';
 import { ApiError, request } from './api';
 import type { Session } from './types';
@@ -51,7 +52,7 @@ export default function GroupJoinDialog({ session, token, onJoined, onCancel }: 
   }
   function back() { if (!working && !uncertain) { if (step === 'confirm') setStep('name'); else if (step === 'name') setStep('choose'); else onCancel(); } }
   return <Modal visible presentationStyle="fullScreen" onRequestClose={() => { if (!working) onCancel(); }}>
-    <AppFrame><DialogFocus style={{ flex: 1 }} busy={working} onEscape={uncertain ? onCancel : back}>
+    <SafeAreaProvider><AppFrame><DialogFocus style={{ flex: 1 }} busy={working} onEscape={uncertain ? onCancel : back}>
       <ScreenHeader title={preview ? `Join ${preview.name}` : 'Join group'} busy={working} onBack={uncertain ? onCancel : back} />
       <ScrollView role="main" contentContainerStyle={pageContentStyle} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
         <Text style={ui.caption}>Signed in as {session.email}</Text>
@@ -85,6 +86,6 @@ export default function GroupJoinDialog({ session, token, onJoined, onCancel }: 
         </>)}
         <Button title="Cancel" kind="text" disabled={working} onPress={onCancel} contentStyle={{ minHeight: 48 }} />
       </ScrollView>
-    </DialogFocus></AppFrame>
+    </DialogFocus></AppFrame></SafeAreaProvider>
   </Modal>;
 }
