@@ -7,7 +7,6 @@ import { copyText } from './clipboard';
 import { DialogScrollBody, CancelDialogActions } from './DialogParts';
 import KeyboardDialog from './KeyboardDialog';
 import SendInviteDialog from './SendInviteDialog';
-import LoadingSpinner from './LoadingSpinner';
 import { GroupMembershipActions } from './GroupMembershipActions';
 import React, { useEffect, useRef, useState } from 'react';
 import { Keyboard, Platform, Share, StyleSheet, View } from 'react-native';
@@ -113,7 +112,7 @@ function EditNameDialog({ person, name, disabled, working, unavailable, onName, 
       <Field label="Name" value={name} onChange={onName} disabled={disabled || unavailable} autoFocus autoCapitalize="words" />
       <FeedbackNote section="person-name" feedback={feedback} />
     </DialogScrollBody>
-    <CancelDialogActions disabled={disabled} onCancel={onClose}><View style={{ width: 20, height: 20 }}><LoadingSpinner visible={working} /></View><Button title="Save" kind="primary" disabled={disabled || unavailable || !name.trim() || name.trim() === person?.name} onPress={onSave} /></CancelDialogActions>
+    <CancelDialogActions disabled={disabled} onCancel={onClose}><Button title={working ? 'Saving…' : 'Save'} style={{ minWidth: 112 }} kind="primary" disabled={disabled || unavailable || !name.trim() || name.trim() === person?.name} onPress={onSave} /></CancelDialogActions>
   </KeyboardDialog>;
 }
 

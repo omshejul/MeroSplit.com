@@ -10,7 +10,7 @@ import type { AppRoute, RouteParams, Screen } from './src/routes';
 import MotionReveal from './src/MotionReveal';
 import { loadBalanceSource } from './src/balanceExplanationStorage';
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, AppState, BackHandler, Linking, Platform, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { AppState, BackHandler, Linking, Platform, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import type { AlertButton } from 'react-native';
 import { Alert } from './src/alerts';
 import { SafeAreaProvider, SafeAreaView, initialWindowMetrics } from 'react-native-safe-area-context';
@@ -92,6 +92,9 @@ import type { ExpenseIconRef } from './src/categoryIcons';
 import { useExpenseNotices } from './src/useExpenseNotices';
 import type { WindowFrame } from './src/expenseNotices';
 import { Text } from 'react-native-paper';
+import * as SplashScreen from 'expo-splash-screen';
+
+if (Platform.OS !== 'web') void SplashScreen.preventAutoHideAsync().catch(() => {});
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL ?? (Platform.OS === 'web' ? window.location.origin : APP_ORIGIN);
 const uuid = () => Crypto.randomUUID();
@@ -101,6 +104,11 @@ function AppContent() {
   const { palette: colors, ui, changeAppearance, changeColorFamily } = useUI();
   const s = makeStyles(colors);
   const [session, setSession] = useState<Session | null>(null), [ready, setReady] = useState(false), [expired, setExpired] = useState(false);
+  useEffect(() => {
+    if (!ready || Platform.OS === 'web') return;
+    const frame = requestAnimationFrame(() => { void SplashScreen.hideAsync().catch(() => {}); });
+    return () => cancelAnimationFrame(frame);
+  }, [ready]);
   const [storageError, setStorageError] = useState(''), [hasDrafts, setHasDrafts] = useState(false);
   const [verifiedEmptyOwner, setVerifiedEmptyOwner] = useState(''), [emptyChatScope, setEmptyChatScope] = useState('');
   const [online, setOnline] = useState(isOnline);
@@ -1292,7 +1300,7 @@ function AppContent() {
     const settlement = preview?.settlements.find(value => value.id === settlementId) ?? (preview?.focused_settlement?.id === settlementId ? preview.focused_settlement : undefined);
     const noticeVisibility = { notices: notices.notices, enabled: focused && !authHeld && foreground && !expired && !alertOpen && !pending.length, viewport, scrollEpoch, onVisible: notices.acknowledgeVisible };
     const browseScope = `${owner}|${session?.token}|${screen}|${tab}|${groupId}|${foreground}|${expired}|${authHeld}|${online}|${groupVersions.current}|${selected?.group.version}|${selected?.group.history?.transactions?.query ?? selected?.group.history?.bills?.query ?? ''}`;
-    if (!ready) return <SafeAreaView style={[s.screen, s.loading]}><ActivityIndicator color={colors.accent} /><Text style={ui.caption}>Opening your groups…</Text></SafeAreaView>;
+    if (!ready) return null;
     if (storageError) return <SafeAreaView role="main" style={[s.screen, pageContentStyle]}><Text accessibilityRole="header" aria-level={1} style={ui.section}>Could not open saved records</Text><Text accessibilityRole="alert" style={ui.error}>{storageError}</Text><Button title="Retry" disabled={busy} onPress={() => launch(restore)} /></SafeAreaView>;
   if (authHeld && !session) return <EmailLinkScreen title={emailEntry?.phase === 'name' ? 'Name' : 'Sign in'} busy={busy}>{emailContent}</EmailLinkScreen>;
   if (screen === 'home' && session && !insideHomeTabs) return <HomeTabs selected={tab} busy={authHeld} onSelect={value => { setShowArchived(false); setShowHidden(false); if (value === 'Activity') { if (!readPrefetch.fresh(readScope(session), '/activity?limit=50')) activityOwner.current = ''; setActivityError(''); } navigate('home', { tab: value }); }}
@@ -1324,7 +1332,7 @@ function AppContent() {
         <Button title="Need help signing in?" kind="text" contentStyle={{ minHeight: 48 }} onPress={() => launch(() => Linking.openURL(`${APP_ORIGIN}/support`))} />
   </SignInLayout>;
     return <>
-    {screen !== 'login' && <ScreenHeader title={title} brand={!session} busy={busyRoutes.length > 0 || reading > 0} onFeedback={session && !authHeld && !expired && screen === 'home' && ['Groups', 'Friends', 'Activity'].includes(tab) ? () => setFeedbackOpen(true) : undefined} onBack={screen === 'home' && tab === 'Groups' && (showArchived || showHidden) || screen !== 'home' ? back : undefined} status={session ? <SyncStatus key={owner} confirmedAt={lastConfirmed} commands={commands} pendingFiles={pendingFiles} drafts={hasDrafts} durable={storageIsDurable()} working={busyRoutes.length > 0 || reading > 0 || syncing || pulling} syncing={syncing} problem={syncProblem} online={online} reviewRequired={expired || authHeld || !!unavailable.length} updatesAvailable={screen === 'group' && ledgerUpdates} onShowUpdates={() => setLedgerRevision(value => value + 1)} onExport={() => open(exportData)} onRetry={syncQuietly} onPress={() => navigate('savedChanges')} /> : undefined}>
+    {screen !== 'login' && <ScreenHeader title={title} brand={!session} busy={busyRoutes.length > 0 || reading > 0} onFeedback={session && !authHeld && !expired && screen === 'home' && ['Groups', 'Friends', 'Activity'].includes(tab) ? () => setFeedbackOpen(true) : undefined} onBack={screen === 'home' && tab === 'Groups' && (showArchived || showHidden) || screen !== 'home' ? back : undefined} status={session ? <SyncStatus key={owner} confirmedAt={lastConfirmed} commands={commands} pendingFiles={pendingFiles} drafts={hasDrafts} durable={storageIsDurable()} syncing={syncing} problem={syncProblem} online={online} reviewRequired={expired || authHeld || !!unavailable.length} updatesAvailable={screen === 'group' && ledgerUpdates} onShowUpdates={() => setLedgerRevision(value => value + 1)} onExport={() => open(exportData)} onRetry={syncQuietly} onPress={() => navigate('savedChanges')} /> : undefined}>
 
       {screen === 'group' && selected && <IconAction name="settings" label="Group settings" disabled={busy} onPress={() => navigate('members')} />}
       {screen === 'members' && selected && !selected.group.is_direct && !selected.group.archived && selected.group.participants.some(person => person.id === selfId && !person.removed && person.user_id === selected.group.owner_id) && <IconAction name="personAdd" label="Add person" disabled={busy} onPress={() => setAddPersonRequest(value => value + 1)} />}
@@ -1420,5 +1428,5 @@ function AppContent() {
 }
 export default function App() { return <SafeAreaProvider initialMetrics={initialWindowMetrics}><UIProvider><AppContent /></UIProvider></SafeAreaProvider>; }
 const makeStyles = (colors: Palette) => StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.background }, loading: { alignItems: 'center', justifyContent: 'center', gap: 14 },
+  screen: { flex: 1, backgroundColor: colors.background },
 });

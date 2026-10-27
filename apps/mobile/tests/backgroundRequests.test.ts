@@ -53,7 +53,7 @@ test('a late production detail read cannot navigate after leaving its route or c
   }
 });
 
-test('production header keeps Back and Feedback actions alongside a noninteractive loading indicator', () => {
+test('production header keeps Back and Feedback actions without a global loading indicator', () => {
   const actions: string[] = [];
   const env = { React, useUI: () => ({ palette: {} }), styles: {}, View: 'View', Text: 'Text', IconAction: 'IconAction', ActivityIndicator: 'ActivityIndicator' };
   const tree = production('ScreenHeader', env, nav)({ title: 'Groups', busy: true, onBack: () => actions.push('back'), onFeedback: () => actions.push('feedback') });
@@ -61,7 +61,7 @@ test('production header keeps Back and Feedback actions alongside a noninteracti
   assert.deepEqual(buttons.map(n => n.props.label), ['Back', 'Feedback']);
   assert.ok(buttons.every(n => !n.props.disabled)); buttons.forEach(n => n.props.onPress());
   assert.deepEqual(actions, ['back', 'feedback']);
-  assert.ok(nodes(tree).some(n => n.type === 'ActivityIndicator'));
+  assert.ok(!nodes(tree).some(n => n.type === 'ActivityIndicator'));
 });
 
 test('production tabs remain selectable while a request is loading', () => {
