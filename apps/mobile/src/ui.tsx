@@ -12,6 +12,7 @@ import { initialBrowserAppearance, initialBrowserColorFamily, syncBrowserTheme }
 import { useFonts } from 'expo-font';
 import { appFontFamily, appFontFaces } from './typography';
 import FieldLabel from './FieldLabel';
+import { useWebInteractions } from './useWebInteractions';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { HugeiconsIcon } from '@hugeicons/react-native';
 import Attachment01Icon from '@hugeicons/core-free-icons/Attachment01Icon';
@@ -119,6 +120,7 @@ export function UIProvider({ children }: { children: React.ReactNode }) {
   const [appearance, changeAppearance] = useSavedChoice<AppearancePreference>(initialBrowserAppearance(), savedAppearance, saveAppearance);
   const [colorFamily, changeColorFamily] = useSavedChoice<ColorFamily>(initialBrowserColorFamily(), savedColorFamily, saveColorFamily);
   const [motion, setMotion] = useState<MotionPreference>({ enabled: false, active: false });
+  useWebInteractions(motion.enabled);
   useEffect(() => observeMotionPreference(value => setMotion(previous => previous.enabled === value.enabled && previous.active === value.active ? previous : value)), []);
   // Native controls and system bars follow the look; leaving Obsidian restores the saved mode.
   useEffect(() => { if (Platform.OS !== 'web') Appearance.setColorScheme(isDarkOnly(colorFamily) ? 'dark' : appearance === 'system' ? 'auto' : appearance); }, [appearance, colorFamily]);
