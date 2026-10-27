@@ -127,9 +127,13 @@ def test_install_intent_is_manual_safe_and_android_group_precedes_play(monkeypat
         response = browser.get("/?install=1", HTTP_USER_AGENT=ua)
         assert response.status_code == 200 and "Location" not in response
         html = response.content.decode()
-        assert "Continue on web" in html and "https://testflight.apple.com/join/7HrHqqnB" in html
+        assert "Continue on web" in html and "https://apps.apple.com/app/merosplit/id6823916128" in html
         assert html.index("https://groups.google.com/g/merosplit-beta") < html.index("https://play.google.com/apps/testing/com.omshejul.splitdumb")
         assert "Use the same Google account" in html and "Step 1 of 3" in html
+    assert "testflight.apple.com" not in html
+    badge = browser.get("/assets/download-on-the-app-store.svg")
+    assert badge.status_code == 200 and badge["Content-Type"] == "image/svg+xml"
+    assert b"Download_on_the_App_Store" in b"".join(badge.streaming_content)
     from hashlib import sha256
     for name, digest in [("try-on-iphone.svg", "b01a3c83b8dcde78a3b6c66d733a87507d74db44eae84d8d0b84cd04e89cd253"), ("try-on-android.svg", "b66a82d6a40c4d3dfa56c95fbba26a4f69f46bf8d76648d48e896d8af07ae3b6")]:
         response = browser.get("/assets/" + name)
@@ -154,7 +158,7 @@ def test_home_header_is_logo_only_with_help_links_in_footer():
         assert '<nav aria-label="Help">' in help_header and 'href="/support"' in help_header
 
 
-def test_pending_testing_links_never_emit_native_links_or_handoff_script(monkeypatch):
+def test_public_ios_badge_remains_available_when_android_testing_links_are_pending(monkeypatch):
     monkeypatch.setitem(resolve("/").func.view_initkwargs["extra_context"], "testing_links_ready", False)
     browser = Client()
     for url in ["/", "/?install=1", "/?install=1#install"]:
@@ -163,7 +167,10 @@ def test_pending_testing_links_never_emit_native_links_or_handoff_script(monkeyp
             assert response.status_code == 200 and "Location" not in response
             html = response.content.decode()
             assert 'href="/app/"' in html and 'src="/assets/install-qr.svg"' in html
-            for withheld in ["testflight.apple.com", "play.google.com/apps/testing", "groups.google.com", '/assets/install.js', 'class="badges"', 'id="android-help"']:
+            assert 'href="https://apps.apple.com/app/merosplit/id6823916128"' in html
+            assert 'src="/assets/download-on-the-app-store.svg"' in html
+            assert 'alt="Download on the App Store"' in html
+            for withheld in ["testflight.apple.com", "play.google.com/apps/testing", "groups.google.com", '/assets/install.js', 'id="android-badge"']:
                 assert withheld not in html
 
 
