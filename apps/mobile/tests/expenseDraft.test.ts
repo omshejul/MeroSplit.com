@@ -100,7 +100,7 @@ test('actual navigation Cancel preserves draft; Discard waits for its own persis
   if(tag==='Button'&&get('title')?.getText(source)==='"Discard"'){const value=get('onPress');if(value&&ts.isJsxExpression(value))handlers.discard=value.expression!.getText(source)}
  }ts.forEachChild(node,visit)}visit(source);
  assert(handlers.cancel&&handlers.discard);const actions:any[]=[],clears:any[]=[];let release!:(value:boolean)=>void;
- const env={pending:{type:'GO_BACK'},navigation:{dispatch:(v:any)=>actions.push(v)},setPending:(v:any)=>clears.push(v),draftDiscard:{current:()=>new Promise<boolean>(r=>release=r)}};
+ const env={pending:{type:'GO_BACK'},blocked:false,localBlocked:false,discardLock:{current:false},setDiscarding(){},navigation:{isFocused:()=>true,dispatch:(v:any)=>actions.push(v)},setPending:(v:any)=>clears.push(v),draftDiscard:{current:()=>new Promise<boolean>(r=>release=r)}};
  const bind=(name:string)=>new Function('env',`with(env){${ts.transpile('const handler = '+handlers[name],{target:ts.ScriptTarget.ES2022})};return handler;}`)(env);
  bind('cancel')();assert.equal(actions.length,0);assert.equal(clears.length,1);bind('discard')();await tick();assert.equal(actions.length,0,'navigation must wait for SQLite discard');release(false);await tick();assert.equal(actions.length,0,'failed discard must retain form');bind('discard')();await tick();release(true);await tick();assert.equal(actions.length,1);
 });
@@ -110,4 +110,15 @@ test('actual field revisions remain durable when SQLite is deferred across backg
  const deferred={...db,runAsync:async(sql:string,...args:any[])=>{if(!held&&sql.startsWith('INSERT INTO drafts')){held=true;await gate}return db.runAsync(sql,...args)}};
  const app=form(deferred);let tree=await app.settle();field(tree,'AmountField','Amount (₹)').props.onChangeText('3');await tick();tree=app.render();field(tree,'AmountField','Amount (₹)').props.onChangeText('31');tree=app.render();field(tree,'TextField','Description').props.onChangeText('Deferred draft');app.unmount();release();await app.writes.current;
  assert.equal((await readDraft<any>(db,'account-a',group.id))?.amount,'31','latest form revision must reach real SQLite despite background');const cold=form(db);tree=await cold.settle();assert.equal(field(tree,'AmountField','Amount (₹)').props.value,'31');assert.equal(field(tree,'TextField','Description').props.value,'Deferred draft');assert.equal(cold.saves.length,0);cold.unmount();raw.close();
+});
+
+
+test('a stale discard callback cannot remove a file after its durable queue handoff', async () => {
+  const {raw,db} = await memory();
+  const attachment = {id:'owned',path:'/groups/group-one/expenses/draft-fixed-id/attachments',file:{uri:'file:///synthetic/queued.pdf',name:'queued.pdf',type:'application/pdf',size:4}};
+  await saveDraft(db,'account-a',group.id,snapshot({mode:'equal',splitValues:{},attachment}));
+  const app = form(db,{onSave:async (_value:any,_file:any,onQueued:()=>void) => { onQueued(); throw Error('Refresh failed after queue commit'); }});
+  const tree = await app.settle(); button(tree,'Save bill').props.onPress(); await tick(); await app.writes.current;
+  assert.equal(await app.discard.current?.(),true); assert.equal(app.media.length,0,'the durable queue now owns the bytes');
+  app.unmount(); raw.close();
 });

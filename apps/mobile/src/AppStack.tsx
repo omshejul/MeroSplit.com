@@ -69,6 +69,7 @@ export function useAppNavigation() {
 function RouteScene({ route, navigation }: NativeStackScreenProps<Routes, Screen>) {
   const { render, blocked } = useContext(SceneContext), focused = useIsFocused();
   const [localBlocked, setLocalBlocked] = useState(false), [pending, setPending] = useState<NavigationAction | null>(null);
+  const [discarding, setDiscarding] = useState(false), discardLock = useRef(false);
   const [deferred, setDeferred] = useState<NavigationAction | null>(null);
   const [queued, setQueued] = useState(false), committed = useRef(false), draftDiscard = useRef<(() => Promise<boolean>) | null>(null);
   const onQueued = useCallback(() => { committed.current = true; setQueued(true); }, []);
@@ -76,13 +77,13 @@ function RouteScene({ route, navigation }: NativeStackScreenProps<Routes, Screen
   useEffect(() => {
     if (!deferred) return;
     if (!focused || !navigation.isFocused()) { setDeferred(null); return; }
-    if (blocked || localBlocked) return;
+    if (blocked || localBlocked || discarding) return;
     setDeferred(null);
     if (draft && !committed.current) setPending(deferred);
     else navigation.dispatch(deferred);
-  }, [deferred, blocked, localBlocked, draft, focused, navigation]);
-  usePreventRemove(blocked || localBlocked || draft, ({ data }) => {
-    if (blocked || localBlocked) {
+  }, [deferred, blocked, localBlocked, discarding, draft, focused, navigation]);
+  usePreventRemove(blocked || localBlocked || discarding || draft, ({ data }) => {
+    if (blocked || localBlocked || discarding) {
       // Completion and link actions share the same locks. Replay only while
       // this scene is still current, after its form and app work have settled.
       if ((data.action as AppAction).appNavigation) setDeferred(data.action);
@@ -93,11 +94,20 @@ function RouteScene({ route, navigation }: NativeStackScreenProps<Routes, Screen
   });
   return <ScreenRemovalLock.Provider value={setLocalBlocked}><ScreenDraftDiscard.Provider value={draftDiscard}>
     {render(route, focused, onQueued)}
-    <KeyboardDialog visible={!!pending} onDismiss={() => setPending(null)}>
-      <DialogFocus active={!!pending} label="Discard draft" onEscape={() => setPending(null)}>
+    <KeyboardDialog visible={!!pending} dismissable={!discarding} onDismiss={() => { if (!discardLock.current) setPending(null); }}>
+      <DialogFocus active={!!pending} busy={discarding} label="Discard draft" onEscape={() => { if (!discardLock.current) setPending(null); }}>
         <Dialog.Title>Do you want to discard the draft?</Dialog.Title>
-        <CancelDialogActions disabled={blocked || localBlocked} onCancel={() => setPending(null)}>
-          <Button title="Discard" kind="danger" icon="remove" disabled={blocked || localBlocked} onPress={() => { void (async () => { if (pending && await draftDiscard.current?.() !== false) navigation.dispatch(pending); setPending(null); })(); }} />
+        <CancelDialogActions disabled={blocked || localBlocked || discarding} onCancel={() => { if (!discardLock.current) setPending(null); }}>
+          <Button title="Discard" kind="danger" icon="remove" disabled={blocked || localBlocked || discarding} onPress={() => {
+            if (!pending || blocked || localBlocked || discardLock.current) return;
+            discardLock.current = true; setDiscarding(true);
+            void (async () => {
+              try {
+                if (await draftDiscard.current?.() !== false && navigation.isFocused()) navigation.dispatch(pending);
+                setPending(null);
+              } finally { discardLock.current = false; setDiscarding(false); }
+            })();
+          }} />
         </CancelDialogActions>
       </DialogFocus>
     </KeyboardDialog>

@@ -127,6 +127,7 @@ export default function ExpenseForm({ group, expense, selfId, busy, onSave, owne
       setReady(true);
     }).catch(() => { if (mounted.current) setError('Could not restore this saved bill. Your draft is still on this device.'); });
     const remove = async () => {
+      if (handedOff.current) return true;
       if (lock.current) return false;
       lock.current = true;
       try {
