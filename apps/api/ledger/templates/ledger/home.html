@@ -37,13 +37,12 @@
       <h1 id="title">Shared bills.<br>Clear balances.</h1>
       <p class="lede">For flatmates, friends and trips. Add what you paid, see who owes whom, and settle up your way.</p>
       <div class="install" id="install" tabindex="-1" aria-label="Try MeroSplit">
-        {% if testing_links_ready %}<div class="badges">
-          <a id="iphone-install" href="https://testflight.apple.com/join/7HrHqqnB"><img src="/assets/try-on-iphone.svg" alt="Try on iPhone with TestFlight" height="52"></a>
-          <a id="android-badge" href="#android-install" aria-haspopup="dialog" aria-controls="android-guide"><img src="/assets/try-on-android.svg" alt="Try on Android: see testing steps" height="52"></a>
+        <div class="badges">
+          <a id="iphone-install" href="https://apps.apple.com/app/merosplit/id6823916128"><img src="/assets/download-on-the-app-store.svg" alt="Download on the App Store" height="52"></a>
+          {% if testing_links_ready %}<a id="android-badge" href="#android-install" aria-haspopup="dialog" aria-controls="android-guide"><img src="/assets/try-on-android.svg" alt="Try on Android: see testing steps" height="52"></a>{% endif %}
         </div>
-        {% endif %}
         <a class="web-choice" href="/app/">Continue on web</a>
-        <figure class="install-qr"><img src="/assets/install-qr.svg" width="112" height="112" alt="QR code to open MeroSplit testing options on your phone"><figcaption>Scan to try on your phone.</figcaption></figure>
+        <figure class="install-qr"><img src="/assets/install-qr.svg" width="112" height="112" alt="QR code to open MeroSplit install options on your phone"><figcaption>Scan to try on your phone.</figcaption></figure>
       </div>
     </section>
 

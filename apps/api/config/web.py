@@ -92,7 +92,7 @@ def invite_app(request, token):
 
 
 def public_asset(request, asset):
-    files = {"group-join.png": "image/png", "play-become-tester.png": "image/png", "install.js": "text/javascript; charset=utf-8", "install-qr.svg": "image/svg+xml", "try-on-iphone.svg": "image/svg+xml", "try-on-android.svg": "image/svg+xml", "typography.css": "text/css; charset=utf-8", "StackSansText.ttf": "font/ttf", "home.css": "text/css; charset=utf-8", "merosplit-icon.png": "image/png", "merosplit-logo.svg": "image/svg+xml", "favicon.png": "image/png", "apple-touch-icon.png": "image/png"}
+    files = {"group-join.png": "image/png", "play-become-tester.png": "image/png", "install.js": "text/javascript; charset=utf-8", "install-qr.svg": "image/svg+xml", "download-on-the-app-store.svg": "image/svg+xml", "try-on-iphone.svg": "image/svg+xml", "try-on-android.svg": "image/svg+xml", "typography.css": "text/css; charset=utf-8", "StackSansText.ttf": "font/ttf", "home.css": "text/css; charset=utf-8", "merosplit-icon.png": "image/png", "merosplit-logo.svg": "image/svg+xml", "favicon.png": "image/png", "apple-touch-icon.png": "image/png"}
     if asset not in files:
         return HttpResponse(status=404)
     path = settings.BASE_DIR / "ledger" / "assets" / asset
