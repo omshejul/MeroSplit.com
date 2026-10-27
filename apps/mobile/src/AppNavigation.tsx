@@ -42,7 +42,7 @@ function TabButton({ item, selected, busy, onSelect }: { item: typeof tabs[numbe
   const { palette, motion } = useUI();
   const opacity = useMotionValue(selected ? 1 : 0, motion.enabled);
   return <Button kind="plain" accessibilityRole={Platform.OS === 'web' ? 'button' : 'tab'} aria-current={Platform.OS === 'web' && selected ? 'page' : undefined} accessibilityState={Platform.OS === 'web' ? undefined : { selected }} onPress={() => onSelect(item.value)} style={styles.tab}>
-    <Animated.View pointerEvents="none" accessible={false} style={[StyleSheet.absoluteFill, { borderRadius: radii.surface, backgroundColor: palette.soft, opacity }]} />
+    <Animated.View pointerEvents="none" accessible={false} style={[StyleSheet.absoluteFill, { borderRadius: radii.navigation, backgroundColor: palette.soft, opacity }]} />
     <View style={styles.tabContent}>
       <Icon name={item.icon} color={selected ? palette.accent : palette.muted} />
       <Text style={[styles.tabText, { color: selected ? palette.accent : palette.muted }]}>{item.label}</Text>
