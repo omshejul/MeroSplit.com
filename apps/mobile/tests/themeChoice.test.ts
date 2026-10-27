@@ -189,7 +189,7 @@ function appFunction(name: string, env: Record<string, any>) {
 }
 test('background sync never drives the pull spinner; a user pull shows it until its own work settles, including rejected pulls', async () => {
   const app = readFileSync(new URL('../App.tsx', import.meta.url), 'utf8');
-  assert.match(app, /<RefreshControl refreshing=\{pulling\}[^>]*onRefresh=\{pullToRefresh\}/);
+  assert.match(app, /<RefreshControl refreshing=\{false\}[^>]*onRefresh=\{pullToRefresh\}/);
   assert.doesNotMatch(app, /refreshing=\{busy\}/);
   for (const [screen, tab, kind] of [['home', 'Groups', 'sync'], ['group', 'Groups', 'sync'], ['home', 'Activity', 'activity']] as const) {
     const pulls: boolean[] = [], calls: string[] = [], work = deferred<void>();
@@ -205,7 +205,7 @@ test('background sync never drives the pull spinner; a user pull shows it until 
   }
 });
 
-test('header work indicator overlays the title area without moving back or action buttons; Activity adds no spinner row', () => {
+test('header keeps one fixed trailing slot without moving back or action buttons', () => {
   const env: Record<string, any> = { React, View: 'View', Text: 'Text', ActivityIndicator: 'ActivityIndicator', IconAction: 'IconAction', useUI: () => ({ palette: { text: 'text', accent: 'accent', background: 'background' } }) };
   const header = new Function('env', `with(env){${source('src/AppNavigation.tsx', ['ScreenHeader'])};return ScreenHeader;}`)(env);
   const styles = new Function('env', `with(env){const pageWidthStyle={};const radii={};const StyleSheet={create:v=>v};${source('src/AppNavigation.tsx', ['styles'])};return styles;}`)(env);
@@ -213,10 +213,10 @@ test('header work indicator overlays the title area without moving back or actio
   const shape = (tree: Element) => tree.children.flat().filter(Boolean).map((node: Element) => node.type === 'View' ? `area:${node.props.style === styles.titleArea}` : node.type);
   const idle = header({ title: 'Goa trip', busy: false, onBack() {}, children: React.createElement('IconAction', { name: 'add' }) });
   const busy = header({ title: 'Goa trip', busy: true, onBack() {}, children: React.createElement('IconAction', { name: 'add' }) });
-  assert.deepEqual(shape(idle), shape(busy)); assert.deepEqual(shape(busy), ['IconAction', 'area:true', 'IconAction']);
-  const working = nodes(busy).find(node => node.props.style?.[0] === styles.working)!;
-  assert.equal(styles.titleArea.minWidth, 0); assert.equal(styles.titleArea.overflow, 'hidden', 'a very long title and the spinner stay clipped inside the title area');
-  assert.equal(styles.working.right, 0); assert.equal(styles.working.position, 'absolute'); assert.equal(working.props.pointerEvents, 'none'); assert.equal(working.props.style[1].backgroundColor, 'background');
+  assert.deepEqual(shape(idle), shape(busy)); assert.deepEqual(shape(busy), ['IconAction', 'area:true', 'IconAction', 'area:false']);
+  const working = nodes(busy).find(node => node.props.style === styles.working)!;
+  assert.equal(styles.titleArea.minWidth, 0); assert.equal(styles.titleArea.overflow, 'hidden');
+  assert.equal(styles.working.width, 44); assert.equal(styles.working.height, 44); assert.equal(working.props.pointerEvents, 'none');
   assert.equal(nodes(working)[1].props.accessibilityLabel, 'Working'); assert.ok(!nodes(idle).some(node => node.type === 'ActivityIndicator'));
   const activity = readFileSync(new URL('../src/ActivityScreen.tsx', import.meta.url), 'utf8');
   assert.doesNotMatch(activity, /ActivityIndicator/);

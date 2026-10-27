@@ -47,12 +47,12 @@ test('Groups and Activity decorate only verified true empty states while retaini
   assert.ok(elements(empty).some(value => value.type === 'Text' && value.children.includes('No activity yet')));
   for (const changed of [{ showEmpty: false }, { busy: true }, { error: 'Offline' }, { hasMore: true }, { items: [{ id: 'existing' }] }]) assert.equal(count(activity({ ...feed, emptyVerified: true, ...changed })), 0);
   const loading = activity({ ...feed, emptyVerified: true, busy: true });
-  assert.equal(slots(loading), 1, 'refresh keeps the empty footprint'); assert.ok(elements(loading).some(value => value.type === 'Text' && value.children.includes('Loading activity…')));
+  assert.equal(slots(loading), 1, 'refresh keeps the empty footprint'); assert.ok(elements(loading).some(value => value.type === 'Text' && value.children.includes('No activity yet')));
 });
 
 test('App keeps the Activity empty region during refresh but claims emptiness only when verified', () => {
   const app = readFileSync(new URL('../App.tsx', import.meta.url), 'utf8');
-  assert.match(app, /emptyVerified=\{activityEmptyVerified\} showEmpty=\{activityEmptyVerified \|\| busy\}/);
+  assert.match(app, /emptyVerified=\{activityEmptyVerified\} showEmpty=\{activityEmptyVerified\}/);
   assert.match(app, /decorated=\{!showArchived && !showHidden && !archivedGroups\.length && !hiddenGroups\.length\}/);
 });
 
