@@ -1,6 +1,6 @@
 import Form from './Form';
-import { useScreenRemovalLock } from './screenRemoval';
-import React, { useEffect, useRef, useState } from 'react';
+import { ScreenDraftDiscard, useScreenRemovalLock } from './screenRemoval';
+import React, { useContext, useEffect, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Checkbox, Text } from 'react-native-paper';
 import * as Crypto from 'expo-crypto';
@@ -13,6 +13,8 @@ import DraftAttachment from './DraftAttachment';
 import type { PendingMediaUpload } from './media';
 import { clearStagedMedia } from './media';
 import BillPeople from './BillPeople';
+import { expenseDraftStore } from './expenseDraft';
+import { getDatabase } from './native';
 
 export type ExpenseFormDraft = {
   schemaVersion: 1; groupId: string; expenseId: string | null; id: string; expenseVersion: number;
@@ -22,6 +24,7 @@ export type ExpenseFormDraft = {
 };
 type Props = {
   group: Group; expense?: Expense; selfId: string; busy: boolean;
+  owner: string; writes: { current: Promise<void> };
   onSave: (expense: Expense, attachment?: PendingMediaUpload, onQueued?: () => void) => Promise<void>;
 };
 
@@ -105,20 +108,38 @@ function SplitFields({ participants, draft, disabled, preserveRemoved, label, on
   </View>;
 }
 
-export default function ExpenseForm({ group, expense, selfId, busy, onSave }: Props) {
+export default function ExpenseForm({ group, expense, selfId, busy, onSave, owner, writes }: Props) {
   const { ui } = useUI();
   const [draft, setDraft] = useState(() => startingDraft(group, expense, selfId)), [error, setError] = useState(''), [saving, setSaving] = useState(false);
   const [fileBusy, setFileBusy] = useState(false);
   const draftRef = useRef(draft);
-  const handedOff = useRef(false);
+  const handedOff = useRef(false), mounted = useRef(true), discard = useContext(ScreenDraftDiscard);
   const pendingSave = useRef<Promise<void> | null>(null);
-  useEffect(() => () => {
-    const file = draftRef.current.attachment?.file;
-    if (file) void Promise.resolve(pendingSave.current).catch(() => {}).then(() => {
-      if (!handedOff.current) return clearStagedMedia(file);
-    }).catch(() => {});
-  }, []);
-  const lock = useRef(false), disabled = busy || saving || fileBusy || handedOff.current;
+  const [ready, setReady] = useState(false);
+  const storage = useRef<ReturnType<typeof expenseDraftStore> | null>(null);
+  if (!storage.current) storage.current = expenseDraftStore(owner, group.id, expense?.id ?? null, writes, getDatabase);
+  const store = storage.current;
+  useEffect(() => {
+    mounted.current = true;
+    void store.read().then(saved => {
+      if (!mounted.current) return;
+      if (saved) { draftRef.current = saved; setDraft(saved); }
+      setReady(true);
+    }).catch(() => { if (mounted.current) setError('Could not restore this saved bill. Your draft is still on this device.'); });
+    const remove = async () => {
+      if (lock.current) return false;
+      lock.current = true;
+      try {
+        await store.write(null);
+        if (draftRef.current.attachment) await clearStagedMedia(draftRef.current.attachment.file);
+        return true;
+      } catch { if (mounted.current) setError('Could not discard this draft. Try again.'); return false; }
+      finally { lock.current = false; }
+    };
+    discard.current = remove;
+    return () => { mounted.current = false; if (discard.current === remove) discard.current = null; };
+  }, [store, discard]);
+  const lock = useRef(false), disabled = !ready || busy || saving || fileBusy || handedOff.current;
   useScreenRemovalLock(saving || fileBusy);
   const acceptedExpense = group.expenses.find(value => value.id === draft.id);
   const label = (id: string) => {
@@ -129,6 +150,9 @@ export default function ExpenseForm({ group, expense, selfId, busy, onSave }: Pr
   function change(patch: Partial<ExpenseFormDraft>) {
     const next = { ...draftRef.current, ...patch };
     draftRef.current = next; setDraft(next); setError('');
+    const pending = store.write(next);
+    void pending.catch(() => { if (mounted.current && draftRef.current === next) setError('Could not save this draft on the device. Try again.'); });
+    return pending;
   }
   function togglePayer(id: string) {
     const payerIds = draft.payerIds.includes(id) ? draft.payerIds.filter(value => value !== id) : [...draft.payerIds, id];
@@ -143,7 +167,7 @@ export default function ExpenseForm({ group, expense, selfId, busy, onSave }: Pr
     if (amount >= 0n) change({ payerAmounts: { ...current.payerAmounts, [id]: rupees(amount.toString()) } });
   }
   async function save() {
-    if (lock.current || busy || fileBusy || handedOff.current || group.archived) return;
+    if (!ready || lock.current || busy || fileBusy || handedOff.current || group.archived) return;
     setError('');
     try {
       if (!draft.description.trim() || draft.description.trim().length > 200) throw new Error('Enter a description of up to 200 characters.');
@@ -164,9 +188,10 @@ export default function ExpenseForm({ group, expense, selfId, busy, onSave }: Pr
       }
       lock.current = true; setSaving(true);
       pendingSave.current = Promise.resolve().then(() => onSave({ id: draft.id, version: draft.expenseVersion, description: draft.description.trim(), total, ...vectors, split,
-        date: draft.date, notes: draft.notes, category: expense?.category ?? 'general', category_auto: expense?.category_auto ?? ['', 'general', 'other'].includes((expense?.category ?? '').trim().toLowerCase()), deleted: false }, draft.attachment, () => { handedOff.current = true; }));
+        date: draft.date, notes: draft.notes, category: expense?.category ?? 'general', category_auto: expense?.category_auto ?? ['', 'general', 'other'].includes((expense?.category ?? '').trim().toLowerCase()), deleted: false }, draft.attachment, () => { handedOff.current = true; void store.write(null).catch(() => {}); }));
       await pendingSave.current;
       handedOff.current = true;
+      await store.write(null);
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : 'Could not save the expense. Try again.';
       setError(message);
@@ -204,7 +229,7 @@ export default function ExpenseForm({ group, expense, selfId, busy, onSave }: Pr
     </BillPeople>
     <DateField label="Date" value={draft.date} onChange={date => change({ date })} disabled={disabled} />
     <TextField autoCorrect={false} label="Notes (optional)" value={draft.notes} onChangeText={notes => change({ notes })} multiline style={styles.notes} maxLength={2000} editable={!disabled} />
-    {!expense && <DraftAttachment value={draft.attachment} path={`/groups/${group.id}/expenses/${draft.id}/attachments`} disabled={disabled || !!group.archived} onChange={async attachment => change({ attachment })} onBusy={setFileBusy} onError={setError} />}
+    {!expense && <DraftAttachment value={draft.attachment} path={`/groups/${group.id}/expenses/${draft.id}/attachments`} disabled={disabled || !!group.archived} onChange={async attachment => { await change({ attachment }); }} onBusy={setFileBusy} onError={setError} />}
     {!!error && <ErrorText live>{error}</ErrorText>}
     <Button title={saving ? 'Saving…' : 'Save bill'} onPress={() => void save()} disabled={disabled || group.archived} kind="primary" icon="check" />
   </Form>;

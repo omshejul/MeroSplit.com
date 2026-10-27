@@ -8,7 +8,7 @@ import KeyboardDialog from './KeyboardDialog';
 import DialogFocus from './DialogFocus';
 import { CancelDialogActions } from './DialogParts';
 import { Button, useUI } from './ui';
-import { ScreenRemovalLock } from './screenRemoval';
+import { ScreenDraftDiscard, ScreenRemovalLock } from './screenRemoval';
 import { destination, routeParents, routePaths, sameRoute, screenNames, type AppRoute, type RouteParams, type Routes, type Screen } from './routes';
 
 export { NavigationContainer };
@@ -70,7 +70,7 @@ function RouteScene({ route, navigation }: NativeStackScreenProps<Routes, Screen
   const { render, blocked } = useContext(SceneContext), focused = useIsFocused();
   const [localBlocked, setLocalBlocked] = useState(false), [pending, setPending] = useState<NavigationAction | null>(null);
   const [deferred, setDeferred] = useState<NavigationAction | null>(null);
-  const [queued, setQueued] = useState(false), committed = useRef(false);
+  const [queued, setQueued] = useState(false), committed = useRef(false), draftDiscard = useRef<(() => Promise<boolean>) | null>(null);
   const onQueued = useCallback(() => { committed.current = true; setQueued(true); }, []);
   const draft = route.name === 'expense' && !queued;
   useEffect(() => {
@@ -91,17 +91,17 @@ function RouteScene({ route, navigation }: NativeStackScreenProps<Routes, Screen
     if (!draft || committed.current) { navigation.dispatch(data.action); return; }
     setPending(data.action);
   });
-  return <ScreenRemovalLock.Provider value={setLocalBlocked}>
+  return <ScreenRemovalLock.Provider value={setLocalBlocked}><ScreenDraftDiscard.Provider value={draftDiscard}>
     {render(route, focused, onQueued)}
     <KeyboardDialog visible={!!pending} onDismiss={() => setPending(null)}>
       <DialogFocus active={!!pending} label="Discard draft" onEscape={() => setPending(null)}>
         <Dialog.Title>Do you want to discard the draft?</Dialog.Title>
         <CancelDialogActions disabled={blocked || localBlocked} onCancel={() => setPending(null)}>
-          <Button title="Discard" kind="danger" icon="remove" disabled={blocked || localBlocked} onPress={() => { if (pending) navigation.dispatch(pending); setPending(null); }} />
+          <Button title="Discard" kind="danger" icon="remove" disabled={blocked || localBlocked} onPress={() => { void (async () => { if (pending && await draftDiscard.current?.() !== false) navigation.dispatch(pending); setPending(null); })(); }} />
         </CancelDialogActions>
       </DialogFocus>
     </KeyboardDialog>
-  </ScreenRemovalLock.Provider>;
+  </ScreenDraftDiscard.Provider></ScreenRemovalLock.Provider>;
 }
 
 export default function AppStack({ render, blocked, initialScreen, scope }: { render: RenderScreen; blocked: boolean; initialScreen: Screen; scope: string }) {
