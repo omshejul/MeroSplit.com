@@ -182,6 +182,8 @@ def finance_state(participant_ids, expense_rows, settlement_rows, opening_balanc
 
 def snapshot(group):
     participants = list(group.participants.select_related("user").order_by("id"))
+    from .media import profile_photos
+    photos = profile_photos(person.user_id for person in participants if not person.removed and person.user_id and person.user.is_active)
     expenses = list(group.expenses.order_by("date", "id"))
     settlements = list(group.settlements.order_by("created_at", "id"))
     attribute_records(group, expenses, settlements, participants)
@@ -202,7 +204,7 @@ def snapshot(group):
         "owner_id": group.owner_id,
         "participants": [
             {"id": str(p.id), "name": participant_display_name(p), "recorded_name": p.name,
-             "user_id": p.user_id, "removed": p.removed}
+             "user_id": p.user_id, "removed": p.removed, "profile_photo": photos.get(p.user_id) if not p.removed else None}
             for p in participants
         ],
         "expenses": [expense_dict(e) for e in expenses],

@@ -181,6 +181,28 @@ def avatar_for(actor) -> dict | None:
     return metadata(file) if file else None
 
 
+def profile_photos(user_ids):
+    """Uploaded photos take precedence. Provider URLs are never fetched by the server."""
+    from urllib.parse import urlsplit
+
+    from allauth.socialaccount.models import SocialAccount
+
+    ids = set(user_ids) - {None}
+    photos = {}
+    for account in SocialAccount.objects.filter(user_id__in=ids, provider="google"):
+        url = account.extra_data.get("picture")
+        if isinstance(url, str) and len(url) < 2048:
+            try:
+                parsed = urlsplit(url)
+            except ValueError:
+                continue
+            if parsed.scheme == "https" and parsed.hostname and (parsed.hostname == "googleusercontent.com" or parsed.hostname.endswith(".googleusercontent.com")) and not parsed.username:
+                photos[account.user_id] = {"url": url}
+    for file in UploadedFile.objects.filter(avatar_owner_id__in=ids, state="active"):
+        photos[file.avatar_owner_id] = metadata(file)
+    return photos
+
+
 def _bill(actor, group_id, expense_id, *, lock=False, modify=False):
     group = visible_group(actor, group_id, lock=lock)
     if modify:
@@ -387,11 +409,17 @@ def _remove_attachment(actor, group_id, expense_id, file_id) -> dict:
 
 
 def _visible_file(actor, file_id) -> UploadedFile:
+    from .models import Group, Participant
+    from .store_review import groups_for_actor
+
     file = UploadedFile.objects.select_related("expense").filter(id=file_id, state="active").first()
     if not file:
         raise HttpError(404, "File not found")
     if file.avatar_owner_id:
-        if file.avatar_owner_id != actor.pk:
+        if file.avatar_owner_id != actor.pk and not Participant.objects.filter(
+                user_id=actor.pk, removed=False, group__in=groups_for_actor(Group.objects.all(), actor),
+                group__participants__user_id=file.avatar_owner_id,
+                group__participants__removed=False).exists():
             raise HttpError(404, "File not found")
     elif file.expense_id:
         _bill(actor, file.expense.group_id, file.expense_id)

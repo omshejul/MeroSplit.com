@@ -148,8 +148,9 @@ class AppleTokenView(APIView):
             if data["process"] == "connect" and existing and existing.user_id != request.user.pk:
                 return apple_error(request, "apple_email_conflict", 409)
             if data["process"] == "login" and not existing and (not email
-                    or get_user_model().objects.filter(email__iexact=email).exists()
-                    or EmailAddress.objects.filter(email__iexact=email).exists()):
+                    or ((get_user_model().objects.filter(email__iexact=email).exists()
+                         or EmailAddress.objects.filter(email__iexact=email).exists())
+                        and EmailAddress.objects.filter(email__iexact=email, verified=True, user__is_active=True).count() != 1)):
                 return apple_error(request, "apple_email_conflict", 409)
             exchanged = apple_request("token", {"grant_type": "authorization_code", "code": data["authorization_code"]})
             if not isinstance(exchanged, dict) or not isinstance(exchanged.get("refresh_token"), str) or not 1 <= len(exchanged["refresh_token"]) <= 16384:

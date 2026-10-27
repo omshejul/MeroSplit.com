@@ -34,7 +34,10 @@ export async function openPrivateMedia(session: Session, media: MediaMetadata): 
   if (opened) opened.opener = null;
 }
 export async function clearMediaPreview(_media: MediaMetadata): Promise<void> {}
-export async function clearMediaPreviews(): Promise<void> {}
+export async function clearMediaPreviews(): Promise<void> {
+  const { clearProfilePhotoCache } = await import("./profilePhotoCache.web");
+  try { await clearProfilePhotoCache(); } catch { /* Cache cleanup must not prevent sign-out. */ }
+}
 
 export async function localMediaUrl(file: PickedMedia): Promise<string> { return URL.createObjectURL(await blob(file)); }
 export function clearLocalMediaUrl(uri: string): void { if (uri.startsWith('blob:')) URL.revokeObjectURL(uri); }

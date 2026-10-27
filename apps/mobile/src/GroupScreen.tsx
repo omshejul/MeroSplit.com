@@ -65,7 +65,7 @@ function PersonalTransferRow({ transfer, group, selfId, disabled, onSettle, onEx
   const action = outgoing && person?.user_id != null && !!person.payment_profile?.vpa ? 'Pay' : 'Record';
   return <View style={ui.row}>
     <Button kind="plain" ref={row} accessibilityRole="button" accessibilityLabel={`Why ${outgoing ? 'you owe' : 'you are owed'} ${formatMoney(transfer.amount)} ${outgoing ? 'to' : 'by'} ${name}`} onPress={() => onExplain(transfer, () => row.current?.focus())} style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 44 }}>
-      <Avatar name={name} />
+      <Avatar name={name} photo={person?.profile_photo} />
       <View style={ui.rowBody}><Text numberOfLines={1} ellipsizeMode="tail" style={[ui.rowTitle, s.logTitle]}>{name}</Text><Text style={[ui.rowSub, s.logCaption]}>{outgoing ? 'You owe' : 'Owes you'}{removed ? ' · Removed' : ''}</Text></View>
       <AmountText amount={transfer.amount} style={[s.balanceAmount, { color: outgoing ? colors.negative : colors.positive }]} />
     </Button>
@@ -148,10 +148,10 @@ function RecordSummary({ title, amount, amountColor, children, category, categor
   </View>;
 }
 
-function ParticipantAmountRow({ name, amount }: { name: string; amount: string }) {
+function ParticipantAmountRow({ name, amount, photo }: { name: string; amount: string; photo?: import("./types").ProfilePhoto | null }) {
   const { ui } = useUI();
   return <View style={[ui.row, { flexWrap: 'wrap' }]}>
-    <Avatar name={name} /><Text accessibilityLabel={name} style={[ui.rowTitle, s.flex, { minWidth: 120 }]}>{name}</Text><AmountText amount={amount} style={{ marginLeft: 'auto' }} />
+    <Avatar name={name} photo={photo} /><Text accessibilityLabel={name} style={[ui.rowTitle, s.flex, { minWidth: 120 }]}>{name}</Text><AmountText amount={amount} style={{ marginLeft: 'auto' }} />
   </View>;
 }
 
@@ -280,11 +280,11 @@ export function ExpenseDetail({ categoryIcons = {}, noticeVisibility, expense, g
     {chat}
     {attachments}
     <BillPeople icon="pay" title="Who paid?" summary={`${payers.length} people`} inline={payers.length <= 1} disabled={busy}>
-      {payers.map(person => <ParticipantAmountRow key={person.id} name={person.name} amount={expense.paid[person.id] ?? '0'} />)}
+      {payers.map(person => <ParticipantAmountRow key={person.id} name={person.name} photo={person.profile_photo} amount={expense.paid[person.id] ?? '0'} />)}
     </BillPeople>
     <BillPeople icon="people" title="Split between" summary={`${sharing.length} people`} inline={sharing.length <= 1} disabled={busy}>
       <Text style={ui.caption}>{expense.split.mode === 'equal' ? 'Shared equally' : expense.split.mode === 'exact' ? 'Exact amounts' : expense.split.mode === 'percent' ? 'By percentage' : 'By shares'}</Text>
-      {sharing.map(person => <ParticipantAmountRow key={person.id} name={person.name} amount={expense.shares[person.id] ?? '0'} />)}
+      {sharing.map(person => <ParticipantAmountRow key={person.id} name={person.name} photo={person.profile_photo} amount={expense.shares[person.id] ?? '0'} />)}
     </BillPeople>
     {(!!expense.notes || hasCategory) && <View style={s.section}>
       {!!expense.notes && <Text style={ui.body}>{expense.notes}</Text>}

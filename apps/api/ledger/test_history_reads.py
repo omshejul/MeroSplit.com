@@ -219,7 +219,8 @@ def test_ten_thousand_record_summary_has_bounded_bytes_queries_and_indexed_pages
     duration = monotonic() - started
     encoded = json.dumps(summary, cls=DjangoJSONEncoder).encode()
     assert len(encoded) < 250_000
-    assert len(queries) <= 18
+    # Two fixed lookups resolve uploaded and Google profile photos for all members.
+    assert len(queries) <= 20
     assert not any("COUNT(" in query["sql"].upper() for query in queries)
     assert not any('"ledger_change"."data",' in query["sql"] for query in queries)
     assert all(len(summary[key]) == 50 for key in ("expenses", "activity", "settlements", "payment_attempts"))

@@ -135,12 +135,13 @@ def test_signature_and_exchanged_subject_are_both_verified(keys, settings, apple
     assert response.status_code == 400 and not SocialAccount.objects.exists()
 
 
-def test_existing_email_requires_explicit_connect_and_returning_sub_needs_no_name_or_email(keys, settings, apple):
+def test_existing_verified_email_auto_links_and_returning_sub_needs_no_name_or_email(keys, settings, apple):
     user = get_user_model().objects.create_user(username="owner", email="relay@privaterelay.appleid.com", first_name="Keep")
     EmailAddress.objects.create(user=user, email=user.email, primary=True, verified=True)
     anonymous = Client()
-    assert submit(anonymous, keys, settings, apple, challenge(anonymous)).status_code == 409
-    assert not SocialAccount.objects.exists()
+    response = submit(anonymous, keys, settings, apple, challenge(anonymous))
+    assert response.status_code == 200, response.content
+    assert SocialAccount.objects.get().user_id == user.pk
     client = authenticated_client(user)
     proof = challenge(client, "connect")
     stale = Session.objects.get(session_key=client.defaults["HTTP_X_SESSION_TOKEN"]).session_data

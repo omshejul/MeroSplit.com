@@ -71,3 +71,18 @@ test('old equal-version member caches refresh once for authoritative account ema
     calls.length=0;await refreshGroups(db,session);assert.equal(calls.length,1);
   }finally{raw.close();globalThis.fetch=original;}
 });
+
+test('Photo metadata refreshes at equal ledger version without downloading group history', async () => {
+  const raw = new DatabaseSync(':memory:'), db = sqliteAdapter(raw), original = globalThis.fetch;
+  const person = { id: 'p', name: 'Person', recorded_name: 'Person', account_email: 'person@example.test', user_id: 2 };
+  let photos: Record<string, { url: string }> = { '2': { url: 'https://lh3.googleusercontent.com/v1' } }, requests = 0;
+  try {
+    await migrate(db); await saveGroup(db, owner, { ...group('a', 1), participants: [person] }, 'shared');
+    globalThis.fetch = async url => { requests++; assert.ok(String(url).endsWith('/groups')); return Response.json({ groups: [{ id: 'a', version: 1 }], profile_photos: photos }); };
+    await refreshGroups(db, session);
+    assert.deepEqual((await readGroup(db, owner, 'a'))?.group.participants[0].profile_photo, photos['2']);
+    photos = {}; await refreshGroups(db, session);
+    assert.equal((await readGroup(db, owner, 'a'))?.group.participants[0].profile_photo, null);
+    assert.equal((await readGroup(db, owner, 'a'))?.group.version, 1); assert.equal(requests, 2);
+  } finally { raw.close(); globalThis.fetch = original; }
+});
