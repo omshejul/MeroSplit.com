@@ -1,4 +1,5 @@
 import { PhotoSession } from './src/PersonPhoto';
+import { readPrefetch, readScope } from './src/prefetch';
 import { personalTransfers } from './src/personalBalances';
 import { subscribeConnection } from './src/connectivity';
 import SyncStatus from './src/SyncStatus';
@@ -14,7 +15,7 @@ import type { AlertButton } from 'react-native';
 import { Alert } from './src/alerts';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import * as Crypto from 'expo-crypto';
-import { accountOwner, ApiError, requestEmailCode, confirmEmailCode, endSession, claimLegacyGroup, expensePayload, fetchGroup, refreshGroups, request, syncOutbox, cacheOfflineGroups } from './src/api';
+import { accountOwner, ApiError, requestEmailCode, confirmEmailCode, endSession, claimLegacyGroup, expensePayload, fetchGroup, refreshGroups, request, syncOutbox, cacheOfflineGroups, prefetchRead } from './src/api';
 import type { EmailCodeChallenge } from './src/api';
 import { readAppLink, type AppLink } from './src/browserLinks';
 import { validateUPIPayment, type UPILaunchQuote } from './src/upi';
@@ -171,7 +172,7 @@ function AppContent() {
     shouldSuppress: data => suppressPush.current(data),
   });
   const providerConnections = useLinkedProviders(authPending ? null : session, ready && foreground && online && !expired && !authHeld);
-  useEffect(() => { if (session && (screen === 'signInMethods' || screen === 'home' && tab === 'Account')) providerConnections.refresh(); }, [session?.token, screen, tab]);
+  useEffect(() => { if (session && screen === 'signInMethods') providerConnections.refresh(); }, [session?.token, screen, tab]);
   const activeGroupRef = useRef(groupId); activeGroupRef.current = groupId;
   const selected = groups.find(row => row.group.id === groupId) ?? null;
   const browseScope = `${owner}|${session?.token}|${screen}|${tab}|${groupId}|${foreground}|${expired}|${authHeld}|${online}|${groupVersions.current}|${selected?.group.version}|${selected?.group.history?.transactions?.query ?? selected?.group.history?.bills?.query ?? ''}`;
@@ -337,7 +338,7 @@ function AppContent() {
   // Only a user's own pull shows the native refresh spinner; background work uses the header.
   function pullToRefresh() {
     setPulling(true);
-    const refresh = screen === 'home' && tab === 'Activity' ? refreshActivity() : background(sync, false);
+    const refresh = screen === 'home' && tab === 'Activity' ? refreshActivity(false, undefined, true) : background(sync, false);
     const scope = `${owner}|${groupId}`;
     void refresh.then(() => { if (`${ownerRef.current}|${activeGroupRef.current}` === scope) setLedgerRevision(value => value + 1); }).catch(() => {}).finally(() => setPulling(false));
   }
@@ -520,9 +521,39 @@ function AppContent() {
       if (current()) navigate('paymentDetail', { settlementId: id });
     });
   }
-  async function refreshActivity(more = false, signal?: AbortSignal): Promise<boolean> {
+  useEffect(() => {
+    const enabled = !!session && ready && foreground && online && !expired && !authHeld && !busy && !syncing;
+    readPrefetch.configure(session && !authHeld ? readScope(session) : '', enabled);
+    if (!enabled || !session) return;
+    const active = session, scope = accountOwner(active);
+    const timer = setTimeout(() => {
+      void prefetchRead<ActivityPage>(active, '/activity?limit=50').then(page => {
+        if (!page || page.read_mode !== 'activity' || !Array.isArray(page.items) || activeSessionRef.current?.token !== active.token || ownerRef.current !== scope) return;
+        setActivity(previous => previous ?? { ...page, firstPage: true });
+        if (activityOwner.current !== scope) activityOwner.current = scope;
+      });
+      for (const path of ['/me', '/me/notifications/preferences', '/me/chat-conversations?limit=20']) void prefetchRead(active, path);
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [session?.token, session?.baseUrl, ready, foreground, online, expired, authHeld, busy, syncing]);
+  useEffect(() => () => readPrefetch.configure('', false), []);
+
+  // Warm only three visible, uncached bill details after scrolling settles.
+  useEffect(() => {
+    if (!session || screen !== 'group' || !selected || busy || !foreground || !online || authHeld || expired || pending.length || visibleBills.scope !== `${owner}|${groupId}`) return;
+    const active = session, group = selected.group;
+    const timer = setTimeout(() => {
+      for (const id of visibleBills.ids.slice(0, 3)) {
+        if (!group.expenses.some(bill => bill.id === id)) void prefetchRead(active, `/groups/${group.id}/expenses/${encodeURIComponent(id)}?version=${group.version}`);
+      }
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [session?.token, screen, groupId, selected?.group.version, visibleBills, foreground, online, authHeld, expired, busy, pending.length]);
+
+  async function refreshActivity(more = false, signal?: AbortSignal, force = false): Promise<boolean> {
     const active = session, context = browseCurrent.current, previous = activity;
     if (!active) return false;
+    if (force) readPrefetch.invalidate(readScope(active));
     const read = async (current = () => true) => {
       if (!more) setActivityError('');
       try {
@@ -543,7 +574,7 @@ function AppContent() {
         throw error;
       }
     };
-    return more ? read() : browse('activity', read, false);
+    return more || activity?.items.length || readPrefetch.peek(readScope(active), '/activity?limit=50') ? read() : browse('activity', read, false);
   }
   useEffect(() => {
     if (ready && session && !authHeld && !expired && foreground && screen === 'home' && tab === 'Activity' && !busy && activityOwner.current !== owner && !activityError) void refreshActivity().catch(() => {});
@@ -1268,8 +1299,8 @@ function AppContent() {
   const savedChangesView = <SavedChanges expanded={screen === 'savedChanges'} commands={commands} groups={groups} busy={busy} expired={expired} onOpen={row => open(() => openGroup(row))} onReview={value => open(() => reviewChange(value))} onDiscard={value => confirm('Discard saved change?', 'Export first if needed. This removes only your unsent change. A request already accepted by the server is kept there.', async () => { await discardCommand(await getDatabase(), owner, value.command_id); })} onRetry={syncQuietly} />;
   const homeContext = <>{screen === 'home' && needsInvitation && <Text style={ui.notice}>A new bill includes your email. Ask its organizer to send you an invitation to see the bill.</Text>}</>;
   const paymentReturns = <>{screen === 'home' && session && returns.filter(value => value.launch === 'opened' || value.decision !== null || value.launch === 'opening').slice(0, 1).map(value => <Button key={value.attemptId} title="Review payment" disabled={busy} onPress={() => open(() => browse(`return:${value.attemptId}`, async current => { const group = await fetchGroup(session, value.groupId); if (!current() || !await saveReadGroup(session, group, current) || !current()) return; setReturnAttemptId(value.attemptId); setTransfer({ sender: value.sender, recipient: value.recipient, amount: value.amount }); navigate('settle', { groupId: group.id }); }))} />)}</>;
-  const groupView = screen === 'group' && selected && preview ? <GroupScreen categoryIcons={categoryIcons} header={listNotice} previewError={previewError} noticeVisibility={noticeVisibility} key={`${owner}|${groupId}`} group={preview} accepted={selected.group} revision={ledgerRevision} onUpdatesAvailable={setLedgerUpdates} pending={pending} busy={busy} selfId={selfId} onLoadBalanceGroup={loadBalanceGroup} pagingScope={browseScope} active={focused && foreground && !expired && !authHeld} online={online} onRefresh={pullToRefresh} refreshing={pulling} onVisibleBills={ids => { if (ownerRef.current === owner && activeGroupRef.current === groupId) setVisibleBills({ scope: `${owner}|${groupId}`, ids }); }} onHistoryPage={(resource, direction, query, signal, target) => historyPage(resource, direction, query, target, signal)} onExpense={value => { void openBill(value).catch(() => {}); }} onPayment={value => { void openPayment(value.id).catch(() => {}); }} onSettle={value => { setReturnAttemptId(null); setTransfer(value ? personalTransfers(preview, selfId).find(row => row.sender === value.sender && row.recipient === value.recipient) : undefined); navigate('settle'); }} onReverse={value => confirm('Reverse payment record?', 'This removes the payment from the group’s balances.', () => reversePayment(value))} /> : null;
-  const activityView = screen === 'home' && tab === 'Activity' && session ? <ActivityScreen categoryIcons={categoryIcons} onVisibleExpenses={refs => { if (ownerRef.current === owner && activeSessionRef.current?.token === session.token) setVisibleActivity({ scope: `${owner}|${session.token}`, refs }); }} header={<>{listNotice}{homeContext}</>} footer={<>{paymentReturns}{screen === 'home' && tab === 'Activity' && session && <ChatInbox key={owner} session={session} active={focused && foreground && !authHeld && !expired && online} busy={busy} onEmptyChange={empty => chatInboxEmptyChanged(session, empty)} onOpen={(groupId, expenseId) => { void openActivityTarget({ kind: 'bill', groupId, expenseId }, true).catch(() => {}); }} />}</>} emptyVerified={activityEmptyVerified} showEmpty={activityEmptyVerified || busy} items={activity?.items ?? []} busy={busy} error={activityError} hasMore={!!activity?.next_cursor} cursor={activity?.next_cursor} pagingScope={browseScope} active={focused && foreground && !expired && !authHeld} online={online} onRefresh={() => { void refreshActivity().catch(() => {}); }} onLoadMore={signal => refreshActivity(true, signal)} onOpen={target => { void openActivityTarget(target).catch(() => {}); }} /> : null;
+  const groupView = screen === 'group' && selected && preview ? <GroupScreen categoryIcons={categoryIcons} header={listNotice} previewError={previewError} noticeVisibility={noticeVisibility} key={`${owner}|${groupId}`} group={preview} accepted={selected.group} revision={ledgerRevision} onUpdatesAvailable={setLedgerUpdates} pending={pending} busy={busy} selfId={selfId} onLoadBalanceGroup={loadBalanceGroup} pagingScope={browseScope} active={focused && foreground && !expired && !authHeld} online={online} onRefresh={pullToRefresh} refreshing={pulling} onPrefetchPayment={payment => { if (session && selected && !pending.length && !selected.group.settlements.some(value => value.id === payment.id)) void prefetchRead(session, `/groups/${selected.group.id}/settlements/${encodeURIComponent(payment.id)}?version=${selected.group.version}`); }} onPrefetchBill={bill => { if (session && selected && !pending.length && !selected.group.expenses.some(value => value.id === bill.id)) void prefetchRead(session, `/groups/${selected.group.id}/expenses/${encodeURIComponent(bill.id)}?version=${selected.group.version}`); }} onVisibleBills={ids => { if (ownerRef.current === owner && activeGroupRef.current === groupId) setVisibleBills({ scope: `${owner}|${groupId}`, ids }); }} onHistoryPage={(resource, direction, query, signal, target) => historyPage(resource, direction, query, target, signal)} onExpense={value => { void openBill(value).catch(() => {}); }} onPayment={value => { void openPayment(value.id).catch(() => {}); }} onSettle={value => { setReturnAttemptId(null); setTransfer(value ? personalTransfers(preview, selfId).find(row => row.sender === value.sender && row.recipient === value.recipient) : undefined); navigate('settle'); }} onReverse={value => confirm('Reverse payment record?', 'This removes the payment from the group’s balances.', () => reversePayment(value))} /> : null;
+  const activityView = screen === 'home' && tab === 'Activity' && session ? <ActivityScreen categoryIcons={categoryIcons} onVisibleExpenses={refs => { if (ownerRef.current === owner && activeSessionRef.current?.token === session.token) setVisibleActivity({ scope: `${owner}|${session.token}`, refs }); }} header={<>{listNotice}{homeContext}</>} footer={<>{paymentReturns}{screen === 'home' && tab === 'Activity' && session && <ChatInbox key={owner} session={session} active={focused && foreground && !authHeld && !expired && online} busy={busy} onEmptyChange={empty => chatInboxEmptyChanged(session, empty)} onOpen={(groupId, expenseId) => { void openActivityTarget({ kind: 'bill', groupId, expenseId }, true).catch(() => {}); }} />}</>} emptyVerified={activityEmptyVerified} showEmpty={activityEmptyVerified || busy} items={activity?.items ?? []} busy={busy} error={activityError} hasMore={!!activity?.next_cursor} cursor={activity?.next_cursor} pagingScope={browseScope} active={focused && foreground && !expired && !authHeld} online={online} onRefresh={() => { void refreshActivity(false, undefined, true).catch(() => {}); }} onLoadMore={signal => refreshActivity(true, signal)} onOpen={target => { void openActivityTarget(target).catch(() => {}); }} /> : null;
   const loginContent = <SignInLayout busy={busy} onBack={session ? back : undefined}>{listNotice}
         {appLink && 'groupInviteToken' in appLink && <><Text style={ui.body}>Sign in to join the group. You will confirm before joining.</Text><Button title="Cancel invitation" contentStyle={{ minHeight: 48 }} disabled={busy} onPress={() => { forgetGroupInvite(); void saveGroupInvite(null).catch(() => {}); setAppLink(null); navigate(session ? 'home' : 'login'); }} /></>}
         {emailRequested ? <EmailLinkSent busy={busy} resendSeconds={Math.max(0, Math.ceil((retryAt - clock) / 1000))} onResend={() => launch(sendSignInLink)} onCode={() => setEmailRequested(false)} onChangeEmail={() => { setEmailRequested(false); setChallenge(null); setCode(''); }} />
@@ -1347,7 +1378,7 @@ function AppContent() {
     </ScrollView>}
     </SceneTransition>
     {showAddExpense && <AddExpenseButton disabled={busy} onPress={() => open(() => openExpense())} />}
-    {screen === 'home' && session && <AppTabs selected={tab} busy={busy} onSelect={value => { setShowArchived(false); setShowHidden(false); if (value === 'Activity') { activityOwner.current = ''; setActivityError(''); } navigate('home', { tab: value }); }} />}
+    {screen === 'home' && session && <AppTabs selected={tab} busy={busy} onSelect={value => { setShowArchived(false); setShowHidden(false); if (value === 'Activity') { if (!readPrefetch.fresh(readScope(session), '/activity?limit=50')) activityOwner.current = ''; setActivityError(''); } navigate('home', { tab: value }); }} />}
     </>;
   }
   return <PhotoSession.Provider value={authHeld || expired ? null : session}><NavigationContainer ref={navigation.ref} linking={webLinking}><><AppFrame onTouchStart={engage}><View ref={protectedContent} style={{ flex: 1 }} pointerEvents={authHeld ? 'none' : 'auto'} accessibilityElementsHidden={authHeld} importantForAccessibility={authHeld ? 'no-hide-descendants' : 'auto'} aria-hidden={authHeld}>

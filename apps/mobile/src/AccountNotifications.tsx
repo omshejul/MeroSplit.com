@@ -4,7 +4,7 @@ import KeyboardDialog from './KeyboardDialog';
 import React, { useEffect, useRef, useState } from 'react';
 import { AppState, Platform, useWindowDimensions, View } from 'react-native';
 
-import { request } from './api';
+import { request, cachedRead } from './api';
 import PushSettings, { type PushControls } from './PushSettings';
 import type { Session } from './types';
 import { Button, ErrorText, SettingsRow } from './ui';
@@ -22,7 +22,7 @@ function confirmed(value: Preferences) {
 }
 export default function AccountNotifications({ session, push, busy, onBusyChange }: { session: Session; push: PushControls; busy: boolean; onBusyChange: (value: boolean) => void }) {
   const { height } = useWindowDimensions();
-  const [open, setOpen] = useState(false), [preferences, setPreferences] = useState<Preferences | null>(null), [error, setError] = useState(''), [working, setWorking] = useState(false), [pendingEnabled, setPendingEnabled] = useState<boolean | null>(null);
+  const [open, setOpen] = useState(false), [preferences, setPreferences] = useState<Preferences | null>(() => cachedRead<Preferences>(session, '/me/notifications/preferences') ?? null), [error, setError] = useState(''), [working, setWorking] = useState(false), [pendingEnabled, setPendingEnabled] = useState<boolean | null>(null);
   const activeToken = useRef(session.token); activeToken.current = session.token;
   const row = useRef<React.ComponentRef<typeof View>>(null), mounted = useRef(true), inFlight = useRef(false), revision = useRef(0);
   async function load() {

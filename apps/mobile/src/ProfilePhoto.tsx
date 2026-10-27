@@ -4,7 +4,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Text, View } from 'react-native';
 import { Alert } from './alerts';
 import * as Crypto from 'expo-crypto';
-import { accountOwner, request } from './api';
+import { accountOwner, request, cachedRead } from './api';
 import { clearPickedMedia, pickMedia, uploadMedia } from './media';
 import type { AvatarResult, MediaMetadata } from './media';
 import RemoveMediaMenu from './RemoveMediaMenu';
@@ -13,14 +13,16 @@ import { Button, Icon, useUI } from './ui';
 
 export type ProfilePhotoProps = { session: Session | null; busy: boolean; onBusyChange: (busy: boolean) => void; compact?: boolean };
 export default function ProfilePhoto({ session, busy, onBusyChange, compact = false }: ProfilePhotoProps) {
-  const { ui, palette } = useUI(), [fallback, setFallback] = useState<ProfilePhotoValue | null>(null), [avatar, setAvatar] = useState<MediaMetadata | null>(null), [loading, setLoading] = useState(true), [working, setWorking] = useState(false), [error, setError] = useState('');
+  const cachedProfile = session ? cachedRead<AvatarResult>(session, '/me') : undefined;
+  const { ui, palette } = useUI(), [fallback, setFallback] = useState<ProfilePhotoValue | null>(cachedProfile?.profile_photo ?? null), [avatar, setAvatar] = useState<MediaMetadata | null>(cachedProfile?.avatar ?? null), [loading, setLoading] = useState(!cachedProfile), [working, setWorking] = useState(false), [error, setError] = useState('');
   const [optionsOpen, setOptionsOpen] = useState(false);
   const lock = useRef(false), mounted = useRef(true), owner = session ? accountOwner(session) : '';
   const ownerRef = useRef(owner); ownerRef.current = owner;
   const current = () => mounted.current && ownerRef.current === owner;
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   useEffect(() => {
-    let active = true; setAvatar(null); setFallback(null); setOptionsOpen(false); setError(''); setLoading(true);
+    const cached = session ? cachedRead<AvatarResult>(session, '/me') : undefined;
+    let active = true; setAvatar(cached?.avatar ?? null); setFallback(cached?.profile_photo ?? null); setOptionsOpen(false); setError(''); setLoading(!cached);
     if (!session) { setLoading(false); return; }
     void request<AvatarResult>(session, '/me').then(result => { if (active) { setAvatar(result.avatar); setFallback(result.profile_photo ?? null); } })
       .catch(() => { if (active) setError('Could not load your photo. Refresh when online.'); })
