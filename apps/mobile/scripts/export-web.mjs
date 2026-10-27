@@ -26,6 +26,6 @@ const worker = `const CACHE='merosplit-shell-${version}';const ASSETS=${JSON.str
 await writeFile(join(destination, 'sw.js'), worker);
 await writeFile(join(destination, 'build.json'), JSON.stringify({ platform: 'web', basePath: '/app/', version, assetCount: manifest.length }));
 // Archive the complete shell because uploaders can omit nested dependency folders.
-const archive = spawnSync('tar', ['-cf', join(destination, '../web-dist.tar'), '-C', destination, '.'], { stdio: 'inherit' });
+const archive = spawnSync('tar', ['-cf', join(destination, '../web-dist.tar'), '-C', destination, '.'], { stdio: 'inherit', env: { ...process.env, COPYFILE_DISABLE: '1' } });
 if (archive.status !== 0) process.exit(archive.status ?? 1);
 console.log(`Web export ready in apps/api/web-dist with ${manifest.length} app-shell assets. No API responses are cached.`);

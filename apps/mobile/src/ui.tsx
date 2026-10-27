@@ -240,10 +240,11 @@ export const Button = React.forwardRef<React.ComponentRef<typeof View>, ButtonPr
       flexDirection: 'row', alignItems: 'center', justifyContent: menu ? 'flex-start' : 'center', gap: 8,
       borderRadius: 6, borderWidth: kind === 'secondary' || kind === 'outlined' ? 1 : 0,
       borderColor: palette.line, backgroundColor: kind === 'danger' ? palette.error : kind === 'primary' ? palette.accent : kind === 'secondary' ? palette.soft : 'transparent' },
+      contentStyle,
       !plain && { opacity: disabled ? 0.4 : state.pressed ? 0.7 : 1 },
       Platform.OS === 'web' && focused && { outlineWidth: 2, outlineStyle: 'solid', outlineColor: palette.accent, outlineOffset: 2 },
       typeof style === 'function' ? style(state) : style]}>
-    {children ?? <View pointerEvents="none" style={[{ flexDirection: 'row', alignItems: 'center', justifyContent: menu ? 'flex-start' : 'center', gap: 8, flexShrink: 1 }, contentStyle]}>
+    {children ?? <View pointerEvents="none" style={[{ flexDirection: 'row', alignItems: 'center', justifyContent: menu ? 'flex-start' : 'center', gap: 8, flexShrink: 1 }]}>
       {glyph && <View accessible={false} aria-hidden>{glyph}</View>}
       {!iconOnly && <Text maxFontSizeMultiplier={maxFontSizeMultiplier} style={[ui.body, { color, fontSize: 14, lineHeight: 20, fontWeight: '500', textAlign: menu ? 'left' : 'center', flexShrink: 1 }, labelStyle]}>{title}</Text>}
     </View>}
