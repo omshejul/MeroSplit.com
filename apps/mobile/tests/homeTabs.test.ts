@@ -17,21 +17,21 @@ function actualPanResponder() {
   return load('PanResponder').default;
 }
 
-function swipeHarness(real = false) {
+function swipeHarness(real = false, effects = false) {
   const state = { selected: 'Groups', busy: false, motion: true, focused: false, rtl: false, os: 'ios' };
-  const selected: string[] = [], positions: number[] = [], refs: any[] = []; let cursor = 0, handlers: any, nativeHandlers: any;
+  const selected: string[] = [], positions: number[] = [], refs: any[] = []; let cursor = 0, handlers: any, nativeHandlers: any, pendingEffect: any, cleanup: any, effectDeps: any[] | undefined;
   const animated = { stopAnimation() {}, setValue(value: number) { positions.push(value); } };
   const file = ts.createSourceFile('swipe.ts', readFileSync(new URL('../src/useHomeTabSwipe.ts', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true);
   const body = file.statements.filter(node => !ts.isImportDeclaration(node)).map(node => node.getText(file).replace(/^export /, '')).join('\n');
   const useSwipe = new Function('env', `with(env){${ts.transpile(body, { target: ts.ScriptTarget.ES2022 })};return useHomeTabSwipe;}`)({
-    useRef: (initial: unknown) => refs[cursor++] ??= { current: initial }, useState: () => [animated], useLayoutEffect() {},
+    useRef: (initial: unknown) => refs[cursor++] ??= { current: initial }, useState: () => [animated], useLayoutEffect(effect: any, deps: any[]) { if (effects && (!effectDeps || deps.some((value, index) => value !== effectDeps![index]))) { effectDeps = [...deps]; pendingEffect = effect; } },
     useMemo: (fn: () => unknown) => fn(), useWindowDimensions: () => ({ width: 390 }), useUI: () => ({ motion: { enabled: state.motion } }),
     Animated: { Value: class {}, timing: (_value: any, options: any) => ({ start() { animated.setValue(options.toValue); } }) },
     Platform: { get OS() { return state.os; } }, I18nManager: { get isRTL() { return state.rtl; } },
     TextInput: { State: { currentlyFocusedInput: () => { assert.equal(state.os, 'ios'); return state.focused ? {} : null; }, currentlyFocusedField: () => { assert.equal(state.os, 'web'); return state.focused ? {} : null; } } },
     PanResponder: { create: (value: unknown) => { handlers = value; if (!real) { const start = handlers.onStartShouldSetPanResponderCapture; handlers.onStartShouldSetPanResponderCapture = (event = { nativeEvent: { pageX: 200, touches: [{ pageX: 200 }] } }) => start(event); } const result = real ? actualPanResponder().create(value) : { panHandlers: value }; nativeHandlers = result.panHandlers; return result; } },
   });
-  const render = () => { cursor = 0; useSwipe(state.selected, state.busy, (tab: string) => selected.push(tab)); };
+  const render = () => { cursor = 0; useSwipe(state.selected, state.busy, (tab: string) => selected.push(tab)); if (pendingEffect) { cleanup?.(); cleanup = pendingEffect(); pendingEffect = null; } };
   render();
   return { state, selected, positions, render, handlers: () => handlers, nativeHandlers: () => nativeHandlers, gesture: (changes = {}) => ({ dx: -120, dy: 3, vx: -0.7, x0: 0, numberActiveTouches: 1, ...changes }) };
 }
@@ -120,4 +120,17 @@ test('real React Native responder claims a root swipe before x0 is initialized',
   touch.previousPageX = 170; touch.previousTimeStamp = 2; touch.currentPageX = 70; touch.currentTimeStamp = 3; history.mostRecentTimeStamp = 3;
   h.onResponderMove(event()); touch.touchActive = false; history.numberActiveTouches = 0; h.onResponderEnd(event()); h.onResponderRelease(event());
   assert.deepEqual(app.selected, ['Friends']);
+});
+
+
+test('nav selections use the same directional entry animation as swipes, including jumps and rapid taps', () => {
+  const app = swipeHarness(false, true); assert.deepEqual(app.positions, [0]); app.positions.length = 0;
+  app.state.selected = 'Account'; app.render(); assert.deepEqual(app.positions, [64, 0]);
+  app.positions.length = 0; app.state.selected = 'Friends'; app.render(); assert.deepEqual(app.positions, [-64, 0]);
+  app.positions.length = 0; app.render(); assert.deepEqual(app.positions, [], 'reselecting the active tab does not replay entry');
+});
+
+test('tab tap animation respects RTL and reduced motion', () => {
+  const app = swipeHarness(false, true); app.positions.length = 0; app.state.rtl = true; app.state.selected = 'Friends'; app.render(); assert.deepEqual(app.positions, [-64, 0]);
+  app.positions.length = 0; app.state.motion = false; app.state.selected = 'Groups'; app.render(); assert.deepEqual(app.positions, [0]);
 });

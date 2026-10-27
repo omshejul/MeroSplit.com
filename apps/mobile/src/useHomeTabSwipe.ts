@@ -10,15 +10,17 @@ export function useHomeTabSwipe(selected: string, busy: boolean, onSelect: (tab:
   const [translateX] = useState(() => new Animated.Value(0));
   const latest = useRef({ selected, busy, onSelect, width, motion: motion.enabled });
   latest.current = { selected, busy, onSelect, width, motion: motion.enabled };
-  const gesture = useRef({ vertical: false, selected, incoming: 0, target: '', startX: 0 });
+  const gesture = useRef({ vertical: false, selected, startX: 0 });
+  const previous = useRef(selected);
   useLayoutEffect(() => {
     translateX.stopAnimation();
-    if (gesture.current.target === selected && motion.enabled) {
-      translateX.setValue(gesture.current.incoming);
+    const from = tabs.indexOf(previous.current), to = tabs.indexOf(selected);
+    if (from >= 0 && to >= 0 && from !== to && motion.enabled) {
+      translateX.setValue((to > from ? 64 : -64) * (I18nManager.isRTL ? -1 : 1));
       Animated.timing(translateX, { toValue: 0, duration: 160, useNativeDriver: Platform.OS !== 'web', isInteraction: false }).start();
     } else translateX.setValue(0);
     if (busy) gesture.current.selected = '';
-    gesture.current.target = '';
+    previous.current = selected;
     return () => translateX.stopAnimation();
   }, [selected, busy, motion.enabled, translateX]);
   const responder = useMemo(() => {
@@ -51,8 +53,6 @@ export function useHomeTabSwipe(selected: string, busy: boolean, onSelect: (tab:
         const target = tabs[tabs.indexOf(current.selected) + direction * (I18nManager.isRTL ? -1 : 1)];
         if (!current.busy && !gesture.current.vertical && current.selected === gesture.current.selected && target && Math.abs(state.dx) > Math.abs(state.dy) * 1.8
           && (Math.abs(state.dx) >= Math.min(90, current.width * 0.22) || Math.abs(state.dx) > 30 && state.vx * state.dx > 0 && Math.abs(state.vx) > 0.5)) {
-          gesture.current.incoming = direction * 64;
-          gesture.current.target = target;
           current.onSelect(target);
         } else reset();
       },
