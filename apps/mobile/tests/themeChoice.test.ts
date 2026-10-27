@@ -205,7 +205,7 @@ test('background sync never drives the pull spinner; a user pull shows it until 
   }
 });
 
-test('header keeps one fixed trailing slot without moving back or action buttons', () => {
+test('header omits the empty status slot and keeps actions after active progress', () => {
   const env: Record<string, any> = { React, View: 'View', Text: 'Text', ActivityIndicator: 'ActivityIndicator', IconAction: 'IconAction', useUI: () => ({ palette: { text: 'text', accent: 'accent', background: 'background' } }) };
   const header = new Function('env', `with(env){${source('src/AppNavigation.tsx', ['ScreenHeader'])};return ScreenHeader;}`)(env);
   const styles = new Function('env', `with(env){const pageWidthStyle={};const radii={};const StyleSheet={create:v=>v};${source('src/AppNavigation.tsx', ['styles'])};return styles;}`)(env);
@@ -213,7 +213,8 @@ test('header keeps one fixed trailing slot without moving back or action buttons
   const shape = (tree: Element) => tree.children.flat().filter(Boolean).map((node: Element) => node.type === 'View' ? `area:${node.props.style === styles.titleArea}` : node.type);
   const idle = header({ title: 'Goa trip', busy: false, onBack() {}, children: React.createElement('IconAction', { name: 'add' }) });
   const busy = header({ title: 'Goa trip', busy: true, onBack() {}, children: React.createElement('IconAction', { name: 'add' }) });
-  assert.deepEqual(shape(idle), shape(busy)); assert.deepEqual(shape(busy), ['IconAction', 'area:true', 'IconAction', 'area:false']);
+  assert.deepEqual(shape(idle), ['IconAction', 'area:true', 'IconAction']); assert.deepEqual(shape(busy), ['IconAction', 'area:true', 'area:false', 'IconAction']);
+  assert.equal(styles.header.minHeight, styles.working.height + styles.header.paddingTop + styles.header.paddingBottom, 'progress fits the same header height');
   const working = nodes(busy).find(node => node.props.style === styles.working)!;
   assert.equal(styles.titleArea.minWidth, 0); assert.equal(styles.titleArea.overflow, 'hidden');
   assert.equal(styles.working.width, 44); assert.equal(styles.working.height, 44); assert.equal(working.props.pointerEvents, 'none');

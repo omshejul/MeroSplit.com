@@ -30,9 +30,9 @@ export function ScreenHeader({ title, busy, onBack, onFeedback, brand = false, c
     <View style={styles.titleArea}>
       <Text style={[styles.title, { color: palette.text }]} accessibilityRole="header" aria-level={1} numberOfLines={1} ellipsizeMode="tail" accessibilityLabel={title}>{title}</Text>
     </View>
+    {status ?? (busy && <View pointerEvents="none" style={styles.working}><ActivityIndicator accessibilityLabel="Working" color={palette.accent} /></View>)}
     {children}
     {onFeedback && <IconAction name="feedback" label="Feedback" onPress={onFeedback} />}
-    <View pointerEvents={status ? 'box-none' : 'none'} style={styles.working}>{status ?? (busy && <ActivityIndicator accessibilityLabel="Working" color={palette.accent} />)}</View>
   </View>;
 }
 
