@@ -1,4 +1,4 @@
-import PersonPhoto from './PersonPhoto';
+import Avatar from './Avatar';
 import type { ProfilePhoto as ProfilePhotoValue } from './types';
 import React, { useEffect, useRef, useState } from 'react';
 import { Text, View } from 'react-native';
@@ -65,7 +65,7 @@ export default function ProfilePhoto({ session, busy, onBusyChange, compact = fa
     {!session ? <Text style={ui.caption}>Sign in to add your profile photo.</Text> : <>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
         <Button kind="plain" accessibilityRole="button" accessibilityLabel={avatar ? 'Change profile photo' : 'Choose profile photo'} accessibilityState={{ disabled }} disabled={disabled} onPress={() => void run(choose)} style={{ flex: compact ? undefined : 1, flexShrink: compact ? 0 : undefined, width: compact ? 64 : undefined, flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 64 }}>
-          {avatar ? <PersonPhoto photo={avatar} size={64}><Icon name="me" size={30} /></PersonPhoto> : <PersonPhoto photo={fallback} size={64}><View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: palette.soft, alignItems: 'center', justifyContent: 'center' }}><Icon name="me" size={30} /></View></PersonPhoto>}
+          <Avatar photo={avatar ?? fallback} size={64} backgroundColor={palette.soft}><Icon name="me" size={30} /></Avatar>
           {compact ? <View style={{ position: 'absolute', right: 0, bottom: 0, backgroundColor: palette.background, borderRadius: 12, padding: 3 }}><Icon name="edit" size={16} /></View> : <Text style={[ui.body, { flex: 1 }]}>{loading ? 'Loading photo…' : working ? 'Updating photo…' : avatar ? 'Change photo' : 'Choose photo'}</Text>}
         </Button>
         {avatar && <RemoveMediaMenu open={optionsOpen} disabled={disabled} label="Photo options" removeLabel="Remove photo"
