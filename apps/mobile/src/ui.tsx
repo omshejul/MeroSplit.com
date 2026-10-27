@@ -233,8 +233,12 @@ export const Button = React.forwardRef<React.ComponentRef<typeof View>, ButtonPr
   return <Pressable {...props} ref={ref} disabled={disabled} accessibilityRole={accessibilityRole}
     accessibilityLabel={accessibilityLabel ?? title} accessibilityState={{ ...accessibilityState, disabled }}
     onPressIn={event => { feedback.onPressIn(); props.onPressIn?.(event); }} onPressOut={event => { feedback.onPressOut(); props.onPressOut?.(event); }}
+    onPointerDown={event => { if (Platform.OS === 'web') setFocused(false); props.onPointerDown?.(event); }}
     hitSlop={hitSlop ?? (plain || menu ? undefined : { top: small ? 8 : 6, bottom: small ? 8 : 6, left: iconOnly ? 6 : 2, right: iconOnly ? 6 : 2 })}
-    onFocus={event => { setFocused(true); onFocus?.(event); }} onBlur={event => { setFocused(false); onBlur?.(event); }}
+    onFocus={event => {
+      const target = event.currentTarget as unknown as { matches?: (selector: string) => boolean };
+      setFocused(Platform.OS === 'web' && !!target.matches?.(':focus-visible')); onFocus?.(event);
+    }} onBlur={event => { setFocused(false); onBlur?.(event); }}
     style={state => [!plain && { minHeight: menu ? 44 : small ? 28 : 32, minWidth: iconOnly ? 32 : compact ? 64 : 80,
       paddingHorizontal: iconOnly ? 6 : small ? 14 : 20, paddingVertical: small ? 4 : 6,
       flexDirection: 'row', alignItems: 'center', justifyContent: menu ? 'flex-start' : 'center', gap: 8,
