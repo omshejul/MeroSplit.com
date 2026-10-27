@@ -409,14 +409,16 @@ def _remove_attachment(actor, group_id, expense_id, file_id) -> dict:
 
 
 def _visible_file(actor, file_id) -> UploadedFile:
-    from .models import Participant
+    from .models import Group, Participant
+    from .store_review import groups_for_actor
 
     file = UploadedFile.objects.select_related("expense").filter(id=file_id, state="active").first()
     if not file:
         raise HttpError(404, "File not found")
     if file.avatar_owner_id:
         if file.avatar_owner_id != actor.pk and not Participant.objects.filter(
-                user_id=actor.pk, removed=False, group__participants__user_id=file.avatar_owner_id,
+                user_id=actor.pk, removed=False, group__in=groups_for_actor(Group.objects.all(), actor),
+                group__participants__user_id=file.avatar_owner_id,
                 group__participants__removed=False).exists():
             raise HttpError(404, "File not found")
     elif file.expense_id:

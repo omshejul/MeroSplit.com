@@ -9,7 +9,7 @@ from .models import Group, Participant, UploadedFile
 pytestmark = pytest.mark.django_db
 
 
-def test_photo_precedence_and_current_group_member_visibility():
+def test_photo_precedence_and_current_group_member_visibility(settings):
     owner = get_user_model().objects.create_user(username="photo-owner")
     viewer = get_user_model().objects.create_user(username="photo-viewer")
     social = SocialAccount.objects.create(user=owner, provider="google", uid="photo-sub", extra_data={"picture": "https://lh3.googleusercontent.com/photo-v1"})
@@ -22,6 +22,10 @@ def test_photo_precedence_and_current_group_member_visibility():
     Participant.objects.create(group=group, user=owner, name="Owner")
     member = Participant.objects.create(group=group, user=viewer, name="Viewer")
     assert _visible_file(viewer, file.pk).pk == file.pk
+    settings.STORE_REVIEW_AUTH = [{"user_id": viewer.pk, "email": viewer.email}]
+    with pytest.raises(HttpError):
+        _visible_file(viewer, file.pk)
+    settings.STORE_REVIEW_AUTH = []
     member.removed = True
     member.save()
     with pytest.raises(HttpError):
