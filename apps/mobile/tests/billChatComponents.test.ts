@@ -53,7 +53,7 @@ test('Production screen acknowledges actual foreground viewable rows, never the 
   const send: typeof request = async <T>(_active: Session, path: string, _method?: string, body?: unknown, _type?: 'json' | 'text', signal?: AbortSignal): Promise<T> => { calls.push({ path, body, signal }); return { seen: 1 } as T; };
   const app = component(db, send);
   try {
-    await migrate(db); app.render(); await app.commit(); app.page(page([message('1'), message('2')]));
+    await migrate(db); const empty = app.render(); assert.equal(find(empty, 'FlatList').props.inverted, false); await app.commit(); app.page(page([message('1'), message('2')]));
     let tree = app.render(); await app.commit(); assert.equal(calls.length, 0);
     const flat = find(tree, 'FlatList');
     assert.equal(flat.props.inverted, true); assert.equal(flat.props.viewabilityConfig.minimumViewTime, 500);

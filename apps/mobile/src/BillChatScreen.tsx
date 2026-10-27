@@ -209,7 +209,7 @@ export default function BillChatScreen({ session, groupId, expenseId, active, on
     <View style={{ flexDirection: 'row', paddingHorizontal: 16, alignItems: 'center' }}><Button kind="plain" accessibilityLabel={`View bill, ${billTitle ?? 'Bill'}${billAmount ? `, ${billAmount}` : ''}`} disabled={!onOpenBill} onPress={onOpenBill} style={{ flex: 1, minWidth: 0, minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
       <Icon name="bill" size={20} color={palette.muted} /><Text numberOfLines={1} style={[ui.body, { flex: 1, fontWeight: '500' }]}>{billTitle ?? 'Bill'}</Text>{billAmount && <Text style={ui.caption}>{billAmount}</Text>}{onOpenBill && <Icon name="next" size={16} color={palette.muted} />}
     </Button><IconAction name="settings" label="Chat settings" disabled={!active} onPress={() => setSettings(true)} /></View>
-    <FlatList ref={list} inverted data={newestFirst} keyExtractor={row => row.id} style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 12, ...(!messages.length ? { flexGrow: 1 } : {}) }}
+    <FlatList ref={list} inverted={messages.length > 0} data={newestFirst} keyExtractor={row => row.id} style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 12, ...(!messages.length ? { flexGrow: 1 } : {}) }}
       maintainVisibleContentPosition={{ minIndexForVisible: 0 }} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag"
       onViewableItemsChanged={onViewable.current} viewabilityConfig={viewability.current}
       onScrollBeginDrag={() => { forceFollow.current = false; follow.current = false; }}
