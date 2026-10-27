@@ -10,7 +10,7 @@ export function useHomeTabSwipe(selected: string, busy: boolean, onSelect: (tab:
   const [translateX] = useState(() => new Animated.Value(0));
   const latest = useRef({ selected, busy, onSelect, width, motion: motion.enabled });
   latest.current = { selected, busy, onSelect, width, motion: motion.enabled };
-  const gesture = useRef({ vertical: false, selected, incoming: 0, target: '' });
+  const gesture = useRef({ vertical: false, selected, incoming: 0, target: '', startX: 0 });
   useLayoutEffect(() => {
     translateX.stopAnimation();
     if (gesture.current.target === selected && motion.enabled) {
@@ -24,7 +24,9 @@ export function useHomeTabSwipe(selected: string, busy: boolean, onSelect: (tab:
   const responder = useMemo(() => {
     const reset = () => Animated.timing(translateX, { toValue: 0, duration: latest.current.motion ? 140 : 0, useNativeDriver: Platform.OS !== 'web', isInteraction: false }).start();
     return PanResponder.create({
-      onStartShouldSetPanResponderCapture: () => {
+      onStartShouldSetPanResponderCapture: event => {
+        // PanResponder leaves x0 at zero until grant, after this capture check.
+        gesture.current.startX = event.nativeEvent.touches[0]?.pageX ?? event.nativeEvent.pageX;
         gesture.current.vertical = false;
         gesture.current.selected = latest.current.selected;
         return false;
@@ -35,7 +37,7 @@ export function useHomeTabSwipe(selected: string, busy: boolean, onSelect: (tab:
         const delta = state.dx * (I18nManager.isRTL ? -1 : 1), index = tabs.indexOf(current.selected);
         const editing = Platform.OS === 'web' ? TextInput.State.currentlyFocusedField() : TextInput.State.currentlyFocusedInput();
         return !current.busy && !gesture.current.vertical && !editing
-          && state.numberActiveTouches === 1 && state.x0 > 24 && state.x0 < current.width - 24
+          && state.numberActiveTouches === 1 && gesture.current.startX > 24 && gesture.current.startX < current.width - 24
           && Math.abs(state.dx) > 16 && Math.abs(state.dx) > Math.abs(state.dy) * 1.8
           && index >= 0 && (delta < 0 ? index < tabs.length - 1 : index > 0);
       },

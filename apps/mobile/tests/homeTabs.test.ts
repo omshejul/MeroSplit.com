@@ -2,10 +2,24 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import ts from 'typescript';
+import { createRequire } from 'node:module';
+const require = createRequire(import.meta.url);
+const nativeRequire = createRequire(require.resolve('react-native/package.json'));
+const babel = nativeRequire('@babel/core');
+function actualPanResponder() {
+  const load = (name: string): any => {
+    const filename = nativeRequire.resolve(`./Libraries/Interaction/${name}.js`);
+    const code = babel.transformSync(readFileSync(filename, 'utf8'), { filename, babelrc: false, configFile: false, plugins: [nativeRequire.resolve('babel-plugin-syntax-hermes-parser'), nativeRequire.resolve('@babel/plugin-transform-flow-strip-types'), nativeRequire.resolve('@babel/plugin-transform-modules-commonjs')] }).code;
+    const module = { exports: {} as any };
+    new Function('require', 'module', 'exports', code)((name: string) => { assert.equal(name, './TouchHistoryMath'); return load('TouchHistoryMath'); }, module, module.exports);
+    return module.exports;
+  };
+  return load('PanResponder').default;
+}
 
-function swipeHarness() {
+function swipeHarness(real = false) {
   const state = { selected: 'Groups', busy: false, motion: true, focused: false, rtl: false, os: 'ios' };
-  const selected: string[] = [], positions: number[] = [], refs: any[] = []; let cursor = 0, handlers: any;
+  const selected: string[] = [], positions: number[] = [], refs: any[] = []; let cursor = 0, handlers: any, nativeHandlers: any;
   const animated = { stopAnimation() {}, setValue(value: number) { positions.push(value); } };
   const file = ts.createSourceFile('swipe.ts', readFileSync(new URL('../src/useHomeTabSwipe.ts', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true);
   const body = file.statements.filter(node => !ts.isImportDeclaration(node)).map(node => node.getText(file).replace(/^export /, '')).join('\n');
@@ -15,11 +29,11 @@ function swipeHarness() {
     Animated: { Value: class {}, timing: (_value: any, options: any) => ({ start() { animated.setValue(options.toValue); } }) },
     Platform: { get OS() { return state.os; } }, I18nManager: { get isRTL() { return state.rtl; } },
     TextInput: { State: { currentlyFocusedInput: () => { assert.equal(state.os, 'ios'); return state.focused ? {} : null; }, currentlyFocusedField: () => { assert.equal(state.os, 'web'); return state.focused ? {} : null; } } },
-    PanResponder: { create: (value: unknown) => { handlers = value; return { panHandlers: value }; } },
+    PanResponder: { create: (value: unknown) => { handlers = value; if (!real) { const start = handlers.onStartShouldSetPanResponderCapture; handlers.onStartShouldSetPanResponderCapture = (event = { nativeEvent: { pageX: 200, touches: [{ pageX: 200 }] } }) => start(event); } const result = real ? actualPanResponder().create(value) : { panHandlers: value }; nativeHandlers = result.panHandlers; return result; } },
   });
   const render = () => { cursor = 0; useSwipe(state.selected, state.busy, (tab: string) => selected.push(tab)); };
   render();
-  return { state, selected, positions, render, handlers: () => handlers, gesture: (changes = {}) => ({ dx: -120, dy: 3, vx: -0.7, x0: 200, numberActiveTouches: 1, ...changes }) };
+  return { state, selected, positions, render, handlers: () => handlers, nativeHandlers: () => nativeHandlers, gesture: (changes = {}) => ({ dx: -120, dy: 3, vx: -0.7, x0: 0, numberActiveTouches: 1, ...changes }) };
 }
 
 test('home swipes move to adjacent tabs without wrapping; taps remain an equivalent action', () => {
@@ -34,7 +48,7 @@ test('home swipes move to adjacent tabs without wrapping; taps remain an equival
 
 test('vertical/diagonal scrolling, editing, multiple fingers and native edge-back gestures are not claimed', () => {
   for (const change of [{ dy: 120, dx: 3 }, { dy: 90 }, { numberActiveTouches: 2 }, { x0: 10 }, { x0: 385 }]) {
-    const app = swipeHarness(); app.handlers().onStartShouldSetPanResponderCapture();
+    const app = swipeHarness(); app.handlers().onStartShouldSetPanResponderCapture({ nativeEvent: { pageX: change.x0 ?? 200, touches: [{ pageX: change.x0 ?? 200 }] } });
     assert.equal(app.handlers().onMoveShouldSetPanResponderCapture(null, app.gesture(change)), false);
   }
   const app = swipeHarness(); app.state.focused = true; app.render();
@@ -91,4 +105,19 @@ test('web uses its supported input focus API so text editing never changes tabs'
   assert.equal(app.handlers().onMoveShouldSetPanResponderCapture(null, app.gesture()), true);
   app.state.focused = true; app.render();
   assert.equal(app.handlers().onMoveShouldSetPanResponderCapture(null, app.gesture()), false);
+});
+
+// Exercise the installed RN lifecycle, including x0 remaining zero until grant.
+test('real React Native responder claims a root swipe before x0 is initialized', () => {
+  const app = swipeHarness(true), h = app.nativeHandlers();
+  const touch: any = { touchActive: true, startPageX: 200, startPageY: 200, startTimeStamp: 1, previousPageX: 200, previousPageY: 200, previousTimeStamp: 1, currentPageX: 200, currentPageY: 200, currentTimeStamp: 1 };
+  const history = { touchBank: [touch], numberActiveTouches: 1, indexOfSingleActiveTouch: 0, mostRecentTimeStamp: 1 };
+  const event = () => ({ nativeEvent: { pageX: touch.currentPageX, pageY: touch.currentPageY, touches: history.numberActiveTouches ? [{ pageX: touch.currentPageX, pageY: touch.currentPageY }] : [] }, touchHistory: history });
+  assert.equal(h.onStartShouldSetResponderCapture(event()), false);
+  touch.currentPageX = 170; touch.currentTimeStamp = 2; history.mostRecentTimeStamp = 2;
+  assert.equal(h.onMoveShouldSetResponderCapture(event()), true, 'the native responder still has x0=0 here');
+  h.onResponderGrant(event());
+  touch.previousPageX = 170; touch.previousTimeStamp = 2; touch.currentPageX = 70; touch.currentTimeStamp = 3; history.mostRecentTimeStamp = 3;
+  h.onResponderMove(event()); touch.touchActive = false; history.numberActiveTouches = 0; h.onResponderEnd(event()); h.onResponderRelease(event());
+  assert.deepEqual(app.selected, ['Friends']);
 });
