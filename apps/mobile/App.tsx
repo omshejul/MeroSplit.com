@@ -1,4 +1,4 @@
-import { PhotoSession } from './src/PersonPhoto';
+import { PhotoSession } from './src/Avatar';
 import { readPrefetch, readScope } from './src/prefetch';
 import { personalTransfers } from './src/personalBalances';
 import { subscribeConnection } from './src/connectivity';

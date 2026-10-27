@@ -1,4 +1,4 @@
-import PersonPhoto from './PersonPhoto';
+import PersonAvatar from './Avatar';
 import type { ProfilePhoto } from './types';
 import Airplane02Icon from '@hugeicons/core-free-icons/Airplane02Icon';
 import BabyBottleIcon from '@hugeicons/core-free-icons/BabyBottleIcon';
@@ -142,7 +142,7 @@ export function Icon({ name, size = 22, color }: { name: IconName; size?: number
 }
 export function IconBadge({ name, size = 22 }: { name: IconName; size?: number }) {
   const { ui } = useUI();
-  return <View style={ui.avatar}><Icon name={name} size={size} /></View>;
+  return <View style={ui.iconBadge}><Icon name={name} size={size} /></View>;
 }
 export function AmountText({ amount, style, ...props }: Omit<React.ComponentProps<typeof Text>, 'children'> & { amount: string }) {
   const { ui } = useUI();
@@ -283,8 +283,8 @@ export function DateField({ label, value, onChange, disabled = false }: { label:
   </View>;
 }
 export function Avatar({ name, photo }: { name: string; photo?: ProfilePhoto | null }) {
-  const { ui } = useUI();
-  return <PersonPhoto photo={photo}><View accessible={false} style={ui.avatar}><Text style={ui.initials}>{name.trim().split(/\s+/).map(word => word[0]).join('').slice(0, 2).toUpperCase()}</Text></View></PersonPhoto>;
+  const { ui, palette } = useUI();
+  return <PersonAvatar photo={photo} backgroundColor={palette.soft}><Text style={ui.initials}>{name.trim().split(/\s+/).map(word => word[0]).join('').slice(0, 2).toUpperCase()}</Text></PersonAvatar>;
 }
 const makeUI = (colors: Palette, fontFamily?: string) => StyleSheet.create({
   section: { fontFamily, fontSize: 18, lineHeight: 24, fontWeight: '600', color: colors.text },
@@ -298,7 +298,7 @@ const makeUI = (colors: Palette, fontFamily?: string) => StyleSheet.create({
   rowBody: { flex: 1, minWidth: 0, gap: 2 },
   rowTitle: { fontFamily, fontSize: 17, lineHeight: 23, fontWeight: '500', color: colors.text },
   rowSub: { fontFamily, fontSize: 14, lineHeight: 20, color: colors.muted },
-  avatar: { width: 36, height: 36, borderRadius: radii.control, backgroundColor: colors.soft, alignItems: 'center', justifyContent: 'center' },
+  iconBadge: { width: 36, height: 36, borderRadius: radii.control, backgroundColor: colors.soft, alignItems: 'center', justifyContent: 'center' },
   initials: { fontFamily, fontSize: 17, fontWeight: '600', color: colors.accent },
   notice: { fontFamily, backgroundColor: colors.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line, borderRadius: radii.surface, padding: 12, color: colors.text, fontSize: 14, lineHeight: 21 },
   success: { color: colors.positive },
