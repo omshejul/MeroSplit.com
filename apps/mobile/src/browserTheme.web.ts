@@ -1,5 +1,5 @@
 import type { AppearancePreference } from './native';
-import { isColorFamily, type ColorFamily } from './theme';
+import { defaultColorFamily, isColorFamily, type ColorFamily } from './theme';
 
 function preference(key: string): string | null { try { return localStorage.getItem(key); } catch { return null; } }
 export function initialBrowserAppearance(): AppearancePreference {
@@ -8,7 +8,7 @@ export function initialBrowserAppearance(): AppearancePreference {
 }
 export function initialBrowserColorFamily(): ColorFamily {
   const value = preference('merosplit.web.colorFamily');
-  return isColorFamily(value) ? value : 'basic';
+  return isColorFamily(value) ? value : defaultColorFamily;
 }
 export function syncBrowserTheme(background: string, dark: boolean): void {
   document.documentElement.style.backgroundColor = background;

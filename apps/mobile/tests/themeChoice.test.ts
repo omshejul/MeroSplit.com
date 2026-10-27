@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import ts from 'typescript';
-import { colorFamilies, isColorFamily, isDarkOnly } from '../src/theme.ts';
+import { defaultColorFamily, colorFamilies, isColorFamily, isDarkOnly } from '../src/theme.ts';
 import { validUPIAddress } from '../src/upi.ts';
 
 type Element = { type: any; props: Record<string, any>; children: any[] };
@@ -64,26 +64,26 @@ test('writes stay ordered, the newest choice is shown, a failed write keeps the 
 });
 
 function storage(file: string, names: string[], env: Record<string, any>) {
-  return new Function('env', `with(env){${source(file, names)};return { ${names.join(', ')} };}`)({ isColorFamily, ...env });
+  return new Function('env', `with(env){${source(file, names)};return { ${names.join(', ')} };}`)({ defaultColorFamily, isColorFamily, ...env });
 }
 test('native and browser keep color separate from the saved System, Light or Dark choice and recover unknown values', async () => {
   const secure = new Map<string, string>([['splitdumb.appearance', 'dark']]);
   const native = storage('src/native.ts', ['COLOR_FAMILY_KEY', 'savedColorFamily', 'saveColorFamily'], { SecureStore: { getItemAsync: async (key: string) => secure.get(key) ?? null, setItemAsync: async (key: string, value: string) => { secure.set(key, value); } } });
-  assert.equal(await native.savedColorFamily(), 'basic');
+  assert.equal(await native.savedColorFamily(), 'orchid');
   await native.saveColorFamily('obsidian'); assert.equal(await native.savedColorFamily(), 'obsidian'); assert.equal(secure.get('splitdumb.appearance'), 'dark');
   secure.set('splitdumb.appearance', 'light'); await native.saveColorFamily('obsidian'); assert.equal(secure.get('splitdumb.appearance'), 'light', 'Obsidian never rewrites the saved mode');
   secure.set('splitdumb.appearance', 'dark');
   await native.saveColorFamily('cove'); assert.equal(await native.savedColorFamily(), 'cove');
   assert.equal(secure.get('splitdumb.appearance'), 'dark'); assert.equal(secure.get('splitdumb.colorFamily'), 'cove');
   await assert.rejects(native.saveColorFamily('ember'), /Choose a color/); assert.equal(secure.get('splitdumb.colorFamily'), 'cove');
-  secure.set('splitdumb.colorFamily', 'corrupt'); assert.equal(await native.savedColorFamily(), 'basic');
+  secure.set('splitdumb.colorFamily', 'corrupt'); assert.equal(await native.savedColorFamily(), 'orchid');
   const local = new Map<string, string>([['merosplit.web.appearance', 'light']]);
   let blocked = false;
   const web = storage('src/native.web.ts', ['COLOR_FAMILY_KEY', 'readPreference', 'writePreference', 'savedColorFamily', 'saveColorFamily'], { localStorage: { getItem: (key: string) => { if (blocked) throw new Error('blocked'); return local.get(key) ?? null; }, setItem: (key: string, value: string) => { if (blocked) throw new Error('blocked'); local.set(key, value); }, removeItem: (key: string) => local.delete(key) } });
-  assert.equal(await web.savedColorFamily(), 'basic');
+  assert.equal(await web.savedColorFamily(), 'orchid');
   await web.saveColorFamily('obsidian'); assert.equal(await web.savedColorFamily(), 'obsidian'); assert.equal(local.get('merosplit.web.appearance'), 'light');
   await web.saveColorFamily('rose'); assert.equal(await web.savedColorFamily(), 'rose'); assert.equal(local.get('merosplit.web.appearance'), 'light');
-  blocked = true; assert.equal(await web.savedColorFamily(), 'basic', 'blocked site storage still opens on Basic');
+  blocked = true; assert.equal(await web.savedColorFamily(), 'orchid', 'blocked site storage still opens on Orchid');
   await web.saveColorFamily('orchid');
 });
 
