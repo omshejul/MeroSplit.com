@@ -162,11 +162,11 @@ const headerButton = (tree: any, title: string): any => footerButton({ props: { 
 const historyBatch = (highest: number, lowest: number, next_before: number | null): ExpenseHistoryPage => ({ ...page(), items: Array.from({ length: highest - lowest + 1 }, (_, i) => ({ ...version(`version-${highest-i}`), sequence: highest-i, changes: [{ field: 'notes', before: `Before ${highest-i}`, after: `Body ${highest-i}` }] })), next_before });
 
 test('cached-history refresh 503 offers one explicit Retry and retains all 65 downloaded bodies', async () => {
-  let fail = true; const calls: string[] = [];
+  let fail = true, finish: ((value: ExpenseHistoryPage) => void) | undefined; const calls: string[] = [];
   const app = component(async (_session, path) => {
     calls.push(path);
     if (fail) throw new ApiError(503, 'Temporary failure');
-    return historyBatch(65, 46, 46);
+    return new Promise<ExpenseHistoryPage>(resolve => { finish = resolve; });
   });
   try {
     await app.cacheHistory(historyBatch(65, 16, 16));
@@ -178,6 +178,10 @@ test('cached-history refresh 503 offers one explicit Retry and retains all 65 do
     fail = false; await app.commit(); assert.equal(calls.length, 1, 'recovery never retries automatically');
     retry.props.onPress(); retry.props.onPress(); app.render(); await app.commit(); tree = app.render();
     assert.deepEqual(calls, Array(2).fill('/groups/group/expenses/bill/versions?limit=20'));
+    assert.equal(headerButton(tree, 'Retry'), undefined, 'the cached header cannot retry again while its request is pending');
+    assert.equal(footerButton(tree, 'Retry'), undefined, 'older-page Retry is absent during a first-page refresh');
+    assert.deepEqual(tree.props.data.map((row: any) => row.version), downloaded.items);
+    finish!(historyBatch(65, 46, 46)); await tick(); tree = app.render();
     assert.deepEqual(tree.props.data.map((row: any) => row.version), downloaded.items);
     assert.equal(headerButton(tree, 'Retry'), undefined);
     assert.equal(tree.props.data.length, 65);
