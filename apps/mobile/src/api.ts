@@ -99,11 +99,15 @@ export async function fetchGroup(session: Session, id: string, mode: 'full' | 's
 // The complete authorized index is the pruning boundary. Changed groups still
 // use complete snapshots; unchanged first-page windows need no extra GET or write.
 export async function refreshGroups(db: Database, session: Session, mode: 'full' | 'summary' = 'full', acceptedMembership?: AcceptedMembership, options: { groupIds?: string[]; current?: () => boolean } = {}): Promise<string[]> {
-  const owner = accountOwner(session), before = await groupCacheHeads(db, owner), index = await request<{ groups: { id: string; version: number; hidden?: boolean }[] }>(session, '/groups');
+  const owner = accountOwner(session), before = await groupCacheHeads(db, owner), index = await request<{ profile_photos?: Record<string, import("./types").ProfilePhoto>; groups: { id: string; version: number; hidden?: boolean }[] }>(session, '/groups');
   if (!Array.isArray(index.groups) || new Set(index.groups.map(row => row.id)).size !== index.groups.length || index.groups.some(row => !row.id || !Number.isSafeInteger(row.version) || (row.hidden !== undefined && typeof row.hidden !== 'boolean'))) throw new Error('The group refresh was incomplete. Try again.');
   const snapshots: Group[] = [];
   const complete = (group: Group | undefined): group is Group => !!group && Array.isArray(group.participants) && Array.isArray(group.expenses) && Array.isArray(group.settlements) && Array.isArray(group.transfers) && Array.isArray(group.activity) && !!group.balances;
-  const withVisibility = (group: Group, hidden: boolean): Group => !!group.hidden === hidden ? group : { ...group, hidden };
+  const withVisibility = (group: Group, hidden: boolean): Group => {
+    const visible = !!group.hidden === hidden ? group : { ...group, hidden };
+    return index.profile_photos ? { ...visible, participants: visible.participants.map(person => ({ ...person,
+      profile_photo: !person.removed && person.user_id != null ? index.profile_photos![String(person.user_id)] ?? null : null })) } : visible;
+  };
   for (const row of index.groups) {
     const cached = await (mode === 'summary' ? readVisibleGroup : readGroup)(db, owner, row.id);
     if (options.current && !options.current()) throw new Error('The signed-in account changed.');

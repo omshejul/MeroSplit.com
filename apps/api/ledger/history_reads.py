@@ -402,6 +402,8 @@ def group_summary(actor, group_id, *, limit=50):
     _limit(limit)
     group = visible_group(actor, group_id, lock=True)
     participants = list(group.participants.select_related("user").order_by("id"))
+    from .media import profile_photos
+    photos = profile_photos(person.user_id for person in participants if not person.removed and person.user_id and person.user.is_active)
     group._attribution_names = {person.user_id: participant_display_name(person) for person in participants if person.user_id}
     opening = OpeningBalance.objects.filter(group=group).first()
     finance = finance_state(
@@ -429,7 +431,7 @@ def group_summary(actor, group_id, *, limit=50):
         "hidden": next(person.hidden for person in participants if person.user_id == actor.pk and not person.removed),
         "archived": group.archived, "is_direct": group.is_direct, "owner_id": group.owner_id,
         "participants": [{"id": str(person.id), "name": participant_display_name(person), "recorded_name": person.name,
-                          "user_id": person.user_id, "removed": person.removed,
+                          "user_id": person.user_id, "removed": person.removed, "profile_photo": photos.get(person.user_id) if not person.removed else None,
                           "account_email": person.user.email if person.user_id and person.user.is_active and not person.removed else None,
                           "payment_profile": profiles.get(person.user_id), **({"email": person.contact_email} if group.owner_id == actor.pk else {})}
                          for person in participants],

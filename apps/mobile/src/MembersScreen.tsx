@@ -64,7 +64,7 @@ function MemberRow({ group, person, selfId, organizer, disabled, onInvite }: {
   const status = person.user_id === group.owner_id ? 'Organizer' : joined ? 'Joined' : request ? 'Join request' : 'Not joined';
   const title = `${person.name}${self && person.name.toLowerCase() !== 'you' ? ' (you)' : ''}`;
   return <View style={ui.row}>
-    <Avatar name={person.name} />
+    <Avatar name={person.name} photo={person.profile_photo} />
     <View style={ui.rowBody}>
       <Text numberOfLines={1} accessibilityLabel={title} style={ui.rowTitle}>{title}</Text>
       {!!person.account_email && joined && !person.removed && <Text accessibilityLabel={person.account_email} style={ui.rowSub}>{person.account_email}</Text>}
@@ -81,7 +81,7 @@ function PreviousMembersDialog({ people, onClose }: { people: Participant[]; onC
     <Dialog.Title aria-level={2}>Previous members</Dialog.Title>
     <DialogScrollBody maxHeight={300} gap={0}>
       {people.filter(person => person.removed).map(person => <View key={person.id} style={ui.row}>
-        <Avatar name={person.name} />
+        <Avatar name={person.name} photo={person.profile_photo} />
         <View style={ui.rowBody}><Text style={ui.rowTitle}>{person.name}</Text></View>
       </View>)}
     </DialogScrollBody>

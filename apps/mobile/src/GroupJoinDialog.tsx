@@ -10,7 +10,7 @@ import { AppFrame, ScreenHeader, pageContentStyle } from './AppNavigation';
 import { TextField } from './FormFields';
 import { Avatar, Button, useUI } from './ui';
 
-type Person = { id: string; name: string };
+type Person = { id: string; name: string; profile_photo?: import("./types").ProfilePhoto | null };
 type Preview = { name: string; already_member: boolean; version: number; people: Person[] };
 type JoinRequest = { token: string; command_id: string; participant_id?: string; preview_version?: number; display_name?: string };
 
@@ -66,7 +66,7 @@ export default function GroupJoinDialog({ session, token, onJoined, onCancel }: 
           <Text style={ui.body}>If someone already added you, find your name.</Text>
           <View>
             {preview.people.map(person => <View key={person.id} style={ui.row}>
-              <Avatar name={person.name} /><Text style={[ui.rowTitle, { flex: 1, minWidth: 0 }]}>{person.name}</Text>
+              <Avatar name={person.name} photo={person.profile_photo} /><Text style={[ui.rowTitle, { flex: 1, minWidth: 0 }]}>{person.name}</Text>
               <Button title="This is me" accessibilityLabel={`This is me: ${person.name}`} disabled={working} onPress={() => choose(person)} contentStyle={{ minHeight: 48 }} />
             </View>)}
             <View style={ui.row}><Text style={[ui.rowTitle, { flex: 1, minWidth: 0 }]}>I'm not listed</Text>

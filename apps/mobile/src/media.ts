@@ -9,7 +9,7 @@ export { validateMedia, pickMedia, clearPickedMedia, stageMediaUpload, clearStag
 export type MediaMetadata = { id: string; name: string; content_type: string; size: number };
 export type PickedMedia = { uri: string; name: string; type: string; size: number };
 export type MediaList = { attachments: MediaMetadata[]; can_modify: boolean };
-export type AvatarResult = { avatar: MediaMetadata | null; cleanup_pending?: boolean };
+export type AvatarResult = { avatar: MediaMetadata | null; profile_photo?: import("./types").ProfilePhoto | null; cleanup_pending?: boolean };
 export type AttachmentResult = { attachment: MediaMetadata; version: number };
 export type MediaRemoval = { removed: true; cleanup_pending: boolean; version?: number };
 export type PendingMediaUpload = { id: string; path: string; file: PickedMedia };

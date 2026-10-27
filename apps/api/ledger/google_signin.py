@@ -43,6 +43,13 @@ def valid_process(request, process):
 
 
 class GoogleAccountAdapter(DefaultSocialAccountAdapter):
+    def can_authenticate_by_email(self, login, email):
+        provider = login.account.provider
+        return (provider in {"google", "apple"}
+                and bool(getattr(self.request, f"{provider}_proof_consumed", False))
+                and bool(getattr(self.request, f"{provider}_email_authoritative", False))
+                and EmailAddress.objects.filter(email__iexact=email, verified=True, user__is_active=True).count() == 1)
+
     def pre_social_login(self, request, sociallogin):
         from .apple_signin import apple_error
 
@@ -139,7 +146,7 @@ def prepare_google_identity(request, sociallogin, process):
         sociallogin.email_addresses = []
     sociallogin.state["process"] = process
     # Store basic profile claims only, never credentials or nonce/proof material.
-    sociallogin.account.extra_data = {k: claims[k] for k in ["sub", "email", "email_verified", "given_name", "family_name"] if k in claims}
+    sociallogin.account.extra_data = {k: claims[k] for k in ["sub", "email", "email_verified", "given_name", "family_name", "picture"] if k in claims}
     sociallogin.user.email = email
     sociallogin.user.first_name = str(sociallogin.user.first_name or "").strip()[:150]
     sociallogin.user.last_name = str(sociallogin.user.last_name or "").strip()[:150]
