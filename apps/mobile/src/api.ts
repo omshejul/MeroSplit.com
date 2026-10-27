@@ -1,3 +1,4 @@
+import { readPrefetch, readScope } from './prefetch.ts';
 import { recordConnection } from './connectivity.ts';
 import type { Command, Expense, Group, LegacyRecovery, Session } from './types';
 import { sessionRequest } from './transport.ts';
@@ -20,7 +21,17 @@ export function expensePayload(expense: Expense, updating = false): Record<strin
   return { id, description, total, paid, split, date, category, notes, ...(typeof category_auto === 'boolean' ? { category_auto } : {}), ...(updating ? { version: expense.version } : {}) };
 }
 
+export function cachedRead<T>(session: Session, path: string): T | undefined { return readPrefetch.peek<T>(readScope(session), path); }
+export function prefetchRead<T>(session: Session, path: string): Promise<T | undefined> {
+  return readPrefetch.warm<T>(readScope(session), path, signal => networkRequest<T>(session, path, 'GET', undefined, 'json', signal));
+}
 export async function request<T>(session: Session, path: string, method = 'GET', body?: unknown, responseType: 'json' | 'text' = 'json', signal?: AbortSignal): Promise<T> {
+  if (method === 'GET' && responseType === 'json') return readPrefetch.read<T>(readScope(session), path, shared => networkRequest<T>(session, path, method, body, responseType, shared), signal);
+  if (method !== 'GET') readPrefetch.invalidate(readScope(session));
+  try { return await networkRequest<T>(session, path, method, body, responseType, signal); }
+  finally { if (method !== 'GET') readPrefetch.invalidate(readScope(session)); }
+}
+async function networkRequest<T>(session: Session, path: string, method: string, body: unknown, responseType: 'json' | 'text', signal?: AbortSignal): Promise<T> {
   const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 15_000);
   const cancel = () => controller.abort();
   if (signal?.aborted) cancel();
