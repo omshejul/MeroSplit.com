@@ -1,3 +1,4 @@
+import BottomSafeArea from './BottomSafeArea';
 import { Dialog } from './DialogParts';
 import { useScrollPagination } from './useScrollPagination';
 import { APP_ORIGIN } from './appLinks';
@@ -219,14 +220,14 @@ export default function BillChatScreen({ session, groupId, expenseId, active, on
       ListEmptyComponent={<View style={{ flex: 1 }}>{page && <ChatEmptyState disabled={!ready || !active || denied || !page.can_send || !!work.draft} onSuggest={typed} />}</View>}
       renderItem={({ item, index }) => <ChatMessageRow message={item} own={item.sender_id === session.userId} active={enabled} showDate={index === newestFirst.length - 1 || new Date(newestFirst[index + 1].created_at).toDateString() !== new Date(item.created_at).toDateString()} onReport={kind => setReport({ message: item, kind })} onBlock={() => void control(() => block(item.sender_id, true))} />} />
     {newMessages && <Button title="New messages" kind="text" onPress={showNew} />}
-    <View style={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 8, gap: 8 }}>
+    <BottomSafeArea style={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 8, gap: 8 }}>
       {!!work.pending.length && <ScrollView style={{ maxHeight: Math.min(144, height * 0.25) }} keyboardShouldPersistTaps="handled">{work.pending.filter(row => !messages.some(message => message.client_id === row.id && message.sender_id === session.userId)).map(row => <View key={row.id} style={{ gap: 4 }}><Text numberOfLines={2} style={ui.body}>{row.text}</Text><Text accessibilityRole={row.error ? 'alert' : undefined} style={row.error ? ui.error : ui.caption}>{sending === row.id ? 'Sending…' : row.error ?? (durable ? 'Saved to send' : 'Waiting to send')}</Text><Button title={row.rejected ? 'Edit message' : 'Retry'} kind="text" disabled={!!sending || !active || (!row.rejected && (!enabled || !page?.can_send))} onPress={() => { if (row.rejected) void getDatabase().then(db => editRejectedChat(db, session, path, row.id)).then(value => { if (current()) { draft.current = value.draft; setWork(value); } }).catch(cause => setError(cause.message)); else void retry(row.id); }} /></View>)}</ScrollView>}
       {!!error && !work.pending.some(row => row.error === error) && <Text accessibilityRole="alert" style={ui.error}>{error}</Text>}
       {temporaryUnsent && <Text accessibilityLiveRegion="polite" style={ui.caption}>Unsent text lasts only in this tab.</Text>}
       {!online && <Text style={ui.caption}>{durable ? 'Offline. Your draft stays here.' : 'Offline. Retry when connected.'}</Text>}
       {page && !page.can_send ? <Text style={ui.caption}>This conversation is read-only.</Text> : <ChatComposer text={work.draft} disabled={!ready || !active || denied} sendDisabled={!page?.can_send || !!sending} onChange={typed} onSend={() => void send()} />}
       {denied && <Text style={ui.caption}>This conversation is unavailable. Your unsent text is saved.</Text>}
-    </View>
+    </BottomSafeArea>
     <KeyboardDialog visible={policy} onDismiss={() => setPolicy(false)} dismissable={!working} maxHeight={height * 0.85}>
       <Dialog.Title aria-level={2}>Before your first message</Dialog.Title><ScrollView style={{ flexShrink: 1, paddingHorizontal: 24 }}><Text style={ui.body}>Group members can read this chat. Only people included in this bill get notifications. Keep chat respectful. No harassment, threats, illegal or sexual content. You can report messages and block chat users. Agree to send this message.</Text><Button title="Read chat policy" kind="text" onPress={() => void Linking.openURL(APP_ORIGIN + '/chat-policy')} /></ScrollView>
       <Dialog.Actions><View style={{ flex: 1, gap: 8 }}><Button title="Agree" kind="primary" disabled={working || !online} onPress={() => void control(async () => { await request(session, '/me/chat-policy', 'PUT', { version: page?.policy_version ?? 1 }); if (current()) { setPage(previous => previous ? { ...previous, policy_accepted: true } : previous); setPolicy(false); await send(true); } })} /><Button title="Cancel" kind="text" disabled={working} onPress={() => setPolicy(false)} /></View></Dialog.Actions>

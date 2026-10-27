@@ -48,7 +48,7 @@ import GroupList from './src/GroupList';
 import { groupListRows } from './src/groupListRows';
 import Mascot from './src/Mascot';
 import { AddExpenseButton, AppFrame, pageContentStyle, ScreenHeader } from './src/AppNavigation';
-import HomeTabs, { usesNativeHomeTabs } from './src/HomeTabs';
+import HomeTabs from './src/HomeTabs';
 import { EmailSignIn, CodeSignIn } from './src/SignInForms';
 import SignInLayout from './src/SignInLayout';
 import GoogleSignInButton from './src/GoogleSignInButton';
@@ -1339,7 +1339,7 @@ function AppContent() {
     </ScreenHeader>}
     <SceneTransition changeKey={`${screen}|${tab}|${groupId ?? ''}|${expenseId ?? ''}|${settlementId ?? ''}|${screen === 'login' && challenge ? 'code' : 'entry'}`} active={focused}>
     {screen === 'login' ? loginContent : groupView ? groupView : activityView ? activityView : screen === 'billChat' && session && selected && expense ? <BillChatScreen key={`${owner}|${groupId}|${expense.id}`} session={session} groupId={selected.group.id} expenseId={expense.id} billTitle={expense.description} billAmount={formatMoney(expense.total)} onOpenBill={() => navigate('expenseDetail')} active={focused && foreground && !authHeld && !expired} online={online} onRead={() => void push.clearReadPrompts().catch(() => {})} onUnsentChange={unsent => { if (ownerRef.current !== owner) return; if (unsent) { setHasDrafts(true); return; } void flushChatWrites().then(() => getDatabase()).then(db => db.getFirstAsync<{ n: number }>('SELECT count(*) AS n FROM drafts WHERE owner=? AND body<>?', owner, 'null')).then(value => { if (ownerRef.current === owner) setHasDrafts(!!value?.n); }).catch(() => {}); }} /> : screen === 'expenseVersions' && session && selected && expense ? <ExpenseVersionHistory key={`${owner}|${session.token}|${expense.id}`} session={session} groupId={selected.group.id} expenseId={expense.id} groupVersion={selected.group.version} title={expense.description} onInvalidated={() => { if (ownerRef.current === owner && activeSessionRef.current?.token === session.token) { setLastConfirmed(null); setSyncProblem(true); } }} active={focused && foreground && !authHeld && !expired} online={online} /> : <ScrollView role="main" ref={focused ? scroll : undefined} onLayout={focused ? measureViewport : undefined} onScroll={() => setScrollEpoch(value => value + 1)} scrollEventThrottle={100} key={`${owner}|${screen}|${groupId ?? ''}`} contentContainerStyle={[pageContentStyle, showAddExpense && { paddingBottom: 104 }]} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag"
-      contentInsetAdjustmentBehavior={screen === 'home' && usesNativeHomeTabs ? 'automatic' : undefined}
+      contentInsetAdjustmentBehavior={Platform.OS === 'ios' ? 'automatic' : undefined}
       refreshControl={session && !expired && (screen === 'home' || screen === 'group') ? <RefreshControl refreshing={false} tintColor={colors.accent} colors={[colors.accent]} onRefresh={pullToRefresh} /> : undefined}>
       {listNotice}
       {homeContext}
@@ -1402,7 +1402,7 @@ function AppContent() {
 
     </>;
   }
-  return <PhotoSession.Provider value={authHeld || expired ? null : session}><NavigationContainer ref={navigation.ref} linking={webLinking}><><AppFrame onTouchStart={engage} nativeTabs={usesNativeHomeTabs && !!session && screen === 'home'}><View ref={protectedContent} style={{ flex: 1 }} pointerEvents={authHeld ? 'none' : 'auto'} accessibilityElementsHidden={authHeld} importantForAccessibility={authHeld ? 'no-hide-descendants' : 'auto'} aria-hidden={authHeld}>
+  return <PhotoSession.Provider value={authHeld || expired ? null : session}><NavigationContainer ref={navigation.ref} linking={webLinking}><><AppFrame onTouchStart={engage}><View ref={protectedContent} style={{ flex: 1 }} pointerEvents={authHeld ? 'none' : 'auto'} accessibilityElementsHidden={authHeld} importantForAccessibility={authHeld ? 'no-hide-descendants' : 'auto'} aria-hidden={authHeld}>
     <AppStack scope={`${owner}|${navigationScope}`} initialScreen={initialScreen.current} render={renderScreen} blocked={authHeld} />
   </View></AppFrame>
     {session && !authHeld && !expired && <UPISetupDialog key={`upi-setup|${owner}|${session.token}`} afterFirstSplit={upiAfterSplit} visible={upiSetup && !(appLink && 'groupInviteToken' in appLink) && !feedbackOpen && screen !== 'settle' && screen !== 'expense' && screen !== 'billChat' && screen !== 'expenseVersions'} busy={busy} needsName={!session.displayName?.trim()} onSaveName={value => saveName(value, true)} onSave={saveUPI} onSkip={() => setUpiSetup(false)} />}

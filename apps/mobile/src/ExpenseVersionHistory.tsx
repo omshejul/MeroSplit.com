@@ -102,7 +102,7 @@ export default function ExpenseVersionHistory({ session, groupId, expenseId, gro
   const paging = useScrollPagination({ scope, cursor: shown?.next_before, enabled: active && online, load: signal => load(shown?.next_before ?? undefined, signal).then(Boolean) });
   if (!active) return null;
   const rows: Row[] = shown?.items.flatMap(version => version.kind === 'created' ? [{ version }] : version.changes.map(change => ({ version, change }))) ?? [];
-  return <FlatList ref={list} scrollEventThrottle={100} onEndReachedThreshold={0.3} data={rows} keyExtractor={({ version, change }) => `${version.id}:${change?.field || 'created'}`}
+  return <FlatList ref={list} contentInsetAdjustmentBehavior="automatic" scrollEventThrottle={100} onEndReachedThreshold={0.3} data={rows} keyExtractor={({ version, change }) => `${version.id}:${change?.field || 'created'}`}
     renderItem={({ item }) => <VersionHistoryRow {...item} now={now} />} contentContainerStyle={[pageContentStyle, { gap: 0 }]}
     ListHeaderComponent={<View style={styles.subtitle}><Text style={ui.body}>{title}</Text>{shown && !online && <Text style={ui.caption}>Downloaded version history. Connect to check for newer changes.</Text>}{shown && !!error && <><ErrorText live>{error}</ErrorText>{online && !paging.failed && <Button title="Retry" kind="text" disabled={busy} onPress={() => setRetry(value => value + 1)} />}</>}</View>}
     ListEmptyComponent={error ? <View style={styles.status}><ErrorText live>{error}</ErrorText>{online && <Button title="Retry" onPress={() => setRetry(value => value + 1)} />}</View>

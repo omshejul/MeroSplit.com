@@ -34,7 +34,8 @@ test('edge-to-edge frame paints the window and protects all content edges once',
   Platform.OS=os;const tree=render({children:'content',nativeTabs});
   assert.equal(tree.type,'View');assert.equal(tree.props.style.flex,1);assert.equal(tree.props.style.backgroundColor,'#000');
   const area=tree.children.find((n:any)=>n.type==='SafeAreaView');
-  assert.deepEqual(area.props.edges,nativeTabs&&os==='ios'?['top','left','right']:['top','left','right','bottom']);
+  assert.deepEqual(area.props.edges,os==='ios'?['top','left','right']:['top','left','right','bottom']);
+  assert.equal(area.children[0].children[0].props.style.flex,1,'absolute controls follow the keyboard-resized inner container');
   assert.equal(area.children[0].props.behavior,os==='ios'?'padding':undefined,'Android uses OS resize without double keyboard adjustment');
  }
 });
