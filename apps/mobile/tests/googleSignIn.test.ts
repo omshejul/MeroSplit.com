@@ -101,7 +101,7 @@ function appFlow(active: Session | null = null, platform = 'web') {
     activeSessionRef, authEpoch, authHeldRef, Platform: { OS: platform }, draftWrites: { current: Promise.resolve() }, validatedBrowserSession: { current: '' }, emailEntryRef: { current: null },
     setCheckingCookie: () => {}, pauseAccountRequests: async () => { calls.push('pause'); }, resumeAccountRequests: () => { calls.push('resume'); },
     saveSession: async () => { calls.push('save'); }, changeScope: () => { calls.push('scope'); }, setChallenge: () => { calls.push('challenge'); }, setCode: () => { calls.push('code'); },
-    syncAccount: async () => { calls.push('sync'); }, setNotice: () => { calls.push('notice'); }, endPushSession: async () => { calls.push('push-end'); }, push: { clear: async () => {} }, clearMediaPreviews: async () => {},
+    providerConnections: { refresh: () => calls.push('connections') }, syncAccount: async () => { calls.push('sync'); }, setNotice: () => { calls.push('notice'); }, endPushSession: async () => { calls.push('push-end'); }, push: { clear: async () => {} }, clearMediaPreviews: async () => {},
   };
   const run = new Function(...Object.keys(context), `${ts.transpile(flow, { target: ts.ScriptTarget.ES2022 })}; return finishGoogleSignIn;`)(...Object.values(context));
   return { run, calls, activeSessionRef, authEpoch, authHeldRef };
@@ -123,7 +123,7 @@ test('actual App uses existing persistence/scope/sync owner; explicit connect ne
   assert.ok(login.calls.indexOf('scope') < login.calls.indexOf('sync'));
   const connect = appFlow(alice);
   await connect.run('connect', async () => alice);
-  assert.deepEqual(connect.calls, ['notice']);
+  assert.deepEqual(connect.calls, ['connections', 'notice']);
 });
 
 test('actual App rejects stale account response before persistence and permits expired-account reauthentication', async () => {
@@ -159,11 +159,19 @@ test('web handoff is same-origin and goes through the App draft/account boundary
   let body = '';
   function visit(node: ts.Node) { if (ts.isCallExpression(node) && node.expression.getText(source) === 'onAuthenticate') body = node.arguments[0].getText(source); ts.forEachChild(node, visit); }
   visit(source); assert.ok(body);
-  const paths: string[] = [], window = { location: { origin: base, assign: (path: string) => paths.push(path) } };
-  const make = (baseUrl = base) => new Function('window', 'baseUrl', 'process', 'current', `${ts.transpile(`const run = ${body}`, { target: ts.ScriptTarget.ES2022 })}; return run;`)(window, baseUrl, 'connect', alice);
-  await make()(() => false); assert.deepEqual(paths, []);
-  await make()(() => true); assert.deepEqual(paths, ['/auth/google?process=connect&account=1']);
+  const forms: any[] = [], submitted: any[] = [];
+  const window = { location: { origin: base } };
+  const document = { cookie: 'csrftoken=synthetic-csrf', body: { appendChild: (form:any) => forms.push(form) }, createElement: (tag:string):any => tag === 'input' ? {} : {
+    children: [] as any[], appendChild(input:any) { this.children.push(input); },
+    submit() { submitted.push({ action:this.action,method:this.method,fields:Object.fromEntries(this.children.map((input:any) => [input.name,input.value])) }); },
+    remove() { forms.splice(forms.indexOf(this),1); },
+  } };
+  const make = (baseUrl = base) => new Function('window', 'document', 'baseUrl', 'process', 'current', `${ts.transpile(`const run = ${body}`, { target: ts.ScriptTarget.ES2022 })}; return run;`)(window, document, baseUrl, 'connect', alice);
+  await make()(() => false); assert.deepEqual(submitted, []);
+  await make()(() => true); assert.deepEqual(submitted, [{action:'/auth/google',method:'POST',fields:{process:'connect',csrfmiddlewaretoken:'synthetic-csrf',account:'1'}}]); assert.equal(forms.length,0);
   await assert.rejects(make('https://attacker.invalid')(() => true), /account server/);
+  document.cookie = ''; await assert.rejects(make()(() => true), /Reload MeroSplit/); assert.equal(submitted.length,1);
+
 });
 
 async function browserPage(data: object, loaded = true) {

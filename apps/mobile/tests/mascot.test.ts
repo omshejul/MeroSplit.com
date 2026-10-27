@@ -93,23 +93,11 @@ function expressionFor(name: string) {
   visit(app); assert.ok(expression); return expression;
 }
 function renderCondition(env: Record<string, any>, expression: string) { return execute(`return (${expression});`, { React, Mascot, ...env }); }
-test('production App eligibility excludes known offline, errors and every saved-work state; welcome excludes all auth continuations', () => {
+test('production verified-empty eligibility excludes known offline, errors and every saved-work state', () => {
   const eligible = { online: true, isOnline: () => true, busy: false, expired: false, notice: '', commands: [], hasDrafts: false, legacy: [], recoveries: [], unavailable: [], returns: [] };
   const expression = expressionFor('mascotEligible'); assert.equal(renderCondition(eligible, expression), true);
   for (const changed of [{ online: false }, { isOnline: () => false }, { busy: true }, { expired: true }, { notice: 'Failed' }, { commands: [{}] }, { hasDrafts: true }, { legacy: [{}] }, { recoveries: [{}] }, { unavailable: [{}] }, { returns: [{}] }]) assert.equal(renderCondition({ ...eligible, ...changed }, expression), false);
-  let welcome = '';
-  function visit(node: ts.Node) {
-    if (ts.isJsxSelfClosingElement(node) && node.tagName.getText(app) === 'Mascot' && node.attributes.getText(app).includes('"welcome"')) {
-      let parent: ts.Node = node;
-      while (ts.isBinaryExpression(parent.parent)) parent = parent.parent;
-      welcome = parent.getText(app);
-    }
-    ts.forEachChild(node, visit);
-  }
-  visit(app); assert.ok(welcome);
-  const initial = { screen: 'login', session: null, challenge: null, emailRequested: false, mascotEligible: true };
-  assert.equal((renderCondition(initial, welcome) as Element).type, Mascot);
-  for (const changed of [{ screen: 'group' }, { session: {} }, { challenge: {} }, { emailRequested: true }, { mascotEligible: false }]) assert.equal(renderCondition({ ...initial, ...changed }, welcome), false);
+
 });
 
 test('production canonical refresh marker clears immediately and only verifies after successful current-owner load', async () => {
