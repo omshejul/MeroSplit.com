@@ -5,7 +5,7 @@ import ts from 'typescript';
 const app=ts.createSourceFile('App.tsx',readFileSync(new URL('../App.tsx',import.meta.url),'utf8'),ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
 const content=app.statements.find(n=>ts.isFunctionDeclaration(n)&&n.name?.text==='AppContent') as ts.FunctionDeclaration;
 function production(name:string,env:any){const n=content.body!.statements.find(n=>ts.isFunctionDeclaration(n)&&n.name?.text===name)!;return new Function('env',`with(env){${ts.transpile(n.getText(app),{target:ts.ScriptTarget.ES2022})};return ${name};}`)(env);}
-test('one status owns progress without reserving an empty trailing slot',()=>{
+test('header keeps actionable status without global progress or an empty slot',()=>{
  const source=readFileSync(new URL('../src/AppNavigation.tsx',import.meta.url),'utf8');
  const parsed=ts.createSourceFile('header.tsx',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
  const fn=parsed.statements.find(n=>ts.isFunctionDeclaration(n)&&n.name?.text==='ScreenHeader')!;
@@ -17,7 +17,7 @@ test('one status owns progress without reserving an empty trailing slot',()=>{
  for(const busy of [false,true]){const tree=render({title:'Group settings',busy,status});assert.equal(nodes(tree).filter(n=>n.type==='Spinner').length,1);}
  const idle=render({title:'Group settings',busy:false}),loading=render({title:'Group settings',busy:true});
  assert.equal(nodes(idle).filter(n=>n.props.style===env.styles.working).length,0,'idle header reserves no blank status slot');
- assert.equal(nodes(loading).filter(n=>n.type==='Spinner').length,1);
+ assert.equal(nodes(loading).filter(n=>n.type==='Spinner').length,0);
  const feedback=render({title:'Groups',busy:false,onFeedback(){}});
  assert.equal(feedback.children.filter(Boolean).at(-1).props.label,'Feedback','rightmost action sits at the trailing padding');
  const workingFeedback=render({title:'Groups',busy:true,onFeedback(){}});
