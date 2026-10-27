@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import ts from 'typescript';
 
 function swipeHarness() {
-  const state = { selected: 'Groups', busy: false, motion: true, focused: false, rtl: false };
+  const state = { selected: 'Groups', busy: false, motion: true, focused: false, rtl: false, os: 'ios' };
   const selected: string[] = [], positions: number[] = [], refs: any[] = []; let cursor = 0, handlers: any;
   const animated = { stopAnimation() {}, setValue(value: number) { positions.push(value); } };
   const file = ts.createSourceFile('swipe.ts', readFileSync(new URL('../src/useHomeTabSwipe.ts', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true);
@@ -13,8 +13,8 @@ function swipeHarness() {
     useRef: (initial: unknown) => refs[cursor++] ??= { current: initial }, useState: () => [animated], useLayoutEffect() {},
     useMemo: (fn: () => unknown) => fn(), useWindowDimensions: () => ({ width: 390 }), useUI: () => ({ motion: { enabled: state.motion } }),
     Animated: { Value: class {}, timing: (_value: any, options: any) => ({ start() { animated.setValue(options.toValue); } }) },
-    Platform: { OS: 'ios' }, I18nManager: { get isRTL() { return state.rtl; } },
-    TextInput: { State: { currentlyFocusedInput: () => state.focused ? {} : null } },
+    Platform: { get OS() { return state.os; } }, I18nManager: { get isRTL() { return state.rtl; } },
+    TextInput: { State: { currentlyFocusedInput: () => { assert.equal(state.os, 'ios'); return state.focused ? {} : null; }, currentlyFocusedField: () => { assert.equal(state.os, 'web'); return state.focused ? {} : null; } } },
     PanResponder: { create: (value: unknown) => { handlers = value; return { panHandlers: value }; } },
   });
   const render = () => { cursor = 0; useSwipe(state.selected, state.busy, (tab: string) => selected.push(tab)); };
@@ -83,4 +83,12 @@ test('native tab changes keep routes authoritative and never mount four account 
   const busy = render({ ...props, busy: true }); assert.ok(busy.children[0].every((node: any) => node.props.preventNativeSelection));
   busy.props.onTabSelected({ nativeEvent: { provenance: 6, selectedScreenKey: 'Account', actionOrigin: 'user' } });
   assert.deepEqual(selected, ['Friends']);
+});
+
+test('web uses its supported input focus API so text editing never changes tabs', () => {
+  const app = swipeHarness(); app.state.os = 'web'; app.render();
+  app.handlers().onStartShouldSetPanResponderCapture();
+  assert.equal(app.handlers().onMoveShouldSetPanResponderCapture(null, app.gesture()), true);
+  app.state.focused = true; app.render();
+  assert.equal(app.handlers().onMoveShouldSetPanResponderCapture(null, app.gesture()), false);
 });

@@ -33,7 +33,8 @@ export function useHomeTabSwipe(selected: string, busy: boolean, onSelect: (tab:
         const current = latest.current;
         if (Math.abs(state.dy) > 12 && Math.abs(state.dy) >= Math.abs(state.dx)) gesture.current.vertical = true;
         const delta = state.dx * (I18nManager.isRTL ? -1 : 1), index = tabs.indexOf(current.selected);
-        return !current.busy && !gesture.current.vertical && !TextInput.State.currentlyFocusedInput()
+        const editing = Platform.OS === 'web' ? TextInput.State.currentlyFocusedField() : TextInput.State.currentlyFocusedInput();
+        return !current.busy && !gesture.current.vertical && !editing
           && state.numberActiveTouches === 1 && state.x0 > 24 && state.x0 < current.width - 24
           && Math.abs(state.dx) > 16 && Math.abs(state.dx) > Math.abs(state.dy) * 1.8
           && index >= 0 && (delta < 0 ? index < tabs.length - 1 : index > 0);
