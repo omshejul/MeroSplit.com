@@ -21,7 +21,7 @@ import { readAppLink, type AppLink } from './src/browserLinks';
 import { validateUPIPayment, type UPILaunchQuote } from './src/upi';
 import { formatMoney } from './src/accounting';
 import { emptyGroup, previewPending } from './src/ledger';
-import { getDatabase, savedSession, saveSession, retireSyncPause, shareJson, storageIsDurable, isOnline } from './src/native';
+import { getDatabase, savedSession, saveSession, retireSyncPause, shareJson, storageIsDurable, isOnline, claimFirstSplitUPIPrompt } from './src/native';
 import { storageRevision, discardCommand, discardUnsentGroup, enqueue, enqueueBill, confirmedSync, confirmSync, readGroup, listGroups, pendingCommands, createPendingGroup, listLegacyGroups, listLegacyRecoveries, listUnavailableGroups, replaceCommand, saveGroup, readVisibleGroup, wipeAccount } from './src/storage';
 import GroupScreen, { ExpenseDetail, PaymentDetail } from './src/GroupScreen';
 import ExpenseForm from './src/ExpenseForm';
@@ -152,7 +152,7 @@ function AppContent() {
   const scroll = useRef<React.ComponentRef<typeof ScrollView>>(null), suppressPush = useRef<(data: unknown) => boolean>(() => false);
   const [viewport, setViewport] = useState<WindowFrame | null>(null), [scrollEpoch, setScrollEpoch] = useState(0);
   const [alertOpen, setAlertOpen] = useState(false);
-  const [vpa, setVpa] = useState(''), [upiSetup, setUpiSetup] = useState(false);
+  const [vpa, setVpa] = useState(''), [upiSetup, setUpiSetup] = useState(false), [upiAfterSplit, setUpiAfterSplit] = useState(false);
   const upiPrompts = useRef(new Set<string>());
   const profileRevision = useRef(0);
   const [returnAttemptId, setReturnAttemptId] = useState<string | null>(null);
@@ -235,7 +235,7 @@ function AppContent() {
   function navigate(value: Screen, params?: RouteParams) { setNotice(''); navigation.go(value, params); }
   function changeScope(value: Session | null) {
     ++scopeGeneration.current;
-    setFeedbackOpen(false); setUpiSetup(false);
+    setFeedbackOpen(false); setUpiSetup(false); setUpiAfterSplit(false);
     if (!value && session) { forgetGroupInvite(); void saveGroupInvite(null).catch(() => {}); setAppLink(null); }
     setVerifiedEmptyOwner(''); setEmptyChatScope('');
     ownerRef.current = value ? accountOwner(value) : '';
@@ -883,6 +883,7 @@ function AppContent() {
     });
   }
   async function saveExpense(value: Expense, attachment?: PendingMediaUpload, onQueued?: () => void) {
+    const active = session, shouldPrompt = !!active && !expenseId && !vpa.trim() && !value.deleted && !!selfId && BigInt(value.paid[selfId] ?? '0') > BigInt(value.shares[selfId] ?? '0');
     await perform(async () => {
       if (!selected) throw new Error('Open a group first.');
       if (selected.group.archived) throw new Error('Reopen this group in settings before making changes.');
@@ -895,6 +896,14 @@ function AppContent() {
         if (waiting) setSyncProblem(true);
       }
     });
+    const key = `first-split:${owner}`;
+    if (shouldPrompt && active && !upiPrompts.current.has(key)) {
+      upiPrompts.current.add(key);
+      const first = await claimFirstSplitUPIPrompt(owner).catch(() => false);
+      if (first && ownerRef.current === owner && activeSessionRef.current?.token === active.token) {
+        setUpiAfterSplit(true); setUpiSetup(true);
+      }
+    }
   }
   async function reverseExpense(value: Expense) {
     const route = navigation.ref.getRootState();
@@ -1384,7 +1393,7 @@ function AppContent() {
   return <PhotoSession.Provider value={authHeld || expired ? null : session}><NavigationContainer ref={navigation.ref} linking={webLinking}><><AppFrame onTouchStart={engage}><View ref={protectedContent} style={{ flex: 1 }} pointerEvents={authHeld ? 'none' : 'auto'} accessibilityElementsHidden={authHeld} importantForAccessibility={authHeld ? 'no-hide-descendants' : 'auto'} aria-hidden={authHeld}>
     <AppStack scope={`${owner}|${navigationScope}`} initialScreen={initialScreen.current} render={renderScreen} blocked={authHeld} />
   </View></AppFrame>
-    {session && !authHeld && !expired && <UPISetupDialog key={`upi-setup|${owner}|${session.token}`} visible={upiSetup && !(appLink && 'groupInviteToken' in appLink) && !feedbackOpen && screen !== 'settle' && screen !== 'expense' && screen !== 'billChat' && screen !== 'expenseVersions'} busy={busy} needsName={!session.displayName?.trim()} onSaveName={value => saveName(value, true)} onSave={saveUPI} onSkip={() => setUpiSetup(false)} />}
+    {session && !authHeld && !expired && <UPISetupDialog key={`upi-setup|${owner}|${session.token}`} afterFirstSplit={upiAfterSplit} visible={upiSetup && !(appLink && 'groupInviteToken' in appLink) && !feedbackOpen && screen !== 'settle' && screen !== 'expense' && screen !== 'billChat' && screen !== 'expenseVersions'} busy={busy} needsName={!session.displayName?.trim()} onSaveName={value => saveName(value, true)} onSave={saveUPI} onSkip={() => setUpiSetup(false)} />}
     {session && !authHeld && !expired && <FeedbackDialog key={`feedback|${owner}|${session.token}`} visible={feedbackOpen} onClose={() => setFeedbackOpen(false)} onSubmit={async body => {
       const active = session;
       if (activeSessionRef.current?.token !== active.token || ownerRef.current !== accountOwner(active)) throw new Error('Sign in again.');
