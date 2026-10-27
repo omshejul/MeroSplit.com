@@ -1,0 +1,61 @@
+import { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Animated, I18nManager, PanResponder, Platform, TextInput, useWindowDimensions } from 'react-native';
+import { useUI } from './ui';
+
+const tabs = ['Groups', 'Friends', 'Activity', 'Account'];
+
+// Only HomeTabs installs these handlers. Detail screens keep native back gestures.
+export function useHomeTabSwipe(selected: string, busy: boolean, onSelect: (tab: string) => void) {
+  const { width } = useWindowDimensions(), { motion } = useUI();
+  const [translateX] = useState(() => new Animated.Value(0));
+  const latest = useRef({ selected, busy, onSelect, width, motion: motion.enabled });
+  latest.current = { selected, busy, onSelect, width, motion: motion.enabled };
+  const gesture = useRef({ vertical: false, selected, incoming: 0, target: '' });
+  useLayoutEffect(() => {
+    translateX.stopAnimation();
+    if (gesture.current.target === selected && motion.enabled) {
+      translateX.setValue(gesture.current.incoming);
+      Animated.timing(translateX, { toValue: 0, duration: 160, useNativeDriver: Platform.OS !== 'web', isInteraction: false }).start();
+    } else translateX.setValue(0);
+    if (busy) gesture.current.selected = '';
+    gesture.current.target = '';
+    return () => translateX.stopAnimation();
+  }, [selected, busy, motion.enabled, translateX]);
+  const responder = useMemo(() => {
+    const reset = () => Animated.timing(translateX, { toValue: 0, duration: latest.current.motion ? 140 : 0, useNativeDriver: Platform.OS !== 'web', isInteraction: false }).start();
+    return PanResponder.create({
+      onStartShouldSetPanResponderCapture: () => {
+        gesture.current.vertical = false;
+        gesture.current.selected = latest.current.selected;
+        return false;
+      },
+      onMoveShouldSetPanResponderCapture: (_event, state) => {
+        const current = latest.current;
+        if (Math.abs(state.dy) > 12 && Math.abs(state.dy) >= Math.abs(state.dx)) gesture.current.vertical = true;
+        const delta = state.dx * (I18nManager.isRTL ? -1 : 1), index = tabs.indexOf(current.selected);
+        return !current.busy && !gesture.current.vertical && !TextInput.State.currentlyFocusedInput()
+          && state.numberActiveTouches === 1 && state.x0 > 24 && state.x0 < current.width - 24
+          && Math.abs(state.dx) > 16 && Math.abs(state.dx) > Math.abs(state.dy) * 1.8
+          && index >= 0 && (delta < 0 ? index < tabs.length - 1 : index > 0);
+      },
+      onPanResponderGrant: () => translateX.stopAnimation(),
+      onPanResponderMove: (_event, state) => {
+        if (state.numberActiveTouches > 1) gesture.current.vertical = true;
+        if (!latest.current.busy && !gesture.current.vertical && latest.current.motion) translateX.setValue(Math.max(-80, Math.min(80, state.dx * 0.35)));
+      },
+      onPanResponderRelease: (_event, state) => {
+        const current = latest.current, direction = state.dx < 0 ? 1 : -1;
+        const target = tabs[tabs.indexOf(current.selected) + direction * (I18nManager.isRTL ? -1 : 1)];
+        if (!current.busy && !gesture.current.vertical && current.selected === gesture.current.selected && target && Math.abs(state.dx) > Math.abs(state.dy) * 1.8
+          && (Math.abs(state.dx) >= Math.min(90, current.width * 0.22) || Math.abs(state.dx) > 30 && state.vx * state.dx > 0 && Math.abs(state.vx) > 0.5)) {
+          gesture.current.incoming = direction * 64;
+          gesture.current.target = target;
+          current.onSelect(target);
+        } else reset();
+      },
+      onPanResponderTerminate: reset,
+      onPanResponderTerminationRequest: () => true,
+    });
+  }, [translateX]);
+  return { ...responder.panHandlers, style: { flex: 1, transform: [{ translateX }] } };
+}

@@ -45,7 +45,8 @@ import AccountHeader from './src/AccountHeader';
 import GroupList from './src/GroupList';
 import { groupListRows } from './src/groupListRows';
 import Mascot from './src/Mascot';
-import { AddExpenseButton, AppFrame, pageContentStyle, ScreenHeader, AppTabs } from './src/AppNavigation';
+import { AddExpenseButton, AppFrame, pageContentStyle, ScreenHeader } from './src/AppNavigation';
+import HomeTabs, { usesNativeHomeTabs } from './src/HomeTabs';
 import { EmailSignIn, CodeSignIn } from './src/SignInForms';
 import SignInLayout from './src/SignInLayout';
 import GoogleSignInButton from './src/GoogleSignInButton';
@@ -1155,7 +1156,7 @@ function AppContent() {
   const emailContent = !checkingCookie && emailEntry?.phase === 'switch' && emailEntry.inspection ? <SwitchAccountDialog currentEmail={emailEntry.inspection.currentEmail!} targetEmail={emailEntry.inspection.email} invitation={emailEntry.inspection.purpose === 'invite'} busy={busy} onSwitch={confirmAccountSwitch} onCancel={cancelAccountSwitch} />
       : !checkingCookie && emailEntry?.phase === 'name' ? <NameOnlyForm key={emailEntry.id} busy={busy} onSave={finishEmailName} />
       : <EmailLinkStatus opening={checkingCookie || emailEntry?.phase === 'opening' || emailEntry?.phase === 'target'} busy={busy} error={emailEntry?.error ?? ''} sent={!!emailEntry?.sent} canRenew={!!emailEntry?.id} onRetry={retryEmailLink} onRenew={() => void renewCurrentEmailLink()} onSignIn={leaveEmailLink} />;
-  function renderScreen(route: AppRoute, focused: boolean, billQueued: () => void) {
+  function renderScreen(route: AppRoute, focused: boolean, billQueued: () => void, insideHomeTabs = false): React.ReactNode {
     const screen = session ? route.name : 'login', { tab = 'Groups', groupId = null, expenseId = null, settlementId = null } = route.params ?? {};
     const selected = groups.find(row => row.group.id === groupId) ?? null;
     const pending = commands.filter(command => command.group_id === groupId);
@@ -1169,6 +1170,9 @@ function AppContent() {
     if (!ready) return <SafeAreaView style={[s.screen, s.loading]}><ActivityIndicator color={colors.accent} /><Text style={ui.caption}>Opening your groups…</Text></SafeAreaView>;
     if (storageError) return <SafeAreaView role="main" style={[s.screen, pageContentStyle]}><Text accessibilityRole="header" aria-level={1} style={ui.section}>Could not open saved records</Text><Text accessibilityRole="alert" style={ui.error}>{storageError}</Text><Button title="Retry" disabled={busy} onPress={() => launch(restore)} /></SafeAreaView>;
   if (authHeld && !session) return <EmailLinkScreen title={emailEntry?.phase === 'name' ? 'Name' : 'Sign in'} busy={busy}>{emailContent}</EmailLinkScreen>;
+  if (screen === 'home' && session && !insideHomeTabs) return <HomeTabs selected={tab} busy={busy || authHeld}
+    onSelect={value => { if (lock.current || authHeldRef.current) return; setShowArchived(false); setShowHidden(false); if (value === 'Activity') { activityOwner.current = ''; setActivityError(''); } navigate('home', { tab: value }); }}
+    render={value => renderScreen({ ...route, params: { ...route.params, tab: value } }, focused && value === tab, billQueued, true)} />;
   const mascotEligible = online && isOnline() && !busy && !expired && !notice && !commands.length && !hasDrafts && !legacy.length && !recoveries.length && !unavailable.length && !returns.length;
   const activityEmptyVerified = mascotEligible && !activityError && activity?.firstPage === true && activityOwner.current === owner && emptyChatScope === `${owner}|${session?.token}`;
   const direct = tab === 'Friends';
@@ -1203,6 +1207,7 @@ function AppContent() {
     </ScreenHeader>}
     <SceneTransition changeKey={`${screen}|${tab}|${groupId ?? ''}|${expenseId ?? ''}|${settlementId ?? ''}|${screen === 'login' && challenge ? 'code' : 'entry'}`} active={focused}>
     {screen === 'login' ? loginContent : groupView ? groupView : activityView ? activityView : screen === 'billChat' && session && selected && expense ? <BillChatScreen key={`${owner}|${groupId}|${expense.id}`} session={session} groupId={selected.group.id} expenseId={expense.id} active={focused && foreground && !authHeld && !expired} online={online} onRead={() => void push.clearReadPrompts().catch(() => {})} onUnsentChange={unsent => { if (ownerRef.current !== owner) return; if (unsent) { setHasDrafts(true); return; } void flushChatWrites().then(() => getDatabase()).then(db => db.getFirstAsync<{ n: number }>('SELECT count(*) AS n FROM drafts WHERE owner=? AND body<>?', owner, 'null')).then(value => { if (ownerRef.current === owner) setHasDrafts(!!value?.n); }).catch(() => {}); }} /> : screen === 'expenseVersions' && session && selected && expense ? <ExpenseVersionHistory key={`${owner}|${session.token}|${expense.id}`} session={session} groupId={selected.group.id} expenseId={expense.id} groupVersion={selected.group.version} title={expense.description} onInvalidated={() => { if (ownerRef.current === owner && activeSessionRef.current?.token === session.token) { setLastConfirmed(null); setSyncProblem(true); } }} active={focused && foreground && !authHeld && !expired} online={online} /> : <ScrollView role="main" ref={focused ? scroll : undefined} onLayout={focused ? measureViewport : undefined} onScroll={() => setScrollEpoch(value => value + 1)} scrollEventThrottle={100} key={`${owner}|${screen}|${groupId ?? ''}`} contentContainerStyle={[pageContentStyle, showAddExpense && { paddingBottom: 104 }]} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag"
+      contentInsetAdjustmentBehavior={screen === 'home' && usesNativeHomeTabs ? 'automatic' : undefined}
       refreshControl={session && !expired && (screen === 'home' || screen === 'group') ? <RefreshControl refreshing={pulling} tintColor={colors.accent} colors={[colors.accent]} onRefresh={pullToRefresh} /> : undefined}>
       {listNotice}
       {homeContext}
@@ -1262,10 +1267,9 @@ function AppContent() {
     </ScrollView>}
     </SceneTransition>
     {showAddExpense && <AddExpenseButton disabled={busy} onPress={() => launch(() => openExpense())} />}
-    {screen === 'home' && session && <AppTabs selected={tab} busy={busy} onSelect={value => { setShowArchived(false); setShowHidden(false); if (value === 'Activity') { activityOwner.current = ''; setActivityError(''); } navigate('home', { tab: value }); }} />}
     </>;
   }
-  return <NavigationContainer ref={navigation.ref} linking={webLinking}><><AppFrame onTouchStart={notices.engage}><View ref={protectedContent} style={{ flex: 1 }} pointerEvents={authHeld ? 'none' : 'auto'} accessibilityElementsHidden={authHeld} importantForAccessibility={authHeld ? 'no-hide-descendants' : 'auto'} aria-hidden={authHeld}>
+  return <NavigationContainer ref={navigation.ref} linking={webLinking}><><AppFrame onTouchStart={notices.engage} nativeTabs={usesNativeHomeTabs && !!session && screen === 'home'}><View ref={protectedContent} style={{ flex: 1 }} pointerEvents={authHeld ? 'none' : 'auto'} accessibilityElementsHidden={authHeld} importantForAccessibility={authHeld ? 'no-hide-descendants' : 'auto'} aria-hidden={authHeld}>
     <AppStack scope={`${owner}|${navigationScope}`} initialScreen={initialScreen.current} render={renderScreen} blocked={busy || authHeld} />
   </View></AppFrame>
     {session && !authHeld && !expired && <UPISetupDialog key={`upi-setup|${owner}|${session.token}`} visible={upiSetup && !(appLink && 'groupInviteToken' in appLink) && !feedbackOpen && screen !== 'settle' && screen !== 'expense' && screen !== 'billChat' && screen !== 'expenseVersions'} busy={busy} needsName={!session.displayName?.trim()} onSaveName={value => saveName(value, true)} onSave={saveUPI} onSkip={() => setUpiSetup(false)} />}

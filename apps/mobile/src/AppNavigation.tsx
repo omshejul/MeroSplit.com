@@ -7,9 +7,9 @@ import { Button, Icon, IconAction, radii, useUI } from './ui';
 import { useMotionValue } from './motion';
 import TabBarSurface from './TabBarSurface';
 
-export function AppFrame({ children, onTouchStart }: { children: React.ReactNode; onTouchStart?: () => void }) {
+export function AppFrame({ children, onTouchStart, nativeTabs = false }: { children: React.ReactNode; onTouchStart?: () => void; nativeTabs?: boolean }) {
   const { palette, dark } = useUI();
-  return <SafeAreaView style={{ flex: 1, backgroundColor: palette.background }} edges={Platform.OS === 'web' ? ['top', 'right', 'bottom', 'left'] : ['top', 'bottom']} onTouchStart={onTouchStart}>
+  return <SafeAreaView style={{ flex: 1, backgroundColor: palette.background }} edges={Platform.OS === 'web' ? ['top', 'right', 'bottom', 'left'] : nativeTabs ? ['top'] : ['top', 'bottom']} onTouchStart={onTouchStart}>
     <StatusBar style={dark ? 'light' : 'dark'} />
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>{children}</KeyboardAvoidingView>
   </SafeAreaView>;
@@ -38,7 +38,7 @@ function TabButton({ item, selected, busy, onSelect }: { item: typeof tabs[numbe
   const { palette, motion } = useUI();
   const opacity = useMotionValue(selected ? 1 : 0, motion.enabled);
   return <Button kind="plain" accessibilityRole={Platform.OS === 'web' ? 'button' : 'tab'} aria-current={Platform.OS === 'web' && selected ? 'page' : undefined} accessibilityState={Platform.OS === 'web' ? { disabled: busy } : { selected, disabled: busy }} disabled={busy} onPress={() => onSelect(item.value)} style={styles.tab}>
-    <Animated.View pointerEvents="none" accessible={false} style={[StyleSheet.absoluteFill, { borderRadius: radii.surface, backgroundColor: palette.soft, opacity }]} />
+    <Animated.View pointerEvents="none" accessible={false} style={[StyleSheet.absoluteFill, { borderRadius: radii.navigation, backgroundColor: palette.soft, opacity }]} />
     <View style={styles.tabContent}>
       <Icon name={item.icon} color={selected ? palette.accent : palette.muted} />
       <Text style={[styles.tabText, { color: selected ? palette.accent : palette.muted }]}>{item.label}</Text>
@@ -65,7 +65,7 @@ const styles = StyleSheet.create({
   title: { fontSize: 24, lineHeight: 30, fontWeight: '600' },
   working: { position: 'absolute', right: 0, top: 0, bottom: 0, justifyContent: 'center', paddingLeft: 8 },
   tabs: { flexDirection: 'row', marginHorizontal: 16, marginBottom: 8, borderRadius: radii.navigation, padding: 4, gap: 4 },
-  tab: { flex: 1, minHeight: 48, alignItems: 'center', justifyContent: 'center', gap: 4, borderRadius: radii.surface, paddingVertical: 6 },
+  tab: { flex: 1, minHeight: 48, alignItems: 'center', justifyContent: 'center', gap: 4, borderRadius: radii.navigation, paddingVertical: 6 },
   tabContent: { zIndex: 1, alignItems: 'center', gap: 4 },
   tabText: { fontSize: 13, fontWeight: '500' },
 });

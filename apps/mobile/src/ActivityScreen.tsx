@@ -27,6 +27,7 @@ export default function ActivityScreen({ categoryIcons = {}, onVisibleExpenses, 
   const paging = useScrollPagination({ scope: pagingScope, cursor, enabled: active && online && !busy && !error,
     load: signal => onLoadMore?.(signal) ?? Promise.resolve(false) });
   return <FlatList onViewableItemsChanged={viewable.current} ref={list} data={items} keyExtractor={item => item.id} scrollEventThrottle={100} onEndReachedThreshold={0.3}
+    contentInsetAdjustmentBehavior="automatic"
     contentContainerStyle={[pageContentStyle, { gap: 0 }]} onRefresh={onRefresh} refreshing={busy}
     ListHeaderComponent={<>{header}{error ? <View style={s.message}><ErrorText live>{error}</ErrorText><Button title="Try again" disabled={busy} onPress={onRefresh} /></View> : null}</>}
     ListEmptyComponent={showEmpty && !hasMore && !error ? <View style={s.empty}><Mascot size="empty" visible={emptyVerified && !busy} /><Text accessibilityLiveRegion="polite" style={ui.caption}>{busy ? 'Loading activity…' : 'No activity yet'}</Text></View> : undefined}
