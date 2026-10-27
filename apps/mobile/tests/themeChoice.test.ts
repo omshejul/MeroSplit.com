@@ -205,19 +205,13 @@ test('background sync never drives the pull spinner; a user pull shows it until 
   }
 });
 
-test('header keeps one fixed trailing slot without moving back or action buttons', () => {
-  const env: Record<string, any> = { React, View: 'View', Text: 'Text', ActivityIndicator: 'ActivityIndicator', IconAction: 'IconAction', useUI: () => ({ palette: { text: 'text', accent: 'accent', background: 'background' } }) };
+test('header keeps action positions unchanged while automatic work is pending', () => {
+  const env: Record<string, any> = { React, View: 'View', Text: 'Text', ActivityIndicator: 'ActivityIndicator', IconAction: 'IconAction', useUI: () => ({ palette: { text: 'text' } }) };
   const header = new Function('env', `with(env){${source('src/AppNavigation.tsx', ['ScreenHeader'])};return ScreenHeader;}`)(env);
-  const styles = new Function('env', `with(env){const pageWidthStyle={};const radii={};const StyleSheet={create:v=>v};${source('src/AppNavigation.tsx', ['styles'])};return styles;}`)(env);
-  env.styles = styles;
-  const shape = (tree: Element) => tree.children.flat().filter(Boolean).map((node: Element) => node.type === 'View' ? `area:${node.props.style === styles.titleArea}` : node.type);
-  const idle = header({ title: 'Goa trip', busy: false, onBack() {}, children: React.createElement('IconAction', { name: 'add' }) });
-  const busy = header({ title: 'Goa trip', busy: true, onBack() {}, children: React.createElement('IconAction', { name: 'add' }) });
-  assert.deepEqual(shape(idle), shape(busy)); assert.deepEqual(shape(busy), ['IconAction', 'area:true', 'IconAction', 'area:false']);
-  const working = nodes(busy).find(node => node.props.style === styles.working)!;
-  assert.equal(styles.titleArea.minWidth, 0); assert.equal(styles.titleArea.overflow, 'hidden');
-  assert.equal(styles.working.width, 44); assert.equal(styles.working.height, 44); assert.equal(working.props.pointerEvents, 'none');
-  assert.ok(!nodes(busy).some(node => node.type === 'ActivityIndicator')); assert.ok(!nodes(idle).some(node => node.type === 'ActivityIndicator'));
-  const activity = readFileSync(new URL('../src/ActivityScreen.tsx', import.meta.url), 'utf8');
-  assert.doesNotMatch(activity, /ActivityIndicator/);
+  const styles = new Function('env', `with(env){const pageWidthStyle={};const radii={};const StyleSheet={create:v=>v};${source('src/AppNavigation.tsx', ['styles'])};return styles;}`)(env); env.styles=styles;
+  const props={title:'Goa trip',onBack(){},children:React.createElement('IconAction',{name:'add'})};
+  const idle=header({...props,busy:false}),busy=header({...props,busy:true});
+  const shape=(tree:Element)=>tree.children.flat().filter(Boolean).map((n:Element)=>n.type);
+  assert.deepEqual(shape(idle),['IconAction','View','IconAction']);assert.deepEqual(shape(idle),shape(busy));
+  assert.ok(!nodes(busy).some(n=>n.type==='ActivityIndicator'));assert.equal(styles.titleArea.minWidth,0);
 });

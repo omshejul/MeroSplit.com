@@ -1,3 +1,4 @@
+import { clearProfilePhotoCache } from './profilePhotoCache.ts';
 import { readPrivateMedia } from './media.ts';
 import type { MediaMetadata, PickedMedia } from './media.ts';
 import type { Session } from './types.ts';
@@ -91,8 +92,9 @@ export async function clearMediaPreviews(cacheFiles: () => Promise<{ name: strin
   const { Directory, File, Paths } = await import('expo-file-system');
   return new Directory(Paths.cache).list().filter(file => file instanceof File);
 }): Promise<void> {
+  clearProfilePhotoCache();
   try {
-    for (const file of await cacheFiles()) if (previewFilename.test(file.name) || /^merosplit-avatar-[a-f0-9]{64}\.img$/.test(file.name)) {
+    for (const file of await cacheFiles()) if (previewFilename.test(file.name) || /^merosplit-avatar-[a-f0-9]{64}(?:-[0-9]+)?\.img$/.test(file.name)) {
       try { file.delete(); } catch { /* Continue cleaning after a single-file failure. */ }
     }
   } catch { /* Preview cleanup must not prevent account sign-out or deletion. */ }
