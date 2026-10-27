@@ -35,6 +35,7 @@ function component(send: (...args: any[]) => Promise<any>) {
   const body = source.statements.filter(n => !ts.isImportDeclaration(n)).map(n => n.getText(source).replace(/^export (?:default )?/, '')).join('\n');
   const methods = new Function('env', `with(env){${ts.transpile(body, { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React })};return {ExpenseVersionHistory,VersionHistoryRow};}`)(env);
   return { render: (changes: any = {}) => { cursor = 0; return methods.ExpenseVersionHistory({ session, groupId: 'group', expenseId: 'bill', groupVersion: 3, title: 'Dinner', active: true, online: true, onInvalidated: () => { invalidations++; }, ...changes }); },
+    cacheHistory: async (value: ExpenseHistoryPage, before?: number) => { await ready; return saveExpenseHistory(db, accountOwner(session), 'group', 'bill', value, before); },
     row: methods.VersionHistoryRow, invalidations: () => invalidations, commit: async () => { const run = effects; effects = []; run.forEach(fn => fn()); await tick(); }, unmount: () => { Object.values(cleanup).forEach(fn => fn?.()); raw.close(); } };
 }
 
@@ -157,7 +158,31 @@ const footerButton = (tree: any, title: string): any => {
   const find = (node: any): any => node?.props?.title === title ? node : (Array.isArray(node) ? node : node?.children || []).map(find).find(Boolean);
   return find(tree.props.ListFooterComponent);
 };
+const headerButton = (tree: any, title: string): any => footerButton({ props: { ListFooterComponent: tree.props.ListHeaderComponent } }, title);
 const historyBatch = (highest: number, lowest: number, next_before: number | null): ExpenseHistoryPage => ({ ...page(), items: Array.from({ length: highest - lowest + 1 }, (_, i) => ({ ...version(`version-${highest-i}`), sequence: highest-i, changes: [{ field: 'notes', before: `Before ${highest-i}`, after: `Body ${highest-i}` }] })), next_before });
+
+test('cached-history refresh 503 offers one explicit Retry and retains all 65 downloaded bodies', async () => {
+  let fail = true; const calls: string[] = [];
+  const app = component(async (_session, path) => {
+    calls.push(path);
+    if (fail) throw new ApiError(503, 'Temporary failure');
+    return historyBatch(65, 46, 46);
+  });
+  try {
+    await app.cacheHistory(historyBatch(65, 16, 16));
+    const downloaded = await app.cacheHistory(historyBatch(15, 1, null), 16);
+    app.render(); await app.commit(); let tree = app.render();
+    assert.deepEqual(tree.props.data.map((row: any) => row.version), downloaded.items);
+    const retry = headerButton(tree, 'Retry'); assert.ok(retry, 'downloaded rows must not hide refresh recovery');
+    assert.equal(footerButton(tree, 'Retry'), undefined);
+    fail = false; await app.commit(); assert.equal(calls.length, 1, 'recovery never retries automatically');
+    retry.props.onPress(); retry.props.onPress(); app.render(); await app.commit(); tree = app.render();
+    assert.deepEqual(calls, Array(2).fill('/groups/group/expenses/bill/versions?limit=20'));
+    assert.deepEqual(tree.props.data.map((row: any) => row.version), downloaded.items);
+    assert.equal(headerButton(tree, 'Retry'), undefined);
+    assert.equal(tree.props.data.length, 65);
+  } finally { app.unmount(); }
+});
 
 test('older-page 503 Retry requests the same cursor once and retains all 65 ordered history bodies', async () => {
   let tailFails = true; const calls: string[] = [];
@@ -175,6 +200,7 @@ test('older-page 503 Retry requests the same cursor once and retains all 65 orde
     footerButton(tree, 'Load older').props.onPress(); await tick(); tree = app.render(); await app.commit();
     assert.deepEqual(tree.props.data.map((row: any) => row.version), firstBodies);
     const retry = footerButton(tree, 'Retry'); assert.ok(retry);
+    assert.equal(headerButton(tree, 'Retry'), undefined, 'older-page failures keep only their cursor-aware Retry');
     tailFails = false; await app.commit(); assert.equal(calls.length, 2, 'recovery does not automatically retry');
     retry.props.onPress(); retry.props.onPress(); await tick(); tree = app.render(); await app.commit();
     assert.equal(calls.length, 3, 'one request from explicit Retry, double tap deduplicated');
