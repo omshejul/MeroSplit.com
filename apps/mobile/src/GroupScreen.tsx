@@ -209,7 +209,7 @@ export default function GroupScreen({ categoryIcons, header, noticeVisibility, g
     load: signal => onHistoryPage?.(historyResource, 'next', undefined, signal, accepted) ?? Promise.resolve(false) });
   const visibility = noticeVisibility ? { ...noticeVisibility, viewport, scrollEpoch } : undefined;
   return <Animated.View ref={frame} role="region" accessibilityLabel={group.name} style={{ flex: 1, opacity }}>
-    <FlatList ref={list} data={rows} nestedScrollEnabled scrollEventThrottle={100} onEndReachedThreshold={0.3}
+    <FlatList ref={list} contentInsetAdjustmentBehavior="automatic" data={rows} nestedScrollEnabled scrollEventThrottle={100} onEndReachedThreshold={0.3}
       onLayout={event => { frame.current?.measureInWindow((x, y, width, height) => setViewport({ x, y, width, height })); }}
       onScroll={event => { setScrollEpoch(value => value + 1); }}
       onViewableItemsChanged={viewable.current} onRefresh={onRefresh} refreshing={refreshing}

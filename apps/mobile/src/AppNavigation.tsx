@@ -1,3 +1,4 @@
+import BottomSafeArea from './BottomSafeArea';
 import React from 'react';
 import { Animated, Image, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -7,14 +8,14 @@ import { Button, Icon, IconAction, radii, useUI } from './ui';
 import { useMotionValue } from './motion';
 import TabBarSurface from './TabBarSurface';
 
-export function AppFrame({ children, onTouchStart, nativeTabs = false }: { children: React.ReactNode; onTouchStart?: () => void; nativeTabs?: boolean }) {
+export function AppFrame({ children, onTouchStart }: { children: React.ReactNode; onTouchStart?: () => void }) {
   const { palette, dark } = useUI();
-  // Paint the whole window. Only content receives cutout/gesture insets.
-  // UIKit owns the native tab bar's bottom inset; Android resizes for the IME.
+  // iOS scroll views own bottom insets so their surfaces reach the window edge.
+  // Headers keep the top/cutout inset; sticky controls protect their own bottom edge.
   return <View style={{ flex: 1, backgroundColor: palette.background }} onTouchStart={onTouchStart}>
     <StatusBar style={dark ? 'light' : 'dark'} />
-    <SafeAreaView style={{ flex: 1 }} edges={nativeTabs && Platform.OS === 'ios' ? ['top', 'left', 'right'] : ['top', 'left', 'right', 'bottom']}>
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>{children}</KeyboardAvoidingView>
+    <SafeAreaView style={{ flex: 1 }} edges={Platform.OS === 'ios' ? ['top', 'left', 'right'] : ['top', 'left', 'right', 'bottom']}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}><View style={{ flex: 1 }}>{children}</View></KeyboardAvoidingView>
     </SafeAreaView>
   </View>;
 }
@@ -50,19 +51,19 @@ function TabButton({ item, selected, busy, onSelect }: { item: typeof tabs[numbe
   </Button>;
 }
 export function AppTabs({ selected, busy, onSelect }: { selected: string; busy: boolean; onSelect: (value: string) => void }) {
-  return <View role="navigation" accessibilityLabel="Main navigation" style={pageWidthStyle}><TabBarSurface style={styles.tabs}>
+  return <BottomSafeArea role="navigation" accessibilityLabel="Main navigation" style={pageWidthStyle}><TabBarSurface style={styles.tabs}>
     {tabs.map(item => <TabButton key={item.value} item={item} selected={selected === item.value} busy={busy} onSelect={onSelect} />)}
-  </TabBarSurface></View>;
+  </TabBarSurface></BottomSafeArea>;
 }
 export function AddExpenseButton({ disabled, onPress }: { disabled: boolean; onPress: () => void }) {
-  return <View pointerEvents="box-none" style={styles.floating}>
+  return <BottomSafeArea pointerEvents="box-none" style={styles.floating}>
     <View pointerEvents="box-none" style={[pageWidthStyle, styles.floatingContent]}>
       <Button title="Add expense" kind="primary" icon="add" disabled={disabled} onPress={onPress} style={{ minHeight: 36 }} />
     </View>
-  </View>;
+  </BottomSafeArea>;
 }
 const styles = StyleSheet.create({
-  floating: { position: 'absolute', left: 0, right: 0, bottom: 16 },
+  floating: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingBottom: 16 },
   floatingContent: { width: '100%', alignItems: 'flex-end', paddingHorizontal: 16 },
   header: { ...pageWidthStyle, flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 56, paddingHorizontal: 16, paddingTop: 4, paddingBottom: 8 },
   titleArea: { flex: 1, minWidth: 0, overflow: 'hidden', justifyContent: 'center' },

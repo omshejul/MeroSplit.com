@@ -54,7 +54,7 @@ export default function GroupJoinDialog({ session, token, onJoined, onCancel }: 
   return <Modal visible presentationStyle="fullScreen" onRequestClose={() => { if (!working) onCancel(); }}>
     <SafeAreaProvider><AppFrame><DialogFocus style={{ flex: 1 }} busy={working} onEscape={uncertain ? onCancel : back}>
       <ScreenHeader title={preview ? `Join ${preview.name}` : 'Join group'} busy={working} onBack={uncertain ? onCancel : back} />
-      <ScrollView role="main" contentContainerStyle={pageContentStyle} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
+      <ScrollView role="main" contentInsetAdjustmentBehavior="automatic" contentContainerStyle={pageContentStyle} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
         <Text style={ui.caption}>Signed in as {session.email}</Text>
         {!preview && !error && <Text style={ui.caption}>Checking invitation…</Text>}
         {!!error && <Text style={ui.error} accessibilityRole="alert">{error}</Text>}

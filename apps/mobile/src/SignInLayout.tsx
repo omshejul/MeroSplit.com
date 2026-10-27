@@ -17,7 +17,7 @@ export default function SignInLayout({ children, busy, onBack }: { children: Rea
     return () => viewport.removeEventListener('resize', resize);
   }, []);
   return <View testID="signin-viewport" style={{ flex: 1, ...(visualHeight !== undefined && { maxHeight: Math.max(0, visualHeight - insets.top - insets.bottom) }) }} onLayout={event => setHeight(event.nativeEvent.layout.height)}>
-    <ScrollView role="main" keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag"
+    <ScrollView role="main" contentInsetAdjustmentBehavior="automatic" keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag"
       contentContainerStyle={{ flexGrow: 1, paddingHorizontal: 24, paddingTop: signInTopPadding(height, contentHeight), paddingBottom: 24 }}>
       <View testID="signin-group" style={{ width: '100%', maxWidth: 380, alignSelf: 'center', gap: 24 }} onLayout={event => setContentHeight(event.nativeEvent.layout.height)}>
         {onBack && <View style={{ alignSelf: 'flex-start' }}><IconAction name="back" label="Back" disabled={busy} onPress={onBack} /></View>}
