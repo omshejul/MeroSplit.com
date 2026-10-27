@@ -2,18 +2,18 @@ import { Dialog } from './DialogParts';
 import { useScrollPagination } from './useScrollPagination';
 import { APP_ORIGIN } from './appLinks';
 import React, { useEffect, useRef, useState } from 'react';
-import { FlatList, Linking, Platform, ScrollView, Text, View, useWindowDimensions } from 'react-native';
+import { FlatList, Linking, Platform, ScrollView, Text, TextInput, View, useWindowDimensions } from 'react-native';
 
 import * as Crypto from 'expo-crypto';
 import { accountOwner, ApiError, request } from './api';
 import { changeChatWork, chatPath, editRejectedChat, mergeChatMessages, queueChatMessage, readChatWork, sendChatMessage, startChatReads, visibleChatTokens } from './billChat';
 import type { ChatMessage, ChatPage, ChatWork } from './billChat';
 import ChatControls, { ChatMenu } from './ChatControls';
-import { TextField } from './FormFields';
+import ChatComposerSurface from './ChatComposerSurface';
 import KeyboardDialog from './KeyboardDialog';
 import { getDatabase, storageIsDurable } from './native';
 import type { Session } from './types';
-import { Button, IconAction, SettingsRow, useUI } from './ui';
+import { Button, Icon, IconAction, SettingsRow, useUI } from './ui';
 
 export function BillChatEntry({ session, groupId, expenseId, active, disabled, onOpen }: { session: Session; groupId: string; expenseId: string; active: boolean; disabled: boolean; onOpen: () => void }) {
   const [unread, setUnread] = useState<number | null>(null), path = chatPath(groupId, expenseId);
@@ -33,23 +33,45 @@ export function BillChatEntry({ session, groupId, expenseId, active, disabled, o
 export function ChatMessageRow({ message, own, showDate, active, onReport, onBlock }: { message: ChatMessage; own: boolean; showDate: boolean; active: boolean; onReport: (kind: 'message' | 'user') => void; onBlock: () => void }) {
   const { ui, palette } = useUI(), date = new Date(message.created_at);
   return <View style={{ gap: 4, paddingVertical: 8 }}>
-    {showDate && <Text style={[ui.caption, { textAlign: 'center', paddingVertical: 8 }]}>{date.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}</Text>}
-    <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
-      <View style={{ flex: 1, gap: 6, padding: 12, borderRadius: 12, backgroundColor: own ? palette.soft : palette.surface }}>
-        <Text style={ui.caption}>{own ? 'You' : message.sender} · {date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}{own ? ' · Sent' : ''}</Text>
-        <Text selectable style={ui.body}>{message.text}</Text>
+    {showDate && <Text style={[ui.caption, { textAlign: 'center', paddingVertical: 12 }]}>{date.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}</Text>}
+    <View style={{ flexDirection: 'row', justifyContent: own ? 'flex-end' : 'flex-start', alignItems: 'flex-end', gap: 6 }}>
+      {!own && <View accessible={false} style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: palette.soft, alignItems: 'center', justifyContent: 'center' }}><Text style={[ui.caption, { color: palette.text }]}>{message.sender.trim().split(/\s+/).map(word => word[0]).slice(0, 2).join('')}</Text></View>}
+      <View style={{ maxWidth: '78%', flexShrink: 1, gap: 5 }}>
+        {!own && <Text style={ui.caption}>{message.sender}</Text>}
+        <View style={{ paddingHorizontal: 14, paddingVertical: 10, borderRadius: 18, borderBottomRightRadius: own ? 5 : 18, borderBottomLeftRadius: own ? 18 : 5, backgroundColor: own ? palette.accent : palette.soft }}>
+          <Text selectable style={[ui.body, own && { color: palette.background }]}>{message.text}</Text>
+        </View>
+        <Text style={[ui.caption, { textAlign: own ? 'right' : 'left', fontSize: 12 }]}>{date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}{own ? ' · Sent' : ''}</Text>
       </View>
-      <ChatMenu own={own} disabled={!active} onReport={onReport} onBlock={onBlock} />
+      {!own && <ChatMenu own={own} disabled={!active} onReport={onReport} onBlock={onBlock} />}
     </View>
   </View>;
 }
 export function ChatComposer({ text, disabled, sendDisabled, onChange, onSend }: { text: string; disabled: boolean; sendDisabled?: boolean; onChange: (text: string) => void; onSend: () => void }) {
-  return <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8 }}>
-    <View style={{ flex: 1 }}><TextField label="Message" multiline maxLength={2000} value={text} onChangeText={onChange} editable={!disabled} style={{ maxHeight: 144, textAlignVertical: 'top' }} /></View>
-    <Button title="Send" kind="primary" disabled={disabled || sendDisabled || !text.trim()} onPress={onSend} />
+  const { ui, palette, inputColors } = useUI(), { fontScale = 1 } = useWindowDimensions();
+  const [expanded, setExpanded] = useState(false);
+  return <ChatComposerSurface style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 4, padding: 4, borderRadius: expanded ? 18 : 28, borderWidth: 1, borderColor: palette.line }}>
+    <TextInput {...inputColors} accessibilityLabel="Message" placeholder="Message…" placeholderTextColor={palette.muted}
+      multiline onLayout={event => setExpanded(event.nativeEvent.layout.height > (ui.body?.lineHeight ?? 23) * fontScale + 25)} maxLength={2000} value={text} onChangeText={onChange} editable={!disabled} underlineColorAndroid="transparent"
+      style={[ui.body, { flex: 1, minWidth: 0, minHeight: 44, maxHeight: 144, paddingHorizontal: 14, paddingTop: 11, paddingBottom: 11, backgroundColor: 'transparent', textAlignVertical: 'top' }]} />
+    <Button iconOnly icon={({ color }) => <View style={{ transform: [{ rotate: '180deg' }] }}><Icon name="down" size={22} color={color} /></View>}
+      accessibilityLabel="Send message" kind="primary" disabled={disabled || sendDisabled || !text.trim()} onPress={onSend}
+      hitSlop={0} style={{ width: 44, height: 44, borderRadius: 22 }} />
+  </ChatComposerSurface>;
+}
+export function ChatEmptyState({ onSuggest, disabled }: { onSuggest: (text: string) => void; disabled: boolean }) {
+  const { ui, palette } = useUI();
+  return <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 12 }}>
+    <Icon name="feedback" size={40} color={palette.accent} />
+    <Text style={[ui.body, { fontSize: 20, fontWeight: '600', textAlign: 'center' }]}>Talk about this bill</Text>
+    <Text style={[ui.caption, { textAlign: 'center' }]}>Ask a question or clarify a split.</Text>
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 8, marginTop: 8 }}>
+      {['Check my share', 'What’s included?'].map(text => <Button key={text} title={text} kind="outlined" disabled={disabled} onPress={() => onSuggest(text === 'Check my share' ? 'Can you confirm my share?' : 'What’s included in this bill?')} style={{ minHeight: 44, borderRadius: 22 }} />)}
+    </View>
   </View>;
 }
-export default function BillChatScreen({ session, groupId, expenseId, active, online, onRead, onUnsentChange }: { session: Session; groupId: string; expenseId: string; active: boolean; online: boolean; onRead?: () => void; onUnsentChange?: (unsent: boolean) => void }) {
+
+export default function BillChatScreen({ session, groupId, expenseId, active, online, onRead, onUnsentChange, billTitle, billAmount, onOpenBill }: { billTitle?: string; billAmount?: string; onOpenBill?: () => void; session: Session; groupId: string; expenseId: string; active: boolean; online: boolean; onRead?: () => void; onUnsentChange?: (unsent: boolean) => void }) {
   const { ui, palette } = useUI(), { height } = useWindowDimensions(), path = chatPath(groupId, expenseId);
   const [messages, setMessages] = useState<ChatMessage[]>([]), [page, setPage] = useState<ChatPage | null>(null), [work, setWork] = useState<ChatWork>({ draft: '', pending: [] });
   const [reconnected, setReconnected] = useState(0), [ready, setReady] = useState(false), [error, setError] = useState(''), [sending, setSending] = useState('');
@@ -184,18 +206,20 @@ export default function BillChatScreen({ session, groupId, expenseId, active, on
   } });
   const newestFirst = [...messages].reverse();
   return <View role="main" style={{ flex: 1, width: '100%', maxWidth: 760, alignSelf: 'center' }}>
-    <View style={{ flexDirection: 'row', paddingHorizontal: 16, alignItems: 'center' }}><Text numberOfLines={1} style={[ui.caption, { flex: 1 }]}>Messages about this bill</Text><IconAction name="settings" label="Chat settings" disabled={!active} onPress={() => setSettings(true)} /></View>
-    <FlatList ref={list} inverted data={newestFirst} keyExtractor={row => row.id} style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 12 }}
+    <View style={{ flexDirection: 'row', paddingHorizontal: 16, alignItems: 'center' }}><Button kind="plain" accessibilityLabel={`View bill, ${billTitle ?? 'Bill'}${billAmount ? `, ${billAmount}` : ''}`} disabled={!onOpenBill} onPress={onOpenBill} style={{ flex: 1, minWidth: 0, minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+      <Icon name="bill" size={20} color={palette.muted} /><Text numberOfLines={1} style={[ui.body, { flex: 1, fontWeight: '500' }]}>{billTitle ?? 'Bill'}</Text>{billAmount && <Text style={ui.caption}>{billAmount}</Text>}{onOpenBill && <Icon name="next" size={16} color={palette.muted} />}
+    </Button><IconAction name="settings" label="Chat settings" disabled={!active} onPress={() => setSettings(true)} /></View>
+    <FlatList ref={list} inverted={messages.length > 0} data={newestFirst} keyExtractor={row => row.id} style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 12, ...(!messages.length ? { flexGrow: 1 } : {}) }}
       maintainVisibleContentPosition={{ minIndexForVisible: 0 }} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag"
       onViewableItemsChanged={onViewable.current} viewabilityConfig={viewability.current}
       onScrollBeginDrag={() => { forceFollow.current = false; follow.current = false; }}
       onScroll={event => { const { contentOffset } = event.nativeEvent; const atBottom = contentOffset.y < 80; if (atBottom) { forceFollow.current = false; follow.current = true; setNewMessages(false); if (incoming.current.length) showNew(); } else if (!forceFollow.current) follow.current = false; }} scrollEventThrottle={100}
       onContentSizeChange={(width, height) => { if ((follow.current || forceFollow.current) && !paging.loading) { list.current?.scrollToOffset({ offset: 0, animated: false }); forceFollow.current = false; } }}
-      ListFooterComponent={<View style={{ paddingVertical: 12 }}>{paging.canLoadMore && !paging.failed && <Button title={paging.loading ? 'Loading…' : 'Load older'} style={{ minWidth: 120 }} kind="text" disabled={paging.loading} onPress={paging.loadMore} />}{paging.failed && <Button title="Retry" kind="text" disabled={!enabled} onPress={paging.retry} />}</View>}
-      ListEmptyComponent={<Text style={[ui.caption, { paddingVertical: 24 }]}>{page ? 'Start the conversation.' : 'Loading messages…'}</Text>}
+      ListFooterComponent={messages.length ? <View style={{ paddingVertical: 12 }}>{paging.canLoadMore && !paging.failed && <Button title={paging.loading ? 'Loading…' : 'Load older'} style={{ minWidth: 120 }} kind="text" disabled={paging.loading} onPress={paging.loadMore} />}{paging.failed && <Button title="Retry" kind="text" disabled={!enabled} onPress={paging.retry} />}</View> : undefined}
+      ListEmptyComponent={<View style={{ flex: 1 }}>{page && <ChatEmptyState disabled={!ready || !active || denied || !page.can_send || !!work.draft} onSuggest={typed} />}</View>}
       renderItem={({ item, index }) => <ChatMessageRow message={item} own={item.sender_id === session.userId} active={enabled} showDate={index === newestFirst.length - 1 || new Date(newestFirst[index + 1].created_at).toDateString() !== new Date(item.created_at).toDateString()} onReport={kind => setReport({ message: item, kind })} onBlock={() => void control(() => block(item.sender_id, true))} />} />
     {newMessages && <Button title="New messages" kind="text" onPress={showNew} />}
-    <View style={{ paddingHorizontal: 16, paddingBottom: 12, gap: 8, borderTopWidth: 0.5, borderColor: palette.line }}>
+    <View style={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 8, gap: 8 }}>
       {!!work.pending.length && <ScrollView style={{ maxHeight: Math.min(144, height * 0.25) }} keyboardShouldPersistTaps="handled">{work.pending.filter(row => !messages.some(message => message.client_id === row.id && message.sender_id === session.userId)).map(row => <View key={row.id} style={{ gap: 4 }}><Text numberOfLines={2} style={ui.body}>{row.text}</Text><Text accessibilityRole={row.error ? 'alert' : undefined} style={row.error ? ui.error : ui.caption}>{sending === row.id ? 'Sending…' : row.error ?? (durable ? 'Saved to send' : 'Waiting to send')}</Text><Button title={row.rejected ? 'Edit message' : 'Retry'} kind="text" disabled={!!sending || !active || (!row.rejected && (!enabled || !page?.can_send))} onPress={() => { if (row.rejected) void getDatabase().then(db => editRejectedChat(db, session, path, row.id)).then(value => { if (current()) { draft.current = value.draft; setWork(value); } }).catch(cause => setError(cause.message)); else void retry(row.id); }} /></View>)}</ScrollView>}
       {!!error && !work.pending.some(row => row.error === error) && <Text accessibilityRole="alert" style={ui.error}>{error}</Text>}
       {temporaryUnsent && <Text accessibilityLiveRegion="polite" style={ui.caption}>Unsent text lasts only in this tab.</Text>}

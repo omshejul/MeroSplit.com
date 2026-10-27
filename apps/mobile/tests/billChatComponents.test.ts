@@ -25,7 +25,7 @@ function component(db: any, send: typeof request, extra: Record<string, any> = {
   let receive!: (value: ChatPage, older: boolean) => void, fail!: (error: unknown) => void;
   let starts = 0, stops = 0;
   const env: Record<string, any> = { APP_ORIGIN, ...chat, React: { createElement: (type: any, props: any, ...children: any[]) => ({ type, props: props ?? {}, children }) },
-    Platform: { OS: 'native' }, storageIsDurable: () => true, View: 'View', Text: 'Text', FlatList: 'FlatList', ScrollView: 'ScrollView', Button: 'Button', TextField: 'TextField', IconAction: 'IconAction', SettingsRow: 'SettingsRow', ChatControls: 'ChatControls', ChatMenu: 'ChatMenu', KeyboardDialog: 'KeyboardDialog', Dialog: Object.assign(() => {}, { Title: 'Title', Content: 'Content', Actions: 'Actions' }),
+    Platform: { OS: 'native' }, storageIsDurable: () => true, View: 'View', Text: 'Text', FlatList: 'FlatList', ScrollView: 'ScrollView', Button: 'Button', TextField: 'TextField', TextInput: 'TextInput', Icon: 'Icon', ChatComposerSurface: 'ChatComposerSurface', IconAction: 'IconAction', SettingsRow: 'SettingsRow', ChatControls: 'ChatControls', ChatMenu: 'ChatMenu', KeyboardDialog: 'KeyboardDialog', Dialog: Object.assign(() => {}, { Title: 'Title', Content: 'Content', Actions: 'Actions' }),
     Crypto: { randomUUID: () => 'synthetic-client-uuid' }, ApiError, accountOwner, request: send, getDatabase: async () => db, useUI: () => ({ ui: {}, palette: {} }), useWindowDimensions: () => ({ height: 720 }), Linking: { openURL: async () => {} },
     sendChatMessage: (...args: any[]) => chat.sendChatMessage(args[0], args[1], args[2], args[3], send),
     startChatReads: (_session: any, _path: string, _known: any, onPage: any, onError: any) => { starts++; receive = onPage; fail = onError; return { stop: () => stops++, refresh: () => {}, older: async () => {}, hasOlder: () => true }; },
@@ -41,9 +41,9 @@ function component(db: any, send: typeof request, extra: Record<string, any> = {
   const source = ts.createSourceFile('BillChatScreen.tsx', readFileSync(new URL('../src/BillChatScreen.tsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   const body = source.statements.filter(node => !ts.isImportDeclaration(node)).map(node => node.getText(source).replace(/^export (?:default )?/, '')).join('\n');
   const code = ts.transpile(body, { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React });
-  const render = new Function('env', `with(env){${code}; return {BillChatScreen,ChatComposer};}`)(env);
+  const render = new Function('env', `with(env){${code}; return {BillChatScreen,ChatComposer,ChatEmptyState,ChatMessageRow};}`)(env);
   const props = { session, groupId: 'group', expenseId: 'bill', active: true, online: true };
-  return { render: (changes = {}) => { cursor = 0; return render.BillChatScreen({ ...props, ...changes }); }, composer: render.ChatComposer,
+  return { render: (changes = {}) => { cursor = 0; return render.BillChatScreen({ ...props, ...changes }); }, composer: render.ChatComposer, empty: render.ChatEmptyState, row: render.ChatMessageRow,
     commit: async () => { const pending = effects; effects = []; pending.forEach(fn => fn()); await tick(); },
     page: (value: ChatPage, older = false) => receive(value, older), fail: (error: unknown) => fail(error), counts: () => ({ starts, stops }), unmount: () => Object.values(cleanups).forEach(fn => fn?.()) };
 }
@@ -53,7 +53,7 @@ test('Production screen acknowledges actual foreground viewable rows, never the 
   const send: typeof request = async <T>(_active: Session, path: string, _method?: string, body?: unknown, _type?: 'json' | 'text', signal?: AbortSignal): Promise<T> => { calls.push({ path, body, signal }); return { seen: 1 } as T; };
   const app = component(db, send);
   try {
-    await migrate(db); app.render(); await app.commit(); app.page(page([message('1'), message('2')]));
+    await migrate(db); const empty = app.render(); assert.equal(find(empty, 'FlatList').props.inverted, false); await app.commit(); app.page(page([message('1'), message('2')]));
     let tree = app.render(); await app.commit(); assert.equal(calls.length, 0);
     const flat = find(tree, 'FlatList');
     assert.equal(flat.props.inverted, true); assert.equal(flat.props.viewabilityConfig.minimumViewTime, 500);
@@ -211,4 +211,30 @@ test('Temporary browser chat warns only for unsent text and removes its beforeun
     composer().props.onChange('Another draft'); app.render({ online: false, onUnsentChange: (unsent: boolean) => changed.push(unsent) }); await app.commit(); assert.equal(listeners.size, 1);
     app.unmount(); assert.equal(listeners.size, 0); assert.deepEqual(changed, [false, true, false, true]);
   } finally { app.unmount(); await chat.flushChatWrites(); raw.close(); }
+});
+
+
+test('Compact composer keeps drafts editable while sending and rejects empty sends', () => {
+  const raw = new DatabaseSync(':memory:'), app = component(sqliteAdapter(raw), async <T>() => ({}) as T);
+  try {
+    let tree = app.composer({ text: '   ', disabled: false, onChange: () => {}, onSend: () => {} });
+    assert.equal(find(tree, 'TextInput').props.accessibilityLabel, 'Message');
+    assert.equal(nodes(tree).find(node => node.props.accessibilityLabel === 'Send message')!.props.disabled, true);
+    tree = app.composer({ text: 'New draft', disabled: false, sendDisabled: true, onChange: () => {}, onSend: () => {} });
+    assert.equal(find(tree, 'TextInput').props.editable, true);
+    assert.equal(nodes(tree).find(node => node.props.accessibilityLabel === 'Send message')!.props.disabled, true);
+    assert.ok(!nodes(tree).some(node => node.props.label === 'Message' || node.props.title === 'Send'));
+  } finally { raw.close(); }
+});
+
+test('Empty-state suggestions only compose text, and read-only chats disable them', () => {
+  const raw = new DatabaseSync(':memory:'), app = component(sqliteAdapter(raw), async <T>() => ({}) as T), drafts: string[] = [];
+  try {
+    let tree = app.empty({ disabled: false, onSuggest: (text: string) => drafts.push(text) });
+    button(tree, 'Check my share').props.onPress();
+    button(tree, 'What’s included?').props.onPress();
+    assert.deepEqual(drafts, ['Can you confirm my share?', 'What’s included in this bill?']);
+    tree = app.empty({ disabled: true, onSuggest: () => {} });
+    assert.equal(button(tree, 'Check my share').props.disabled, true);
+  } finally { raw.close(); }
 });
