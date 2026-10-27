@@ -21,6 +21,7 @@ apps/mobile/ios/
 .coverage
 
 apps/api/web-dist/
+apps/api/web-dist.tar
 
 # Private research evidence must stay outside tracked source.
 /research/
