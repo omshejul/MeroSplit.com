@@ -12,7 +12,7 @@ function GroupListRow({ row, waiting, userId, busy, onOpen }: { row: CachedGroup
   const group = row.group, name = groupDisplayName(group, userId), me = userId ? selfParticipant(group, userId) : undefined;
   const attention = waiting.some(value => value.state !== 'pending');
   return <Button kind="plain" accessibilityRole="button" disabled={busy} style={[styles.row, { borderBottomColor: palette.line }]} onPress={onOpen}>
-    {group.is_direct ? <Avatar name={name} /> : <IconBadge name="groups" size={24} />}
+    {group.is_direct ? <Avatar name={name} photo={group.participants.find(person => !person.removed && person.id !== me?.id)?.profile_photo} /> : <IconBadge name="groups" size={24} />}
     <View style={ui.rowBody}>
       <Text numberOfLines={1} ellipsizeMode="tail" accessibilityLabel={name} style={ui.rowTitle}>{name}{group.archived ? ' · Archived' : ''}</Text>
       <Text style={[ui.rowSub, me && { color: balanceColor(group.balances[me.id] ?? '0', palette) }]}>{me ? position('You', group.balances[me.id] ?? '0') : 'Pending sync'}</Text>

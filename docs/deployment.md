@@ -8,7 +8,7 @@ The API and notification worker share PostgreSQL. Configure your own private env
 
 ## Google and Apple sign-in
 
-Use your own provider registrations and match bundle/package identifiers, signing certificates, URL schemes, authorized origins and callbacks to the client and backend configuration. Preserve allauth session ownership and explicit account linking. Web client secrets and Apple signing keys belong only on the server.
+Use your own provider registrations and match bundle/package identifiers, signing certificates, URL schemes, authorized origins and callbacks to the client and backend configuration. Preserve allauth session ownership. Verified authoritative provider emails automatically link to one active account with a matching verified email. Other identities require explicit account linking. Web client secrets and Apple signing keys belong only on the server.
 
 ## Email delivery
 

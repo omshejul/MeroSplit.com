@@ -1,27 +1,30 @@
+import PersonPhoto from './PersonPhoto';
+import type { ProfilePhoto as ProfilePhotoValue } from './types';
 import React, { useEffect, useRef, useState } from 'react';
 import { Text, View } from 'react-native';
 import { Alert } from './alerts';
 import * as Crypto from 'expo-crypto';
-import { accountOwner, request } from './api';
+import { accountOwner, request, cachedRead } from './api';
 import { clearPickedMedia, pickMedia, uploadMedia } from './media';
 import type { AvatarResult, MediaMetadata } from './media';
-import PrivateMediaImage from './PrivateMediaImage';
 import RemoveMediaMenu from './RemoveMediaMenu';
 import type { Session } from './types';
 import { Button, Icon, useUI } from './ui';
 
 export type ProfilePhotoProps = { session: Session | null; busy: boolean; onBusyChange: (busy: boolean) => void; compact?: boolean };
 export default function ProfilePhoto({ session, busy, onBusyChange, compact = false }: ProfilePhotoProps) {
-  const { ui, palette } = useUI(), [avatar, setAvatar] = useState<MediaMetadata | null>(null), [loading, setLoading] = useState(true), [working, setWorking] = useState(false), [error, setError] = useState('');
+  const cachedProfile = session ? cachedRead<AvatarResult>(session, '/me') : undefined;
+  const { ui, palette } = useUI(), [fallback, setFallback] = useState<ProfilePhotoValue | null>(cachedProfile?.profile_photo ?? null), [avatar, setAvatar] = useState<MediaMetadata | null>(cachedProfile?.avatar ?? null), [loading, setLoading] = useState(!cachedProfile), [working, setWorking] = useState(false), [error, setError] = useState('');
   const [optionsOpen, setOptionsOpen] = useState(false);
   const lock = useRef(false), mounted = useRef(true), owner = session ? accountOwner(session) : '';
   const ownerRef = useRef(owner); ownerRef.current = owner;
   const current = () => mounted.current && ownerRef.current === owner;
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   useEffect(() => {
-    let active = true; setAvatar(null); setOptionsOpen(false); setError(''); setLoading(true);
+    const cached = session ? cachedRead<AvatarResult>(session, '/me') : undefined;
+    let active = true; setAvatar(cached?.avatar ?? null); setFallback(cached?.profile_photo ?? null); setOptionsOpen(false); setError(''); setLoading(!cached);
     if (!session) { setLoading(false); return; }
-    void request<AvatarResult>(session, '/me').then(result => { if (active) setAvatar(result.avatar); })
+    void request<AvatarResult>(session, '/me').then(result => { if (active) { setAvatar(result.avatar); setFallback(result.profile_photo ?? null); } })
       .catch(() => { if (active) setError('Could not load your photo. Refresh when online.'); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
@@ -29,7 +32,7 @@ export default function ProfilePhoto({ session, busy, onBusyChange, compact = fa
   async function load() {
     if (!session) return;
     const result = await request<AvatarResult>(session, '/me');
-    if (current()) setAvatar(result.avatar);
+    if (current()) { setAvatar(result.avatar); setFallback(result.profile_photo ?? null); }
     return result;
   }
   async function run(action: () => Promise<void>) {
@@ -46,7 +49,7 @@ export default function ProfilePhoto({ session, busy, onBusyChange, compact = fa
     const id = Crypto.randomUUID();
     try {
       const result = await uploadMedia<AvatarResult>(session, '/me/avatar', file, id);
-      if (current()) setAvatar(result.avatar);
+      if (current()) { setAvatar(result.avatar); setFallback(result.profile_photo ?? null); }
     } catch (cause) {
       try { const latest = await load(); if (latest?.avatar?.id === id) return; } catch { /* Preserve the previous photo if reconciliation is offline. */ }
       throw cause;
@@ -54,7 +57,7 @@ export default function ProfilePhoto({ session, busy, onBusyChange, compact = fa
   }
   function remove() {
     Alert.alert('Remove your photo?', 'Your account and bills will stay.', [{ text: 'Cancel', style: 'cancel' }, { text: 'Remove', onPress: () => void run(async () => {
-      await request(session!, '/me/avatar', 'DELETE'); if (current()) setAvatar(null);
+      await request(session!, '/me/avatar', 'DELETE'); await load();
     }) }]);
   }
   const disabled = busy || loading || working;
@@ -62,7 +65,7 @@ export default function ProfilePhoto({ session, busy, onBusyChange, compact = fa
     {!session ? <Text style={ui.caption}>Sign in to add your profile photo.</Text> : <>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
         <Button kind="plain" accessibilityRole="button" accessibilityLabel={avatar ? 'Change profile photo' : 'Choose profile photo'} accessibilityState={{ disabled }} disabled={disabled} onPress={() => void run(choose)} style={{ flex: compact ? undefined : 1, flexShrink: compact ? 0 : undefined, width: compact ? 64 : undefined, flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 64 }}>
-          {avatar ? <PrivateMediaImage session={session} media={avatar} size={64} profile /> : <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: palette.soft, alignItems: 'center', justifyContent: 'center' }}><Icon name="me" size={30} /></View>}
+          {avatar ? <PersonPhoto photo={avatar} size={64}><Icon name="me" size={30} /></PersonPhoto> : <PersonPhoto photo={fallback} size={64}><View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: palette.soft, alignItems: 'center', justifyContent: 'center' }}><Icon name="me" size={30} /></View></PersonPhoto>}
           {compact ? <View style={{ position: 'absolute', right: 0, bottom: 0, backgroundColor: palette.background, borderRadius: 12, padding: 3 }}><Icon name="edit" size={16} /></View> : <Text style={[ui.body, { flex: 1 }]}>{loading ? 'Loading photo…' : working ? 'Updating photo…' : avatar ? 'Change photo' : 'Choose photo'}</Text>}
         </Button>
         {avatar && <RemoveMediaMenu open={optionsOpen} disabled={disabled} label="Photo options" removeLabel="Remove photo"

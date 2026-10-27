@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { useScreenRemovalLock } from './screenRemoval';
 import { Platform, Text, View } from 'react-native';
 import { Alert } from './alerts';
 import * as Crypto from 'expo-crypto';
@@ -28,6 +29,7 @@ function AttachmentRow({ session, item, disabled, onOpen, options }: {
 
 export default function BillAttachments({ session, groupId, expenseId, revision, readOnly = false, busy, onBusyChange, onChanged }: BillAttachmentsProps) {
   const { ui } = useUI(), [items, setItems] = useState<MediaMetadata[]>([]), [canModify, setCanModify] = useState(false), [loading, setLoading] = useState(true), [working, setWorking] = useState(false), [error, setError] = useState('');
+  useScreenRemovalLock(working);
   const [optionsId, setOptionsId] = useState<string | null>(null);
   const [pending, setPending] = useState<PendingMediaUpload | null>(null);
   const path = `/groups/${encodeURIComponent(groupId)}/expenses/${encodeURIComponent(expenseId)}/attachments`;
@@ -59,10 +61,15 @@ export default function BillAttachments({ session, groupId, expenseId, revision,
     catch (cause) { if (current()) setError(cause instanceof Error ? cause.message : 'Could not update attachments. Refresh and try again.'); }
     finally { lock.current = false; if (current()) setWorking(false); onBusyChange(false); }
   }
-  async function refreshAccepted(message: string) {
+  async function refresh() {
+    setLoading(true); setError('');
+    try { await load(); if (current()) await onChanged?.(); }
+    catch (cause) { if (current()) setError(cause instanceof Error ? cause.message : 'Could not load attachments. Try again.'); }
+    finally { if (current()) setLoading(false); }
+  }
+  function refreshAccepted(message: string) {
     if (!current()) return;
-    try { await onChanged?.(); }
-    catch { if (current()) setError(`${message} Could not refresh the group. Refresh when online.`); }
+    void onChanged?.().catch(() => { if (current()) setError(`${message} Could not refresh the group. Refresh when online.`); });
   }
   async function add(photo: boolean) {
     if (!session || readOnly || !canModify || pending || items.length >= 10) return;
@@ -87,7 +94,7 @@ export default function BillAttachments({ session, groupId, expenseId, revision,
     try {
       const accepted = await retryMediaUpload(db, session, path);
       if (current()) { setItems(previous => [...previous.filter(item => item.id !== accepted.id), accepted]); setPending(null); }
-      await refreshAccepted('Attachment saved.');
+      refreshAccepted('Attachment saved.');
     } catch (cause) {
       try { const saved = await pendingMediaUpload(db, session, path); if (current()) setPending(saved); } catch { /* Keep the current pending upload visible. */ }
       throw cause;
@@ -100,7 +107,7 @@ export default function BillAttachments({ session, groupId, expenseId, revision,
       await request(session!, `${path}/${encodeURIComponent(item.id)}`, 'DELETE');
       if (current()) setItems(previous => previous.filter(value => value.id !== item.id));
       await clearMediaPreview(item);
-      await refreshAccepted('Attachment removed.');
+      refreshAccepted('Attachment removed.');
     }) }]);
   }
   const disabled = busy || loading || working, editable = !readOnly && canModify;
@@ -118,7 +125,7 @@ export default function BillAttachments({ session, groupId, expenseId, revision,
       ])} />}
       {!loading && readOnly && <Text style={ui.caption}>Read-only while archived or waiting to sync.</Text>}
       {items.length >= 10 && <Text style={ui.caption}>This bill has the maximum of 10 attachments.</Text>}
-      {!!error && <><Text accessibilityRole="alert" style={ui.error}>{error}</Text>{!pending && <Button title="Refresh attachments" kind="text" disabled={busy || working} onPress={() => void run(async () => { await load(); await onChanged?.(); })} />}</>}
+      {!!error && <><Text accessibilityRole="alert" style={ui.error}>{error}</Text>{!pending && <Button title="Refresh attachments" kind="text" disabled={busy || working || loading} onPress={() => void refresh()} />}</>}
     </>}
   </View>;
 }

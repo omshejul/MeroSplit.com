@@ -12,6 +12,7 @@ export default function SyncStatus(props: { working?: boolean; commands: Command
   const label = updates ? 'Updates available' : status.label;
   const color = updates ? palette.accent : ['Synced', 'Online'].includes(status.label) ? palette.positive : status.label === 'Needs attention' ? palette.warning : palette.muted;
   const icon = updates ? 'info' : ['Synced', 'Online'].includes(status.label) ? 'check' : status.label === 'Needs attention' ? 'info' : status.label === 'Offline' ? 'offline' : 'history';
+  if (!props.working && !props.updatesAvailable && ['Synced', 'Online'].includes(status.label)) return null;
   return <Menu visible={open} onDismiss={() => setOpen(false)} anchorPosition="bottom" overlayAccessibilityLabel="Close sync status" contentStyle={{ maxWidth: 288, padding: 16, borderRadius: 12 }} anchor={
     <Button kind="plain" accessibilityRole="button" accessibilityLabel={`Sync status: ${label}`} accessibilityHint="Show sync details" accessibilityState={{ expanded: open }} onPress={() => setOpen(value => !value)} style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}>
       {props.working || status.label === 'Syncing' ? <ActivityIndicator accessibilityLabel="Working" color={palette.accent} size={22} /> : <Icon name={icon} size={22} color={color} />}

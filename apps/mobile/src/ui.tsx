@@ -1,3 +1,5 @@
+import PersonPhoto from './PersonPhoto';
+import type { ProfilePhoto } from './types';
 import Airplane02Icon from '@hugeicons/core-free-icons/Airplane02Icon';
 import BabyBottleIcon from '@hugeicons/core-free-icons/BabyBottleIcon';
 import BeerIcon from '@hugeicons/core-free-icons/BeerIcon';
@@ -280,9 +282,9 @@ export function DateField({ label, value, onChange, disabled = false }: { label:
       {Platform.OS === 'ios' && <Button title="Done" kind="text" onPress={() => setOpen(false)} />}</>}
   </View>;
 }
-export function Avatar({ name }: { name: string }) {
+export function Avatar({ name, photo }: { name: string; photo?: ProfilePhoto | null }) {
   const { ui } = useUI();
-  return <View accessible={false} style={ui.avatar}><Text style={ui.initials}>{name.trim().split(/\s+/).map(word => word[0]).join('').slice(0, 2).toUpperCase()}</Text></View>;
+  return <PersonPhoto photo={photo}><View accessible={false} style={ui.avatar}><Text style={ui.initials}>{name.trim().split(/\s+/).map(word => word[0]).join('').slice(0, 2).toUpperCase()}</Text></View></PersonPhoto>;
 }
 const makeUI = (colors: Palette, fontFamily?: string) => StyleSheet.create({
   section: { fontFamily, fontSize: 18, lineHeight: 24, fontWeight: '600', color: colors.text },

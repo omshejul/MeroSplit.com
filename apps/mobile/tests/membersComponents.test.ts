@@ -30,6 +30,7 @@ function production(file: string, extra: Record<string, any> = {}) {
     useState: (initial: any) => { const id = cursor++; if (!(id in states)) states[id] = initial; return [states[id], (value: any) => { states[id] = typeof value === 'function' ? value(states[id]) : value; }]; },
     useRef: (initial: any) => { const id = cursor++; return states[id] ??= { current: initial }; },
     useEffect: (fn: () => any, values: any[]) => { const id = cursor++; if (!dependencies[id] || values.some((value, i) => value !== dependencies[id][i])) { effects.push(() => { cleanups[id]?.(); cleanups[id] = fn(); }); dependencies[id] = values; } },
+    cachedRead: () => undefined,
     ...extra,
   };
   const source = ts.createSourceFile(file, readFileSync(new URL(`../src/${file}`, import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
@@ -463,11 +464,11 @@ test('the actual App restart guard blocks editing and waits for pending draft an
  const code=ts.transpile(`${guard}\n${restart}`,{target:ts.ScriptTarget.ES2022});
  const make=(extra:Record<string,any>={})=>{
   const session={token:'current-account'},calls:string[]=[];
-  const env:any={ready:true,session,expired:false,authHeld:false,foreground:true,screen:'home',tab:'Account',busy:false,backgroundReads:0,syncing:false,storageError:null,appLink:null,emailEntry:null,feedbackOpen:false,alertOpen:false,upiSetup:false,returnAttemptId:null,returns:[],reviewCommand:null,newPersonInvite:null,pushTarget:null,
+  const env:any={ready:true,session,expired:false,authHeld:false,foreground:true,screen:'home',tab:'Account',busy:false,reading:0,pulling:false,storageError:null,appLink:null,emailEntry:null,feedbackOpen:false,alertOpen:false,upiSetup:false,returnAttemptId:null,returns:[],reviewCommand:null,newPersonInvite:null,pushTarget:null,
    updateSafe:{current:false},activeSessionRef:{current:session},authEpoch:{current:1},lock:{current:false},AppState:{currentState:'active'},authHeldRef:{current:false},draftWrites:{current:Promise.resolve()},flushChatWrites:async()=>{calls.push('chat-flush');},accountOwner:()=> 'current-owner',restartForUpdate,...extra};
   return {env,calls,restart:new Function('env',`with(env){${code};return restartUpdate;}`)(env)};
  };
- for(const state of [{screen:'expense'},{screen:'settle'},{busy:true},{backgroundReads:1},{syncing:true},{authHeld:true},{returnAttemptId:'payment'},{reviewCommand:{}}]) {
+ for(const state of [{screen:'expense'},{screen:'settle'},{busy:true},{reading:1},{authHeld:true},{returnAttemptId:'payment'},{reviewCommand:{}}]) {
   const app=make(state);
   await assert.rejects(app.restart(async()=>{assert.fail('unsafe reload');}),/Finish what's in progress/);
   assert.deepEqual(app.calls,[]);assert.equal(app.env.lock.current,false);
@@ -625,7 +626,7 @@ test('full-screen join keeps its header inside a modal-local safe area through c
     assert.equal(provider.type, 'SafeAreaProvider', `${state}: modal-local inset measurement`);
     const frame = provider.children[0]; assert.equal(frame.type, 'AppFrame');
     const safeFrame = navigation.render('AppFrame', { children: frame.children });
-    assert.equal(safeFrame.type, 'View'); const safeContent = component(safeFrame, 'SafeAreaView'); assert.ok(safeContent); assert.deepEqual(safeContent.props.edges, ['top', 'left', 'right', 'bottom']);
+    assert.equal(safeFrame.type, 'View');const safeContent=component(safeFrame,'SafeAreaView');assert.ok(safeContent);assert.deepEqual(safeContent.props.edges,['top','left','right','bottom']);
     assert.ok(component(frame, 'ScreenHeader'), `${state}: header stays inside the inset frame`);
     assert.ok(component(frame, 'DialogFocus')); assert.ok(component(frame, 'ScrollView'));
   }

@@ -41,11 +41,11 @@ test('actual pull refresh recovers the October bill from a persisted May page at
   const env: any = { ApiError, session, owner, setLedgerRevision:()=>{}, screen:'group', tab:'Groups', selected:{group:older}, groupId:'g', ownerRef:{current:owner}, activeGroupRef:{current:'g'}, activeSessionRef:{current:session}, accountOwner, request, refreshGroups, syncOutbox,
     getDatabase:async()=>db, readProfile:async()=>{}, retryAccountMediaUploads:async()=>false, load:async(scope:string)=>{if(env.ownerRef.current===scope)shown=(await readVisibleGroup(db,scope,'g'))?.group;},
     setVerifiedEmptyOwner:()=>{}, setNeedsInvitation:()=>{}, setNotice:()=>{}, setGroupId:()=>{}, setScreen:()=>{}, setPulling:()=>{},
-    background:(fn:any)=>{done=fn();return done;},perform:(fn:any)=>{done=fn();return done;} };
+    background:(fn:any)=>{done=fn();return done;} };
   try {
     await migrate(db); await saveGroup(db,owner,older,'shared'); await saveGroup(db,'other-account',older,'shared');
     raw.close();raw=new DatabaseSync(file);db=sqliteAdapter(raw); // real SQLite reopen, as on app restart
-    env.authHeldRef={current:false}; env.publishIfChanged=async()=>{}; env.setSyncing=()=>{}; env.setSyncProblem=()=>{}; env.downloadOffline=()=>{}; env.accountRefresh={current:null}; env.runAccountRefresh=production('runAccountRefresh',env);
+    env.scopeGeneration={current:0}; env.authHeldRef={current:false}; env.publishIfChanged=async()=>{}; env.setSyncing=()=>{}; env.setSyncProblem=()=>{}; env.downloadOffline=()=>{}; env.accountRefresh={current:null}; env.runAccountRefresh=production('runAccountRefresh',env);
     env.syncAccount = production('syncAccount',env); env.sync = production('sync',env);
     production('pullToRefresh',env)(); await done;
     assert.equal(shown?.transactions?.[0].kind === 'bill' ? shown.transactions[0].bill.id : '', 'october', 'balances include the October bill, so a user refresh must recover the newest history page');

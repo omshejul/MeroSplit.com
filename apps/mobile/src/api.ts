@@ -1,9 +1,10 @@
+import { readPrefetch, readScope } from './prefetch.ts';
 import { recordConnection } from './connectivity.ts';
 import type { Command, Expense, Group, LegacyRecovery, Session } from './types';
 import { sessionRequest } from './transport.ts';
 export { requestEmailCode, confirmEmailCode, signOut as endSession } from './transport.ts';
 export type { EmailCodeChallenge } from './transport.ts';
-import { acceptCommand, bindLegacyGroup, markCommand, pendingCommands, readGroup, readLegacyRecovery, readLegacySource, reconcileGroupCache, readVisibleGroup, listGroups, saveGroup, readExpenseHistory, saveExpenseHistory, forgetExpenseHistory } from './storage.ts';
+import { acceptCommand, bindLegacyGroup, markCommand, pendingCommands, readGroup, readLegacyRecovery, readLegacySource, reconcileGroupCache, readVisibleGroup, listGroups, saveGroup, readExpenseHistory, saveExpenseHistory, forgetExpenseHistory, groupCacheHeads } from './storage.ts';
 import type { ExpenseHistoryPage } from './expenseHistory';
 import type { AcceptedMembership, Database, MembershipReceipt } from './storage.ts';
 import { legacyMatchesServer, previewPending } from './ledger.ts';
@@ -20,7 +21,17 @@ export function expensePayload(expense: Expense, updating = false): Record<strin
   return { id, description, total, paid, split, date, category, notes, ...(typeof category_auto === 'boolean' ? { category_auto } : {}), ...(updating ? { version: expense.version } : {}) };
 }
 
+export function cachedRead<T>(session: Session, path: string): T | undefined { return readPrefetch.peek<T>(readScope(session), path); }
+export function prefetchRead<T>(session: Session, path: string): Promise<T | undefined> {
+  return readPrefetch.warm<T>(readScope(session), path, signal => networkRequest<T>(session, path, 'GET', undefined, 'json', signal));
+}
 export async function request<T>(session: Session, path: string, method = 'GET', body?: unknown, responseType: 'json' | 'text' = 'json', signal?: AbortSignal): Promise<T> {
+  if (method === 'GET' && responseType === 'json') return readPrefetch.read<T>(readScope(session), path, shared => networkRequest<T>(session, path, method, body, responseType, shared), signal);
+  if (method !== 'GET') readPrefetch.invalidate(readScope(session));
+  try { return await networkRequest<T>(session, path, method, body, responseType, signal); }
+  finally { if (method !== 'GET') readPrefetch.invalidate(readScope(session)); }
+}
+async function networkRequest<T>(session: Session, path: string, method: string, body: unknown, responseType: 'json' | 'text', signal?: AbortSignal): Promise<T> {
   const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 15_000);
   const cancel = () => controller.abort();
   if (signal?.aborted) cancel();
@@ -41,14 +52,28 @@ export async function request<T>(session: Session, path: string, method = 'GET',
 
 // Never replay a command under another account or backend. GET follows the
 // idempotent write so a lost response can be recovered by retrying the same ID.
-export async function syncOutbox(db: Database, session: Session, mode: 'full' | 'summary' = 'full', stopAfterCommandId?: string): Promise<Record<string, unknown>[]> {
+const outboxSyncs = new WeakMap<Database, Map<string, Promise<Record<string, unknown>[]>>>();
+export async function syncOutbox(db: Database, session: Session, mode: 'full' | 'summary' = 'full', stopAfterCommandId?: string, current: () => boolean = () => true): Promise<Record<string, unknown>[]> {
+  let jobs = outboxSyncs.get(db);
+  if (!jobs) { jobs = new Map(); outboxSyncs.set(db, jobs); }
+  const key = accountOwner(session), previous = jobs.get(key);
+  // Each caller re-reads the queue after earlier replay settles. Do not return an
+  // older caller's receipts for a newly queued action or skip a conflict hold.
+  const job = (previous ?? Promise.resolve()).catch(() => {}).then(() => drainOutbox(db, session, mode, stopAfterCommandId, current));
+  jobs.set(key, job);
+  try { return await job; } finally { if (jobs.get(key) === job) jobs.delete(key); }
+}
+async function drainOutbox(db: Database, session: Session, mode: 'full' | 'summary', stopAfterCommandId: string | undefined, current: () => boolean): Promise<Record<string, unknown>[]> {
+  if (!current()) throw new Error('The signed-in account changed.');
   const owner = accountOwner(session);
   const receipts: Record<string, unknown>[] = [];
   for (const command of await pendingCommands(db, owner)) {
+    if (!current()) throw new Error('The signed-in account changed.');
     if (command.state !== 'pending') throw new Error('Resolve the earlier rejected/conflicting change before syncing later commands.');
     let writeAccepted = false;
     try {
       await db.runAsync('UPDATE outbox SET attempted=1 WHERE owner=? AND command_id=?', owner, command.command_id);
+      if (!current()) throw new Error('The signed-in account changed.');
       const receipt = await request<Record<string, unknown>>(session, command.path, command.method, command.body);
       writeAccepted = true;
       const membership = command.method === 'POST' && [
@@ -65,7 +90,7 @@ export async function syncOutbox(db: Database, session: Session, mode: 'full' | 
         await acceptCommand(db, owner, command.command_id, group);
       }
       receipts.push(receipt);
-      if (command.command_id === stopAfterCommandId) break;
+      if (!current() || command.command_id === stopAfterCommandId) break;
     } catch (error) {
       if (!writeAccepted && error instanceof ApiError && error.status >= 400 && error.status < 500 && error.status !== 401 && error.status !== 429) {
         await markCommand(db, owner, command.command_id, error.status === 409 ? 'conflict' : 'rejected', error.message);
@@ -85,11 +110,15 @@ export async function fetchGroup(session: Session, id: string, mode: 'full' | 's
 // The complete authorized index is the pruning boundary. Changed groups still
 // use complete snapshots; unchanged first-page windows need no extra GET or write.
 export async function refreshGroups(db: Database, session: Session, mode: 'full' | 'summary' = 'full', acceptedMembership?: AcceptedMembership, options: { groupIds?: string[]; current?: () => boolean } = {}): Promise<string[]> {
-  const owner = accountOwner(session), index = await request<{ groups: { id: string; version: number; hidden?: boolean }[] }>(session, '/groups');
+  const owner = accountOwner(session), before = await groupCacheHeads(db, owner), index = await request<{ profile_photos?: Record<string, import("./types").ProfilePhoto>; groups: { id: string; version: number; hidden?: boolean }[] }>(session, '/groups');
   if (!Array.isArray(index.groups) || new Set(index.groups.map(row => row.id)).size !== index.groups.length || index.groups.some(row => !row.id || !Number.isSafeInteger(row.version) || (row.hidden !== undefined && typeof row.hidden !== 'boolean'))) throw new Error('The group refresh was incomplete. Try again.');
   const snapshots: Group[] = [];
   const complete = (group: Group | undefined): group is Group => !!group && Array.isArray(group.participants) && Array.isArray(group.expenses) && Array.isArray(group.settlements) && Array.isArray(group.transfers) && Array.isArray(group.activity) && !!group.balances;
-  const withVisibility = (group: Group, hidden: boolean): Group => !!group.hidden === hidden ? group : { ...group, hidden };
+  const withVisibility = (group: Group, hidden: boolean): Group => {
+    const visible = !!group.hidden === hidden ? group : { ...group, hidden };
+    return index.profile_photos ? { ...visible, participants: visible.participants.map(person => ({ ...person,
+      profile_photo: !person.removed && person.user_id != null ? index.profile_photos![String(person.user_id)] ?? null : null })) } : visible;
+  };
   for (const row of index.groups) {
     const cached = await (mode === 'summary' ? readVisibleGroup : readGroup)(db, owner, row.id);
     if (options.current && !options.current()) throw new Error('The signed-in account changed.');
@@ -103,7 +132,7 @@ export async function refreshGroups(db: Database, session: Session, mode: 'full'
     }
   }
   if (options.current && !options.current()) throw new Error('The signed-in account changed.');
-  return reconcileGroupCache(db, owner, snapshots, acceptedMembership, options.current);
+  return reconcileGroupCache(db, owner, snapshots, acceptedMembership, options.current, before);
 }
 
 // Called only after the person explicitly chooses this account and their name.

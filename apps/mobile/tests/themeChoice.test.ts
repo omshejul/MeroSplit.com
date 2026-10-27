@@ -187,14 +187,21 @@ function appFunction(name: string, env: Record<string, any>) {
   const fn = app.body!.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === name)!;
   return new Function('env', `with(env){${ts.transpile(fn.getText(parsed), { target: ts.ScriptTarget.ES2022 })};return ${name};}`)(env);
 }
-test('pull refresh stays in the header and does not acquire the save lock', async () => {
+test('background sync never drives the pull spinner; a user pull shows it until its own work settles, including rejected pulls', async () => {
   const app = readFileSync(new URL('../App.tsx', import.meta.url), 'utf8');
   assert.match(app, /<RefreshControl refreshing=\{false\}[^>]*onRefresh=\{pullToRefresh\}/);
+  assert.doesNotMatch(app, /refreshing=\{busy\}/);
   for (const [screen, tab, kind] of [['home', 'Groups', 'sync'], ['group', 'Groups', 'sync'], ['home', 'Activity', 'activity']] as const) {
-    const calls: string[] = [], work = deferred<void>();
-    const env = { screen, tab, owner: 'owner', groupId: 'g', ownerRef: { current: 'owner' }, activeGroupRef: { current: 'g' }, setLedgerRevision() {}, sync: async () => { calls.push('sync'); await work.promise; }, background: (action: () => Promise<void>) => action(), perform: () => { throw Error('must not acquire action lock'); }, refreshActivity: async () => { calls.push('activity'); await work.promise; } };
-    appFunction('pullToRefresh', env)(); await tick(); assert.deepEqual(calls, [kind]);
-    work.resolve(); await tick();
+    const pulls: boolean[] = [], calls: string[] = [], work = deferred<void>();
+    const env = { screen, tab, owner: 'owner', groupId: 'g', ownerRef: { current: 'owner' }, activeGroupRef: { current: 'g' }, setLedgerRevision() {}, setPulling: (value: boolean) => pulls.push(value), sync: async () => { calls.push('sync'); }, background: async (action: () => Promise<void>) => { await action(); await work.promise; }, refreshActivity: async () => { calls.push('activity'); await work.promise; } };
+    appFunction('pullToRefresh', env)();
+    await tick(); assert.deepEqual(pulls, [true]); assert.deepEqual(calls, [kind]);
+    work.resolve(); await tick(); assert.deepEqual(pulls, [true, false]);
+  }
+  for (const failure of ['Please wait for the current action.', 'Offline']) {
+    const pulls: boolean[] = [];
+    appFunction('pullToRefresh', { screen: 'home', tab: 'Groups', owner: 'owner', groupId: 'g', ownerRef: { current: 'owner' }, activeGroupRef: { current: 'g' }, setLedgerRevision() {}, setPulling: (value: boolean) => pulls.push(value), sync: async () => {}, background: async () => { throw new Error(failure); } })();
+    await tick(); assert.deepEqual(pulls, [true, false], `${failure} does not leave the spinner stuck`);
   }
 });
 

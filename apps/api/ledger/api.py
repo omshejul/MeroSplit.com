@@ -50,6 +50,7 @@ from .media import (
     download_url,
     list_attachments,
     pdf_thumbnail,
+    profile_photos,
     remove_attachment,
     remove_avatar,
     upload_file,
@@ -175,13 +176,16 @@ def duplicate_error(request, exc):
 
 @api.get("/groups")
 def groups(request):
-    return {
-        "groups": list(
-            groups_for_actor(Group.objects.filter(participants__user=request.auth, participants__removed=False), request.auth).annotate(hidden=F("participants__hidden")).values(
-                "id", "name", "version", "archived", "is_direct", "hidden"
-            )
-        )
-    }
+    from .models import Participant
+
+    rows = list(groups_for_actor(Group.objects.filter(participants__user=request.auth, participants__removed=False), request.auth)
+                .annotate(hidden=F("participants__hidden")).values("id", "name", "version", "archived", "is_direct", "hidden"))
+    if not rows:
+        return {"groups": []}
+    users = Participant.objects.filter(group_id__in=[row["id"] for row in rows], removed=False,
+                                       user__is_active=True).values_list("user_id", flat=True).distinct()
+    return {"groups": rows, "profile_photos": profile_photos(users)}
+
 
 
 @api.post("/groups", response=LinkedWriteResult)
@@ -286,6 +290,7 @@ def me(request):
         "email_verified": EmailAddress.objects.filter(user=request.auth, email__iexact=request.auth.email, verified=True).exists(),
         "payment_profile": profile_for(request.auth),
         "avatar": avatar_for(request.auth),
+        "profile_photo": profile_photos([request.auth.pk]).get(request.auth.pk),
     }
 
 

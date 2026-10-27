@@ -165,12 +165,15 @@ def test_non_google_hosted_email_needs_existing_email_session_then_explicit_conn
     assert response.status_code == 200 and response.json()['data']['user']['id'] == user.pk
 
 
-def test_existing_secondary_email_cannot_create_or_silently_link_google_account(signer, settings):
+def test_existing_verified_secondary_email_automatically_links_google_account(signer, settings):
     user = get_user_model().objects.create_user(username="email-owner", email="primary@example.invalid")
     EmailAddress.objects.create(user=user, email="google-new@example.invalid", verified=True)
     client = Client()
-    assert submit(client, token(signer, settings, challenge(client))).status_code == 409
-    assert get_user_model().objects.count() == 1 and not SocialAccount.objects.exists()
+    response = submit(client, token(signer, settings, challenge(client)))
+    assert response.status_code == 200, response.content
+    assert response.json()["data"]["user"]["id"] == user.pk
+    assert get_user_model().objects.count() == 1
+    assert SocialAccount.objects.get().user_id == user.pk
 
 
 @pytest.mark.parametrize("process", [None, [], {}, 1, True, "redirect", ""])
@@ -181,14 +184,17 @@ def test_malformed_process_is_rejected_before_provider_request(process, google):
     assert not google
 
 
-def test_email_collision_requires_explicit_connect_and_preserves_existing_account(signer, settings):
+def test_verified_email_auto_links_and_preserves_existing_account(signer, settings):
     user = get_user_model().objects.create_user(username="existing", email="google-new@example.invalid")
     EmailAddress.objects.create(user=user, email=user.email, primary=True, verified=True)
     old = authenticated_client(user)
     anonymous = Client()
     nonce = challenge(anonymous)
-    assert submit(anonymous, token(signer, settings, nonce)).status_code == 409
-    assert not SocialAccount.objects.exists() and get_user_model().objects.count() == 1
+    response = submit(anonymous, token(signer, settings, nonce))
+    assert response.status_code == 200, response.content
+    assert response.json()["data"]["user"]["id"] == user.pk
+    assert SocialAccount.objects.get().user_id == user.pk
+    assert get_user_model().objects.count() == 1
     session_key = old.defaults["HTTP_X_SESSION_TOKEN"]
     nonce = challenge(old, "connect")
     response = submit(old, token(signer, settings, nonce), "connect")
@@ -311,3 +317,22 @@ def test_nonce_is_atomically_single_use_across_workers(signer, settings):
     with ThreadPoolExecutor(max_workers=2) as pool:
         assert sorted(pool.map(worker, range(2))) == [200, 400]
     assert get_user_model().objects.count() == 1 and SocialAccount.objects.count() == 1
+
+
+@pytest.mark.parametrize("verified,active", [(False, True), (True, False)])
+def test_google_matching_email_requires_verified_active_local_account(signer, settings, verified, active):
+    user = get_user_model().objects.create_user(username="blocked-owner", email="google-new@example.invalid", is_active=active)
+    EmailAddress.objects.create(user=user, email=user.email, verified=verified)
+    client = Client()
+    assert submit(client, token(signer, settings, challenge(client))).status_code == 409
+    assert not SocialAccount.objects.exists()
+
+
+def test_google_photo_claim_is_saved_and_exposed_as_profile_fallback(signer, settings):
+    client = Client()
+    picture = "https://lh3.googleusercontent.com/synthetic-photo-v1"
+    response = submit(client, token(signer, settings, challenge(client), picture=picture))
+    assert response.status_code == 200, response.content
+    assert SocialAccount.objects.get().extra_data["picture"] == picture
+    client.defaults["HTTP_X_SESSION_TOKEN"] = response.json()["meta"]["session_token"]
+    assert send(client, "get", "/me").json()["profile_photo"] == {"url": picture}
