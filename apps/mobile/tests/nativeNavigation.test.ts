@@ -22,7 +22,7 @@ function module(env: Record<string, any> = {}) {
   const scope = { ...routes, React, StackActions, getStateFromPath, Platform: { OS: 'web' }, createContext: () => context,
     createNativeStackNavigator: () => ({ Navigator: 'Navigator', Screen: 'Screen', Group: 'Group' }), useUI: () => ({ palette: {}, motion: { enabled: true } }),
     KeyboardDialog: 'KeyboardDialog', DialogFocus: 'DialogFocus', Dialog: { Title: 'Title' }, CancelDialogActions: 'CancelDialogActions', Button: 'Button',
-    ScreenRemovalLock: { Provider: 'Lock' }, useCallback: (fn: any) => fn, ...env };
+    ScreenDraftDiscard: { Provider: 'DraftDiscard' }, ScreenRemovalLock: { Provider: 'Lock' }, useCallback: (fn: any) => fn, ...env };
   return new Function('env', `with(env){${code};return {useAppNavigation,RouteScene,AppStack,webLinking};}`)(scope);
 }
 function navigationHarness() {
@@ -80,7 +80,7 @@ function sceneHarness(name: routes.Screen = 'expense', accept: (action: any) => 
     blocked: (value: boolean) => { blocked = value; }, focus: (value: boolean) => { focused = value; }, prevented: () => prevent };
 }
 
-test('supported removal guard: Cancel retains exact route/form, Discard redispatches original action with red trash', () => {
+test('supported removal guard: Cancel retains exact route/form, Discard redispatches original action with red trash', async () => {
   const h = sceneHarness(), action = { type: 'POP', source: 'exact-form-instance', target: 'native-stack' };
   h.render(); h.remove(action); let tree = h.render();
   assert.equal(h.dispatched.length, 0); assert.equal(h.rendered[0][0], h.rendered.at(-1)[0]);
@@ -88,7 +88,7 @@ test('supported removal guard: Cancel retains exact route/form, Discard redispat
   nodes(tree).find(node => node.type === 'CancelDialogActions').props.onCancel(); tree = h.render();
   assert.equal(nodes(tree).find(node => node.type === 'KeyboardDialog').props.visible, false); assert.equal(h.dispatched.length, 0);
   h.remove(action); tree = h.render(); const discard = nodes(tree).find(node => node.type === 'Button');
-  assert.equal(discard.props.kind, 'danger'); assert.equal(discard.props.icon, 'remove'); discard.props.onPress(); assert.equal(h.dispatched[0], action);
+  assert.equal(discard.props.kind, 'danger'); assert.equal(discard.props.icon, 'remove'); discard.props.onPress(); await new Promise(resolve => setImmediate(resolve)); assert.equal(h.dispatched[0], action);
 });
 
 test('busy/local payment and attachment work block user removal; committed save can return without discard', () => {
@@ -258,4 +258,30 @@ test('an old completion cannot navigate a different current route or a later acc
   old.complete('group'); assert.equal(h.state(), other);
   h.reset({ name: 'home', params: { tab: 'Account' } }); const account = h.state();
   old.complete('group', { groupId: 'g' }); assert.equal(h.state(), account);
+});
+
+
+test('pending draft discard accepts one action and never redispatches after losing focus', async () => {
+  for (const loseFocus of [false, true]) {
+    const h = sceneHarness(); h.render(); h.remove({ type: 'GO_BACK' }); let tree = h.render();
+    let clears = 0, finish!: (value: boolean) => void;
+    nodes(tree).find(node => node.type === 'DraftDiscard').props.value.current = () => { clears++; return new Promise(resolve => { finish = resolve; }); };
+    const button = nodes(tree).find(node => node.type === 'Button'); button.props.onPress(); button.props.onPress();
+    assert.equal(clears, 1, 'only one persistence operation may own a removal');
+    const busy = h.render(); assert.equal(nodes(busy).find(node => node.type === 'KeyboardDialog').props.dismissable,false);
+    nodes(busy).find(node => node.type === 'CancelDialogActions').props.onCancel(); assert.equal(nodes(h.render()).find(node => node.type === 'KeyboardDialog').props.visible,true);
+    if (loseFocus) { h.focus(false); h.render(); }
+    finish(true); await new Promise(resolve => setImmediate(resolve));
+    assert.equal(h.dispatched.length, loseFocus ? 0 : 1);
+    assert.equal(nodes(h.render()).find(node => node.type === 'KeyboardDialog').props.visible,false);
+  }
+});
+
+
+test('one completed discard cannot navigate a scene that lost focus while storage was pending', async () => {
+  const h = sceneHarness(); h.render(); h.remove({ type:'GO_BACK' }); const tree = h.render();
+  let finish!: (value:boolean)=>void;
+  nodes(tree).find(node => node.type === 'DraftDiscard').props.value.current = () => new Promise(resolve => { finish = resolve; });
+  nodes(tree).find(node => node.type === 'Button').props.onPress(); h.focus(false); h.render(); finish(true);
+  await new Promise(resolve => setImmediate(resolve)); assert.equal(h.dispatched.length,0);
 });

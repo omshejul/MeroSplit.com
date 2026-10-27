@@ -26,7 +26,8 @@ const tick = async () => { for (let i = 0; i < 15; i++) await Promise.resolve();
 function harness(file: string, name: string, extra: Record<string, any> = {}) {
   let cursor = 0, states: any[] = [], effects: (() => void)[] = [], cleanups: Record<number, () => void> = {};
   const deps: Record<number, any[]> = {};
-  const env: Record<string, any> = { React, Dialog, PersonInviteDialog: 'PersonInviteDialog', useToast: () => () => {}, DetailDialog: 'DetailDialog', useScreenRemovalLock() {}, validUPIAddress, View: 'View', ScrollView: 'ScrollView', KeyboardDialog: 'KeyboardDialog', Pressable: 'Pressable', Text: 'Text', LoadingSpinner: 'LoadingSpinner', NotificationSwitch: 'NotificationSwitch', PushSettings: 'PushSettings', BalanceStatements: 'BalanceStatements', DialogScrollBody: 'DialogScrollBody', Form: 'Form', SectionHeading: 'SectionHeading', Button: 'Button', Icon: 'Icon', SettingsRow: 'SettingsRow', BillPeople: 'BillPeople', DraftAttachment: 'DraftAttachment', LocalAttachment: 'LocalAttachment', AmountField: 'AmountField', TextField: 'TextField', DateField: 'DateField', ErrorText: 'ErrorText', Checkbox: { Item: 'Checkbox' }, RadioChoice: 'RadioChoice', Crypto: { randomUUID: () => 'bill-id' }, StyleSheet: { create: (value: any) => value }, Keyboard: { dismiss() {} }, useWindowDimensions: () => ({ height: 667 }), useSafeAreaInsets: () => ({ top: 20, bottom: 0 }), Platform: { OS: 'native' }, requestAnimationFrame: (fn: () => void) => fn(), useUI: () => ({ ui: {} }), formatMoney, integer, rupeesToPaise, validateExpense, ...extra,
+  const draftDiscard = { current: null as null | (() => Promise<boolean>) };
+  const env: Record<string, any> = { getDatabase: async () => ({}), draftDiscard, ScreenDraftDiscard: {}, useContext: () => draftDiscard, expenseDraftStore: () => ({ read: () => ({ then: (done: (value: null) => void) => { done(null); return { catch() {} }; } }), write: async () => {} }), React, Dialog, PersonInviteDialog: 'PersonInviteDialog', useToast: () => () => {}, DetailDialog: 'DetailDialog', useScreenRemovalLock() {}, validUPIAddress, View: 'View', ScrollView: 'ScrollView', KeyboardDialog: 'KeyboardDialog', Pressable: 'Pressable', Text: 'Text', LoadingSpinner: 'LoadingSpinner', NotificationSwitch: 'NotificationSwitch', PushSettings: 'PushSettings', BalanceStatements: 'BalanceStatements', DialogScrollBody: 'DialogScrollBody', Form: 'Form', SectionHeading: 'SectionHeading', Button: 'Button', Icon: 'Icon', SettingsRow: 'SettingsRow', BillPeople: 'BillPeople', DraftAttachment: 'DraftAttachment', LocalAttachment: 'LocalAttachment', AmountField: 'AmountField', TextField: 'TextField', DateField: 'DateField', ErrorText: 'ErrorText', Checkbox: { Item: 'Checkbox' }, RadioChoice: 'RadioChoice', Crypto: { randomUUID: () => 'bill-id' }, StyleSheet: { create: (value: any) => value }, Keyboard: { dismiss() {} }, useWindowDimensions: () => ({ height: 667 }), useSafeAreaInsets: () => ({ top: 20, bottom: 0 }), Platform: { OS: 'native' }, requestAnimationFrame: (fn: () => void) => fn(), useUI: () => ({ ui: {} }), formatMoney, integer, rupeesToPaise, validateExpense, ...extra,
     useState: (initial: any) => { const id = cursor++; if (!(id in states)) states[id] = typeof initial === 'function' ? initial() : initial; return [states[id], (value: any) => { states[id] = typeof value === 'function' ? value(states[id]) : value; }]; },
     useRef: (initial: any) => { const id = cursor++; return states[id] ??= { current: initial }; },
     useEffect: (fn: () => any, values: any[]) => { const id = cursor++; if (!deps[id] || values.some((value, i) => value !== deps[id][i])) { effects.push(() => { cleanups[id]?.(); cleanups[id] = fn(); }); deps[id] = values; } },
@@ -35,7 +36,12 @@ function harness(file: string, name: string, extra: Record<string, any> = {}) {
   const body = source.statements.filter(node => !ts.isImportDeclaration(node)).map(node => node.getText(source).replace(/^export (?:default )?/, '')).join('\n');
   const code = ts.transpile(body, { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React });
   const render = new Function('env', `with(env){${code}; return ${name};}`)(env);
-  return { render: (props: any) => { cursor = 0; return render(props); }, commit: () => { const pending = effects; effects = []; pending.forEach(fn => fn()); }, unmount: () => Object.values(cleanups).forEach(fn => fn?.()), env };
+  return { render: (props: any) => {
+    cursor = 0; let tree = render(props);
+    // Arithmetic/render tests hydrate an empty draft immediately. Real SQLite recovery is covered in expenseDraft.test.ts.
+    if (name === 'ExpenseForm' && effects.length) { const pending = effects; effects = []; pending.forEach(fn => fn()); cursor = 0; tree = render(props); }
+    return tree;
+  }, commit: () => { const pending = effects; effects = []; pending.forEach(fn => fn()); }, unmount: () => Object.values(cleanups).forEach(fn => fn?.()), env };
 }
 
 test('One Export data action invokes once, has no chooser and blocks repeats until sharing finishes', async () => {
@@ -1064,10 +1070,10 @@ function billDiscardDialog(env: Record<string, any>) {
   function visit(node: ts.Node) { if (ts.isJsxElement(node) && node.openingElement.tagName.getText(source) === 'KeyboardDialog') expression = node; ts.forEachChild(node, visit); }
   visit(source); assert.ok(expression);
   const code = ts.transpile(`const dialog = ${expression!.getText(source)}`, { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React });
-  return new Function('env', `with(env){${code};return dialog;}`)({ React, Dialog, PersonInviteDialog: 'PersonInviteDialog', useToast: () => () => {}, DetailDialog: 'DetailDialog', blocked: false, localBlocked: false, pending: env.discardBill ? { type: 'GO_BACK' } : null, setPending: (value: unknown) => env.setDiscardBill(!!value), KeyboardDialog: 'KeyboardDialog', DialogFocus: 'DialogFocus', CancelDialogActions: 'CancelDialogActions', Button: 'Button', ...env, navigation: { dispatch: () => env.navigate('group') } });
+  return new Function('env', `with(env){${code};return dialog;}`)({ React, Dialog, PersonInviteDialog: 'PersonInviteDialog', useToast: () => () => {}, DetailDialog: 'DetailDialog', setDiscarding() {}, draftDiscard: { current: null }, discarding: false, discardLock: { current: false }, blocked: false, localBlocked: false, pending: env.discardBill ? { type: 'GO_BACK' } : null, setPending: (value: unknown) => env.setDiscardBill(!!value), KeyboardDialog: 'KeyboardDialog', DialogFocus: 'DialogFocus', CancelDialogActions: 'CancelDialogActions', Button: 'Button', ...env, navigation: { isFocused: () => true, dispatch: () => env.navigate('group') } });
 }
 
-test('Back asks to discard the bill, Cancel retains the form and Discard leaves with the trash action', () => {
+test('Back asks to discard the bill, Cancel retains the form and Discard leaves with the trash action', async () => {
   let open = false; const screens: string[] = [];
   const env = { screen: 'expense', session: {}, navigation: { back: () => { open = true; } }, setDiscardBill: (value: boolean) => { open = value; }, navigate: (value: string) => screens.push(value) };
   appAction('back', env)(); assert.equal(open, true); assert.deepEqual(screens, []);
@@ -1076,10 +1082,10 @@ test('Back asks to discard the bill, Cancel retains the form and Discard leaves 
   nodes(tree).find(node => node.type === 'CancelDialogActions')!.props.onCancel();
   assert.equal(open, false); assert.deepEqual(screens, [], 'Cancel keeps the same form mounted');
   const discard = find(tree, 'title', 'Discard'); assert.equal(discard.props.kind, 'danger'); assert.equal(discard.props.icon, 'remove');
-  discard.props.onPress(); assert.deepEqual(screens, ['group']);
+  discard.props.onPress(); await tick(); assert.deepEqual(screens, ['group']);
 });
 
-test('leaving an unsaved bill clears its staged file; a submitted file stays with its queued bill', async () => {
+test('unmount retains a recoverable staged file and a submitted file stays with its queued bill', async () => {
   for (const submit of [false, true]) {
     const cleared: any[] = [], app = harness('src/ExpenseForm.tsx', 'ExpenseForm', { clearStagedMedia: async (file: any) => { cleared.push(file); } });
     const props = { group, selfId: 'self', busy: false, onSave: async () => {} };
@@ -1089,7 +1095,7 @@ test('leaving an unsaved bill clears its staged file; a submitted file stays wit
     payerFields(app, props).onChange({ amount: '10', description: 'Lunch' });
     tree = app.render(props);
     if (submit) { find(tree, 'title', 'Save bill').props.onPress(); await tick(); }
-    app.unmount(); await tick(); assert.deepEqual(cleared, submit ? [] : [attachment.file]);
+    app.unmount(); await tick(); assert.deepEqual(cleared, []);
   }
 });
 
@@ -1186,10 +1192,10 @@ async function unmountBeforeBillCommit(commits: boolean) {
       assert.equal(readFileSync(file, 'utf8'), bytes); assert.equal(cleanups, 0);
     } else {
       assert.deepEqual(await pendingCommands(reopened, owner), []); assert.equal(await pendingMediaUpload(reopened, session, attachment.path), null);
-      assert.equal(existsSync(file), false, 'unsubmitted file is cleaned only after the transaction fails'); assert.equal(cleanups, 1);
+      assert.equal(existsSync(file), true, 'a failed enqueue leaves the unsaved draft attachment recoverable after unmount'); assert.equal(cleanups, 0);
     }
   } finally { release(); raw.close(); rmSync(folder, { recursive: true, force: true }); }
 }
 
 test('forced unmount before enqueue commit preserves the file when the pending save later commits', () => unmountBeforeBillCommit(true));
-test('forced unmount before enqueue failure defers deletion until the pending save rolls back', () => unmountBeforeBillCommit(false));
+test('forced unmount before enqueue failure retains the recoverable draft file', () => unmountBeforeBillCommit(false));

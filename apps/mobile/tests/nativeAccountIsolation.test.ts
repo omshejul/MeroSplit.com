@@ -65,11 +65,13 @@ test('account switching preserves exact SQLite draft, pending command and frozen
     await pauseAccountRequests();
     await assert.rejects(syncOutbox(db, old), /Could not connect/);
     assert.equal(calls.length, 0);
+    const paused = await snapshot();
+    assert.deepEqual(JSON.parse(paused).commands, JSON.parse(before).commands.map((command:any) => ({ ...command, attempted:true })), 'a started attempt retains its conservative retry fence even when account requests pause');
     resumeAccountRequests();
     await syncOutbox(db, next);
     assert.equal(await readDraft(db, other, group.id), null); assert.equal(await readVisibleGroup(db, other, group.id), null);
     assert.deepEqual(await listPaymentReturns(db, other), []); assert.deepEqual(await pendingCommands(db, other), []);
     assert.equal(calls.length, 0, 'the new identity never replays any previous-owner command');
-    assert.equal(await snapshot(), before, 'returning to the old owner restores byte-identical decisions and IDs');
+    assert.equal(await snapshot(), paused, 'switching identities preserves byte-identical decisions, IDs and the attempt fence');
   } finally { resumeAccountRequests(); globalThis.fetch = originalFetch; raw.close(); }
 });
