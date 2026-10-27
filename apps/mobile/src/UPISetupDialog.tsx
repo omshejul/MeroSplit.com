@@ -1,17 +1,19 @@
 import { Dialog } from './DialogParts';
+import { Text } from 'react-native-paper';
 import React, { useEffect, useRef, useState } from 'react';
 
 import KeyboardDialog from './KeyboardDialog';
 import DialogFocus from './DialogFocus';
 import { DialogScrollBody } from './DialogParts';
 import { TextField } from './FormFields';
-import { Button, ErrorText } from './ui';
+import { Button, ErrorText, useUI } from './ui';
 import { validUPIAddress } from './upi';
 import { NameOnlyForm } from './EmailLinkScreens';
 
-export default function UPISetupDialog({ visible, busy, needsName, onSaveName, onSave, onSkip }: {
-  visible: boolean; busy: boolean; needsName: boolean; onSaveName: (name: string) => Promise<void>; onSave: (vpa: string) => Promise<void>; onSkip: () => void;
+export default function UPISetupDialog({ visible, busy, needsName, afterFirstSplit = false, onSaveName, onSave, onSkip }: {
+  visible: boolean; busy: boolean; needsName: boolean; afterFirstSplit?: boolean; onSaveName: (name: string) => Promise<void>; onSave: (vpa: string) => Promise<void>; onSkip: () => void;
 }) {
+  const { ui } = useUI();
   const [vpa, setVpa] = useState(''), [saving, setSaving] = useState(false), [error, setError] = useState('');
   const lock = useRef(false), mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
@@ -26,12 +28,13 @@ export default function UPISetupDialog({ visible, busy, needsName, onSaveName, o
   }
   return <KeyboardDialog visible={visible} dismissable={!disabled && !needsName} onDismiss={skip}>
     <DialogFocus active={visible} busy={disabled} onEscape={skip}>
-      <Dialog.Title aria-level={2}>{needsName ? 'Your name' : 'Your UPI ID'}</Dialog.Title>
+      <Dialog.Title aria-level={2}>{needsName ? 'Your name' : afterFirstSplit ? 'Your money needs directions.' : 'Your UPI ID'}</Dialog.Title>
       <DialogScrollBody maxHeight={280} gap={12}>
+        {!needsName && afterFirstSplit && <Text style={ui.body}>Add your UPI ID so friends can pay you without the "UPI bhej na."</Text>}
         {needsName ? <NameOnlyForm busy={disabled} onSave={onSaveName} /> : <TextField label="UPI ID (optional)" placeholder="name@bank" value={vpa} onChangeText={setVpa} autoCapitalize="none" autoCorrect={false} keyboardType="email-address" maxLength={254} editable={!disabled} />}
         {!!error && <ErrorText live>{error}</ErrorText>}
       </DialogScrollBody>
-      {!needsName && <Dialog.Actions><Button title="Skip" kind="text" disabled={disabled} onPress={skip} /><Button title={saving ? 'Saving' : 'Save'} kind="primary" disabled={disabled || !validUPIAddress(vpa.trim())} onPress={() => void save()} /></Dialog.Actions>}
+      {!needsName && <Dialog.Actions><Button title={afterFirstSplit ? 'Later' : 'Skip'} kind="text" disabled={disabled} onPress={skip} /><Button title={saving ? 'Saving' : afterFirstSplit ? 'Add UPI ID' : 'Save'} kind="primary" disabled={disabled || !validUPIAddress(vpa.trim())} onPress={() => void save()} /></Dialog.Actions>}
     </DialogFocus>
   </KeyboardDialog>;
 }
