@@ -7,8 +7,8 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev
 RUN .venv/bin/python -c "from PIL import features; assert features.check('raqm'), 'Invite images require RAQM/FriBiDi'"
 COPY . .
-# export:web places the same Expo app in web-dist before this API-only context is built.
-RUN test -s web-dist/index.html
+# export:web archives the complete Expo shell before this API-only context is built.
+RUN mkdir -p web-dist && tar -xf web-dist.tar -C web-dist && rm web-dist.tar && test -s web-dist/index.html
 RUN useradd --create-home app
 USER app
 ENV PATH="/app/.venv/bin:$PATH" PYTHONUNBUFFERED=1
