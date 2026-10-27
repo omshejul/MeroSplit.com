@@ -31,7 +31,7 @@ function variable(name: string, env: object): Element {
 function component(file: string, name: string, props: object): Element {
   const source = ts.createSourceFile(file, readFileSync(new URL(`../src/${file}`, import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   const body = source.statements.filter(node => !ts.isImportDeclaration(node)).map(node => node.getText(source).replace(/^export (?:default )?/, '')).join('\n');
-  return evaluate(`${body};return ${name}(props);`, { props, View: 'View', Text: 'Text', Button: 'Button', Disclosure: 'Disclosure', SectionHeading: 'SectionHeading', useUI: () => ({ ui: {}, palette: {} }), useMemo: (fn: () => unknown) => fn(), StyleSheet: { create: (value: unknown) => value }, radii: {}, validateExpense });
+  return evaluate(`${body};return ${name}(props);`, { props, View: 'View', Text: 'Text', Button: 'Button', DetailDialog: 'DetailDialog', SectionHeading: 'SectionHeading', useUI: () => ({ ui: {}, palette: {} }), useMemo: (fn: () => unknown) => fn(), StyleSheet: { create: (value: unknown) => value }, radii: {}, validateExpense });
 }
 function elements(tree: any): Element[] {
   if (Array.isArray(tree)) return tree.flatMap(elements);

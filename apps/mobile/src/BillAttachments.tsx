@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Platform, Pressable, Text, View } from 'react-native';
+import { Platform, Text, View } from 'react-native';
 import { Alert } from './alerts';
 import * as Crypto from 'expo-crypto';
 import { accountOwner, request } from './api';
@@ -18,10 +18,10 @@ function AttachmentRow({ session, item, disabled, onOpen, options }: {
 }) {
   const { ui, palette } = useUI();
   return <View style={{ flexDirection: 'row', alignItems: 'center', borderBottomWidth: 0.5, borderBottomColor: palette.line, paddingBottom: 8, gap: 4 }}>
-    <Pressable accessibilityRole="button" accessibilityLabel={`Open ${item.name}`} disabled={disabled} onPress={onOpen} style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 56 }}>
+    <Button kind="plain" accessibilityRole="button" accessibilityLabel={`Open ${item.name}`} disabled={disabled} onPress={onOpen} style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 56 }}>
       <PrivateMediaImage session={session} media={item} />
       <View style={{ flex: 1, minWidth: 0, gap: 2 }}><Text numberOfLines={1} ellipsizeMode="tail" style={ui.body}>{item.name}</Text><Text style={ui.caption}>{item.content_type === 'application/pdf' ? 'PDF' : 'Image'} · {mediaSize(item.size)}</Text></View><Icon name="next" size={18} />
-    </Pressable>
+    </Button>
     {options}
   </View>;
 }

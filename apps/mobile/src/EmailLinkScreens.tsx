@@ -1,6 +1,7 @@
+import { Dialog } from './DialogParts';
 import React, { useState } from 'react';
 import { ActivityIndicator, ScrollView, View } from 'react-native';
-import { Dialog, Text } from 'react-native-paper';
+import { Text } from 'react-native-paper';
 import DialogFocus from './DialogFocus';
 import KeyboardDialog from './KeyboardDialog';
 import { DialogScrollBody } from './DialogParts';

@@ -1,6 +1,7 @@
+import { Dialog } from './DialogParts';
 import React, { useEffect, useRef, useState } from 'react';
 import { useWindowDimensions } from 'react-native';
-import { Dialog, Text } from 'react-native-paper';
+import { Text } from 'react-native-paper';
 import { request } from './api';
 import { NameOnlyForm } from './EmailLinkScreens';
 import DialogFocus from './DialogFocus';

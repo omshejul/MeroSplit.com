@@ -1,8 +1,9 @@
+import { Dialog } from './DialogParts';
 import { DialogScrollBody } from './DialogParts';
 import KeyboardDialog from './KeyboardDialog';
 import React, { useEffect, useRef, useState } from 'react';
 import { AppState, Platform, useWindowDimensions, View } from 'react-native';
-import { Dialog } from 'react-native-paper';
+
 import { request } from './api';
 import PushSettings, { type PushControls } from './PushSettings';
 import type { Session } from './types';

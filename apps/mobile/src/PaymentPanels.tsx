@@ -1,9 +1,10 @@
+import { Dialog } from './DialogParts';
 import { DialogScrollBody, CancelDialogActions } from './DialogParts';
 import KeyboardDialog from './KeyboardDialog';
 import DialogFocus from './DialogFocus';
 import React, { useEffect, useState } from 'react';
 import { View } from 'react-native';
-import { Dialog, Text, TouchableRipple } from 'react-native-paper';
+import { Text } from 'react-native-paper';
 import QRCode from 'react-native-qrcode-svg';
 import { formatMoney } from './accounting';
 import type { UPIApp, UPILaunchQuote } from './upi';
@@ -55,16 +56,16 @@ export function UPIAppChooser({ apps, recipient, disabled, onChoose, onDismiss }
     <Dialog.Title aria-level={2}>Pay with UPI</Dialog.Title>
     <DialogScrollBody maxHeight={360} paddingVertical={8} paddingHorizontal={8} gap={8}>
       {apps?.map(app => app.id === 'google-pay' ? <View key={app.id} style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', backgroundColor: palette.soft, borderRadius: radii.button, opacity: disabled ? 0.5 : 1 }}>
-        <TouchableRipple accessibilityRole="button" accessibilityLabel={app.name} disabled={disabled} onPress={() => onChoose(app)} style={{ maxWidth: '100%', borderRadius: radii.button }}>
+        <Button kind="plain" accessibilityRole="button" accessibilityLabel={app.name} disabled={disabled} onPress={() => onChoose(app)} style={{ maxWidth: '100%', borderRadius: radii.button }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 8, paddingVertical: 4, minHeight: 44 }}>
             <UPIAppIcon app={app.id} /><Text style={{ color: palette.text, fontSize: 14, lineHeight: 20, fontWeight: '500', flexShrink: 1 }}>{app.name}</Text>
           </View>
-        </TouchableRipple>
-        <TouchableRipple accessibilityRole="button" accessibilityLabel="Why Google Pay might fail" disabled={disabled} onPress={() => setHelp(true)} style={{ justifyContent: 'center', minHeight: 44, paddingHorizontal: 4, maxWidth: '100%', borderRadius: radii.button }}>
+        </Button>
+        <Button kind="plain" accessibilityRole="button" accessibilityLabel="Why Google Pay might fail" disabled={disabled} onPress={() => setHelp(true)} style={{ justifyContent: 'center', minHeight: 44, paddingHorizontal: 4, maxWidth: '100%', borderRadius: radii.button }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 6, paddingVertical: 4, borderRadius: 12, backgroundColor: palette.surface }}>
             <Icon name="info" size={14} color={palette.text} /><Text style={{ color: palette.text, fontSize: 11, lineHeight: 16, fontWeight: '500', flexShrink: 1 }}>Might fail</Text>
           </View>
-        </TouchableRipple>
+        </Button>
       </View> : <Button key={app.id} title={app.name} compact icon={() => <UPIAppIcon app={app.id} />} disabled={disabled} onPress={() => onChoose(app)} />)}
     </DialogScrollBody>
     <CancelDialogActions disabled={disabled} onCancel={onDismiss} />

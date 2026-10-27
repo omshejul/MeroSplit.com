@@ -26,7 +26,7 @@ const tick = async () => { for (let i = 0; i < 15; i++) await Promise.resolve();
 function harness(file: string, name: string, extra: Record<string, any> = {}) {
   let cursor = 0, states: any[] = [], effects: (() => void)[] = [], cleanups: Record<number, () => void> = {};
   const deps: Record<number, any[]> = {};
-  const env: Record<string, any> = { React, Dialog, useScreenRemovalLock() {}, validUPIAddress, View: 'View', ScrollView: 'ScrollView', KeyboardDialog: 'KeyboardDialog', Pressable: 'Pressable', Text: 'Text', LoadingSpinner: 'LoadingSpinner', NotificationSwitch: 'NotificationSwitch', PushSettings: 'PushSettings', BalanceStatements: 'BalanceStatements', DialogScrollBody: 'DialogScrollBody', Form: 'Form', SectionHeading: 'SectionHeading', Button: 'Button', Icon: 'Icon', SettingsRow: 'SettingsRow', BillPeople: 'BillPeople', DraftAttachment: 'DraftAttachment', LocalAttachment: 'LocalAttachment', AmountField: 'AmountField', TextField: 'TextField', DateField: 'DateField', ErrorText: 'ErrorText', Checkbox: { Item: 'Checkbox' }, RadioChoice: 'RadioChoice', Crypto: { randomUUID: () => 'bill-id' }, StyleSheet: { create: (value: any) => value }, Keyboard: { dismiss() {} }, useWindowDimensions: () => ({ height: 667 }), useSafeAreaInsets: () => ({ top: 20, bottom: 0 }), Platform: { OS: 'native' }, requestAnimationFrame: (fn: () => void) => fn(), useUI: () => ({ ui: {} }), formatMoney, integer, rupeesToPaise, validateExpense, ...extra,
+  const env: Record<string, any> = { React, Dialog, PersonInviteDialog: 'PersonInviteDialog', useToast: () => () => {}, DetailDialog: 'DetailDialog', useScreenRemovalLock() {}, validUPIAddress, View: 'View', ScrollView: 'ScrollView', KeyboardDialog: 'KeyboardDialog', Pressable: 'Pressable', Text: 'Text', LoadingSpinner: 'LoadingSpinner', NotificationSwitch: 'NotificationSwitch', PushSettings: 'PushSettings', BalanceStatements: 'BalanceStatements', DialogScrollBody: 'DialogScrollBody', Form: 'Form', SectionHeading: 'SectionHeading', Button: 'Button', Icon: 'Icon', SettingsRow: 'SettingsRow', BillPeople: 'BillPeople', DraftAttachment: 'DraftAttachment', LocalAttachment: 'LocalAttachment', AmountField: 'AmountField', TextField: 'TextField', DateField: 'DateField', ErrorText: 'ErrorText', Checkbox: { Item: 'Checkbox' }, RadioChoice: 'RadioChoice', Crypto: { randomUUID: () => 'bill-id' }, StyleSheet: { create: (value: any) => value }, Keyboard: { dismiss() {} }, useWindowDimensions: () => ({ height: 667 }), useSafeAreaInsets: () => ({ top: 20, bottom: 0 }), Platform: { OS: 'native' }, requestAnimationFrame: (fn: () => void) => fn(), useUI: () => ({ ui: {} }), formatMoney, integer, rupeesToPaise, validateExpense, ...extra,
     useState: (initial: any) => { const id = cursor++; if (!(id in states)) states[id] = typeof initial === 'function' ? initial() : initial; return [states[id], (value: any) => { states[id] = typeof value === 'function' ? value(states[id]) : value; }]; },
     useRef: (initial: any) => { const id = cursor++; return states[id] ??= { current: initial }; },
     useEffect: (fn: () => any, values: any[]) => { const id = cursor++; if (!deps[id] || values.some((value, i) => value !== deps[id][i])) { effects.push(() => { cleanups[id]?.(); cleanups[id] = fn(); }); deps[id] = values; } },
@@ -207,7 +207,7 @@ test('people dialog opens/closes/reopens without changing its existing inputs an
   const props = { title: 'Who paid?', summary: '2 people', inline: false, disabled: false, children: child };
   let tree = app.render(props); app.commit();
   for (let i = 0; i < 2; i++) {
-    nodes(tree).find(node => node.type === 'Pressable')!.props.onPress(); tree = app.render(props); app.commit();
+    nodes(tree).find(node => node.type === 'Button')!.props.onPress(); tree = app.render(props); app.commit();
     assert.equal(nodes(tree).find(node => node.type === 'KeyboardDialog')!.props.visible, true);
     assert.equal(nodes(tree).find(node => node.type === 'ScrollView')!.props.keyboardShouldPersistTaps, 'handled');
     assert.ok(!nodes(nodes(tree).find(node => node.type === 'ScrollView')).some(node => node.props.title === 'Done'));
@@ -226,7 +226,7 @@ test('people dialog adapts to short viewports and Done dismisses the keyboard wh
     Object.assign(viewport, { height }); Object.assign(safe, { top, bottom });
     assert.equal(nodes(people.render(props)).find(node => node.type === 'KeyboardDialog')!.props.maxHeight, height - top - bottom);
   }
-  let tree = people.render(props); people.commit(); nodes(tree).find(node => node.type === 'Pressable')!.props.onPress();
+  let tree = people.render(props); people.commit(); nodes(tree).find(node => node.type === 'Button')!.props.onPress();
   tree = people.render(props); people.commit(); find(tree, 'title', 'Done').props.onPress();
   assert.equal(dismisses, 1); assert.equal(nodes(people.render(props)).find(node => node.type === 'Input'), child);
 });
@@ -284,7 +284,7 @@ test('private thumbnail retries stay bounded and late results cannot replace the
   tree = app.render(next); nodes(tree).find(node => node.type === 'Image')!.props.onError();
   tree = app.render(next); assert.equal(waiting.length, 3);
   assert.equal(find(tree, 'accessibilityLabel', 'PDF preview unavailable').type, 'View');
-  assert.ok(!nodes(tree).some(node => node.type === 'Pressable'), 'preview fallback must not nest a button in the file button');
+  assert.ok(!nodes(tree).some(node => node.type === 'Button'), 'preview fallback must not nest a button in the file button');
   const later = { ...next, media: { ...media, id: 'next-file' } };
   app.render(later); app.commit(); assert.equal(waiting.length, 4);
   app.unmount(); waiting[3].resolve('after-unmount'); await tick();
@@ -298,7 +298,7 @@ test('native thumbnail failure retains the original manual Retry on iOS and Andr
     const props = { session: { baseUrl: 'https://example.invalid', userId: 'owner', token: 'synthetic' }, media: { id: 'file', name: 'Receipt.pdf', content_type: 'application/pdf' } };
     app.render(props); app.commit(); waiting[0].reject(); await tick();
     const retry = find(app.render(props), 'accessibilityLabel', 'Retry PDF preview');
-    assert.equal(retry.type, 'Pressable'); assert.equal(retry.props.accessibilityRole, 'button');
+    assert.equal(retry.type, 'Button'); assert.equal(retry.props.accessibilityRole, 'button');
     retry.props.onPress(); assert.equal(waiting.length, 2);
     waiting[1].resolve('native-retry-image'); await tick();
     assert.equal(nodes(app.render(props)).find(node => node.type === 'Image')!.props.source.uri, 'native-retry-image');
@@ -473,10 +473,10 @@ function memberPanel(onAction: (path: string, body: any) => Promise<any>, group:
   const app = harness('src/MembersScreen.tsx', 'MemberSettings', { ...members, Avatar: 'Avatar', IconAction: 'IconAction', Disclosure: 'Disclosure', GroupMembershipActions: 'GroupMembershipActions', EmailField: 'EmailField', SendInviteDialog: 'SendInviteDialog',
     Crypto: { randomUUID: () => `command-${++ids}` }, setTimeout: () => 0, clearTimeout() {} });
   const props = { group, selfId: 'owner', busy: false, onAction, onMembership() {} };
-  const row = (tree: any) => nodes(tree).find(node => node.props.person?.id === 'imported-person' && node.props.onAddEmail)!;
+  const row = (tree: any) => nodes(tree).find(node => node.props.person?.id === 'imported-person' && node.props.onInvite)!;
   const dialog = (tree: any) => nodes(tree).find(node => node.props.onEmail && node.props.onSave && 'person' in node.props)!;
   app.render(props); app.commit();
-  return { app, props, row, dialog, open(email: string) { row(app.render(props)).props.onAddEmail(); dialog(app.render(props)).props.onEmail(email); return dialog(app.render(props)); } };
+  return { app, props, row, dialog, open(email: string) { row(app.render(props)).props.onInvite(); nodes(app.render(props)).find(node => node.type === 'PersonInviteDialog')!.props.onEmail(); dialog(app.render(props)).props.onEmail(email); return dialog(app.render(props)); } };
 }
 
 test('Existing imported person email saves before invitation, uses the refreshed callback and preserves ID/history with stale original group props', async () => {
@@ -489,10 +489,12 @@ test('Existing imported person email saves before invitation, uses the refreshed
   const freshAction = async (path: string, body: any) => { calls.push({ path, body, fresh: true }); return { id: inviteGroup.id, version: 3, linked_participant_ids: [], invite: { id: body.command_id, state: 'sent', retry_after: 60 } }; };
   const before = JSON.stringify(inviteGroup); panel.app.render({ ...panel.props, onAction: freshAction });
   finish({ id: inviteGroup.id, version: 2 }); await tick();
+  assert.equal(calls.length, 1, 'saving a contact does not send');
+  nodes(panel.app.render({ ...panel.props, onAction: freshAction })).find(node => node.type === 'SendInviteDialog')!.props.onSend(); await tick();
   assert.equal(calls.length, 2); assert.equal(calls[1].path, '/participants/imported-person/email-invite'); assert.equal(calls[1].fresh, true);
   assert.equal(JSON.stringify(inviteGroup), before);
   const tree = panel.app.render(panel.props); assert.equal(panel.dialog(tree).props.person, undefined);
-  assert.equal(panel.row(tree).props.feedback, null, 'accepted delivery closes quietly without a success caption');
+  assert.equal(nodes(tree).some(node => node.type === 'Text' && node.children.includes('Invitation sent')), false);
   assert.equal(nodes(tree).find(node => node.type === 'SendInviteDialog')!.props.visible, false, 'the explicit Send action already authorized this invitation');
   panel.app.unmount();
 });
@@ -505,24 +507,25 @@ test('Unknown contact save retries the same command and never sends before accep
   assert.match(panel.dialog(panel.app.render(panel.props)).props.feedback.text, /Response lost/);
   assert.equal(panel.dialog(panel.app.render(panel.props)).props.feedback.error, true);
   panel.dialog(panel.app.render(panel.props)).props.onSave(); await tick(); assert.deepEqual(calls[1], calls[0]);
-  assert.equal(calls.length, 3); const feedback = panel.row(panel.app.render(panel.props)).props.feedback;
-  assert.equal(feedback.error, true); assert.match(feedback.text, /Contact saved.*Could not confirm.*press Send to check/);
-  assert.doesNotMatch(feedback.text, /Invitation sent to/); panel.app.unmount();
+  assert.equal(calls.length, 2, 'accepted contact still needs Send confirmation');
+  nodes(panel.app.render(panel.props)).find(node => node.type === 'SendInviteDialog')!.props.onSend(); await tick();
+  assert.equal(calls.length, 3); const feedback = nodes(panel.app.render(panel.props)).find(node => node.type === 'SendInviteDialog')!.props;
+  assert.match(feedback.error, /Could not confirm.*press Send to check/);
+  assert.doesNotMatch(feedback.error, /Invitation sent to/); panel.app.unmount();
 });
 
-test('Contact saved but invitation failed exposes original retry identity, and a reloaded pending invitation reuses the same UUID', async () => {
+test('Failed invitation retains its UUID across explicit retry and reload', async () => {
   const calls: any[] = []; let fail = true;
   const action = async (path: string, body: any) => { calls.push({ path, body }); return path.endsWith('/contact') ? { id: inviteGroup.id, version: 2 } : { id: inviteGroup.id, version: 3, linked_participant_ids: [], invite: { id: body.command_id, state: fail ? 'failed' : 'sent', retry_after: 0 } }; };
   const panel = memberPanel(action); panel.open('asha@example.invalid').props.onSave(); await tick();
-  const invitationId = calls[1].body.command_id;
-  const savedGroup = { ...inviteGroup, participants: [inviteGroup.participants[0], { ...inviteGroup.participants[1], email: 'asha@example.invalid' }], invites: [{ id: invitationId, participant_id: 'imported-person', intended_email: 'asha@example.invalid', send_state: 'failed', revoked: false, approved: false }] };
-  let tree = panel.app.render({ ...panel.props, group: savedGroup }); assert.match(panel.row(tree).props.feedback.text, /Contact saved.*Could not send.*press Send/);
-  assert.equal(panel.row(tree).props.feedback.error, true); fail = false; panel.row(tree).props.onSend(); await tick();
-  assert.equal(calls.length, 3); assert.deepEqual(calls[2], calls[1]);
-  assert.equal(panel.row(panel.app.render({ ...panel.props, group: savedGroup })).props.feedback.text, '', 'successful Send has no sent caption');
-  panel.app.unmount();
-  const reload = memberPanel(action, { ...savedGroup, invites: [{ ...savedGroup.invites[0], send_state: 'sending' }] });
-  reload.row(reload.app.render(reload.props)).props.onSend(); await tick();
+  const prompt = () => nodes(panel.app.render(panel.props)).find(node => node.type === 'SendInviteDialog')!;
+  assert.equal(calls.length, 1); prompt().props.onSend(); await tick();
+  const invitationId = calls[1].body.command_id; assert.match(prompt().props.error, /Could not send/);
+  fail = false; prompt().props.onSend(); await tick(); assert.deepEqual(calls[2], calls[1]); assert.equal(prompt().props.visible, false); panel.app.unmount();
+  const savedGroup = { ...inviteGroup, participants: [inviteGroup.participants[0], { ...inviteGroup.participants[1], email: 'asha@example.invalid' }], invites: [{ id: invitationId, participant_id: 'imported-person', intended_email: 'asha@example.invalid', send_state: 'sending', revoked: false, approved: false }] };
+  const reload = memberPanel(action, savedGroup); reload.row(reload.app.render(reload.props)).props.onInvite();
+  nodes(reload.app.render(reload.props)).find(node => node.type === 'PersonInviteDialog')!.props.onEmail();
+  nodes(reload.app.render(reload.props)).find(node => node.type === 'SendInviteDialog')!.props.onSend(); await tick();
   assert.equal(calls.at(-1).body.command_id, invitationId); assert.ok(calls.every(call => call.path.includes('imported-person'))); reload.app.unmount();
 });
 
@@ -538,14 +541,15 @@ test('Invitation never follows unaccepted contact, unmounted account or newly ar
   }
 });
 
-test('Member email affordance excludes registered/self/removed/direct/nonorganizer/archive, preserving nonzero removal guard', () => {
-  const app = harness('src/MembersScreen.tsx', 'MemberRow', { ...members, Avatar: 'Avatar', IconAction: 'IconAction' });
-  const props = { group: inviteGroup, person: inviteGroup.participants[1], selfId: 'owner', organizer: true, disabled: false, working: false, feedback: null, cooldown: 0, contactChanged: false, onAddEmail() {}, onSend() {}, onRemove() {} };
-  let tree = app.render(props); assert.equal(find(tree, 'label', 'Add email and invite Asha').props.name, 'mail');
-  assert.equal(find(tree, 'label', 'Remove Asha').props.disabled, true);
-  for (const patch of [{ person: { ...props.person, user_id: 2 } }, { person: { ...props.person, removed: true } }, { person: { ...props.person, email: 'saved@example.invalid' } }, { selfId: props.person.id }, { group: { ...inviteGroup, is_direct: true } }, { group: { ...inviteGroup, archived: true } }, { organizer: false }]) {
-    tree = app.render({ ...props, ...patch }); assert.ok(!nodes(tree).some(node => node.props.label === 'Add email and invite Asha'));
+test('Person dialog keeps invite permissions and nonzero removal guard with the person', () => {
+  const panel = memberPanel(async () => ({})); panel.row(panel.app.render(panel.props)).props.onInvite();
+  const dialog = nodes(panel.app.render(panel.props)).find(node => node.type === 'PersonInviteDialog')!;
+  assert.equal(dialog.props.canInvite, true); assert.match(dialog.props.removeReason, /Settle their balance/);
+  for (const patch of [{ archived: true }, { owner_id: 2 }]) {
+    const tree = panel.app.render({ ...panel.props, group: { ...inviteGroup, ...patch } });
+    assert.equal(nodes(tree).find(node => node.type === 'PersonInviteDialog')!.props.canInvite, false);
   }
+  panel.app.unmount();
 });
 
 
@@ -649,21 +653,12 @@ test('notification body uses spare desktop height while retaining compact phones
 });
 
 
-test('member name edit and mail invite are separate aligned actions with removal guards', () => {
-  const app = harness('src/MembersScreen.tsx', 'MemberRow', { Avatar: 'Avatar', IconAction: 'IconAction' });
+test('One member action opens name, email and removal controls inside a dialog', () => {
+  const app = harness('src/PersonInviteDialog.tsx', 'PersonInviteDialog', { SettingsRow: 'SettingsRow' });
   let edits = 0, invitations = 0;
-  const person = { id: 'other', name: 'Asha' };
-  const props = { group: { ...group, owner_id: 1, balances: { other: '-103400' } }, person, selfId: 'self', organizer: true, disabled: false, working: false, cooldown: 0, contactChanged: false, onRename() { edits++; }, onAddEmail() { invitations++; }, onSend() {}, onRemove() {} };
-  const tree = app.render(props), name = find(tree, 'accessibilityLabel', "Edit Asha's name"), mail = find(tree, 'label', 'Add email and invite Asha');
-  assert.equal(name.props.style.minHeight, 44); assert.equal(mail.props.name, 'mail');
-  name.props.onPress(); mail.props.onPress(); assert.equal(edits, 1); assert.equal(invitations, 1);
-  assert.equal(find(tree, 'label', 'Remove Asha').props.disabled, true);
-  assert.ok(nodes(name).some(node => node.props.accessibilityLabel === 'Settle ₹1,034.00 first'));
-  for (const patch of [{ person: { ...person, user_id: 2 } }, { person: { ...person, removed: true } }, { organizer: false }, { group: { ...props.group, archived: true } }]) {
-    const blocked = app.render({ ...props, ...patch });
-    assert.ok(!nodes(blocked).some(node => node.props.accessibilityLabel === "Edit Asha's name"));
-  }
-  assert.ok(find(app.render({ ...props, person: { ...person, email: 'saved@example.invalid' } }), 'accessibilityLabel', "Edit Asha's name"));
+  const tree = app.render({ person: { id: 'other', name: 'Asha' }, invites: [], busy: false, canInvite: true, canRename: true, canRemove: true, removeReason: 'Settle their balance before removing them.', onRename() { edits++; }, onEmail() { invitations++; } });
+  find(tree, 'label', 'Edit name').props.onPress(); find(tree, 'label', 'Send email invite').props.onPress();
+  assert.equal(edits, 1); assert.equal(invitations, 1); assert.equal(find(tree, 'label', 'Remove person').props.disabled, true);
 });
 
 
@@ -762,25 +757,25 @@ test('clipboard uses the native write boundary on phones and awaits browser succ
   await assert.rejects(web.render('unsupported@example'));
 });
 
-test('feedback has one field, blocks blank/double submission and shows thanks only after acknowledgment', async () => {
+test('feedback has one field, blocks blank/double submission and keeps its form and reports Sent only after acknowledgment', async () => {
   const sent: any[] = [];
   let finish!: () => void, closes = 0;
   const app = harness('src/FeedbackDialog.tsx', 'FeedbackDialog', { DialogFocus: 'DialogFocus', CancelDialogActions: 'CancelDialogActions' });
   const props = { visible: true, onClose: () => closes++, onSubmit: (body: any) => { sent.push(body); return new Promise<void>(resolve => { finish = resolve; }); } };
   let tree = app.render(props); app.commit();
   assert.equal(nodes(tree).filter(node => node.type === 'TextField').length, 1);
-  assert.equal(find(tree, 'title', 'Submit').props.disabled, true);
+  assert.equal(find(tree, 'title', 'Send feedback').props.disabled, true);
   find(tree, 'label', 'Your feedback').props.onChangeText('  Make lunch easier  ');
   tree = app.render(props);
-  find(tree, 'title', 'Submit').props.onPress(); find(tree, 'title', 'Submit').props.onPress();
+  find(tree, 'title', 'Send feedback').props.onPress(); find(tree, 'title', 'Send feedback').props.onPress();
   assert.equal(sent.length, 1); assert.equal(sent[0].text, 'Make lunch easier');
-  tree = app.render(props); assert.equal(find(tree, 'title', 'Submitting').props.disabled, true);
+  tree = app.render(props); assert.equal(find(tree, 'title', 'Sending').props.disabled, true);
   nodes(tree).find(node => node.type === 'KeyboardDialog')!.props.onDismiss(); assert.equal(closes, 0);
   assert.ok(!nodes(tree).some(node => node.type?.name === 'FeedbackThanks'));
   finish(); await tick(); tree = app.render(props);
-  const thanks = nodes(tree).find(node => node.type?.name === 'FeedbackThanks')!;
-  assert.ok(thanks); assert.ok(!nodes(tree).some(node => node.type === 'TextField'));
-  thanks.props.onClose(); assert.equal(closes, 1);
+  const sentButton = find(tree, 'title', 'Sent');
+  assert.ok(sentButton.props.disabled); assert.ok(nodes(tree).some(node => node.type === 'TextField'));
+  nodes(tree).find(node => node.type === 'CancelDialogActions')!.props.onCancel(); assert.equal(closes, 1);
   assert.equal(find(app.render(props), 'label', 'Your feedback').props.value, '');
 });
 
@@ -791,15 +786,15 @@ test('uncertain feedback preserves the exact submission through close/reopen and
   const props = { visible: true, onClose() {}, onSubmit: async (body: any) => { sent.push(body); if (first) { first = false; throw Error('Response lost'); } } };
   let tree = app.render(props); app.commit();
   find(tree, 'label', 'Your feedback').props.onChangeText('Synthetic feedback');
-  find(app.render(props), 'title', 'Submit').props.onPress(); await tick();
+  find(app.render(props), 'title', 'Send feedback').props.onPress(); await tick();
   tree = app.render(props);
   assert.ok(nodes(tree).some(node => node.type === 'ErrorText'));
   assert.equal(find(tree, 'label', 'Your feedback').props.editable, false);
   nodes(tree).find(node => node.type === 'KeyboardDialog')!.props.onDismiss();
   app.render({ ...props, visible: false }); tree = app.render(props);
-  find(tree, 'title', 'Submit').props.onPress(); await tick();
+  find(tree, 'title', 'Send feedback').props.onPress(); await tick();
   assert.equal(sent.length, 2); assert.equal(sent[1], sent[0]);
-  assert.ok(nodes(app.render(props)).some(node => node.type?.name === 'FeedbackThanks'));
+  assert.ok(find(app.render(props), 'title', 'Sent').props.disabled);
   app.unmount();
 });
 
@@ -969,14 +964,14 @@ test('Failed optional UPI save retains the address and never dismisses as saved'
 
 test('Shared Button forwards Paper dialog spacing without changing disabled or press behavior', () => {
   const source = ts.createSourceFile('ui.tsx', readFileSync(new URL('../src/ui.tsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
-  const declaration = source.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === 'Button')!;
+  const declaration = source.statements.find(node => ts.isVariableStatement(node) && node.declarationList.declarations.some(value => value.name.getText(source) === 'Button'))!;
   const code = ts.transpile(declaration.getText(source).replace(/^export /, ''), { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React });
-  const env = { React, useUI: () => ({ palette: {} }), usePressFeedback: () => ({ pressedStyle: {} }), PaperButton: 'PaperButton', Icon: 'Icon', radii: { button: 8 }, Platform: { OS: 'ios' } };
+  const env = { React: { ...React, forwardRef: (render: any) => render }, useState: () => [false, () => {}], View: 'View', Text: 'Text', Pressable: 'Pressable', useUI: () => ({ palette: {}, ui: {} }), usePressFeedback: () => ({ pressedStyle: {} }), PaperButton: 'PaperButton', Icon: 'Icon', radii: { button: 8 }, Platform: { OS: 'ios' } };
   const Button = new Function('env', `with(env){${code};return Button;}`)(env);
   const injected = [{ marginRight: 8 }], onPress = () => {};
   for (const disabled of [false, true]) {
     const element = Button({ title: 'Cancel', kind: 'text', compact: true, style: injected, disabled, onPress });
-    assert.ok(element.props.style.includes(injected), 'preserve Dialog.Actions child spacing');
+    assert.ok(element.props.style({ pressed: false }).includes(injected), 'preserve Dialog.Actions child spacing');
     assert.equal(element.props.onPress, onPress); assert.equal(element.props.disabled, disabled);
     assert.equal(element.props.accessibilityLabel, 'Cancel');
   }
@@ -1069,7 +1064,7 @@ function billDiscardDialog(env: Record<string, any>) {
   function visit(node: ts.Node) { if (ts.isJsxElement(node) && node.openingElement.tagName.getText(source) === 'KeyboardDialog') expression = node; ts.forEachChild(node, visit); }
   visit(source); assert.ok(expression);
   const code = ts.transpile(`const dialog = ${expression!.getText(source)}`, { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React });
-  return new Function('env', `with(env){${code};return dialog;}`)({ React, Dialog, blocked: false, localBlocked: false, pending: env.discardBill ? { type: 'GO_BACK' } : null, setPending: (value: unknown) => env.setDiscardBill(!!value), KeyboardDialog: 'KeyboardDialog', DialogFocus: 'DialogFocus', CancelDialogActions: 'CancelDialogActions', Button: 'Button', ...env, navigation: { dispatch: () => env.navigate('group') } });
+  return new Function('env', `with(env){${code};return dialog;}`)({ React, Dialog, PersonInviteDialog: 'PersonInviteDialog', useToast: () => () => {}, DetailDialog: 'DetailDialog', blocked: false, localBlocked: false, pending: env.discardBill ? { type: 'GO_BACK' } : null, setPending: (value: unknown) => env.setDiscardBill(!!value), KeyboardDialog: 'KeyboardDialog', DialogFocus: 'DialogFocus', CancelDialogActions: 'CancelDialogActions', Button: 'Button', ...env, navigation: { dispatch: () => env.navigate('group') } });
 }
 
 test('Back asks to discard the bill, Cancel retains the form and Discard leaves with the trash action', () => {

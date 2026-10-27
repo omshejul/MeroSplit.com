@@ -1,9 +1,9 @@
 import React from 'react';
-import { ActivityIndicator, Animated, Image, KeyboardAvoidingView, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Animated, Image, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import { FAB, Text, useTheme } from 'react-native-paper';
-import { Icon, IconAction, radii, useUI } from './ui';
+import { Text } from 'react-native-paper';
+import { Button, Icon, IconAction, radii, useUI } from './ui';
 import { useMotionValue } from './motion';
 import TabBarSurface from './TabBarSurface';
 
@@ -37,13 +37,13 @@ const tabs = [{ value: 'Groups', label: 'Groups', icon: 'groups' }, { value: 'Fr
 function TabButton({ item, selected, busy, onSelect }: { item: typeof tabs[number]; selected: boolean; busy: boolean; onSelect: (value: string) => void }) {
   const { palette, motion } = useUI();
   const opacity = useMotionValue(selected ? 1 : 0, motion.enabled);
-  return <Pressable accessibilityRole={Platform.OS === 'web' ? 'button' : 'tab'} aria-current={Platform.OS === 'web' && selected ? 'page' : undefined} accessibilityState={Platform.OS === 'web' ? { disabled: busy } : { selected, disabled: busy }} disabled={busy} onPress={() => onSelect(item.value)} style={styles.tab}>
+  return <Button kind="plain" accessibilityRole={Platform.OS === 'web' ? 'button' : 'tab'} aria-current={Platform.OS === 'web' && selected ? 'page' : undefined} accessibilityState={Platform.OS === 'web' ? { disabled: busy } : { selected, disabled: busy }} disabled={busy} onPress={() => onSelect(item.value)} style={styles.tab}>
     <Animated.View pointerEvents="none" accessible={false} style={[StyleSheet.absoluteFill, { borderRadius: radii.surface, backgroundColor: palette.soft, opacity }]} />
     <View style={styles.tabContent}>
       <Icon name={item.icon} color={selected ? palette.accent : palette.muted} />
       <Text style={[styles.tabText, { color: selected ? palette.accent : palette.muted }]}>{item.label}</Text>
     </View>
-  </Pressable>;
+  </Button>;
 }
 export function AppTabs({ selected, busy, onSelect }: { selected: string; busy: boolean; onSelect: (value: string) => void }) {
   return <View role="navigation" accessibilityLabel="Main navigation" style={pageWidthStyle}><TabBarSurface style={styles.tabs}>
@@ -51,10 +51,9 @@ export function AppTabs({ selected, busy, onSelect }: { selected: string; busy: 
   </TabBarSurface></View>;
 }
 export function AddExpenseButton({ disabled, onPress }: { disabled: boolean; onPress: () => void }) {
-  const { colors } = useTheme();
   return <View pointerEvents="box-none" style={styles.floating}>
     <View pointerEvents="box-none" style={[pageWidthStyle, styles.floatingContent]}>
-      <FAB animated={false} label="Add expense" accessibilityLabel="Add expense" disabled={disabled} onPress={onPress} color={colors.onPrimary} style={{ backgroundColor: colors.primary }} icon={({ size, color }) => <Icon name="add" size={size} color={color} />} />
+      <Button title="Add expense" kind="primary" icon="add" disabled={disabled} onPress={onPress} style={{ minHeight: 36 }} />
     </View>
   </View>;
 }

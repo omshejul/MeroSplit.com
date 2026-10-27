@@ -1,6 +1,7 @@
+import { Dialog } from './DialogParts';
 import React, { useEffect, useRef, useState } from 'react';
 import { Platform, View } from 'react-native';
-import { Dialog, Text } from 'react-native-paper';
+import { Text } from 'react-native-paper';
 import * as Updates from 'expo-updates';
 import Constants from 'expo-constants';
 import { requireOptionalNativeModule } from 'expo';

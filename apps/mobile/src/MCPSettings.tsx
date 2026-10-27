@@ -1,7 +1,8 @@
+import { Dialog } from './DialogParts';
 import { APP_ORIGIN } from './appLinks';
 import React, { useEffect, useRef, useState } from 'react';
 import { Linking, Platform, Share, useWindowDimensions, View } from 'react-native';
-import { Dialog, Text } from 'react-native-paper';
+import { Text } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { request } from './api';
 import { DialogScrollBody } from './DialogParts';
@@ -34,12 +35,6 @@ export default function MCPSettings({ session, busy, onBusyChange }: { session: 
     if (disabled || inFlight.current) return;
     setOpen(false); requestAnimationFrame(() => row.current?.focus());
   }
-  useEffect(() => {
-    if (Platform.OS !== 'web' || !open) return;
-    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape' && !disabled && !inFlight.current) { event.preventDefault(); event.stopPropagation(); close(); } };
-    document.addEventListener('keydown', escape, true);
-    return () => document.removeEventListener('keydown', escape, true);
-  }, [open, disabled]);
   async function disconnect(id: string) {
     if (disabled || inFlight.current) return;
     inFlight.current = true; const current = ++revision.current; setWorking(true); setError(''); onBusyChange(true);
@@ -53,19 +48,19 @@ export default function MCPSettings({ session, busy, onBusyChange }: { session: 
       <Dialog.Title aria-level={2}>Connect MCP</Dialog.Title>
       <DialogScrollBody maxHeight={440} gap={12}>
         <Text style={ui.caption}>Let an assistant read your groups and record bills or payments. It cannot send money.</Text>
-        <Button title="Setup instructions" kind="text" disabled={disabled} onPress={() => void Linking.openURL(setup).catch(() => setError('Could not open setup instructions. Try again.'))} />
-        <Button title="Share setup prompt" kind="primary" disabled={disabled} onPress={() => void Share.share({ message: prompt }).catch(() => setError('Could not share the setup prompt. Try again.'))} />
+        <SettingsRow icon="key" label="Setup instructions" external disabled={disabled} onPress={() => void Linking.openURL(setup).catch(() => setError('Could not open setup instructions. Try again.'))} />
+        <Button title="Share setup prompt" icon="external" disabled={disabled} onPress={() => void Share.share({ message: prompt }).catch(() => setError('Could not share the setup prompt. Try again.'))} />
         <Text style={ui.label}>Connected agents</Text>
         {loading && <Text accessibilityLiveRegion="polite" style={ui.caption}>Loading connections…</Text>}
         {connections?.map(value => <View key={value.id} style={{ gap: 4 }}>
           <Text style={ui.rowTitle}>{value.client_name}</Text>
-          <Button title="Disconnect" accessibilityLabel={`Disconnect ${value.client_name}`} kind="text" disabled={disabled || loading} onPress={() => void disconnect(value.id)} />
+          <Button icon="close" title="Disconnect" accessibilityLabel={`Disconnect ${value.client_name}`} kind="text" disabled={disabled || loading} onPress={() => void disconnect(value.id)} />
         </View>)}
         {connections?.length === 0 && !loading && <Text style={ui.caption}>No connected agents</Text>}
         {!!error && <ErrorText live>{error}</ErrorText>}
-        <Button title="Refresh" kind="text" disabled={disabled || loading} onPress={() => { if (!disabled && !loading) void load(); }} />
+        <Button title="Refresh" icon="refresh" kind="text" disabled={disabled || loading} onPress={() => { if (!disabled && !loading) void load(); }} />
       </DialogScrollBody>
-      <Dialog.Actions><Button title="Done" kind="text" disabled={disabled} onPress={close} /></Dialog.Actions>
+      <Dialog.Actions><Button title="Done" icon="check" disabled={disabled} onPress={close} /></Dialog.Actions>
     </KeyboardDialog>
   </>;
 }

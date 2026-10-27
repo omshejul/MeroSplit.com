@@ -1,6 +1,8 @@
+import { useToast } from './Toast';
+import DetailDialog from './DetailDialog';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useScreenRemovalLock } from './screenRemoval';
-import { AppState, Linking, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { AppState, Linking, Platform, StyleSheet, View } from 'react-native';
 import { Text } from 'react-native-paper';
 import { Alert } from './alerts';
 import { isPersonalPayment } from './personalBalances';
@@ -39,12 +41,12 @@ function PaymentPersonChoices({ people, selected, label, direction, disabled, on
 
 export default function SettleForm({ group, initial, busy, selfId, onSave, onReviewAttempt, onPrepareUPI, onCancelUPI, onCancel, returnPayment, onArmReturn, onReturnPaymentChange, onResolveReturn }: Props) {
   const { palette: colors, ui } = useUI();
+  const notify = useToast();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const proposal = initial && isPersonalPayment(group, selfId, initial.sender, initial.recipient) ? initial : undefined;
   const [sender, setSender] = useState(proposal?.sender ?? selfId);
   const [recipient, setRecipient] = useState(proposal?.recipient ?? '');
   const [amount, setAmount] = useState(proposal ? rupees(proposal.amount) : ''), [error, setError] = useState(''), [saving, setSaving] = useState(false);
-  const [peopleOpen, setPeopleOpen] = useState(!proposal);
   const [failureHelp, setFailureHelp] = useState(false);
   const [notice, setNotice] = useState(''), [reviewing, setReviewing] = useState(false);
   const [chooser, setChooser] = useState<{ payment: Payment; target: { vpa: string; name: string }; apps: UPIApp[] } | null>(null);
@@ -152,7 +154,6 @@ export default function SettleForm({ group, initial, busy, selfId, onSave, onRev
     if (quote.amount !== payment.amount || quote.vpa !== target.vpa || quote.recipient !== target.name) throw new Error('The amount or recipient changed. Review the payment again.');
     const url = buildUPIUrl(quote);
     if (Platform.OS === 'web') {
-      setPeopleOpen(false);
       await armReturn(payment, quote); await transitionReturn({ type: 'opening' });
       if (mounted.current) setWebQuote({ quote, url, target });
       return;
@@ -201,12 +202,12 @@ export default function SettleForm({ group, initial, busy, selfId, onSave, onRev
   async function cancelAttempt(id: string) {
     if (lock.current || busy) return;
     lock.current = true; setSaving(true); setError('');
-    try { await onCancelUPI(id); if (mounted.current) { setWebQuote(null); setNotice('Unpaid attempt cancelled.'); } }
+    try { await onCancelUPI(id); if (mounted.current) { setWebQuote(null); notify('Unpaid attempt cancelled.'); } }
     catch (cause) { if (mounted.current) setError(cause instanceof Error ? cause.message : 'Could not cancel this attempt.'); }
     finally { lock.current = false; if (mounted.current) setSaving(false); }
   }
   async function copy(text: string) {
-    try { await copyText(text); setNotice('Copied.'); }
+    try { await copyText(text); notify('Copied.'); }
     catch { setError('Select the payment details below and copy them.'); }
   }
   function confirm() {
@@ -253,17 +254,12 @@ export default function SettleForm({ group, initial, busy, selfId, onSave, onRev
     {group.archived && <Text style={ui.notice}>Reopen this group in settings before recording a payment.</Text>}
     {!webQuote && <><AmountField label="Amount (₹)" value={amount}
       onChangeText={value => { setAmount(value); setError(''); setWebQuote(null); }} editable={!disabled && !webQuote} placeholder="0" />
-    <View style={styles.people}>
-      <Pressable accessibilityRole="button" accessibilityState={{ expanded: peopleOpen, disabled: disabled || !!webQuote }} disabled={disabled || !!webQuote} onPress={() => setPeopleOpen(value => !value)} style={styles.summary}>
-        <Text style={ui.rowTitle}>Change people</Text><View style={{ transform: [{ rotate: peopleOpen ? '180deg' : '0deg' }] }}><Icon name="down" size={20} /></View>
-      </Pressable>
-      {peopleOpen && <View style={styles.reveal}>
+    <DetailDialog busy={disabled} title="Change people" icon="people">
         <PaymentPersonChoices direction="From" people={group.participants.filter(person => !person.removed)} selected={sender} label={label} disabled={disabled}
           onSelect={id => { setSender(id); if (id !== selfId) setRecipient(selfId); else if (recipient === selfId) setRecipient(''); setError(''); setWebQuote(null); }} />
         <PaymentPersonChoices direction="To" people={group.participants.filter(person => person.id !== sender && !person.removed && (sender === selfId || person.id === selfId))} selected={recipient} label={label} disabled={disabled}
           onSelect={id => { setRecipient(id); setError(''); setWebQuote(null); }} />
-      </View>}
-    </View>
+    </DetailDialog>
     </>}
     {otherPerson?.payment_profile && !webQuote && <PaymentAddress name={label(otherPerson.id)} vpa={otherPerson.payment_profile.vpa} />}
     {sender === selfId && debt && !profile && <Text style={ui.caption}>Ask {label(recipient)} to {group.participants.find(person => person.id === recipient)?.user_id != null ? 'add a UPI address' : 'join and add a UPI address'}.</Text>}

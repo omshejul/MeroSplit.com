@@ -1,9 +1,10 @@
+import { Dialog } from './DialogParts';
 import LoadingSpinner from './LoadingSpinner';
 import { useScrollPagination } from './useScrollPagination';
 import { APP_ORIGIN } from './appLinks';
 import React, { useEffect, useRef, useState } from 'react';
 import { FlatList, Linking, Platform, ScrollView, Text, View, useWindowDimensions } from 'react-native';
-import { Dialog } from 'react-native-paper';
+
 import * as Crypto from 'expo-crypto';
 import { accountOwner, ApiError, request } from './api';
 import { changeChatWork, chatPath, editRejectedChat, mergeChatMessages, queueChatMessage, readChatWork, sendChatMessage, startChatReads, visibleChatTokens } from './billChat';

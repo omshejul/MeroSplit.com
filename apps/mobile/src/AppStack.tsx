@@ -1,6 +1,7 @@
+import { Dialog } from './DialogParts';
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Platform } from 'react-native';
-import { Dialog } from 'react-native-paper';
+
 import { NavigationContainer, StackActions, getStateFromPath, useIsFocused, useNavigationContainerRef, usePreventRemove, type NavigationAction } from '@react-navigation/native';
 import { createNativeStackNavigator, type NativeStackScreenProps } from '@react-navigation/native-stack';
 import KeyboardDialog from './KeyboardDialog';

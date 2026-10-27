@@ -17,7 +17,7 @@ function component() {
     react: { ...React, default: React }, 'react-native': { View: 'View', useWindowDimensions: () => ({ width: 390, height: 640 }) }, 'react-native-paper': { Text: 'Text', Dialog: { Title: 'Title' } },
     './api': { request: async (_: unknown, path: string) => { requests.push(path); return { authorization_url: await replies.shift() }; } },
     './EmailLinkScreens': { NameOnlyForm: 'NameOnlyForm' }, './DialogFocus': 'DialogFocus', './KeyboardDialog': 'KeyboardDialog',
-    './DialogParts': { CancelDialogActions: 'Actions', DialogScrollBody: 'Body' },
+    './DialogParts': { Dialog: { Title: 'Title', Actions: 'Actions' }, CancelDialogActions: 'Actions', DialogScrollBody: 'Body' },
     './ui': { Button: 'Button', ErrorText: 'ErrorText', useUI: () => ({ ui: { body: {}, caption: {} } }) },
   };
   const exports: any = {}; new Function('require', 'exports', 'window', 'document', code)((name: string) => { assert.ok(name in modules, name); return modules[name]; }, exports, { location: { assign: (p: string) => navigated.push(p) } }, { activeElement: null });

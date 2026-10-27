@@ -10,8 +10,8 @@ function elements(value: unknown): Element[] {
   if (!value || typeof value !== 'object' || !('children' in value)) return [];
   const node = value as Element; return [node, ...node.children.flatMap(elements)];
 }
-function one(tree: unknown, type: string) { const rows = elements(tree).filter(node => node.type === type); assert.equal(rows.length, 1, type); return rows[0]; }
-function button(tree: unknown, title: string) { const value = elements(tree).find(node => node.type === 'Button' && node.props.title === title); assert.ok(value, title); return value; }
+function one(tree: unknown, type: string) { const rows = elements(tree).filter(node => node.type === type && (type !== 'SettingsRow' || node.props.label === 'Connect MCP')); assert.equal(rows.length, 1, type); return rows[0]; }
+function button(tree: unknown, title: string) { const value = elements(tree).find(node => (node.type === 'Button' && node.props.title === title || node.type === 'SettingsRow' && node.props.label === title)); assert.ok(value, title); return value; }
 const session = { token: 'synthetic-one', baseUrl: 'https://example.invalid/', email: 'one@example.invalid', userId: '1' };
 function harness(os = 'ios') {
   const slots: any[] = [], effects: (() => void)[] = [], calls: any[] = [], shares: any[] = [], urls: string[] = [], busy: boolean[] = [];
@@ -38,7 +38,7 @@ function harness(os = 'ios') {
     'react-native-paper': { Text: 'Text', Dialog: { Title: 'Title', Actions: 'Actions' } },
     './appLinks': { APP_ORIGIN: 'https://merosplit.com' },
     './api': { request: (active: unknown, path: string, method = 'GET') => { calls.push({ session: active, path, method }); return request(active, path, method); } },
-    './DialogParts': { DialogScrollBody: 'ScrollBody' }, './KeyboardDialog': { __esModule: true, default: 'KeyboardDialog' },
+    './DialogParts': { Dialog: { Title: 'Title', Actions: 'Actions' }, DialogScrollBody: 'ScrollBody' }, './KeyboardDialog': { __esModule: true, default: 'KeyboardDialog' },
     './ui': { Button: 'Button', ErrorText: 'ErrorText', SettingsRow: 'SettingsRow', useUI: () => ({ ui: {} }) },
   };
   const exports: any = {}, source = readFileSync(new URL('../src/MCPSettings.tsx', import.meta.url), 'utf8');
@@ -129,10 +129,10 @@ test('web Escape closes and restores trigger focus while a busy dialog retains i
   const app = harness('web'); let tree = app.render(); await app.flush(); one(tree, 'SettingsRow').props.onPress();
   app.render(); await app.flush();
   let prevented = 0; const event = { key: 'Escape', preventDefault: () => prevented++, stopPropagation() {} };
-  app.listeners.get('keydown')!(event); assert.equal(app.focusCount(), 1);
+  one(app.render(), 'KeyboardDialog').props.onDismiss(); assert.equal(app.focusCount(), 1);
   assert.equal(one(app.render(), 'KeyboardDialog').props.visible, false);
   one(app.render(), 'SettingsRow').props.onPress(); app.render({ busy: true }); await app.flush();
-  app.listeners.get('keydown')!(event); assert.equal(prevented, 1);
+  one(app.render({ busy: true }), 'KeyboardDialog').props.onDismiss();
   assert.equal(one(app.render(), 'KeyboardDialog').props.visible, true); app.unmount();
   assert.equal(app.listeners.size, 0);
 });
@@ -144,7 +144,7 @@ test('the changing safe viewport bounds Paper iOS content, not just its outer sh
   const declaration = shared.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === 'KeyboardDialog')!;
   let measuredHeight: number | undefined;
   const renderDialog = new Function('env', `with(env) { ${ts.transpile(declaration.getText(shared).replace('export default ', ''), { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React })}; return KeyboardDialog; }`)(
-    { React: { createElement }, useUI: () => ({ motion: { enabled: false } }), Platform: { OS: 'ios' }, useWindowDimensions: () => ({ width: 375 }), Dialog: 'PaperDialog', Portal: 'Portal', KeyboardAvoidingView: 'KeyboardBoundary', useSafeAreaInsets: () => ({ top: 20, bottom: 34 }), useState: () => [measuredHeight, (value: number) => { measuredHeight = value; }] });
+    { React: { createElement }, DialogContext: { Provider: 'DialogProvider' }, DialogFocus: 'DialogFocus', useUI: () => ({ palette: {}, motion: { enabled: false } }), Platform: { OS: 'ios' }, useWindowDimensions: () => ({ width: 375, height: 1000 }), Dialog: 'PaperDialog', Portal: 'Portal', KeyboardAvoidingView: 'KeyboardBoundary', useSafeAreaInsets: () => ({ top: 20, bottom: 34 }), useState: () => [measuredHeight, (value: number) => { measuredHeight = value; }] });
   // Execute the INSTALLED iOS Surface style partition. Its container has two
   // layers: flexShrink goes outside; maxHeight constrains the content inside.
   // This checks the actual forwarding boundary, not native text/Yoga layout.
@@ -164,7 +164,7 @@ test('the changing safe viewport bounds Paper iOS content, not just its outer sh
     assert.equal(outer.props.style.flexShrink, 1);
     return (outer.children[0] as Element).props.style;
   }
-  assert.equal(contentStyle({ visible: true, onDismiss() {} }).maxHeight, undefined, 'other shared dialogs keep their original sizing');
+  assert.equal(contentStyle({ visible: true, onDismiss() {} }).maxHeight, 914, 'all dialogs stay inside the safe viewport');
   const app = harness(); let previous = 0;
   for (const height of [375, 667, 844]) {
     app.viewport.height = height; app.viewport.fontScale = 3.1;
@@ -179,7 +179,7 @@ test('the changing safe viewport bounds Paper iOS content, not just its outer sh
   const props = one(app.render(), 'KeyboardDialog').props;
   const boundary = one(renderDialog({ ...props, children: [] }), 'KeyboardBoundary');
   boundary.props.onLayout({ nativeEvent: { layout: { height: 433 } } });
-  assert.equal(contentStyle(props).maxHeight, 379, 'keyboard-resized height reaches the actual inner iOS Surface content layer');
+  assert.equal(contentStyle(props).maxHeight, 347, 'keyboard-resized height reaches the actual inner iOS Surface content layer');
   boundary.props.onLayout({ nativeEvent: { layout: { height: 844 } } });
-  assert.equal(contentStyle(props).maxHeight, 790, 'MCP restores its original safe-window cap after keyboard dismissal');
+  assert.equal(contentStyle(props).maxHeight, 758, 'MCP restores its original safe-window cap after keyboard dismissal');
 });

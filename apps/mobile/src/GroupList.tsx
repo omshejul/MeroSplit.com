@@ -1,17 +1,17 @@
 import React from 'react';
 import Mascot from './Mascot';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { Text } from 'react-native-paper';
 import { position } from './GroupScreen';
 import { groupDisplayName, selfParticipant } from './personalBalances';
 import type { CachedGroup, Command } from './types';
-import { Avatar, balanceColor, Icon, IconBadge, radii, useUI } from './ui';
+import { Button, Avatar, balanceColor, Icon, IconBadge, radii, useUI } from './ui';
 
 function GroupListRow({ row, waiting, userId, busy, onOpen }: { row: CachedGroup; waiting: Command[]; userId?: string; busy: boolean; onOpen: () => void }) {
   const { palette, ui } = useUI();
   const group = row.group, name = groupDisplayName(group, userId), me = userId ? selfParticipant(group, userId) : undefined;
   const attention = waiting.some(value => value.state !== 'pending');
-  return <Pressable accessibilityRole="button" disabled={busy} style={[styles.row, { borderBottomColor: palette.line }]} onPress={onOpen}>
+  return <Button kind="plain" accessibilityRole="button" disabled={busy} style={[styles.row, { borderBottomColor: palette.line }]} onPress={onOpen}>
     {group.is_direct ? <Avatar name={name} /> : <IconBadge name="groups" size={24} />}
     <View style={ui.rowBody}>
       <Text numberOfLines={1} ellipsizeMode="tail" accessibilityLabel={name} style={ui.rowTitle}>{name}{group.archived ? ' · Archived' : ''}</Text>
@@ -19,7 +19,7 @@ function GroupListRow({ row, waiting, userId, busy, onOpen }: { row: CachedGroup
       {waiting.length > 0 && <Text style={{ fontSize: 13, color: palette.warning }}>{attention ? 'Needs review' : 'Pending sync'}</Text>}
     </View>
     <Icon name="next" size={18} color={palette.muted} />
-  </Pressable>;
+  </Button>;
 }
 export default function GroupList({ groups, commands, userId, busy, direct, emptyLabel, emptyVerified = false, decorated = false, onOpen }: { groups: CachedGroup[]; commands: Command[]; userId?: string; busy: boolean; direct: boolean; emptyLabel?: string; emptyVerified?: boolean; decorated?: boolean; onOpen: (row: CachedGroup) => void }) {
   const { palette, ui } = useUI();

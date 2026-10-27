@@ -101,22 +101,24 @@ test('the shared transition starts settled, retargets rapid input and never repl
 function component(file: string, name: string, env: Record<string, unknown>) {
   const source = ts.createSourceFile(file, readFileSync(new URL(`../src/${file}`, import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   let code = '';
-  function find(node: ts.Node) { if (ts.isFunctionDeclaration(node) && node.name?.text === name) code = node.getText(source).replace(/^export /, ''); ts.forEachChild(node, find); }
+  function find(node: ts.Node) { if (ts.isFunctionDeclaration(node) && node.name?.text === name) code = node.getText(source).replace(/^export (?:default )?/, ''); ts.forEachChild(node, find); }
   find(source); assert.ok(code);
   return new Function('env', `with(env) { ${ts.transpile(code, { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React })}; return ${name}; }`)(env);
 }
 const React = { createElement: (type: unknown, props: any, ...children: unknown[]) => ({ type, props, children }) };
-test('Disclosure body and expanded semantics change immediately with restrained reveal and caret motion', () => {
-  const h = hooks(); const motion = { enabled: true }, targets: number[] = [];
-  const Disclosure = component('ui.tsx', 'Disclosure', { React, ...h.React, View: 'View', Pressable: 'Pressable', Text: 'Text', Icon: 'Icon', Animated: { View: 'AnimatedView' }, useUI: () => ({ ui: {}, motion }), useMotionValue: (target: number) => { targets.push(target); return { interpolate: () => 'rotation' }; } });
-  const child = { retainedIdentity: true }, render = () => h.render(() => Disclosure({ title: 'Details', children: child }));
-  let tree = render(); assert.equal(tree.children[1], false); assert.equal(tree.children[0].props.accessibilityState.expanded, false);
-  tree.children[0].props.onPress(); tree = render(); assert.equal(tree.children[1].children[0], child); assert.equal(tree.children[0].props.accessibilityState.expanded, true);
-  tree.children[0].props.onPress(); tree = render(); assert.equal(tree.children[1], false); assert.deepEqual(targets, [0, 1, 0]);
+test('Details open a dialog without expanding or shifting the surrounding row', () => {
+  const h = hooks();
+  const DetailDialog = component('DetailDialog.tsx', 'DetailDialog', { React: { ...React, Fragment: 'Fragment' }, ...h.React, View: 'View', SettingsRow: 'SettingsRow', KeyboardDialog: 'KeyboardDialog', Dialog: { Title: 'Title', Actions: 'Actions' }, DialogScrollBody: 'Body', Button: 'Button' });
+  const child = { retainedIdentity: true }, render = (busy = false) => h.render(() => DetailDialog({ title: 'Details', children: child, busy }));
+  let tree = render(); assert.equal(tree.children[1].props.visible, false); assert.equal(tree.children[0].props.accessibilityState, undefined);
+  tree.children[0].props.onPress(); tree = render(); assert.equal(tree.children[1].props.visible, true);
+  assert.equal(tree.children[1].children[1].children[0].children[0], child);
+  render(true).children[1].props.onDismiss(); assert.equal(render(true).children[1].props.visible, true);
+  render().children[1].props.onDismiss(); assert.equal(render().children[1].props.visible, false);
 });
 test('tab actions and selected/disabled semantics remain immediate and do not depend on animation completion', () => {
   const calls: string[] = [];
-  const TabButton = component('AppNavigation.tsx', 'TabButton', { React, Platform: { OS: 'native' }, Pressable: 'Pressable', View: 'View', Text: 'Text', Icon: 'Icon', Animated: { View: 'AnimatedView' }, styles: {}, StyleSheet: { absoluteFill: {} }, radii: {}, useUI: () => ({ palette: {}, motion: { enabled: true } }), useMotionValue: () => 'in-flight' });
+  const TabButton = component('AppNavigation.tsx', 'TabButton', { React, Button: 'Button', Platform: { OS: 'native' }, Pressable: 'Pressable', View: 'View', Text: 'Text', Icon: 'Icon', Animated: { View: 'AnimatedView' }, styles: {}, StyleSheet: { absoluteFill: {} }, radii: {}, useUI: () => ({ palette: {}, motion: { enabled: true } }), useMotionValue: () => 'in-flight' });
   const tree = TabButton({ item: { value: 'Account', label: 'Me', icon: 'me' }, selected: true, busy: false, onSelect: (value: string) => calls.push(value) });
   tree.props.onPress(); assert.deepEqual(calls, ['Account']); assert.deepEqual(tree.props.accessibilityState, { selected: true, disabled: false });
   const busy = TabButton({ item: { value: 'Groups' }, selected: false, busy: true, onSelect() {} }); assert.equal(busy.props.disabled, true);

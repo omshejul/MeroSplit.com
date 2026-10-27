@@ -1,6 +1,8 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { Platform, View, useWindowDimensions } from 'react-native';
-import { Dialog, Text } from 'react-native-paper';
+import DetailDialog from './DetailDialog';
+import { Dialog } from './DialogParts';
+import React, { useEffect, useState } from 'react';
+import { View, useWindowDimensions } from 'react-native';
+import { Text } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { formatMoney, type Transfer } from './accounting';
 import { balanceKey, changedBalance, explainTransfer } from './balanceExplanation';
@@ -8,7 +10,7 @@ import type { BalanceSource } from './balanceExplanationStorage';
 import type { Command, Group } from './types';
 import KeyboardDialog from './KeyboardDialog';
 import { DialogScrollBody } from './DialogParts';
-import { balanceColor, Button, Disclosure, SectionHeading, useUI } from './ui';
+import { balanceColor, Button, SectionHeading, useUI } from './ui';
 
 export type BalanceSelection = { group: Group; accepted: Group; commands: Command[]; selfId: string; transfer: Transfer; restoreFocus: () => void; load?: (expected: Group) => Promise<BalanceSource> };
 type Explanation = ReturnType<typeof explainTransfer>;
@@ -48,14 +50,14 @@ function ExplanationBody({ value, selfId }: { value: Explanation; selfId: string
     {own.opening !== '0' && <CalculationLine label="Agreed starting balance" amount={(BigInt(own.opening) < 0n ? -BigInt(own.opening) : BigInt(own.opening)).toString()} subtract={BigInt(own.opening) < 0n} />}
     <Text style={ui.section}>{netText('You', own.balance)}</Text>
     <Text style={ui.caption}>We add up everyone's bills and recorded payments, then suggest who can pay whom to settle the group. A suggested payment can cover bills involving other people.</Text>
-    <Disclosure title="How this payment fits">
+    <DetailDialog icon="payment" title="How this payment fits">
       <Text style={ui.body}>{index ? 'If the earlier suggested payments below are made, ' : ''}{sender === 'You' && index ? 'you' : sender} {sender === 'You' ? 'owe' : 'owes'} {formatMoney(value.owing)}. {recipient} {recipient === 'You' ? 'are' : 'is'} owed {formatMoney(value.owed)}. This step uses the smaller amount, {formatMoney(chosen.amount)}.</Text>
       <SectionHeading>Everyone's balance</SectionHeading>
       {people.map(person => <Text key={person.id} style={ui.body}>{netText(person.name, person.balance)}</Text>)}
       <SectionHeading>Suggested payments in order</SectionHeading>
       {plan.map((row, step) => <Text key={`${row.sender}:${row.recipient}`} style={ui.body}>{step + 1}. {nameFor(group, selfId, row.sender)} to {nameFor(group, selfId, row.recipient)} · {formatMoney(row.amount)}{step === index ? ' · This payment' : ''}</Text>)}
-    </Disclosure>
-    <Disclosure title="Bills and recorded payments"><LedgerDetails group={group} selfId={selfId} /></Disclosure>
+    </DetailDialog>
+    <DetailDialog icon="bill" title="Bills and recorded payments"><LedgerDetails group={group} selfId={selfId} /></DetailDialog>
     {value.pending && <Text style={ui.caption}>Includes changes waiting to sync.</Text>}
   </>;
 }
@@ -63,17 +65,10 @@ function ExplanationBody({ value, selfId }: { value: Explanation; selfId: string
 export default function BalanceExplanation({ selection, currentKey, onClose }: { selection: BalanceSelection | null; currentKey: string; onClose: () => void }) {
   const { ui } = useUI(), { height } = useWindowDimensions(), insets = useSafeAreaInsets();
   const [result, setResult] = useState<{ value: Explanation; saved: boolean } | null>(null), [error, setError] = useState(''), [retry, setRetry] = useState(0);
-  const body = useRef<React.ComponentRef<typeof View>>(null), focused = useRef(false);
   const stale = !!selection && balanceKey(selection.group, selection.commands) !== currentKey;
   function close() { onClose(); requestAnimationFrame(() => selection?.restoreFocus()); }
-  function focusClose() {
-    if (Platform.OS !== 'web' || focused.current) return;
-    const node = body.current as unknown as HTMLElement | null;
-    const button = node?.querySelector<HTMLElement>('[aria-label="Close explanation"]');
-    if (button) { button.focus(); focused.current = true; }
-  }
   useEffect(() => {
-    let active = true; setResult(null); setError(''); focused.current = false;
+    let active = true; setResult(null); setError('');
     if (selection) void (async () => {
       try {
         const source = selection.load ? await selection.load(selection.accepted) : { group: selection.accepted, saved: true };
@@ -83,22 +78,9 @@ export default function BalanceExplanation({ selection, currentKey, onClose }: {
     })();
     return () => { active = false; };
   }, [selection, retry]);
-  useEffect(() => {
-    if (Platform.OS !== 'web' || !selection) return;
-    const keydown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close(); }
-      if (event.key !== 'Tab') return;
-      const root = body.current as unknown as HTMLElement | null;
-      const targets = [...(root?.querySelectorAll<HTMLElement>('button, [role="button"], [tabindex="0"]') ?? [])].filter(node => node.getAttribute('aria-disabled') !== 'true' && !node.hasAttribute('disabled') && node.getClientRects().length);
-      const first = targets[0], last = targets.at(-1);
-      if (first && (event.shiftKey ? document.activeElement === first || !root?.contains(document.activeElement) : document.activeElement === last || !root?.contains(document.activeElement))) { event.preventDefault(); (event.shiftKey ? last : first)?.focus(); }
-    };
-    document.addEventListener('keydown', keydown, true);
-    return () => document.removeEventListener('keydown', keydown, true);
-  }, [selection]);
   const maxHeight = Math.max(180, height - insets.top - insets.bottom - 48);
   return <KeyboardDialog visible={!!selection} onDismiss={close} maxHeight={maxHeight}>
-    <View ref={body} onLayout={focusClose} style={{ flexShrink: 1 }}>
+    <View style={{ flexShrink: 1 }}>
       <Dialog.Title aria-level={2}>Why this amount?</Dialog.Title>
       <DialogScrollBody maxHeight={Math.max(80, maxHeight - 150)} gap={12}>
         {stale ? <Text accessibilityRole="alert" style={ui.error}>{changedBalance}</Text> : error ? <><Text accessibilityRole="alert" style={ui.error}>{error}</Text><Button title="Try again" kind="text" onPress={() => setRetry(value => value + 1)} /></> : !result || !selection ? <Text accessibilityLiveRegion="polite" style={ui.caption}>Loading the full breakdown…</Text> : <><ExplanationBody value={result.value} selfId={selection.selfId} />{result.saved && <Text style={ui.caption}>Saved on this device.</Text>}</>}

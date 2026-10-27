@@ -81,7 +81,7 @@ import { accountDeletionInput } from './src/accountDeletion';
 import ExportData from './src/ExportData';
 import { clearAccountMediaUploads, clearMediaPreviews, enqueueExpenseWithMedia, retryAccountMediaUploads, type PendingMediaUpload } from './src/media';
 import type { CachedGroup, Command, Expense, Group, LegacyRecovery, Session, Settlement, HistoryResource, ActivityPage, ActivityTarget, BillRow } from './src/types';
-import { Button, Disclosure, IconAction, SettingsRow, UIProvider, useUI, type Palette } from './src/ui';
+import { Button, IconAction, SettingsRow, UIProvider, useUI, type Palette } from './src/ui';
 import { groupDisplayName, visiblePeopleSummary } from './src/personalBalances';
 import { useExpenseIcons } from './src/useExpenseIcons';
 import type { ExpenseIconRef } from './src/categoryIcons';
