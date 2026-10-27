@@ -23,7 +23,7 @@ function production(file: string, extra: Record<string, any> = {}) {
     __DEV__: false, SettingsRow: 'SettingsRow', Platform: { OS: 'native' }, View: 'View', Text: 'Text', Pressable: 'Pressable', Button: 'Button', Avatar: 'Avatar', Icon: 'Icon', IconAction: 'IconAction',
     Constants: { platform: { ios: { buildNumber: '27' }, android: { versionCode: 26 } } }, requireOptionalNativeModule: () => ({ nativeApplicationVersion: '1.2', nativeBuildVersion: '27' }),
     Disclosure: 'Disclosure', EmailField: 'EmailField', TextField: 'TextField', GroupMembershipActions: 'GroupMembershipActions', KeyboardDialog: 'KeyboardDialog', SendInviteDialog: 'SendInviteDialog',
-    Modal: 'Modal', ScrollView: 'ScrollView', AppFrame: 'AppFrame', ScreenHeader: 'ScreenHeader', pageContentStyle: {}, ApiError, LoadingSpinner: 'LoadingSpinner', DialogFocus: 'DialogFocus', DialogScrollBody: 'DialogScrollBody', CancelDialogActions: 'CancelDialogActions', ErrorText: 'ErrorText', Dialog: Object.assign(() => {}, { Title: 'Dialog.Title' }),
+    Modal: 'Modal', SafeAreaProvider: 'SafeAreaProvider', ScrollView: 'ScrollView', AppFrame: 'AppFrame', ScreenHeader: 'ScreenHeader', pageContentStyle: {}, ApiError, LoadingSpinner: 'LoadingSpinner', DialogFocus: 'DialogFocus', DialogScrollBody: 'DialogScrollBody', CancelDialogActions: 'CancelDialogActions', ErrorText: 'ErrorText', Dialog: Object.assign(() => {}, { Title: 'Dialog.Title' }),
     Keyboard: { dismiss() {} }, StyleSheet: { create: (value: any) => value, hairlineWidth: 1 }, Crypto: { randomUUID: () => `id-${++nextId}` }, useUI: () => ({ ui: {}, palette: {} }),
     requestAnimationFrame: (callback: () => void) => { callback(); return 1; }, cancelAnimationFrame() {},
     setTimeout: (callback: () => void) => { const id = ++nextId; timers.set(id, callback); return id; }, clearTimeout: (id: number) => timers.delete(id),
@@ -595,6 +595,42 @@ test('a stale selected person requires refreshed choices and never silently join
   let tree=app.render('GroupJoinDialog',props);assert.equal(writes.length,1);assert.equal(writes[0].participant_id,'old-person');
   button(tree,'Refresh invitation').props.onPress();tree=app.render('GroupJoinDialog',props);await app.commit();tree=app.render('GroupJoinDialog',props);
   assert.equal(button(tree,'This is me'),undefined);assert.ok(button(tree,'Join as new'));assert.equal(writes.length,1);app.unmount();
+});
+
+test('full-screen join keeps its header inside a modal-local safe area through confirmation, 409 and Refresh', async () => {
+  let previews = 0;
+  const app = production('GroupJoinDialog.tsx', { request: async (_session: any, path: string) => {
+    if (path.endsWith('preview')) return { name: 'Trip', already_member: false, version: ++previews, people: previews === 1 ? [{ id: 'old-person', name: 'John' }] : [] };
+    throw new ApiError(409, 'This person changed. Refresh and choose again.');
+  } });
+  const props = { session: { token: 'A', email: 'a@example.invalid' }, token: 'capability', onJoined: async () => assert.fail('not joined'), onCancel() {} };
+  const states: [string, Element][] = [['loading', app.render('GroupJoinDialog', props)]];
+  await app.commit();
+  states.push(['loaded', app.render('GroupJoinDialog', props)]);
+  button(states.at(-1)![1], 'This is me').props.onPress();
+  states.push(['name', app.render('GroupJoinDialog', props)]);
+  button(states.at(-1)![1], 'Continue').props.onPress();
+  states.push(['confirmation', app.render('GroupJoinDialog', props)]);
+  button(states.at(-1)![1], 'Join as John').props.onPress(); await tick();
+  states.push(['rejected409', app.render('GroupJoinDialog', props)]);
+  button(states.at(-1)![1], 'Refresh invitation').props.onPress();
+  app.render('GroupJoinDialog', props); await app.commit();
+  states.push(['refreshed', app.render('GroupJoinDialog', props)]);
+  const navigation = production('AppNavigation.tsx', { SafeAreaView: 'SafeAreaView', StatusBar: 'StatusBar', KeyboardAvoidingView: 'KeyboardAvoidingView', radii: {} });
+  for (const [state, tree] of states) {
+    assert.equal(tree.type, 'Modal'); assert.equal(tree.props.presentationStyle, 'fullScreen');
+    // A full-screen native Modal is a separate root. Its AppFrame must measure
+    // that root's insets rather than using the presenting screen's provider.
+    const provider = tree.children[0];
+    assert.equal(provider.type, 'SafeAreaProvider', `${state}: modal-local inset measurement`);
+    const frame = provider.children[0]; assert.equal(frame.type, 'AppFrame');
+    const safeFrame = navigation.render('AppFrame', { children: frame.children });
+    assert.equal(safeFrame.type, 'SafeAreaView'); assert.deepEqual(safeFrame.props.edges, ['top', 'bottom']);
+    assert.ok(component(frame, 'ScreenHeader'), `${state}: header stays inside the inset frame`);
+    assert.ok(component(frame, 'DialogFocus')); assert.ok(component(frame, 'ScrollView'));
+  }
+  assert.equal(previews, 2); assert.ok(button(states.at(-1)![1], 'Join as new'));
+  app.unmount();
 });
 
 test('member rows show a wrapped account email to ordinary members separately from invite contact', () => {
