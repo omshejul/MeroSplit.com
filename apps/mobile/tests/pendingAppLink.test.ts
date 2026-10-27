@@ -15,6 +15,9 @@ function actual(node: ts.Node, env: Record<string, unknown>) {
   const code = ts.transpileModule(`const actual = (${node.getText(file)});`, {compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;
   return Function(...Object.keys(env), `${code}; return actual;`)(...Object.values(env));
 }
+function appFunction(name: string, env: Record<string, unknown>) {
+  return actual(productionNode(node => ts.isFunctionDeclaration(node) && node.name?.text === name), env);
+}
 function effect(marker: string) {
   return (productionNode(node => ts.isCallExpression(node) && node.expression.getText(file) === 'useEffect' && !!node.arguments[0]?.getText(file).includes(marker)) as ts.CallExpression).arguments[0];
 }
@@ -35,16 +38,21 @@ function appHarness() {
   const session={token:'synthetic-session',userId:'1',baseUrl:'https://merosplit.test',email:'one@example.invalid'};
   const activeSessionRef={current:session as typeof session|null},authHeldRef={current:false},cookieCheck={current:false};
   const state={appLink:readAppLink(),screen:'home',groupId:null as string|null,expenseId:null as string|null,checkingCookie:false,saves:0,claims:0,fetches:0,notice:''};
-  let pending=Promise.resolve<unknown>(undefined),fetch=async()=>({id:groupId,is_direct:false,expenses:[]});
-  const env={ready:true,session,expired:false,busy:false,activeSessionRef,authHeldRef,cookieCheck,Platform:{OS:'web'},ApiError,
-    draftWrites:{current:Promise.resolve()},launch:(fn:()=>Promise<unknown>)=>{pending=fn();},fetchGroup:()=>{state.fetches++;return fetch();},
-    withBill:async(_s: unknown,group: unknown)=>group,getDatabase:async()=>({}),accountOwner:()=>session.userId,saveGroup:async()=>{state.saves++;},readVisibleGroup:async()=>null,
-    request:async()=>{state.claims++;return {id:groupId};},uuid:()=>'synthetic-command',
+  let pending=Promise.resolve<unknown>(undefined),fetch=async()=>({id:groupId,version:1,is_direct:false,expenses:[]});
+  let claimStarted!: () => void; const claiming = new Promise<void>(resolve => { claimStarted = resolve; });
+  const route={key:'link-entry'}, db={withExclusiveTransactionAsync:async(work:(transaction:unknown)=>Promise<void>)=>work(db)};
+  const env: Record<string,any>={scopeGeneration:{current:0},browseCurrent:{current:'entry'},opening:{current:null},openRequests:{current:new Map()},submissions:{current:new Set()},lock:{current:false},
+    navigation:{ref:{getRootState:()=>route,getCurrentRoute:()=>route}},setBusyRoutes(){},setReading(){},setExpired(){},publishIfChanged:async()=>{},ready:true,session,expired:false,busy:false,activeSessionRef,authHeldRef,cookieCheck,Platform:{OS:'web'},ApiError,
+    draftWrites:{current:Promise.resolve()},open:(fn:()=>Promise<unknown>)=>{pending=fn();void pending.catch(()=>{});},fetchGroup:()=>{state.fetches++;return fetch();},
+    withBill:async(_s: unknown,group: unknown)=>group,getDatabase:async()=>db,accountOwner:()=>session.userId,saveGroup:async()=>{state.saves++;},readVisibleGroup:async()=>null,
+    request:async()=>{state.claims++;claimStarted();return {id:groupId};},uuid:()=>'synthetic-command',
     navigate:(screen:string,params:any={})=>{state.screen=screen;state.groupId=params.groupId??null;state.expenseId=params.expenseId??null;},
     setAppLink:(next:AppLink|null|((current:AppLink|null)=>AppLink|null))=>{state.appLink=typeof next==='function'?next(state.appLink):next;},
     setNotice:(notice:string)=>{state.notice=notice;},setCheckingCookie:(value:boolean)=>{state.checkingCookie=value;},pauseAccountRequests:()=>Promise.resolve()};
+  // Exercise the actual read/submission/persistence fences, keeping only native storage IO stubbed.
+  for(const name of ['setSubmission','perform','background','browse','saveReadGroup']) env[name]=appFunction(name,env);
   const view=()=>({...env,...state,authHeld:state.checkingCookie});
-  return {state,activeSessionRef,open:()=>{actual(openLink,view())();return pending;},
+  return {state,activeSessionRef,claiming,open:()=>{actual(openLink,view())();return pending;},
     check:()=>actual(queueCheck,env)(),resume:()=>{activeSessionRef.current=session;authHeldRef.current=false;cookieCheck.current=false;state.checkingCookie=false;},
     fail:(error:Error)=>{fetch=async()=>{throw error;};}};
 }
@@ -93,6 +101,14 @@ test('a normal network failure clears the link instead of automatically retrying
 }));
 
 test('an interrupted legacy invitation claim is not automatically replayed',async()=>browserScenario(async(app)=>{
-  app.state.appLink={inviteToken:'synthetic-invite'};const pending=app.open();app.check();await pending;
+  app.state.appLink={inviteToken:'synthetic-invite'};const pending=app.open();await app.claiming;app.check();await pending;
   assert.equal(app.state.claims,1);assert.equal(app.state.appLink,null);
+}));
+
+
+test('a session hold before any invitation POST preserves the unused destination',async()=>browserScenario(async(app)=>{
+  const target={inviteToken:'synthetic-invite'};app.state.appLink=target;
+  const pending=app.open();app.check();await pending;
+  assert.equal(app.state.claims,0);assert.equal(app.state.appLink,target);
+  app.resume();await app.open();assert.equal(app.state.claims,1);assert.equal(app.state.appLink,null);
 }));
