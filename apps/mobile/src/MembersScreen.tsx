@@ -412,11 +412,11 @@ function MemberSettings({ group, selfId, busy, addPersonRequest = 0, onAction, o
           const link = { participantId: person.id, name: person.name, url: result.url };
           setInviteLink(link);
           const shared = await Share.share({ message: `Join ${group.name} as ${link.name}: ${publicAppUrl(link.url)}` });
-          if (shared.action === Share.sharedAction) setInviteLink(null);
+          if (shared?.action === Share.sharedAction) setInviteLink(null);
         })} />)}
       {inviteLink && <ShareInviteRow link={inviteLink} disabled={disabled || !!group.archived} onShare={() => void perform('invites', async () => {
           const shared = await Share.share({ message: `Join ${group.name} as ${inviteLink.name}: ${publicAppUrl(inviteLink.url)}` });
-          if (shared.action === Share.sharedAction) setInviteLink(null);
+          if (shared?.action === Share.sharedAction) setInviteLink(null);
         })} />}
       {(group.invites ?? []).filter(invite => !invite.revoked).map(invite => <InviteRow key={invite.id} invite={invite} name={name(invite.participant_id)} disabled={disabled || !!group.archived}
         onApprove={() => confirm(

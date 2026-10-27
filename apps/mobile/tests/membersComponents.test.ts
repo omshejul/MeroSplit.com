@@ -690,3 +690,30 @@ test('Previous members appear only in the counted dialog, leaving historical rec
   group.participants = group.participants.filter(person => !person.removed);
   assert.equal(nodes(render()).some(node => node.props.label === 'Previous members'), false);
 });
+
+test('invite creation and retry accept missing share results and preserve the link until confirmed shared', async () => {
+  let result: unknown;
+  let shares = 0, invites = 0;
+  const app = production('MembersScreen.tsx', {
+    publicAppUrl: (url: string) => url,
+    Share: { sharedAction: 'sharedAction', share: async () => { shares++; return result; } },
+  });
+  const group: Group = { id: 'group', name: 'Trip', owner_id: 1, version: 1,
+    participants: [{ id: 'self', name: 'You', user_id: 1 }, { id: 'friend', name: 'Friend', user_id: null }],
+    expenses: [], settlements: [], balances: {}, transfers: [], activity: [] };
+  const render = () => app.render('MemberSettings', { group, selfId: 'self', busy: false, onMembership() {},
+    onAction: async () => { invites++; return { url: 'https://merosplit.com/invite/example' }; } });
+  const assertNoError = (tree: Element) => assert.equal(nodes(tree).some(node => node.props.feedback?.error), false);
+  try {
+    component(render(), 'ManualInviteRow').props.onInvite(); await tick();
+    assertNoError(render());
+    const retry = async () => { component(render(), 'ShareInviteRow').props.onShare(); await tick(); assertNoError(render()); };
+    await retry();
+    result = { action: 'dismissedAction' }; await retry();
+    assert.ok(component(render(), 'ShareInviteRow'));
+    result = { action: 'sharedAction' }; await retry();
+    assert.equal(nodes(render()).some(node => node.type?.name === 'ShareInviteRow'), false);
+    assert.equal(invites, 1);
+    assert.equal(shares, 4);
+  } finally { app.unmount(); }
+});
