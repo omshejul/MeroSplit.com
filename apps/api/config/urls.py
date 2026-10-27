@@ -36,6 +36,7 @@ urlpatterns = [
     path("assets/play-become-tester.png", public_asset, {"asset": "play-become-tester.png"}),
     path("assets/install.js", public_asset, {"asset": "install.js"}),
     path("assets/install-qr.svg", public_asset, {"asset": "install-qr.svg"}),
+    path("assets/download-on-the-app-store.svg", public_asset, {"asset": "download-on-the-app-store.svg"}),
     path("assets/try-on-iphone.svg", public_asset, {"asset": "try-on-iphone.svg"}),
     path("assets/try-on-android.svg", public_asset, {"asset": "try-on-android.svg"}),
     path("assets/merosplit-icon.png", public_asset, {"asset": "merosplit-icon.png"}),

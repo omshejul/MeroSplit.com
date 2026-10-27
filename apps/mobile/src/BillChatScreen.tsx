@@ -1,5 +1,4 @@
 import { Dialog } from './DialogParts';
-import LoadingSpinner from './LoadingSpinner';
 import { useScrollPagination } from './useScrollPagination';
 import { APP_ORIGIN } from './appLinks';
 import React, { useEffect, useRef, useState } from 'react';
@@ -53,7 +52,7 @@ export function ChatComposer({ text, disabled, sendDisabled, onChange, onSend }:
   const [inputHeight, setInputHeight] = useState(44);
   return <ChatComposerSurface style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 4, padding: 4, borderRadius: 28, borderWidth: 1, borderColor: palette.line }}>
     <TextInput {...inputColors} accessibilityLabel="Message" placeholder="Message…" placeholderTextColor={palette.muted}
-      multiline maxLength={2000} value={text} onChangeText={onChange} editable={!disabled} underlineColorAndroid="transparent"
+      multiline scrollEnabled={inputHeight >= 144} maxLength={2000} value={text} onChangeText={onChange} editable={!disabled} underlineColorAndroid="transparent"
       onContentSizeChange={event => setInputHeight(Math.max(44, Math.min(144, event.nativeEvent.contentSize.height)))}
       style={[ui.body, { flex: 1, minWidth: 0, height: inputHeight, maxHeight: 144, paddingHorizontal: 14, paddingTop: 11, paddingBottom: 11, backgroundColor: 'transparent', textAlignVertical: 'top' }]} />
     <Button iconOnly icon={({ color }) => <View style={{ transform: [{ rotate: '180deg' }] }}><Icon name="down" size={22} color={color} /></View>}
@@ -217,7 +216,7 @@ export default function BillChatScreen({ session, groupId, expenseId, active, on
       onScrollBeginDrag={() => { forceFollow.current = false; follow.current = false; }}
       onScroll={event => { const { contentOffset } = event.nativeEvent; const atBottom = contentOffset.y < 80; if (atBottom) { forceFollow.current = false; follow.current = true; setNewMessages(false); if (incoming.current.length) showNew(); } else if (!forceFollow.current) follow.current = false; }} scrollEventThrottle={100}
       onContentSizeChange={(width, height) => { if ((follow.current || forceFollow.current) && !paging.loading) { list.current?.scrollToOffset({ offset: 0, animated: false }); forceFollow.current = false; } }}
-      ListFooterComponent={messages.length ? <View style={{ paddingVertical: 12 }}>{paging.loading && <LoadingSpinner visible />}{paging.canLoadMore && !paging.failed && <Button title="Load older" kind="text" disabled={paging.loading} onPress={paging.loadMore} />}{paging.failed && <Button title="Retry" kind="text" disabled={!enabled} onPress={paging.retry} />}</View> : undefined}
+      ListFooterComponent={messages.length ? <View style={{ paddingVertical: 12 }}>{paging.canLoadMore && !paging.failed && <Button title={paging.loading ? 'Loading…' : 'Load older'} style={{ minWidth: 120 }} kind="text" disabled={paging.loading} onPress={paging.loadMore} />}{paging.failed && <Button title="Retry" kind="text" disabled={!enabled} onPress={paging.retry} />}</View> : undefined}
       ListEmptyComponent={<View style={{ flex: 1 }}>{page && <ChatEmptyState disabled={!ready || !active || denied || !page.can_send || !!work.draft} onSuggest={typed} />}</View>}
       renderItem={({ item, index }) => <ChatMessageRow message={item} own={item.sender_id === session.userId} active={enabled} showDate={index === newestFirst.length - 1 || new Date(newestFirst[index + 1].created_at).toDateString() !== new Date(item.created_at).toDateString()} onReport={kind => setReport({ message: item, kind })} onBlock={() => void control(() => block(item.sender_id, true))} />} />
     {newMessages && <Button title="New messages" kind="text" onPress={showNew} />}

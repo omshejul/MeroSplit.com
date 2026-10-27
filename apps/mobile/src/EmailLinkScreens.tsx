@@ -29,7 +29,7 @@ export function EmailLinkStatus({ opening, error, sent, canRenew, busy, onRetry,
   return <View style={{ gap: 12 }}>
     {opening ? <><ActivityIndicator accessibilityLabel="Opening" /><Text style={ui.body}>Opening…</Text></> : <>
       <Text accessibilityRole={error ? 'alert' : undefined} style={error ? ui.error : ui.body}>{sent ? 'New link sent.' : error}</Text>
-      {canRenew && <Button title="Send new link" kind="primary" disabled={busy} onPress={onRenew} />}
+      {canRenew && <Button title={busy ? 'Sending…' : 'Send new link'} kind="primary" disabled={busy} onPress={onRenew} />}
       <Button title="Try again" disabled={busy} onPress={onRetry} />
       <Button title={canRenew ? 'Open MeroSplit' : 'Sign in'} kind="text" disabled={busy} onPress={onSignIn} />
     </>}
@@ -38,7 +38,7 @@ export function EmailLinkStatus({ opening, error, sent, canRenew, busy, onRetry,
 export function EmailLinkSent({ busy, resendSeconds, onResend, onCode, onChangeEmail }: { busy: boolean; resendSeconds: number; onResend: () => void; onCode: () => void; onChangeEmail: () => void }) {
   const { ui } = useUI();
   return <View style={{ gap: 12 }}><Text style={ui.body}>Open the sign-in link in your email.</Text>
-    <Button contentStyle={{ minHeight: 48 }} title={resendSeconds > 0 ? `Resend in ${resendSeconds}s` : 'Send new link'} disabled={busy || resendSeconds > 0} onPress={onResend} />
+    <Button contentStyle={{ minHeight: 48 }} title={busy ? 'Sending…' : resendSeconds > 0 ? `Resend in ${resendSeconds}s` : 'Send new link'} disabled={busy || resendSeconds > 0} onPress={onResend} />
     <Button contentStyle={{ minHeight: 48 }} title="Use a code instead" kind="text" disabled={busy} onPress={onCode} />
     <Button contentStyle={{ minHeight: 48 }} title="Use another email" kind="text" disabled={busy} onPress={onChangeEmail} />
   </View>;
@@ -49,6 +49,6 @@ export function NameOnlyForm({ busy, onSave, autoFocus = true }: { autoFocus?: b
   return <View style={{ gap: 12 }}>
     <TextField label="Name" autoFocus={autoFocus} value={name} maxLength={120} autoCapitalize="words" autoComplete="name" autoCorrect={false} editable={!busy} onChangeText={setName} returnKeyType="done" onSubmitEditing={() => { if (!busy && name.trim()) void save(); }} />
     {!!error && <ErrorText>{error}</ErrorText>}
-    <Button title="Continue" kind="primary" disabled={busy || !name.trim()} onPress={() => void save()} />
+    <Button title={busy ? 'Saving…' : 'Continue'} kind="primary" disabled={busy || !name.trim()} onPress={() => void save()} />
   </View>;
 }

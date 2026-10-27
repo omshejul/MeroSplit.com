@@ -77,7 +77,7 @@ test('actual history row survives the minute refresh when Hermes has no Relative
 
 test('screen fetches only its entity via GET, preserves newest order and accessible actual values', async () => {
   const calls: any[] = [], app = component(async (...args) => { calls.push(args); return page(); });
-  let tree = app.render(); assert.equal(tree.props.ListEmptyComponent.type, 'LoadingSpinner');
+  let tree = app.render(); assert.equal(tree.props.ListEmptyComponent, undefined, 'check local cache before showing network progress');
   await app.commit(); tree = app.render();
   assert.equal(calls.length, 1); assert.equal(calls[0][1], '/groups/group/expenses/bill/versions?limit=20'); assert.equal(calls[0][2], 'GET');
   assert.equal(tree.props.data[0].version.id, 'edit');
@@ -233,4 +233,23 @@ test('older Retry callbacks cannot request after offline, account/session switch
       const before=calls;retry.props.onPress();await tick();assert.equal(calls,before,change+' stale Retry must not request');
     }finally{if(!closed)app.unmount();}
   }
+});
+
+test('history checks the local cache quietly and shows a spinner only after a cache miss', async () => {
+  let finish!: (page: ExpenseHistoryPage) => void;
+  const app = component(() => new Promise(resolve => finish = resolve));
+  assert.equal(app.render().props.ListEmptyComponent, undefined);
+  await app.commit();
+  assert.equal(app.render().props.ListEmptyComponent.type, 'LoadingSpinner');
+  finish(page()); await tick(); app.unmount();
+});
+
+test('cached empty history stays visible during slow background refresh without a spinner', async () => {
+  let finish!: (page: ExpenseHistoryPage) => void;
+  const app = component(() => new Promise(resolve => finish = resolve));
+  await app.cacheHistory({ ...page(), items: [] });
+  app.render(); await app.commit(); const tree = app.render();
+  assert.equal(tree.props.ListEmptyComponent.type, 'Text');
+  assert.equal(tree.props.ListEmptyComponent.children[0], 'No version history was recorded.');
+  finish({ ...page(), items: [] }); await tick(); app.unmount();
 });
