@@ -105,7 +105,7 @@ test('production canonical refresh marker clears immediately and only verifies a
   let failed = false;
   let marker = 'owner1', release!: () => void;
   const loaded = new Promise<void>(resolve => { release = resolve; });
-  const env = { setVerifiedEmptyOwner: (value: string) => { marker = value; }, getDatabase: async () => ({}), accountOwner: () => scope, readProfile: async () => {}, syncOutbox: async () => {}, retryAccountMediaUploads: async () => 0, refreshGroups: async () => { if (failed) throw Error('Offline'); return []; }, load: () => loaded, ownerRef: { current: scope }, activeSessionRef: { current: active }, activeGroupRef: { current: null }, ApiError: class extends Error {} };
+  const env = { scopeGeneration: { current: 0 }, setVerifiedEmptyOwner: (value: string) => { marker = value; }, getDatabase: async () => ({}), accountOwner: () => scope, readProfile: async () => {}, syncOutbox: async () => {}, retryAccountMediaUploads: async () => 0, refreshGroups: async () => { if (failed) throw Error('Offline'); return []; }, load: () => loaded, ownerRef: { current: scope }, activeSessionRef: { current: active }, activeGroupRef: { current: null }, ApiError: class extends Error {} };
   const sync = productionFunction('App.tsx', 'runAccountRefresh', { ...env, authHeldRef: {current:false}, setSyncing(){}, setSyncProblem(){}, request:async()=>({needs_invitation:false}), setNeedsInvitation(){}, downloadOffline(){}, publishIfChanged:async()=>{} });
   const refreshing = sync(active); assert.equal(marker, ''); release(); await refreshing; assert.equal(marker, scope);
   failed = true;
@@ -127,7 +127,7 @@ test('an exhausted older Activity page never becomes a verified empty first page
   visit(app); assert.ok(condition);
   const session = { token: 'current' }, activityOwner = { current: '' };
   let displayed: Record<string, any> | null = null;
-  const env = { session, browseCurrent: { current: 'scope' }, activity: { items: [], next_cursor: 'older', revision: 'current' }, perform: async (run: () => Promise<void>) => run(), setActivityError() {}, request: async () => ({ read_mode: 'activity', items: [], next_cursor: null, revision: 'current' }), activeSessionRef: { current: session }, activityOwner, accountOwner: () => 'owner', setActivity: (page: Record<string, any>) => { displayed = page; }, requestAnimationFrame() {}, ApiError: class extends Error {} };
+  const env = { browse: async (_key: string, read: (current: () => boolean) => Promise<boolean>) => read(() => true), session, browseCurrent: { current: 'scope' }, activity: { items: [], next_cursor: 'older', revision: 'current' }, perform: async (run: () => Promise<void>) => run(), setActivityError() {}, request: async () => ({ read_mode: 'activity', items: [], next_cursor: null, revision: 'current' }), activeSessionRef: { current: session }, activityOwner, accountOwner: () => 'owner', setActivity: (page: Record<string, any>) => { displayed = page; }, requestAnimationFrame() {}, ApiError: class extends Error {} };
   const refresh = productionFunction('App.tsx', 'refreshActivity', env);
   const eligible = () => {
     const scope = { mascotEligible: true, activityError: '', activity: displayed, activityOwner, owner: 'owner', session, emptyChatScope: 'owner|current' };

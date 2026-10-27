@@ -24,7 +24,7 @@ function harness(active: Session | null = old, target = fresh) {
   const state = { persisted: active, session: active }, ref = <T>(current: T) => ({ current });
   const env: Record<string, any> = {
     Platform: { OS: 'ios' }, API_URL: baseUrl, challenge: { challengeId: 'synthetic-challenge' }, email: target.email, code: '0000',
-    authEpoch: ref(0), authHeldRef: ref(false), activeSessionRef: ref(active), draftWrites: ref(Promise.resolve()),
+    scopeGeneration: ref(0), authEpoch: ref(0), authHeldRef: ref(false), activeSessionRef: ref(active), draftWrites: ref(Promise.resolve()),
     validatedBrowserSession: ref(''), emailEntryRef: ref(null), ownerRef: ref(active ? accountOwner(active) : ''),
     publishedStorage: ref({ scope: 'old-scope', view: 'old-view', changes: 'old-revision' }), loadGeneration: ref(7),
     googleReturn: ref(null), activityOwner: ref('old-activity'), groupVersions: ref('old-group-versions'),
@@ -78,6 +78,7 @@ test('actual App OTP persists, cleans up only old token, and adopts current acco
       assert.deepEqual(n.calls.map(c => [c.method, c.token]), [['POST', null], ['DELETE', old.token]]);
       assert.ok(h.events.indexOf('persist') < h.events.indexOf('disable-push'));
       assert.ok(h.events.indexOf('clear-push') < h.events.indexOf('adopt'));
+      assert.equal(h.env.scopeGeneration.current, 1, 'account adoption advances the background-work generation');
       assert.equal(h.env.ownerRef.current, accountOwner(target)); assert.equal(h.env.activeSessionRef.current.token, target.token);
       assert.deepEqual(h.env.publishedStorage.current, { scope: '', view: '', changes: '' }); assert.equal(h.env.loadGeneration.current, 8);
       assert.deepEqual(h.view.groups, []); assert.deepEqual(h.view.commands, []); assert.equal(h.view.scope, 1, 'account adoption remounts the stack and its local forms');
