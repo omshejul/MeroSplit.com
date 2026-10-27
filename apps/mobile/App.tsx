@@ -211,7 +211,7 @@ function AppContent() {
   suppressPush.current = notices.shouldSuppress;
   const updateSafe = useRef(false);
   updateSafe.current = ready && !!session && !expired && !authHeld && foreground && screen === 'home' && tab === 'Account'
-    && !busy && !pulling && !storageError && !appLink && !emailEntry && !feedbackOpen && !alertOpen && !upiSetup
+    && !busy && backgroundReads === 0 && !syncing && !storageError && !appLink && !emailEntry && !feedbackOpen && !alertOpen && !upiSetup
     && !returnAttemptId && !returns.length && !reviewCommand && !newPersonInvite && !pushTarget;
   async function restartUpdate(reload: () => Promise<void>) {
     const active = activeSessionRef.current, epoch = authEpoch.current;
