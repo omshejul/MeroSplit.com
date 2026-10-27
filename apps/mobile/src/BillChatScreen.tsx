@@ -48,13 +48,12 @@ export function ChatMessageRow({ message, own, showDate, active, onReport, onBlo
   </View>;
 }
 export function ChatComposer({ text, disabled, sendDisabled, onChange, onSend }: { text: string; disabled: boolean; sendDisabled?: boolean; onChange: (text: string) => void; onSend: () => void }) {
-  const { ui, palette, inputColors } = useUI();
-  const [inputHeight, setInputHeight] = useState(44);
-  return <ChatComposerSurface style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 4, padding: 4, borderRadius: 28, borderWidth: 1, borderColor: palette.line }}>
+  const { ui, palette, inputColors } = useUI(), { fontScale = 1 } = useWindowDimensions();
+  const [expanded, setExpanded] = useState(false);
+  return <ChatComposerSurface style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 4, padding: 4, borderRadius: expanded ? 18 : 28, borderWidth: 1, borderColor: palette.line }}>
     <TextInput {...inputColors} accessibilityLabel="Message" placeholder="Message…" placeholderTextColor={palette.muted}
-      multiline scrollEnabled={inputHeight >= 144} maxLength={2000} value={text} onChangeText={onChange} editable={!disabled} underlineColorAndroid="transparent"
-      onContentSizeChange={event => setInputHeight(Math.max(44, Math.min(144, event.nativeEvent.contentSize.height)))}
-      style={[ui.body, { flex: 1, minWidth: 0, height: inputHeight, maxHeight: 144, paddingHorizontal: 14, paddingTop: 11, paddingBottom: 11, backgroundColor: 'transparent', textAlignVertical: 'top' }]} />
+      multiline onLayout={event => setExpanded(event.nativeEvent.layout.height > (ui.body?.lineHeight ?? 23) * fontScale + 25)} maxLength={2000} value={text} onChangeText={onChange} editable={!disabled} underlineColorAndroid="transparent"
+      style={[ui.body, { flex: 1, minWidth: 0, minHeight: 44, maxHeight: 144, paddingHorizontal: 14, paddingTop: 11, paddingBottom: 11, backgroundColor: 'transparent', textAlignVertical: 'top' }]} />
     <Button iconOnly icon={({ color }) => <View style={{ transform: [{ rotate: '180deg' }] }}><Icon name="down" size={22} color={color} /></View>}
       accessibilityLabel="Send message" kind="primary" disabled={disabled || sendDisabled || !text.trim()} onPress={onSend}
       hitSlop={0} style={{ width: 44, height: 44, borderRadius: 22 }} />
