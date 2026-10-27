@@ -36,10 +36,10 @@ test('Me mounts Connect MCP on native and web, with current account key, session
   const env: Record<string, any> = { React, MCPSettings, savedChangesView: null, focused: true, methodsRow: { current: null }, navigate() {}, screen: 'home', tab: 'Account', owner: 'account-one',
     session: { email: 'one@example.invalid', token: 'synthetic-one' }, busy: false, lock: { current: false },
     myName: 'One', vpa: '', push: {}, unavailable: [], commands: [], groups: [], expired: false,
-    legacy: [], legacySelf: {}, recoveries: [], ui: {}, saveName() {}, saveUPI() {},
+    legacy: [], legacySelf: {}, recoveries: [], ui: {}, saveName() {}, saveUPI() {}, exportData() {},
     AppUpdates: 'AppUpdates', restartUpdate() {}, online: true, AccountHeader: 'AccountHeader', View: 'View', ProfileSettings: 'ProfileSettings', AccountNotifications: 'AccountNotifications',
     DeleteAccount: 'DeleteAccount', ExportData: 'ExportData', SettingsRow: 'SettingsRow', Disclosure: 'Disclosure', Button: 'Button', Text: 'Text', SavedChanges: 'SavedChanges', LegacyRecords: 'LegacyRecords' };
-  const busyChanges: boolean[] = [];
+  const busyChanges: boolean[] = []; env.route = { key: 'account' }; env.setSubmission = (value: boolean) => { env.lock.current = value; busyChanges.push(value); };
   env.setBusy = (value: boolean) => busyChanges.push(value);
   for (const os of ['ios', 'android', 'web']) {
     env.Platform = { OS: os };
@@ -84,7 +84,7 @@ test('Activity discovers unread chats before a bill is opened and resolves the a
   entry.props.onOpen('g', 'b'); assert.deepEqual(selected, [[{ kind: 'bill', groupId: 'g', expenseId: 'b' }, true]]);
   const declaration = app.body!.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === 'openActivityTarget')!;
   const calls: string[] = [], active = { token: 'current' };
-  const scope = { session: active, activeSessionRef: { current: active }, perform: async (fn: () => Promise<void>) => fn(), fetchGroup: async () => { calls.push('group-read'); return { id: 'g' }; }, withBill: async (_session: any, group: any, id: string) => { calls.push('bill-read-' + id); return group; }, getDatabase: async () => ({}), accountOwner: () => 'one', saveGroup: async () => {}, navigate: (screen: string) => calls.push(screen) };
+  const scope = { browse: async (_key: string, fn: any) => fn(() => true), saveReadGroup: async () => true, session: active, activeSessionRef: { current: active }, perform: async (fn: () => Promise<void>) => fn(), fetchGroup: async () => { calls.push('group-read'); return { id: 'g' }; }, withBill: async (_session: any, group: any, id: string) => { calls.push('bill-read-' + id); return group; }, getDatabase: async () => ({}), accountOwner: () => 'one', saveGroup: async () => {}, navigate: (screen: string) => calls.push(screen) };
   const open = new Function('env', `with(env){${ts.transpile(declaration.getText(source), { target: ts.ScriptTarget.ES2022 })};return openActivityTarget;}`)(scope);
   await open(selected[0][0], true); assert.deepEqual(calls, ['group-read', 'bill-read-b', 'billChat']);
 });

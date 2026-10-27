@@ -45,7 +45,7 @@ const edit: Command = { command_id: 'edit', group_id: 'g', method: 'PUT', path: 
 test('Saved changes actual row and App route reach latest review, edit replacement and discard for the command group', async () => {
   const raw = new DatabaseSync(':memory:'), db = sqliteAdapter(raw), routes: any[] = [], originalFetch = globalThis.fetch;
   const later: Command = { ...edit, command_id: 'later', method: 'POST', path: '/groups/g/expenses', body: { ...edit.body, id: 'later', command_id: 'later' }, state: 'pending', error: null, attempted: undefined };
-  const env: any = { session, owner, groupId: null, selected: null, commands: [edit, later], groups: [{ kind: 'shared', group }], busy: false, expired: false, screen: 'savedChanges',
+  const env: any = { browse: async (_key: string, work: any) => work(() => true), syncQuietly() {}, open: (work: any) => work(), accountOwner, readVisibleGroup, session, owner, groupId: null, selected: null, commands: [edit, later], groups: [{ kind: 'shared', group }], busy: false, expired: false, screen: 'savedChanges',
     ownerRef: { current: owner }, activeSessionRef: { current: session }, getDatabase: async () => db, saveGroup, ApiError,
     fetchGroup: async (_session: Session, id: string) => { assert.equal(id, 'g'); return group; }, withBill: async (_session: Session, current: Group) => current,
     load: async () => { env.selected = await readVisibleGroup(db, owner, 'g'); },
@@ -60,7 +60,7 @@ test('Saved changes actual row and App route reach latest review, edit replaceme
     await assert.rejects(syncOutbox(db, session), /Bill changed/);
     env.commands = await pendingCommands(db, owner);
     assert.equal(attempts.length, 1, 'known 409 holds later work without attempting it');
-    env.reviewChange = production('reviewChange', env);
+    env.saveReadGroup = production('saveReadGroup', env); env.reviewChange = production('reviewChange', env);
     const saved = variable('savedChangesView', env);
     const list = component('AccountRecovery.tsx', 'SavedChanges', saved.props);
     const row = elements(list).find(node => node.props.command?.command_id === 'edit')!;
@@ -107,10 +107,10 @@ test('an uncertain attempted pending bill still opens read-only and never offers
 test('review fetch cannot publish a screen or cache after the account/session generation changes', async () => {
   for (const change of ['owner', 'token']) {
     let saves = 0, navigations = 0;
-    const env: any = { session, owner, groupId: null, ownerRef: { current: owner }, activeSessionRef: { current: session }, ApiError,
+    const env: any = { browse: async (_key: string, work: any) => work(() => true), syncQuietly() {}, open: (work: any) => work(), accountOwner, readVisibleGroup, session, owner, groupId: null, ownerRef: { current: owner }, activeSessionRef: { current: session }, ApiError,
       fetchGroup: async () => group, withBill: async () => { if (change === 'owner') env.ownerRef.current = 'other-account'; else env.activeSessionRef.current = { ...session, token: 'new-generation' }; return group; },
       getDatabase: async () => ({}), saveGroup: async () => { saves++; }, load: async () => {}, setReviewInput() {}, setReviewCommand() {}, navigate: () => { navigations++; } };
-    await production('reviewChange', env)(edit);
+    env.saveReadGroup = production('saveReadGroup', env); await production('reviewChange', env)(edit);
     assert.equal(saves, 0); assert.equal(navigations, 0);
   }
 });

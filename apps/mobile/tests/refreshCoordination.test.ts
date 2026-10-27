@@ -19,7 +19,7 @@ const group=(id='g',version=1):Group=>({id,version,name:'Reuben',attribution_ver
 
 test('concurrent refresh triggers share one operation and a full refresh follows a targeted one once',async()=>{
  let calls=0,finish!:()=>void;
- const env:any={accountOwner,accountRefresh:{current:null},runAccountRefresh:()=>{calls++;return new Promise<void>(resolve=>finish=resolve);}};
+ const env:any={accountOwner,scopeGeneration:{current:0},accountRefresh:{current:null},runAccountRefresh:()=>{calls++;return new Promise<void>(resolve=>finish=resolve);}};
  env.syncAccount=production('syncAccount',env);
  const a=env.syncAccount(session),b=env.syncAccount(session,['g']),c=env.syncAccount(session);
  assert.equal(a,b);assert.equal(a,c);assert.equal(calls,1);finish();await a;
@@ -68,4 +68,14 @@ test('storage revisions detect native-style commits on a separate SQLite connect
   assert.equal(await storageRevision(db),second,'reads alone never cause a publish');
   await db.runAsync("DELETE FROM sync_state WHERE owner='owner'");assert.notEqual(await storageRevision(db),second);
  }finally{writer.close();raw.close();rmSync(folder,{recursive:true,force:true});}
+});
+
+
+test('a new client scope generation does not rejoin the prior same-token refresh', async () => {
+ const finishes: (() => void)[] = [];
+ const env: any = { accountOwner, scopeGeneration: { current: 0 }, accountRefresh: { current: null }, runAccountRefresh: () => new Promise<void>(resolve => finishes.push(resolve)) };
+ const sync = production('syncAccount', env), old = sync(session);
+ ++env.scopeGeneration.current; const current = sync(session); assert.notEqual(old, current); assert.equal(finishes.length, 2);
+ finishes[0](); await old; assert.equal(env.accountRefresh.current.promise, current, 'old finally must not clear the replacement job');
+ finishes[1](); await current; assert.equal(env.accountRefresh.current, null);
 });

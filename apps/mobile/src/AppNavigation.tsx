@@ -23,12 +23,12 @@ export function ScreenHeader({ title, busy, onBack, onFeedback, brand = false, c
   // The working indicator floats over the title's trailing edge, so actions never shift.
   return <View role="banner" style={styles.header}>
     {brand && <Image source={require('../assets/brand/mark.png')} accessible={false} accessibilityIgnoresInvertColors style={{ width: 32, height: 32 }} />}
-    {onBack && <IconAction name="back" label="Back" disabled={busy} onPress={onBack} />}
+    {onBack && <IconAction name="back" label="Back" onPress={onBack} />}
     <View style={styles.titleArea}>
       <Text style={[styles.title, { color: palette.text }]} accessibilityRole="header" aria-level={1} numberOfLines={1} ellipsizeMode="tail" accessibilityLabel={title}>{title}</Text>
-      {busy && !onFeedback && <View pointerEvents="none" style={[styles.working, { backgroundColor: palette.background }]}><ActivityIndicator accessibilityLabel="Working" color={palette.accent} /></View>}
+      {busy && <View pointerEvents="none" style={[styles.working, { backgroundColor: palette.background }]}><ActivityIndicator accessibilityLabel="Working" color={palette.accent} /></View>}
     </View>
-    {onFeedback && <View style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}>{busy ? <ActivityIndicator accessibilityLabel="Working" color={palette.accent} /> : <IconAction name="feedback" label="Feedback" onPress={onFeedback} />}</View>}
+    {onFeedback && <View style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}><IconAction name="feedback" label="Feedback" onPress={onFeedback} /></View>}
     {children}
   </View>;
 }
@@ -37,7 +37,7 @@ const tabs = [{ value: 'Groups', label: 'Groups', icon: 'groups' }, { value: 'Fr
 function TabButton({ item, selected, busy, onSelect }: { item: typeof tabs[number]; selected: boolean; busy: boolean; onSelect: (value: string) => void }) {
   const { palette, motion } = useUI();
   const opacity = useMotionValue(selected ? 1 : 0, motion.enabled);
-  return <Button kind="plain" accessibilityRole={Platform.OS === 'web' ? 'button' : 'tab'} aria-current={Platform.OS === 'web' && selected ? 'page' : undefined} accessibilityState={Platform.OS === 'web' ? { disabled: busy } : { selected, disabled: busy }} disabled={busy} onPress={() => onSelect(item.value)} style={styles.tab}>
+  return <Button kind="plain" accessibilityRole={Platform.OS === 'web' ? 'button' : 'tab'} aria-current={Platform.OS === 'web' && selected ? 'page' : undefined} accessibilityState={Platform.OS === 'web' ? undefined : { selected }} onPress={() => onSelect(item.value)} style={styles.tab}>
     <Animated.View pointerEvents="none" accessible={false} style={[StyleSheet.absoluteFill, { borderRadius: radii.surface, backgroundColor: palette.soft, opacity }]} />
     <View style={styles.tabContent}>
       <Icon name={item.icon} color={selected ? palette.accent : palette.muted} />

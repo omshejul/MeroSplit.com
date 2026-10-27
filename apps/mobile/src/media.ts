@@ -20,9 +20,10 @@ const pendingFilename = /^merosplit-upload-[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-
 
 
 export async function uploadMedia<T>(session: Session, path: string, file: PickedMedia, id: string, fetcher: typeof fetch = fetch,
-  readBytes: (uri: string) => Promise<Uint8Array> = readMediaBytes): Promise<T> {
+  readBytes: (uri: string) => Promise<Uint8Array> = readMediaBytes, current: () => boolean = () => true): Promise<T> {
   const body = new FormData(); body.append('id', id);
   body.append('file', await mediaFilePart(file, readBytes));
+  if (!current()) throw new Error('The signed-in account changed.');
   const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 60_000);
   try {
     const response = await sessionRequest(session, `/api/v1${path}`, { method: 'POST', body, signal: controller.signal }, fetcher)
@@ -86,7 +87,7 @@ export async function removePendingMediaUpload(db: Database, session: Session, p
   await cleanup(pending.file);
 }
 
-export async function retryMediaUpload(db: Database, session: Session, path: string, send: typeof request = request, post: typeof uploadMedia = uploadMedia, cleanup: (file: PickedMedia) => Promise<void> = clearStagedMedia): Promise<MediaMetadata> {
+export async function retryMediaUpload(db: Database, session: Session, path: string, send: typeof request = request, post: typeof uploadMedia = uploadMedia, cleanup: (file: PickedMedia) => Promise<void> = clearStagedMedia, current: () => boolean = () => true): Promise<MediaMetadata> {
   const pending = await pendingMediaUpload(db, session, path);
   if (!pending || pending.path !== path) throw new Error('There is no saved upload for this bill.');
   const clear = async () => {
@@ -96,10 +97,11 @@ export async function retryMediaUpload(db: Database, session: Session, path: str
   // A previous POST may already have succeeded. Never mint another upload ID.
   let accepted = (await send<MediaList>(session, path)).attachments.find(item => item.id === pending.id);
   if (!accepted) {
-    try { accepted = (await post<AttachmentResult>(session, path, pending.file, pending.id)).attachment; }
+    if (!current()) throw new Error('The signed-in account changed.');
+    try { accepted = (await post<AttachmentResult>(session, path, pending.file, pending.id, undefined, undefined, current)).attachment; }
     catch (cause) {
       // Even a rejected file stays available for preview, export and recovery.
-      if (cause instanceof ApiError && [400, 413, 415, 422].includes(cause.status)) throw cause;
+      if (!current() || cause instanceof ApiError && [400, 413, 415, 422].includes(cause.status)) throw cause;
       try { accepted = (await send<MediaList>(session, path)).attachments.find(item => item.id === pending.id); }
       catch { /* Preserve both request and staged bytes while the outcome is unknown. */ }
       if (!accepted) throw cause;
@@ -141,14 +143,25 @@ export function mediaSize(bytes: number): string { return bytes < 1_048_576 ? `$
 
 // Upload only after the bill exists. GET/reconciliation in retryMediaUpload also
 // makes a lost bill response or upload response safe to retry with the same IDs.
-export async function retryAccountMediaUploads(db: Database, session: Session, retry = retryMediaUpload): Promise<number> {
+const accountUploads = new WeakMap<Database, Map<string, Promise<number>>>();
+export async function retryAccountMediaUploads(db: Database, session: Session, retry = retryMediaUpload, current: () => boolean = () => true): Promise<number> {
+  let jobs = accountUploads.get(db);
+  if (!jobs) { jobs = new Map(); accountUploads.set(db, jobs); }
+  const owner = accountOwner(session), previous = jobs.get(owner);
+  const job = (previous ?? Promise.resolve()).catch(() => {}).then(() => drainAccountMediaUploads(db, session, retry, current));
+  jobs.set(owner, job);
+  try { return await job; } finally { if (jobs.get(owner) === job) jobs.delete(owner); }
+}
+async function drainAccountMediaUploads(db: Database, session: Session, retry: typeof retryMediaUpload, current: () => boolean): Promise<number> {
+  if (!current()) throw new Error('The signed-in account changed.');
   const rows = await db.getAllAsync<{ body: string }>("SELECT body FROM drafts WHERE owner=? AND group_id LIKE 'media-upload:%'", accountOwner(session));
   let failed = 0;
   for (const row of rows) {
+    if (!current()) break;
     const upload = JSON.parse(row.body) as PendingMediaUpload | null;
     if (!upload || !/^\/groups\/[^/]+\/expenses\/[^/]+\/attachments$/.test(upload.path)) continue;
-    try { await retry(db, session, upload.path); }
-    catch (error) { if (error instanceof ApiError && error.status === 401) throw error; failed++; }
+    try { await retry(db, session, upload.path, undefined, undefined, undefined, current); }
+    catch (error) { if (!current() || error instanceof ApiError && error.status === 401) throw error; failed++; }
   }
   return failed;
 }

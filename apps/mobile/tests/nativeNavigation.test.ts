@@ -122,9 +122,9 @@ test('App renders each retained route using its own group and record; account ad
   const app = ts.createSourceFile('App.tsx', appText, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   let render: ts.FunctionDeclaration | undefined;
   function visit(node: ts.Node) { if (ts.isFunctionDeclaration(node) && node.name?.text === 'renderScreen') render = node; ts.forEachChild(node, visit); } visit(app);
-  const declarations = render!.body!.statements.slice(0, 10).map(node => node.getText(app)).join('\n');
+  const declarations = render!.body!.statements.slice(0, 11).map(node => node.getText(app)).join('\n');
   const compute = new Function('env', `with(env){${ts.transpile(declarations + ';return {screen,selected,expense,noticeVisibility};', { target: ts.ScriptTarget.ES2022 })}}`);
-  const env = { route: { name: 'group', params: { groupId: 'behind' } }, focused: false, groups: [{ group: { id: 'behind', participants: [], expenses: [{ id: 'b' }], settlements: [] } }, { group: { id: 'front', participants: [], expenses: [], settlements: [] } }], commands: [], session: { userId: '1' },
+  const env = { submissions: { current: new Set() }, route: { name: 'group', params: { groupId: 'behind' } }, focused: false, groups: [{ group: { id: 'behind', participants: [], expenses: [{ id: 'b' }], settlements: [] } }, { group: { id: 'front', participants: [], expenses: [], settlements: [] } }], commands: [], session: { userId: '1' },
     notices: { notices: [], acknowledgeVisible() {} }, authHeld: false, foreground: true, expired: false, alertOpen: false, viewport: null, scrollEpoch: 0, owner: 'account', online: true, groupVersions: { current: '' } };
   assert.equal(compute(env).selected.group.id, 'behind'); assert.equal(compute(env).noticeVisibility.enabled, false);
   assert.equal(compute({ ...env, route: { name: 'expenseDetail', params: { groupId: 'behind', expenseId: 'b' } } }).expense.id, 'b');

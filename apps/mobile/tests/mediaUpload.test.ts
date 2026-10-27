@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { accountOwner, ApiError, request } from '../src/api.ts';
-import { clearAccountMediaUploads, clearMediaPreviews, pendingMediaUpload, retryMediaUpload, enqueueExpenseWithMedia, removePendingMediaUpload, saveMediaUpload, uploadMedia } from '../src/media.ts';
+import { clearAccountMediaUploads, clearMediaPreviews, pendingMediaUpload, retryMediaUpload, retryAccountMediaUploads, enqueueExpenseWithMedia, removePendingMediaUpload, saveMediaUpload, uploadMedia } from '../src/media.ts';
 import type { MediaMetadata, PendingMediaUpload, PickedMedia } from '../src/media.ts';
 import { migrate, readDraft, saveDraft, wipeAccount } from '../src/storage.ts';
 import { sqliteAdapter } from './sqlite.ts';
@@ -179,4 +179,45 @@ test('removing an uncertain upload reconciles and deletes only that exact accept
     assert.deepEqual(calls, [`GET ${path}`, `DELETE ${path}/${pending.id}`]);
     assert.equal(cleaned, 1); assert.equal(await pendingMediaUpload(db, session, path), null);
   } finally { raw.close(); }
+});
+
+
+test('background media replay rechecks its session after reconciliation before uploading bytes', async () => {
+  const raw = new DatabaseSync(':memory:'), db = sqliteAdapter(raw); let current = true, posts = 0, cleaned = 0;
+  const send: typeof request = async <T>(): Promise<T> => { current = false; return { attachments: [] } as T; };
+  const post: typeof uploadMedia = async <T>(): Promise<T> => { posts++; return { attachment: metadata } as T; };
+  try {
+    await migrate(db); await saveMediaUpload(db, session, pending);
+    await assert.rejects(retryMediaUpload(db, session, path, send, post, async () => { cleaned++; }, () => current), /account changed/);
+    assert.equal(posts, 0); assert.equal(cleaned, 0); assert.deepEqual(await pendingMediaUpload(db, session, path), pending);
+  } finally { raw.close(); }
+});
+
+test('upload checks its session again after asynchronous file-part preparation', async () => {
+  let current = true, posts = 0;
+  const fetcher: typeof fetch = async () => { posts++; return Response.json({ attachment: metadata }); };
+  const job = uploadMedia(session, path, pending.file, pending.id, fetcher, undefined, () => current);
+  current = false; await assert.rejects(job, /account changed/); assert.equal(posts, 0);
+});
+
+test('background media rotation serializes the durable owner and stops the old session before the next file', async () => {
+  const raw = new DatabaseSync(':memory:'), db = sqliteAdapter(raw), paths: string[] = [];
+  let release!: () => void, started!: () => void, oldCurrent = true;
+  const gate = new Promise<void>(yes => { release = yes; }), first = new Promise<void>(yes => { started = yes; });
+  const next = { ...pending, id: 'another-upload', path: '/groups/g/expenses/second/attachments' };
+  const retry: typeof retryMediaUpload = async (_db, active, endpoint) => {
+    paths.push(endpoint);
+    if (active.token === session.token) { started(); await gate; }
+    await db.runAsync('DELETE FROM drafts WHERE owner=? AND group_id=?', accountOwner(active), `media-upload:${endpoint}`);
+    return metadata;
+  };
+  const jobs: Promise<number>[] = [];
+  try {
+    await migrate(db); await saveMediaUpload(db, session, pending); await saveMediaUpload(db, session, next);
+    jobs.push(retryAccountMediaUploads(db, session, retry, () => oldCurrent)); await first;
+    jobs.push(retryAccountMediaUploads(db, { ...session, token: 'rotated' }, retry));
+    for (let i = 0; i < 50; i++) await Promise.resolve(); assert.deepEqual(paths, [path]);
+    oldCurrent = false; release(); await Promise.all(jobs);
+    assert.deepEqual(paths, [path, next.path]); assert.equal(await pendingMediaUpload(db, session, next.path), null);
+  } finally { release(); await Promise.allSettled(jobs); raw.close(); }
 });

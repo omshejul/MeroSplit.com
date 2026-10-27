@@ -229,7 +229,7 @@ export default function GroupScreen({ categoryIcons, header, noticeVisibility, g
       <SectionHeading style={[ui.caption, s.logCaption, s.flex]}>Bills and payments</SectionHeading>
       {searchable && !showSearch && <Button title="Search" icon="search" compact small accessibilityLabel="Search bills" onPress={() => setSearching(true)} />}
     </View>
-      {showSearch && <BillSearch value={search} onChange={setSearch} onSearch={() => { void onHistoryPage?.(historyResource, 'search', search.trim(), undefined, accepted).then(() => list.current?.scrollToOffset({ offset: 0, animated: false })).catch(() => {}); }} showSubmit={group.read_mode === 'summary'} busy={busy} autoFocus={searching} />}
+      {showSearch && <BillSearch value={search} onChange={setSearch} onSearch={() => { void onHistoryPage?.(historyResource, 'search', search.trim(), undefined, accepted).then(applied => { if (applied) list.current?.scrollToOffset({ offset: 0, animated: false }); }).catch(() => {}); }} showSubmit={group.read_mode === 'summary'} busy={busy} autoFocus={searching} />}
 </View>}
       ListEmptyComponent={<View style={s.empty}><Icon name="bill" size={32} /><Text style={ui.section}>{historyWindow?.next_cursor ? 'No matching records on this page.' : historyWindow?.query || search.trim() ? 'No matching bills' : 'No bills or payments yet'}</Text></View>}
       ListFooterComponent={<>
