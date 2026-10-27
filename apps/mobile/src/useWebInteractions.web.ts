@@ -21,12 +21,25 @@ export function useWebInteractions(enabled: boolean) {
       const previous = running.get(element);
       previous?.animation.stop();
       const original = previous ?? { transform: element.style.transform, opacity: element.style.opacity };
-      const animation = animate(element, { scale, opacity }, { duration: 0.14, ease: 'easeOut' });
+      const animation = animate(element, { scale, opacity }, { duration: 0.18, ease: 'easeOut' });
       running.set(element, { ...original, animation });
       void animation.then(() => {
         if (running.get(element)?.animation !== animation || scale !== 1 || opacity !== 1) return;
         restore(element, running.get(element)!);
         running.delete(element);
+      });
+    }
+    function pulse(event: Event) {
+      const element = event.type === 'change' && event.target instanceof HTMLElement && event.target.matches('input, textarea, select') ? event.target : find(event);
+      if (!usable(element)) return;
+      const previous = running.get(element);
+      previous?.animation.stop();
+      const original = previous ?? { transform: element.style.transform, opacity: element.style.opacity };
+      const animation = animate(element, { scale: [1, 0.955, 1], opacity: [1, 0.78, 1] }, { duration: 0.2, ease: 'easeOut' });
+      running.set(element, { ...original, animation });
+      void animation.then(() => {
+        if (running.get(element)?.animation !== animation) return;
+        restore(element, running.get(element)!); running.delete(element);
       });
     }
     function down(event: Event) {
@@ -41,12 +54,14 @@ export function useWebInteractions(enabled: boolean) {
     function hover(event: PointerEvent) {
       if (event.pointerType !== 'mouse' || pressed) return;
       const element = find(event);
-      if (usable(element) && !(event.relatedTarget instanceof Node && element.contains(event.relatedTarget))) feedback(element, 1, 0.9);
+      if (usable(element) && !(event.relatedTarget instanceof Node && element.contains(event.relatedTarget))) feedback(element, 1.015, 0.9);
     }
     function leave(event: PointerEvent) {
       const element = find(event);
       if (element && element !== pressed && !(event.relatedTarget instanceof Node && element.contains(event.relatedTarget))) feedback(element, 1, 1);
     }
+    document.addEventListener('click', pulse, true);
+    document.addEventListener('change', pulse, true);
     document.addEventListener('pointerdown', down, true);
     document.addEventListener('pointerup', release, true);
     document.addEventListener('pointercancel', release, true);
@@ -56,6 +71,8 @@ export function useWebInteractions(enabled: boolean) {
     document.addEventListener('pointerout', leave, true);
     window.addEventListener('blur', release);
     return () => {
+      document.removeEventListener('click', pulse, true);
+      document.removeEventListener('change', pulse, true);
       document.removeEventListener('pointerdown', down, true);
       document.removeEventListener('pointerup', release, true);
       document.removeEventListener('pointercancel', release, true);

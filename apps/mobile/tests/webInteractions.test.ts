@@ -45,6 +45,13 @@ test('reduced motion installs no listeners or animations', () => {
 test('hover ignores touch and movements inside the same control', () => {
   const h = harness(), button = new h.Element(), touch = new h.PointerEvent(button); touch.pointerType = 'touch';
   h.send('pointerover', touch); h.send('pointerover', new h.PointerEvent(button, button)); assert.equal(h.animations.length, 0);
-  h.send('pointerover', new h.PointerEvent(button)); assert.deepEqual(h.animations.at(-1).values, { scale: 1, opacity: 0.9 });
+  h.send('pointerover', new h.PointerEvent(button)); assert.deepEqual(h.animations.at(-1).values, { scale: 1.015, opacity: 0.9 });
   h.send('pointerout', new h.PointerEvent(button)); assert.deepEqual(h.animations.at(-1).values, { scale: 1, opacity: 1 }); h.cleanup();
+});
+
+test('a quick click has a complete visible pulse even after pointer release', () => {
+  const h = harness(), button = new h.Element();
+  h.send('pointerdown', new h.PointerEvent(button)); h.send('pointerup'); h.send('click', new h.PointerEvent(button));
+  assert.deepEqual(h.animations.at(-1).values, { scale: [1, 0.955, 1], opacity: [1, 0.78, 1] });
+  h.cleanup();
 });
