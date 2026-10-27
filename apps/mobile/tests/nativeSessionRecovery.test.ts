@@ -36,7 +36,7 @@ function harness(active: Session | null = old, target = fresh) {
     load: async (owner: string) => { events.push(`load:${owner}`); },
     syncAccount: async (value: Session) => { events.push(`sync:${accountOwner(value)}`); },
   };
-  for (const name of ['FeedbackOpen', 'UpiSetup', 'VerifiedEmptyOwner', 'EmptyChatScope', 'ShowArchived', 'ShowHidden', 'NeedsInvitation', 'Expired', 'Groups', 'Commands', 'Legacy', 'Recoveries', 'Unavailable', 'LegacySelf', 'GroupId', 'ExpenseId', 'Draft', 'Vpa', 'LastConfirmed', 'SyncProblem', 'Syncing', 'PendingFiles', 'DownloadingOwner', 'Screen', 'Tab', 'MyName', 'ReviewCommand', 'ReviewInput', 'Returns', 'ReturnAttemptId', 'SettlementId', 'Activity', 'ActivityError', 'PushTarget', 'Challenge', 'Code']) {
+  for (const name of ['FeedbackOpen', 'UpiSetup', 'UpiAfterSplit', 'VerifiedEmptyOwner', 'EmptyChatScope', 'ShowArchived', 'ShowHidden', 'NeedsInvitation', 'Expired', 'Groups', 'Commands', 'Legacy', 'Recoveries', 'Unavailable', 'LegacySelf', 'GroupId', 'ExpenseId', 'Draft', 'Vpa', 'LastConfirmed', 'SyncProblem', 'Syncing', 'PendingFiles', 'DownloadingOwner', 'Screen', 'Tab', 'MyName', 'ReviewCommand', 'ReviewInput', 'Returns', 'ReturnAttemptId', 'SettlementId', 'Activity', 'ActivityError', 'PushTarget', 'Challenge', 'Code']) {
     env[`set${name}`] = (value: unknown) => { view[name[0].toLowerCase() + name.slice(1)] = value; };
   }
   env.initialScreen = { current: 'login' };

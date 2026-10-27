@@ -59,6 +59,7 @@ test('One Export data action invokes once, has no chooser and blocks repeats unt
 
 function appAction(name: string, env: Record<string, any>) {
   env.navigation ??= { complete: env.navigate };
+  if (name === 'saveExpense') env.vpa ??= 'already@bank';
   const source = ts.createSourceFile('App.tsx', readFileSync(new URL('../App.tsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   const app = source.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === 'AppContent') as ts.FunctionDeclaration;
   const fn = app.body!.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === name)!;
@@ -1199,3 +1200,19 @@ async function unmountBeforeBillCommit(commits: boolean) {
 
 test('forced unmount before enqueue commit preserves the file when the pending save later commits', () => unmountBeforeBillCommit(true));
 test('forced unmount before enqueue failure retains the recoverable draft file', () => unmountBeforeBillCommit(false));
+
+test('first-split UPI copy stays optional and saves only a valid address', async () => {
+  let dismissed = 0, saved = '';
+  const app = harness('src/UPISetupDialog.tsx', 'UPISetupDialog', { DialogFocus: 'DialogFocus', NameOnlyForm: 'NameOnlyForm' });
+  const props = { visible: true, busy: false, needsName: false, afterFirstSplit: true, onSaveName: async () => {}, onSave: async (value: string) => { saved = value; }, onSkip: () => dismissed++ };
+  let tree = app.render(props); app.commit();
+  assert.ok(JSON.stringify(tree).includes('Your money needs directions.'));
+  assert.ok(JSON.stringify(tree).includes('UPI bhej na.'));
+  assert.equal(find(tree, 'title', 'Add UPI ID').props.disabled, true);
+  find(tree, 'title', 'Later').props.onPress(); assert.equal(dismissed, 1); assert.equal(saved, '');
+  find(tree, 'label', 'UPI ID (optional)').props.onChangeText('friend@bank');
+  tree = app.render(props); find(tree, 'title', 'Add UPI ID').props.onPress(); await tick();
+  assert.equal(saved, 'friend@bank'); assert.equal(dismissed, 2);
+  const name = app.render({ ...props, needsName: true }); assert.ok(JSON.stringify(name).includes('Your name')); assert.ok(!JSON.stringify(name).includes('Your money needs directions.'));
+  app.unmount();
+});

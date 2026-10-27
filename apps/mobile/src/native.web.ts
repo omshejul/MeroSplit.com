@@ -61,3 +61,10 @@ export async function shareText(filename: string, data: string, mimeType: string
   try { link.href = url; link.download = filename; document.body.appendChild(link); link.click(); }
   finally { link.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000); }
 }
+
+export async function claimFirstSplitUPIPrompt(owner: string): Promise<boolean> {
+  const key = `merosplit.upi-first-split.${owner}`;
+  if (readPreference(key)) return false;
+  writePreference(key, 'shown');
+  return true;
+}

@@ -1,6 +1,7 @@
 import { serverReachable } from './connectivity';
 import * as SQLite from 'expo-sqlite';
 import * as SecureStore from 'expo-secure-store';
+import { digestStringAsync, CryptoDigestAlgorithm } from 'expo-crypto';
 import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { migrate } from './storage';
@@ -66,4 +67,12 @@ export async function shareText(filename: string, data: string, mimeType: string
     file.write(data);
     await Sharing.shareAsync(file.uri, { mimeType, UTI: mimeType === 'application/json' ? 'public.json' : 'public.comma-separated-values-text' });
   } finally { if (file.exists) file.delete(); }
+}
+
+// Account-scoped preference, separate from drafts and financial records.
+export async function claimFirstSplitUPIPrompt(owner: string): Promise<boolean> {
+  const key = `splitdumb.upi-first-split.${await digestStringAsync(CryptoDigestAlgorithm.SHA256, owner)}`;
+  if (await SecureStore.getItemAsync(key)) return false;
+  await SecureStore.setItemAsync(key, 'shown');
+  return true;
 }
