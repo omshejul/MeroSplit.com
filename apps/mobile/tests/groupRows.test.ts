@@ -17,7 +17,7 @@ function production(name: string, overrides: Record<string, any> = {}) {
   const helpers = source.statements.filter(node => ts.isVariableStatement(node) && node.declarationList.declarations.some(d => ['billImpact', 'participantName', 'displayDate', 's'].includes(d.name.getText(source)))).map(node => node.getText(source)).join('\n');
   const node = source.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === name); assert.ok(node);
   const code = ts.transpile(`${helpers}\n${node.getText(source).replace(/^export (?:default )?/, '')}\nreturn ${name};`, { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React });
-  return new Function('env', `with(env) { ${code} }`)({ React, Animated, Platform: { OS: 'web' }, useLayoutEffect: () => {}, useEffect: () => {}, categoryIcon, categoryMeaning, expenseCategory, TransactionIcon: 'TransactionIcon', PagingFooter: 'PagingFooter', LegacyPayments: 'LegacyPayments', FlatList: 'FlatList', ScrollView: 'ScrollView', pageContentStyle: {}, LoadingSpinner: 'LoadingSpinner', useScrollPagination: () => ({ events: {}, loading: false, failed: false }), expenseBalanceChange, formatMoney, paymentPresentation, personalSettlements, personalTransfers, BalanceExplanation: 'BalanceExplanation', balanceKey: () => '', useRef: () => ({ current: null }), useState: (initial: unknown) => [typeof initial === 'function' ? initial() : initial, () => {}], Avatar: 'Avatar', AmountText: 'AmountText', Text: 'Text', SectionHeading: 'SectionHeading', View: 'View', Pressable: 'Pressable', Icon: 'Icon', Button: 'Button', RecordSummary: 'RecordSummary', ParticipantAmountRow: 'ParticipantAmountRow', LogRow: 'LogRow', LogDate: 'LogDate', BillEffect: 'BillEffect', VisibleExpense: 'VisibleExpense', HistoryPages: 'HistoryPages', BillSearch: 'BillSearch', PaymentRow: 'PaymentRow', BillTimelineRow: 'BillTimelineRow', Disclosure: 'Disclosure', BillPeople: 'BillPeople', RecordAttribution: 'RecordAttribution', PersonalTransferRow: 'PersonalTransferRow', PendingChangeRow: 'PendingChangeRow', StyleSheet: { create: (styles: unknown) => styles }, radii: { surface: 16 }, balanceColor: (amount: string) => BigInt(amount) < 0n ? 'negative' : 'positive', useUI: () => ({ motion: { enabled: false }, ui: { numeric: { fontSize: 32, fontWeight: '600' }, caption: { fontSize: 14 }, row: { minHeight: 52, paddingVertical: 6 } }, palette: { muted: 'muted', line: '#334455', surface: 'surface', text: 'text' } }), ...overrides });
+  return new Function('env', `with(env) { ${code} }`)({ React, Animated, Platform: { OS: 'web' }, useLayoutEffect: () => {}, useEffect: () => {}, categoryIcon, categoryMeaning, expenseCategory, TransactionIcon: 'TransactionIcon', PagingFooter: 'PagingFooter', LegacyPayments: 'LegacyPayments', FlatList: 'FlatList', ScrollView: 'ScrollView', pageContentStyle: {}, LoadingSpinner: 'LoadingSpinner', useScrollPagination: () => ({ events: {}, loading: false, failed: false }), expenseBalanceChange, formatMoney, paymentPresentation, personalSettlements, personalTransfers, BalanceExplanation: 'BalanceExplanation', balanceKey: () => '', useRef: () => ({ current: null }), useState: (initial: unknown) => [typeof initial === 'function' ? initial() : initial, () => {}], Avatar: 'Avatar', AmountText: 'AmountText', Text: 'Text', SectionHeading: 'SectionHeading', View: 'View', Pressable: 'Pressable', Icon: 'Icon', Button: 'Button', RecordSummary: 'RecordSummary', ParticipantAmountRow: 'ParticipantAmountRow', LogRow: 'LogRow', LogDate: 'LogDate', BillEffect: 'BillEffect', VisibleExpense: 'VisibleExpense', HistoryPages: 'HistoryPages', BillSearch: 'BillSearch', PaymentRow: 'PaymentRow', BillTimelineRow: 'BillTimelineRow', DetailDialog: 'DetailDialog', BillPeople: 'BillPeople', RecordAttribution: 'RecordAttribution', PersonalTransferRow: 'PersonalTransferRow', PendingChangeRow: 'PendingChangeRow', StyleSheet: { create: (styles: unknown) => styles }, radii: { surface: 16 }, balanceColor: (amount: string) => BigInt(amount) < 0n ? 'negative' : 'positive', useUI: () => ({ motion: { enabled: false }, ui: { numeric: { fontSize: 32, fontWeight: '600' }, caption: { fontSize: 14 }, row: { minHeight: 52, paddingVertical: 6 } }, palette: { muted: 'muted', line: '#334455', surface: 'surface', text: 'text' } }), ...overrides });
 }
 function elements(tree: unknown): Element[] {
   if (Array.isArray(tree)) return tree.flatMap(elements);
@@ -85,7 +85,7 @@ test('BillEffect labels direction in words and shows the exact unsigned amount i
 
 test('log row keeps a 44px+ button target with a date column and the full spoken label', () => {
   const tree = production('LogRow')({ date: '2026-10-18', label: 'Bill, Lunch', busy: false, onPress() {}, trailing: 'Effect', children: 'Body' });
-  assert.equal(tree.type, 'Pressable'); assert.equal(tree.props.accessibilityRole, 'button'); assert.equal(tree.props.accessibilityLabel, 'Bill, Lunch');
+  assert.equal(tree.type, 'Button'); assert.equal(tree.props.accessibilityRole, 'button'); assert.equal(tree.props.accessibilityLabel, 'Bill, Lunch');
   const styles = Object.assign({}, ...tree.props.style({ pressed: false }).filter(Boolean));
   assert.ok(styles.minHeight >= 44);
   assert.deepEqual(tree.children.flat().filter((node: any) => node != null).map((node: any) => node?.type ?? node), ['LogDate', 'View', 'Effect']);
@@ -165,7 +165,7 @@ test('virtualized timeline and legacy bill/payment lists preserve server order',
   assert.deepEqual(elements(history).find(node => node.type === 'FlatList')!.props.data.map((row: any) => row.bill.id), ['bill']);
   const payments = elements(history).find(node => node.type === 'LegacyPayments')!;
   assert.equal(payments.props.group, fallback);
-  assert.ok(elements(history).some(node => node.type === 'Disclosure' && node.props.title === 'Payment records'));
+  assert.ok(elements(history).some(node => node.type === 'DetailDialog' && node.props.title === 'Payment records'));
   assert.ok(!elements(history).some(node => node.type === 'HistoryPages'));
 });
 
@@ -396,7 +396,7 @@ test('balance explanation target and Record remain independent siblings with unc
   let explanations = 0, records = 0;
   const props = { transfer, group, selfId: 'self', disabled: false, onSettle: (row: unknown) => { assert.equal(row, transfer); records++; }, onExplain: (row: unknown, focus: unknown) => { assert.equal(row, transfer); assert.equal(typeof focus, 'function'); explanations++; } };
   const tree = render(props), direct = tree.children.filter(Boolean) as Element[];
-  assert.deepEqual(direct.map(node => node.type), ['Pressable', 'Button']);
+  assert.deepEqual(direct.map(node => node.type), ['Button', 'Button']);
   direct[0].props.onPress(); assert.equal(explanations, 1); assert.equal(records, 0);
   direct[1].props.onPress(); assert.equal(explanations, 1); assert.equal(records, 1);
   assert.equal(direct[1].props.title, 'Record'); assert.equal(direct[1].props.disabled, false);

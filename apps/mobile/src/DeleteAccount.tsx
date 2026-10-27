@@ -1,6 +1,7 @@
+import { Dialog } from './DialogParts';
 import React, { useRef, useState } from 'react';
 import { ScrollView, useWindowDimensions } from 'react-native';
-import { Dialog, Text } from 'react-native-paper';
+import { Text } from 'react-native-paper';
 import { accountDeletionInput } from './accountDeletion';
 import { EmailField, TextField } from './FormFields';
 import KeyboardDialog from './KeyboardDialog';

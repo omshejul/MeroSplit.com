@@ -6,7 +6,7 @@ import * as Sharing from 'expo-sharing';
 import { migrate } from './storage';
 import type { Database } from './storage';
 import type { Session } from './types';
-import { isColorFamily, type ColorFamily } from './theme';
+import { defaultColorFamily, isColorFamily, type ColorFamily } from './theme';
 
 let database: Promise<Database> | undefined;
 export function storageIsDurable(): boolean { return true; }
@@ -44,7 +44,7 @@ export async function saveAppearance(value: AppearancePreference): Promise<void>
 const COLOR_FAMILY_KEY = 'splitdumb.colorFamily';
 export async function savedColorFamily(): Promise<ColorFamily> {
   const value = await SecureStore.getItemAsync(COLOR_FAMILY_KEY);
-  return isColorFamily(value) ? value : 'basic';
+  return isColorFamily(value) ? value : defaultColorFamily;
 }
 export async function saveColorFamily(value: ColorFamily): Promise<void> {
   if (!isColorFamily(value)) throw new Error('Choose a color.');

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 import { Alert } from './alerts';
 import * as Crypto from 'expo-crypto';
 import { accountOwner, request } from './api';
@@ -61,10 +61,10 @@ export default function ProfilePhoto({ session, busy, onBusyChange, compact = fa
   return <View style={{ gap: 10 }}>
     {!session ? <Text style={ui.caption}>Sign in to add your profile photo.</Text> : <>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-        <Pressable accessibilityRole="button" accessibilityLabel={avatar ? 'Change profile photo' : 'Choose profile photo'} accessibilityState={{ disabled }} disabled={disabled} onPress={() => void run(choose)} style={{ flex: compact ? undefined : 1, flexShrink: compact ? 0 : undefined, width: compact ? 64 : undefined, flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 64 }}>
+        <Button kind="plain" accessibilityRole="button" accessibilityLabel={avatar ? 'Change profile photo' : 'Choose profile photo'} accessibilityState={{ disabled }} disabled={disabled} onPress={() => void run(choose)} style={{ flex: compact ? undefined : 1, flexShrink: compact ? 0 : undefined, width: compact ? 64 : undefined, flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 64 }}>
           {avatar ? <PrivateMediaImage session={session} media={avatar} size={64} profile /> : <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: palette.soft, alignItems: 'center', justifyContent: 'center' }}><Icon name="me" size={30} /></View>}
           {compact ? <View style={{ position: 'absolute', right: 0, bottom: 0, backgroundColor: palette.background, borderRadius: 12, padding: 3 }}><Icon name="edit" size={16} /></View> : <Text style={[ui.body, { flex: 1 }]}>{loading ? 'Loading photo…' : working ? 'Updating photo…' : avatar ? 'Change photo' : 'Choose photo'}</Text>}
-        </Pressable>
+        </Button>
         {avatar && <RemoveMediaMenu open={optionsOpen} disabled={disabled} label="Photo options" removeLabel="Remove photo"
           onOpen={() => setOptionsOpen(true)} onClose={() => setOptionsOpen(false)} onRemove={remove} />}
       </View>

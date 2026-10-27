@@ -7,7 +7,7 @@ type Element = { type: unknown; props: Record<string, any>; children: unknown[] 
 const React = { createElement: (type: unknown, props: Record<string, any> | null, ...children: unknown[]): Element => ({ type, props: props ?? {}, children }) };
 const Dialog = Object.assign(() => {}, { Title: 'Title', Content: 'Content', ScrollArea: 'ScrollArea', Actions: 'Actions' });
 let windowWidth = 375;
-const env = { motionDuration: { paperScale: 0.75 }, useWindowDimensions: () => ({ width: windowWidth }), Platform: { OS: 'native' }, DialogScrollBody: undefined as any, CancelDialogActions: undefined as any, React, Dialog, useEffect() {}, View: 'View', TouchableRipple: 'TouchableRipple', radii: { button: 8 }, Icon: 'Icon', UPIAppIcon: 'UPIAppIcon', CopyLinkIcon: 'CopyLinkIcon', Portal: 'Portal', KeyboardAvoidingView: 'KeyboardAvoidingView', KeyboardDialog: 'KeyboardDialog', ScrollView: 'ScrollView', Button: 'Button', Field: 'Field', FeedbackNote: 'FeedbackNote', Text: 'Text', s: { field: {} }, useUI: () => ({ ui: {}, palette: {}, motion: { enabled: true } }) };
+const env = { DialogContext: { Provider: 'DialogProvider' }, DialogFocus: 'DialogFocus', useContext: () => ({ bodyHeight: 440 }), motionDuration: { paperScale: 0.75 }, useWindowDimensions: () => ({ width: windowWidth, height: 667 }), Platform: { OS: 'native' }, DialogScrollBody: undefined as any, CancelDialogActions: undefined as any, React, Dialog, useEffect() {}, View: 'View', TouchableRipple: 'TouchableRipple', radii: { button: 8 }, Icon: 'Icon', UPIAppIcon: 'UPIAppIcon', CopyLinkIcon: 'CopyLinkIcon', Portal: 'Portal', KeyboardAvoidingView: 'KeyboardAvoidingView', KeyboardDialog: 'KeyboardDialog', ScrollView: 'ScrollView', Button: 'Button', Field: 'Field', FeedbackNote: 'FeedbackNote', Text: 'Text', s: { field: {} }, useUI: () => ({ ui: {}, palette: { surface: '#fff', line: '#ddd' }, motion: { enabled: true } }) };
 function production(file: string, name: string) {
   const source = ts.createSourceFile(file, readFileSync(new URL(`../src/${file}`, import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   const declaration = source.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === name);
@@ -60,15 +60,16 @@ test('opted-in dialog cards track the measured keyboard viewport, safe area, rot
   const props = { visible: false, onDismiss() {}, maxHeight: 647, children: [body, footer] };
   let tree = render(props);
   assert.equal(elements(tree).filter(node => node.type === Dialog).length, 0);
-  for (const [height, callerCap, expected] of [[667, 647, 647], [433, 647, 413], [375, 355, 355], [300, 647, 280], [667, 400, 400], [667, 647, 647], [10, 647, 0]]) {
+  for (const [height, callerCap, expected] of [[667, 647, 615], [433, 647, 381], [375, 355, 323], [300, 647, 248], [667, 400, 400], [667, 647, 615], [10, 647, 0]]) {
     one(tree, 'KeyboardAvoidingView').props.onLayout({ nativeEvent: { layout: { height } } });
     tree = render({ ...props, visible: true, maxHeight: callerCap });
     assert.equal(one(tree, Dialog).props.style.maxHeight, expected);
     assert.equal(elements(one(tree, Dialog)).find(node => node.type === Dialog.Actions), footer);
     assert.equal(elements(body).includes(footer), false);
   }
+  one(tree, 'KeyboardAvoidingView').props.onLayout({ nativeEvent: { layout: { height: 667 } } });
   tree = render({ ...props, visible: true, maxHeight: undefined });
-  assert.equal(one(tree, Dialog).props.style.maxHeight, undefined, 'non-opted-in callers retain their original layout');
+  assert.equal(one(tree, Dialog).props.style.maxHeight, 615, 'all dialogs remain bounded by the safe viewport');
 });
 
 // Run the pinned Paper Modal function with deferred native animations. This tests
@@ -201,12 +202,12 @@ test('shared web dialog is centered and compact on desktop while retaining phone
   try {
     env.Platform.OS = 'web';
     assert.equal(one(render({ ...props, visible: false }), Dialog).props.visible, false, 'web retains its existing mounted dialog/focus lifecycle');
-    for (const [width, expected] of [[1440, 520], [2000, 520], [540, 488], [375, 323]]) {
+    for (const [width, expected] of [[1440, 480], [2000, 480], [540, 480], [375, 343]]) {
       windowWidth = width; const dialog = one(render(props), Dialog);
       assert.equal(dialog.props.style.width, expected); assert.equal(dialog.props.style.alignSelf, 'center');
-      assert.equal(dialog.children[0], props.children);
+      assert.ok(elements(dialog).some(node => node.type === 'DialogFocus' && node.children[0] === props.children));
     }
     env.Platform.OS = 'native'; const dialog = one(render(props), Dialog);
-    assert.equal(dialog.props.style.width, undefined); assert.equal(dialog.props.style.alignSelf, undefined);
+    assert.equal(dialog.props.style.width, 343); assert.equal(dialog.props.style.alignSelf, 'center');
   } finally { env.Platform.OS = 'native'; windowWidth = 375; }
 });

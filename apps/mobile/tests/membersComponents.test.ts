@@ -20,9 +20,9 @@ function production(file: string, extra: Record<string, any> = {}) {
   let effects: (() => void)[] = [];
   const env: Record<string, any> = {
     ...members, confirmedGroupInvite, copyText: async (value: string | Promise<string>) => { await value; }, React: { Fragment: 'Fragment', createElement: (type: any, props: any, ...children: any[]) => ({ type, props: props ?? {}, children }) },
-    __DEV__: false, SettingsRow: 'SettingsRow', Platform: { OS: 'native' }, View: 'View', Text: 'Text', Pressable: 'Pressable', Button: 'Button', Avatar: 'Avatar', Icon: 'Icon', IconAction: 'IconAction',
+    useToast: () => () => {}, PersonInviteDialog: 'PersonInviteDialog', DetailDialog: 'DetailDialog', __DEV__: false, SettingsRow: 'SettingsRow', Platform: { OS: 'native' }, View: 'View', Text: 'Text', Pressable: 'Pressable', Button: 'Button', Avatar: 'Avatar', Icon: 'Icon', IconAction: 'IconAction',
     Constants: { platform: { ios: { buildNumber: '27' }, android: { versionCode: 26 } } }, requireOptionalNativeModule: () => ({ nativeApplicationVersion: '1.2', nativeBuildVersion: '27' }),
-    Disclosure: 'Disclosure', EmailField: 'EmailField', TextField: 'TextField', GroupMembershipActions: 'GroupMembershipActions', KeyboardDialog: 'KeyboardDialog', SendInviteDialog: 'SendInviteDialog',
+    EmailField: 'EmailField', TextField: 'TextField', GroupMembershipActions: 'GroupMembershipActions', KeyboardDialog: 'KeyboardDialog', SendInviteDialog: 'SendInviteDialog',
     Modal: 'Modal', SafeAreaProvider: 'SafeAreaProvider', ScrollView: 'ScrollView', AppFrame: 'AppFrame', ScreenHeader: 'ScreenHeader', pageContentStyle: {}, ApiError, LoadingSpinner: 'LoadingSpinner', DialogFocus: 'DialogFocus', DialogScrollBody: 'DialogScrollBody', CancelDialogActions: 'CancelDialogActions', ErrorText: 'ErrorText', Dialog: Object.assign(() => {}, { Title: 'Dialog.Title' }),
     Keyboard: { dismiss() {} }, StyleSheet: { create: (value: any) => value, hairlineWidth: 1 }, Crypto: { randomUUID: () => `id-${++nextId}` }, useUI: () => ({ ui: {}, palette: {} }),
     requestAnimationFrame: (callback: () => void) => { callback(); return 1; }, cancelAnimationFrame() {},
@@ -172,19 +172,18 @@ test('Reusable invitation dialog wraps the full email and keeps Send, Cancel, er
   } finally { app.unmount(); }
 });
 
-test('Member invitation buttons remain Send or Sending through cooldown and delivery states', () => {
+test('Member rows have one Invite action regardless of delivery state, with a separate Review action for a claim', () => {
   const app = production('MembersScreen.tsx'), group: Group = { id: 'group', name: 'Trip', owner_id: 1, version: 1, participants: [], expenses: [], settlements: [], balances: {}, transfers: [], activity: [] };
   const person = { id: 'person', name: 'Noor', email: 'noor@example.invalid', user_id: null };
+  let opens = 0;
   for (const state of ['sent', 'failed', 'sending']) {
     group.invites = [{ id: 'invite', participant_id: person.id, intended_email: person.email, send_state: state, approved: false, revoked: false, claimant_id: null, claimant_email: null }];
-    for (const cooldown of [0, 60]) {
-      const tree = app.render('MemberRow', { group, person, selfId: 'self', organizer: true, disabled: false, working: false, feedback: null, cooldown, contactChanged: false });
-      assert.equal(button(tree, 'Send').props.disabled, cooldown > 0);
-      assert.equal(nodes(tree).some(node => node.type === 'Text' && node.children.includes('Invited')), false);
-    }
+    const tree = app.render('MemberRow', { group, person, selfId: 'self', organizer: true, disabled: false, onInvite: () => opens++ });
+    button(tree, 'Invite').props.onPress(); assert.equal(button(tree, 'Send'), undefined);
   }
-  const tree = app.render('MemberRow', { group, person, selfId: 'self', organizer: true, disabled: true, working: true, feedback: { section: 'email-invite:person', text: '', error: false }, cooldown: 60, contactChanged: false });
-  assert.equal(button(tree, 'Sending').props.disabled, true);
+  assert.equal(opens, 3);
+  group.invites = [{ id: 'claim', participant_id: person.id, approved: false, revoked: false, claimant_id: 2, claimant_email: 'noor@example.invalid' }];
+  assert.equal(button(app.render('MemberRow', { group, person, selfId: 'self', organizer: true, disabled: true }), 'Review').props.disabled, true);
 });
 
 
@@ -193,7 +192,7 @@ test('guest name edit waits for confirmation, preserves failed draft and retries
   const panel = settings(false, async () => new Promise((yes, no) => { resolve = yes; reject = no; }));
   let tree = await panel.add('');
   const member = nodes(tree).find(node => node.type?.name === 'MemberRow' && node.props.person.id !== 'self')!;
-  member.props.onRename(); tree = panel.render();
+  member.props.onInvite(); tree = panel.render(); component(tree, 'PersonInviteDialog').props.onRename(); tree = panel.render();
   assert.equal(component(tree, 'EditNameDialog').props.name, 'Noor');
   component(tree, 'EditNameDialog').props.onName('Noor updated'); tree = panel.render();
   component(tree, 'EditNameDialog').props.onSave(); component(tree, 'EditNameDialog').props.onSave(); await tick();
@@ -214,7 +213,8 @@ test('guest name edit waits for confirmation, preserves failed draft and retries
 test('guest name save is blocked when the person joins or is removed while the dialog is open', async () => {
   for (const change of ['joined', 'removed', 'archived']) {
     const panel = settings(); let tree = await panel.add('');
-    nodes(tree).find(node => node.type?.name === 'MemberRow' && node.props.person.id !== 'self')!.props.onRename();
+    nodes(tree).find(node => node.type?.name === 'MemberRow' && node.props.person.id !== 'self')!.props.onInvite();
+    component(panel.render(), 'PersonInviteDialog').props.onRename();
     tree = panel.render(); component(tree, 'EditNameDialog').props.onName('Changed');
     if (change === 'joined') panel.group.participants[1].user_id = 2;
     else if (change === 'removed') panel.group.participants[1].removed = true;
@@ -260,9 +260,9 @@ test('group join completion after account-scope unmount cannot open another acco
 test('uncertain group link receipt is not shareable and retries the same command', async () => {
  let accepted=false;
  const panel=settings(false,async(path,body)=>path==='/invite-link'&&accepted?{id:'group',version:2,url:'https://merosplit.com/j/'+'a'.repeat(32)}:{});
- let tree=panel.render();button(tree,'Copy link').props.onPress();await tick();tree=panel.render();
+ let tree=panel.render();button(tree,'Copy group link').props.onPress();await tick();tree=panel.render();
  assert.equal(nodes(tree).some(n=>n.props.title==='Share link'),false);
- accepted=true;button(tree,'Copy link').props.onPress();await tick();
+ accepted=true;button(tree,'Copy group link').props.onPress();await tick();
  assert.equal(nodes(panel.render()).some(n=>n.props.title==='Share link'),false);
  assert.equal(component(panel.render(),'FeedbackNote').props.feedback.text,'Link copied');
  const calls=panel.calls.filter(c=>c.path==='/invite-link');assert.equal(calls.length,2);assert.equal(calls[0].body.command_id,calls[1].body.command_id);
@@ -279,8 +279,8 @@ test('group link and join command IDs are lazy and retained through uncertain re
   const props = { group, selfId: 'self', busy: false, onMembership() {}, onAction: async (_path: string, body: any) => { writes.push(body); throw Error('Unknown response'); } };
   for (let i = 0; i < 3; i++) members.render('MemberSettings', props);
   assert.equal(ids, 0, 'ordinary renders do not consume command IDs');
-  button(members.render('MemberSettings', props), 'Copy link').props.onPress(); await tick();
-  button(members.render('MemberSettings', props), 'Copy link').props.onPress(); await tick();
+  button(members.render('MemberSettings', props), 'Copy group link').props.onPress(); await tick();
+  button(members.render('MemberSettings', props), 'Copy group link').props.onPress(); await tick();
   assert.equal(ids, 1); assert.deepEqual(writes.map(v => v.command_id), ['lazy-1', 'lazy-1']); members.unmount();
   const joins: any[] = [];
   const dialog = production('GroupJoinDialog.tsx', { Crypto: crypto, request: async (_session: any, path: string, _method: string, body: any) => { if (path.endsWith('preview')) return { name: 'Trip', already_member: false, version: 2, people: [] }; joins.push(body); throw Error('Unknown response'); } });
@@ -299,11 +299,11 @@ test('Copy link uses the platform helper, exposes no URL and reports clipboard f
   const app=production('MembersScreen.tsx',{Platform:{OS:platform},copyText:async(value:string|Promise<string>)=>{copied.push(await value);if(fail)throw Error(url);}});
   const group:Group={id:'group',name:'Trip',owner_id:1,version:2,participants:[{id:'self',name:'You',user_id:1}],expenses:[],settlements:[],balances:{},transfers:[],activity:[]};
   const props={group,selfId:'self',busy:false,onMembership(){},onAction:async(_path:string,body:any)=>{commands.push(body.command_id);return{id:'group',version:2,url};}};
-  button(app.render('MemberSettings',props),'Copy link').props.onPress();await tick();
+  button(app.render('MemberSettings',props),'Copy group link').props.onPress();await tick();
   let tree=app.render('MemberSettings',props);
   assert.equal(component(tree,'FeedbackNote').props.feedback.text,'Could not copy link. Try again.');
   assert.ok(!JSON.stringify(tree).includes(url));
-  fail=false;button(tree,'Copy link').props.onPress();await tick();tree=app.render('MemberSettings',props);
+  fail=false;button(tree,'Copy group link').props.onPress();await tick();tree=app.render('MemberSettings',props);
   assert.deepEqual(copied,[url,url]);assert.equal(commands[0],commands[1]);
   assert.equal(component(tree,'FeedbackNote').props.feedback.text,'Link copied');
   assert.ok(!JSON.stringify(tree).includes(url));assert.equal(nodes(tree).some(n=>n.props.title==='Share link'),false);
@@ -504,7 +504,7 @@ test('group link starts the real browser clipboard write inside the click, befor
   const group: Group = { id: 'group', name: 'Trip', owner_id: 1, version: 2, participants: [{ id: 'self', name: 'You', user_id: 1 }], expenses: [], settlements: [], balances: {}, transfers: [], activity: [] };
   const props = { group, selfId: 'self', busy: false, onMembership() {}, onAction: () => { events.push('api'); return response; } };
   gesture = true;
-  button(app.render('MemberSettings', props), 'Copy link').props.onPress();
+  button(app.render('MemberSettings', props), 'Copy group link').props.onPress();
   gesture = false;
   const initiatedBeforeResponse = events.includes('write');
   resolve({ id: 'group', version: 2, url }); await tick();
@@ -554,7 +554,7 @@ test('deferred clipboard data never resolves for a rejected receipt or changed o
     const app = production('MembersScreen.tsx', { copyText: (value: string | Promise<string>) => web.invoke('copyText', value) });
     const group: Group = { id: 'group', name: 'Trip', owner_id: 1, version: 2, participants: [{ id: 'self', name: 'You', user_id: 1 }], expenses: [], settlements: [], balances: {}, transfers: [], activity: [] };
     const props = { group, selfId: 'self', busy: false, onMembership() {}, onAction: () => response };
-    button(app.render('MemberSettings', props), 'Copy link').props.onPress();
+    button(app.render('MemberSettings', props), 'Copy group link').props.onPress();
     assert.equal(writes, 1, 'clipboard initialization precedes response validation');
     if (condition === 'owner') app.render('MemberSettings', { ...props, group: { ...group, owner_id: 2 } });
     if (condition === 'group') app.render('MemberSettings', { ...props, group: { ...group, id: 'other' } });
@@ -691,7 +691,7 @@ test('Previous members appear only in the counted dialog, leaving historical rec
   assert.equal(nodes(render()).some(node => node.props.label === 'Previous members'), false);
 });
 
-test('invite creation and retry accept missing share results and preserve the link until confirmed shared', async () => {
+test('person invite shares reuse one link after missing, cancelled and successful share results', async () => {
   let result: unknown;
   let shares = 0, invites = 0;
   const app = production('MembersScreen.tsx', {
@@ -705,14 +705,15 @@ test('invite creation and retry accept missing share results and preserve the li
     onAction: async () => { invites++; return { url: 'https://merosplit.com/invite/example' }; } });
   const assertNoError = (tree: Element) => assert.equal(nodes(tree).some(node => node.props.feedback?.error), false);
   try {
-    component(render(), 'ManualInviteRow').props.onInvite(); await tick();
+    nodes(render()).find(node => node.type?.name === 'MemberRow' && node.props.person.id === 'friend')!.props.onInvite();
+    component(render(), 'PersonInviteDialog').props.onShare(); await tick();
     assertNoError(render());
-    const retry = async () => { component(render(), 'ShareInviteRow').props.onShare(); await tick(); assertNoError(render()); };
+    const retry = async () => { component(render(), 'PersonInviteDialog').props.onShare(); await tick(); assertNoError(render()); };
     await retry();
     result = { action: 'dismissedAction' }; await retry();
-    assert.ok(component(render(), 'ShareInviteRow'));
+    assert.ok(component(render(), 'PersonInviteDialog').props.person);
     result = { action: 'sharedAction' }; await retry();
-    assert.equal(nodes(render()).some(node => node.type?.name === 'ShareInviteRow'), false);
+    assert.ok(component(render(), 'PersonInviteDialog').props.person);
     assert.equal(invites, 1);
     assert.equal(shares, 4);
   } finally { app.unmount(); }

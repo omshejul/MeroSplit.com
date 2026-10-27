@@ -1,3 +1,4 @@
+import DetailDialog from './DetailDialog';
 import TransactionIcon from './TransactionIcon';
 import { categoryIcon, categoryMeaning, expenseCategory } from './categoryIcons';
 import type { ExpenseIcons } from './categoryIcons';
@@ -6,7 +7,7 @@ import BillPeople from './BillPeople';
 import BalanceExplanation, { type BalanceSelection } from './BalanceExplanationDialog';
 import { balanceKey } from './balanceExplanation';
 import type { BalanceSource } from './balanceExplanationStorage';
-import { Animated, Platform, FlatList, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { Animated, Platform, FlatList, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { useScrollPagination } from './useScrollPagination';
 import LoadingSpinner from './LoadingSpinner';
 import { pageContentStyle } from './AppNavigation';
@@ -17,7 +18,7 @@ import { paymentPresentation } from './activityPresentation';
 import { VisibleExpense } from './useExpenseNotices';
 import type { NoticeVisibility } from './useExpenseNotices';
 import type { BillRow, Command, Expense, Group, GroupTransaction, Participant, Settlement, HistoryResource, HistoryWindow } from './types';
-import { SectionHeading, AmountText, Avatar, balanceColor, Button, Disclosure, Icon, radii, useUI } from './ui';
+import { SectionHeading, AmountText, Avatar, balanceColor, Button, Icon, radii, useUI } from './ui';
 
 type Transfer = { sender: string; recipient: string; amount: string };
 type Props = {
@@ -63,11 +64,11 @@ function PersonalTransferRow({ transfer, group, selfId, disabled, onSettle, onEx
   const name = participantName(group.participants, selfId, counterpart);
   const action = outgoing && person?.user_id != null && !!person.payment_profile?.vpa ? 'Pay' : 'Record';
   return <View style={ui.row}>
-    <Pressable ref={row} accessibilityRole="button" accessibilityLabel={`Why ${outgoing ? 'you owe' : 'you are owed'} ${formatMoney(transfer.amount)} ${outgoing ? 'to' : 'by'} ${name}`} onPress={() => onExplain(transfer, () => row.current?.focus())} style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 44 }}>
+    <Button kind="plain" ref={row} accessibilityRole="button" accessibilityLabel={`Why ${outgoing ? 'you owe' : 'you are owed'} ${formatMoney(transfer.amount)} ${outgoing ? 'to' : 'by'} ${name}`} onPress={() => onExplain(transfer, () => row.current?.focus())} style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 44 }}>
       <Avatar name={name} />
       <View style={ui.rowBody}><Text numberOfLines={1} ellipsizeMode="tail" style={[ui.rowTitle, s.logTitle]}>{name}</Text><Text style={[ui.rowSub, s.logCaption]}>{outgoing ? 'You owe' : 'Owes you'}{removed ? ' · Removed' : ''}</Text></View>
       <AmountText amount={transfer.amount} style={[s.balanceAmount, { color: outgoing ? colors.negative : colors.positive }]} />
-    </Pressable>
+    </Button>
     <Button title={action} kind={action === 'Pay' ? 'outlined' : 'text'} icon={action === 'Pay' ? 'pay' : undefined} compact accessibilityLabel={`${action} payment ${outgoing ? 'to' : 'from'} ${name}, ${formatMoney(transfer.amount)}`} disabled={disabled || !!removed} onPress={() => onSettle(transfer)} />
   </View>;
 }
@@ -85,12 +86,12 @@ function LogDate({ date }: { date?: string | null }) {
 // One compact log row for bills and payments: date, what happened, and (for bills) your balance effect.
 function LogRow({ leading, date, label, busy, onPress, trailing, children, payment = false }: { leading?: React.ReactNode; date?: string | null; label: string; busy: boolean; onPress: () => void; trailing?: React.ReactNode; children: React.ReactNode; payment?: boolean }) {
   const { ui, palette } = useUI();
-  return <Pressable accessibilityRole="button" accessibilityLabel={label} disabled={busy} style={({ pressed }) => [ui.row, s.edgeRow, { borderBottomColor: `${palette.line}80` }, payment && { backgroundColor: palette.soft }, pressed && s.pressed]} onPress={onPress}>
+  return <Button kind="plain" accessibilityRole="button" accessibilityLabel={label} disabled={busy} style={({ pressed }) => [ui.row, s.edgeRow, { borderBottomColor: `${palette.line}80` }, payment && { backgroundColor: palette.soft }, pressed && s.pressed]} onPress={onPress}>
     <LogDate date={date} />
     {leading}
     <View style={ui.rowBody}>{children}</View>
     {trailing}
-  </Pressable>;
+  </Button>;
 }
 
 function PaymentRow({ payment, accepted, group, selfId, busy, onPayment }: Pick<Props, 'accepted' | 'group' | 'selfId' | 'busy' | 'onPayment'> & { payment: Settlement }) {
@@ -233,9 +234,9 @@ export default function GroupScreen({ categoryIcons, header, noticeVisibility, g
       ListEmptyComponent={<View style={s.empty}><Icon name="bill" size={32} /><Text style={ui.section}>{historyWindow?.next_cursor ? 'No matching records on this page.' : historyWindow?.query || search.trim() ? 'No matching bills' : 'No bills or payments yet'}</Text></View>}
       ListFooterComponent={<>
         <PagingFooter paging={paging} />
-        {group.transactions === undefined && (!!payments.length || !!group.history?.settlements?.next_cursor) && <Disclosure title="Payment records">
+        {group.transactions === undefined && (!!payments.length || !!group.history?.settlements?.next_cursor) && <DetailDialog icon="payment" title="Payment records">
           <LegacyPayments group={group} accepted={accepted} selfId={selfId} busy={busy} onPayment={onPayment} onPage={onHistoryPage} scope={pagingScope} enabled={active && online} />
-        </Disclosure>}
+        </DetailDialog>}
       </>} />
     <BalanceExplanation selection={explanation} currentKey={balanceKey(incoming, pending)} onClose={() => setExplanation(null)} />
   </Animated.View>;

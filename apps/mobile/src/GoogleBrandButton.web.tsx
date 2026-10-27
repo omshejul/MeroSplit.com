@@ -1,13 +1,13 @@
 import React, { useState } from 'react';
-import { Image, Pressable } from 'react-native';
+import { Image } from 'react-native';
 import { Text } from 'react-native-paper';
-import { useUI } from './ui';
+import { Button, useUI } from './ui';
 import type { GoogleBrandButtonProps } from './GoogleBrandButton';
 import { googleFontFamily } from './typography';
 
 export default function GoogleBrandButton({ disabled, onPress }: GoogleBrandButtonProps) {
   const { dark, palette, ui } = useUI(), [focused, setFocused] = useState(false);
-  return <Pressable accessibilityRole="button" accessibilityLabel="Continue with Google" accessibilityState={{ disabled }}
+  return <Button kind="plain" accessibilityRole="button" accessibilityLabel="Continue with Google" accessibilityState={{ disabled }}
     disabled={disabled} onPress={onPress} onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
     style={({ pressed }) => ({ width: '100%', maxWidth: 400, minHeight: 48, paddingVertical: 10, paddingHorizontal: 12,
       flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, borderRadius: 12, borderWidth: 1,
@@ -17,5 +17,5 @@ export default function GoogleBrandButton({ disabled, onPress }: GoogleBrandButt
       accessible={false} aria-hidden={true} accessibilityLabel="" resizeMode="contain" style={{ width: 20, height: 20, flexShrink: 0 }} />
     <Text style={{ flexShrink: 1, textAlign: 'center', fontFamily: ui.body.fontFamily ? googleFontFamily : undefined,
       fontSize: 14, lineHeight: 20, fontWeight: '500', color: dark ? '#E3E3E3' : '#1F1F1F' }}>Continue with Google</Text>
-  </Pressable>;
+  </Button>;
 }

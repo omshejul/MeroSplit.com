@@ -1,9 +1,10 @@
+import DetailDialog from './DetailDialog';
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Text } from 'react-native-paper';
 import { RadioChoice } from './FormFields';
 import type { CachedGroup, Command, Group } from './types';
-import { Button, Disclosure, useUI } from './ui';
+import { Button, useUI } from './ui';
 
 export type SavedChangesProps = {
   commands: Command[]; groups: CachedGroup[]; busy: boolean; expired: boolean; expanded?: boolean;
@@ -27,11 +28,11 @@ export function SavedCommandRow({ command, group, busy, onOpen, onReview, onDisc
 export function SavedChanges({ commands, groups, busy, expired, expanded = false, onOpen, onReview, onDiscard, onRetry }: SavedChangesProps) {
   const needsReview = commands.some(command => command.state !== 'pending');
   if (!commands.length) return null;
-  return <Disclosure title={needsReview ? 'Needs review' : 'Pending sync'} initialOpen={expanded || needsReview}>
+  return <DetailDialog busy={busy} title={needsReview ? 'Needs review' : 'Pending sync'} initialOpen={expanded || needsReview}>
     {commands.map(command => <SavedCommandRow key={command.command_id} command={command}
       group={groups.find(group => group.group.id === command.group_id)} busy={busy} onOpen={onOpen} onReview={onReview} onDiscard={onDiscard} />)}
     {!expired && <Button title="Retry" disabled={busy} onPress={onRetry} />}
-  </Disclosure>;
+  </DetailDialog>;
 }
 
 export type LegacyRecoveryProps = {
@@ -44,22 +45,22 @@ export function LegacyGroupRecovery({ group, selected, busy, onSelect, onRecover
   onSelect: (personId: string) => void; onRecover: () => void;
 }) {
   const { ui } = useUI();
-  return <Disclosure title={group.name}>
+  return <DetailDialog busy={busy} icon="groups" title={group.name}>
     <Text style={ui.caption}>{group.expenses.length} bills · Who are you?</Text>
     {group.participants.map(person => <RadioChoice key={person.id} value={person.id} label={person.name}
       selected={selected === person.id} onPress={() => onSelect(person.id)} />)}
     <Button title="Recover these records" disabled={busy || !selected} onPress={onRecover} />
-  </Disclosure>;
+  </DetailDialog>;
 }
 
 export function LegacyRecovery({ groups, email, selected, busy, onSelect, onRecover }: LegacyRecoveryProps) {
   const { ui } = useUI();
   if (!groups.length) return null;
-  return <Disclosure title="Earlier phone records">
+  return <DetailDialog busy={busy} icon="phone" title="Earlier phone records">
     <Text style={ui.caption}>Choose only records that belong to you. Recovery links them to {email}. No invitations are sent.</Text>
     {groups.map(group => <LegacyGroupRecovery key={group.id} group={group} selected={selected[group.id]} busy={busy}
       onSelect={personId => onSelect(group.id, personId)} onRecover={() => onRecover(group)} />)}
-  </Disclosure>;
+  </DetailDialog>;
 }
 
 const styles = StyleSheet.create({

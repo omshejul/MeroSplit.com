@@ -1,5 +1,6 @@
+import { Dialog } from './DialogParts';
 import React from 'react';
-import { Dialog, Text } from 'react-native-paper';
+import { Text } from 'react-native-paper';
 import DialogFocus from './DialogFocus';
 import KeyboardDialog from './KeyboardDialog';
 import { CancelDialogActions, DialogScrollBody } from './DialogParts';

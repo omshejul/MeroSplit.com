@@ -93,11 +93,7 @@ def manual_category(value):
     aliases = {
         "foodanddrink": "food",
         "diningout": "food",
-        "electricity": "utilities",
-        "gas": "utilities",
         "transportation": "transport",
-        "hotel": "travel",
-        "medicine": "health",
         "medical": "health",
     }
     return aliases.get(key, key if key in CATEGORIES else "general")

@@ -2,7 +2,7 @@ import Form from './Form';
 import { useScreenRemovalLock } from './screenRemoval';
 import React, { useEffect, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
-import { Checkbox, Text, TouchableRipple } from 'react-native-paper';
+import { Checkbox, Text } from 'react-native-paper';
 import * as Crypto from 'expo-crypto';
 import { formatMoney, integer, rupeesToPaise, validateExpense } from './accounting';
 import type { Split } from './accounting';
@@ -65,11 +65,11 @@ const splitModes = { equal: 'Equally', exact: 'Exact amounts', percent: 'Percent
 
 function PayerAdjustment({ difference, name, onPress }: { difference: bigint; name: string; onPress: () => void }) {
   const { ui } = useUI(), adding = difference > 0n, amount = formatMoney((adding ? difference : -difference).toString());
-  return <TouchableRipple accessibilityRole="button" accessibilityLabel={`${adding ? 'Add' : 'Subtract'} ${amount} ${adding ? 'to' : 'from'} ${name}`} onPress={onPress} style={styles.adjustTouch}>
+  return <Button kind="plain" accessibilityRole="button" accessibilityLabel={`${adding ? 'Add' : 'Subtract'} ${amount} ${adding ? 'to' : 'from'} ${name}`} onPress={onPress} style={styles.adjustTouch}>
     <View style={[styles.adjustChip, { backgroundColor: adding ? '#4ADE80' : '#F87171' }]}>
       <Text style={[ui.caption, styles.adjustText, { color: adding ? '#052E16' : '#450A0A' }]}>{adding ? '+' : '−'}{amount}</Text>
     </View>
-  </TouchableRipple>;
+  </Button>;
 }
 
 function PayerFields({ participants, draft, disabled, preserveRemoved, label, onChange, status, onToggle, onAdjust }: ExpenseSelectionProps & { onToggle: (id: string) => void; onAdjust: (id: string) => void }) {

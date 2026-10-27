@@ -1,9 +1,10 @@
+import { Dialog } from './DialogParts';
 import { CancelDialogActions, DialogScrollBody } from './DialogParts';
 import KeyboardDialog from './KeyboardDialog';
 import { validUPIAddress } from './upi';
 import React, { useEffect, useRef, useState } from 'react';
 import { Keyboard, Platform, ScrollView, TextInput, useWindowDimensions, View } from 'react-native';
-import { Dialog, Text } from 'react-native-paper';
+import { Text } from 'react-native-paper';
 import { RadioChoice } from './FormFields';
 import { colorFamilies, isDarkOnly } from './theme';
 import { Button, ErrorText, SettingsRow, useUI, type AppearancePreference, type ColorFamily } from './ui';
