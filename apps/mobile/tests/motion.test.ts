@@ -4,10 +4,10 @@ import { readFileSync } from 'node:fs';
 import ts from 'typescript';
 
 // Execute production subscription/hook code, replacing only React and OS APIs.
-function production(env: Record<string, unknown>) {
-  const code = ts.transpile(readFileSync(new URL('../src/motion.ts', import.meta.url), 'utf8'), { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS });
+function production(env: Record<string, unknown>, file = 'motionShared.ts') {
+  const code = ts.transpile(readFileSync(new URL(`../src/${file}`, import.meta.url), 'utf8'), { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS });
   const exports: Record<string, any> = {};
-  new Function('require', 'exports', code)((name: string) => name === 'react' ? env.React : env, exports);
+  new Function('require', 'exports', code)((name: string) => name === 'react' ? env.React : name === 'framer-motion' ? env.Framer : env, exports);
   return exports;
 }
 const tick = () => new Promise<void>(done => setImmediate(done));
@@ -129,4 +129,19 @@ test('shared press feedback releases, clears on disable/background, and works wi
   value.onPressOut(); assert.equal(render().pressedStyle.opacity, 1);
   render().onPressIn(); render(true); assert.equal(render(true).pressedStyle.opacity, 1);
   render().onPressIn(); active = false; render(); active = true; assert.equal(render().pressedStyle.opacity, 1);
+});
+
+ test('web Framer transitions retarget current progress and settle immediately for reduced motion', () => {
+  const h = hooks(), animations: any[] = [];
+  class Value { current: number; constructor(value: number) { this.current = value; } setValue(value: number) { this.current = value; } }
+  const api = production({ React: h.React, Animated: { Value }, Framer: { animate(from: number, target: number, options: any) {
+    const animation = { from, target, options, stopped: false, stop() { this.stopped = true; } }; animations.push(animation); return animation;
+  } } }, 'motion.web.ts');
+  const render = (target: number, enabled = true) => h.render(() => api.useMotionValue(target, enabled)) as Value;
+  const value = render(0); assert.equal(animations.length, 0);
+  render(1); animations[0].options.onUpdate(0.4); assert.equal(value.current, 0.4);
+  render(0); assert.equal(animations[0].stopped, true); assert.equal(animations[1].from, 0.4);
+  render(0, false); assert.equal(value.current, 0); assert.equal(animations[1].stopped, true);
+  render(0, true); assert.equal(animations.length, 2);
+  render(1); h.unmount(); assert.equal(animations[2].stopped, true);
 });
