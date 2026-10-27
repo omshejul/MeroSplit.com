@@ -804,18 +804,18 @@ test('uncertain feedback preserves the exact submission through close/reopen and
   app.unmount();
 });
 
-test('header keeps a fixed feedback slot, swaps it for the spinner while busy and leaves other screens unchanged', () => {
+test('header keeps feedback available and uses a fixed spinner slot while busy', () => {
   let opens = 0;
   const env = { IconAction: 'IconAction', ActivityIndicator: 'ActivityIndicator', radii: { navigation: 20, surface: 16 }, pageWidthStyle: {}, useUI: () => ({ palette: {} }) };
   const app = harness('src/AppNavigation.tsx', 'ScreenHeader', env), props = { title: 'Groups', busy: false, onFeedback: () => opens++ };
   let tree = app.render(props);
   find(tree, 'label', 'Feedback').props.onPress(); assert.equal(opens, 1);
   assert.ok(!nodes(tree).some(node => node.type === 'ActivityIndicator'));
-  const slot = nodes(tree).find(node => node.props.style?.width === 44 && node.props.style?.height === 44)!;
+  const slot = nodes(tree).find(node => node.props.pointerEvents === 'none')!;
   tree = app.render({ ...props, busy: true });
-  assert.ok(!find(tree, 'label', 'Feedback'));
+  find(tree, 'label', 'Feedback').props.onPress(); assert.equal(opens, 2);
   assert.equal(nodes(tree).filter(node => node.type === 'ActivityIndicator').length, 1);
-  assert.deepEqual(nodes(tree).find(node => node.props.style?.width === 44 && node.props.style?.height === 44)!.props.style, slot.props.style);
+  assert.deepEqual(nodes(tree).find(node => node.props.pointerEvents === 'none')!.props.style, slot.props.style);
   assert.ok(!find(app.render({ title: 'Payment', busy: false }), 'label', 'Feedback'));
 });
 

@@ -9,7 +9,6 @@ import { balanceKey } from './balanceExplanation';
 import type { BalanceSource } from './balanceExplanationStorage';
 import { Animated, Platform, FlatList, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { useScrollPagination } from './useScrollPagination';
-import LoadingSpinner from './LoadingSpinner';
 import { pageContentStyle } from './AppNavigation';
 import { expenseBalanceChange, formatMoney } from './accounting';
 import { Text } from 'react-native-paper';
@@ -40,7 +39,7 @@ const displayDate = (value?: string | null) => {
 const billImpact = (value: string) => BigInt(value) === 0n ? 'No balance impact' : `Balance ${BigInt(value) > 0n ? '+' : '−'}${formatMoney((BigInt(value) < 0n ? -BigInt(value) : BigInt(value)).toString())}`;
 const participantName = (participants: Participant[], selfId: string, id: string) => id === selfId ? 'You' : participants.find(person => person.id === id)?.name ?? 'Former member';
 function PagingFooter({ paging }: { paging: ReturnType<typeof useScrollPagination> }) {
-  return <View style={{ paddingVertical: 12, gap: 8 }}>{paging.loading && <LoadingSpinner visible />}{paging.canLoadMore && !paging.failed && <Button title="Load older" kind="text" disabled={paging.loading} onPress={paging.loadMore} />}{paging.failed && <><Text>Could not load earlier records.</Text><Button title="Retry" kind="text" onPress={paging.retry} /></>}</View>;
+  return <View style={{ paddingVertical: 12, gap: 8 }}>{paging.canLoadMore && !paging.failed && <Button title="Load older" kind="text" disabled={paging.loading} onPress={paging.loadMore} />}{paging.failed && <><Text>Could not load earlier records.</Text><Button title="Retry" kind="text" onPress={paging.retry} /></>}</View>;
 }
 
 function LegacyPayments({ group, selfId, accepted, busy, onPayment, onPage, scope, enabled }: {

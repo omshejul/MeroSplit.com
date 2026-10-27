@@ -17,6 +17,7 @@ export default function SignInLayout({ children, busy, onBack }: { children: Rea
     return () => viewport.removeEventListener('resize', resize);
   }, []);
   return <View testID="signin-viewport" style={{ flex: 1, ...(visualHeight !== undefined && { maxHeight: Math.max(0, visualHeight - insets.top - insets.bottom) }) }} onLayout={event => setHeight(event.nativeEvent.layout.height)}>
+    <View pointerEvents="none" style={{ position: 'absolute', top: 8, right: 16, width: 44, height: 44, alignItems: 'center', justifyContent: 'center', zIndex: 1 }}>{busy && <ActivityIndicator accessibilityLabel="Working" color={palette.accent} />}</View>
     <ScrollView role="main" keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag"
       contentContainerStyle={{ flexGrow: 1, paddingHorizontal: 24, paddingTop: signInTopPadding(height, contentHeight), paddingBottom: 24 }}>
       <View testID="signin-group" style={{ width: '100%', maxWidth: 380, alignSelf: 'center', gap: 24 }} onLayout={event => setContentHeight(event.nativeEvent.layout.height)}>
@@ -27,7 +28,6 @@ export default function SignInLayout({ children, busy, onBack }: { children: Rea
             <Text accessibilityRole="header" aria-level={1} style={[ui.section, { fontSize: 26, lineHeight: 32, textAlign: 'center' }]}>Sign in to MeroSplit</Text>
             <Text style={[ui.body, { color: palette.muted, textAlign: 'center', lineHeight: 22 }]}>Split costs with friends, trips and households.</Text>
           </View>
-          {busy && <ActivityIndicator accessibilityLabel="Working" color={palette.accent} />}
         </View>
         {children}
       </View>

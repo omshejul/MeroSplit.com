@@ -625,7 +625,7 @@ test('full-screen join keeps its header inside a modal-local safe area through c
     assert.equal(provider.type, 'SafeAreaProvider', `${state}: modal-local inset measurement`);
     const frame = provider.children[0]; assert.equal(frame.type, 'AppFrame');
     const safeFrame = navigation.render('AppFrame', { children: frame.children });
-    assert.equal(safeFrame.type, 'SafeAreaView'); assert.deepEqual(safeFrame.props.edges, ['top', 'bottom']);
+    assert.equal(safeFrame.type, 'View'); const safeContent = component(safeFrame, 'SafeAreaView'); assert.ok(safeContent); assert.deepEqual(safeContent.props.edges, ['top', 'left', 'right', 'bottom']);
     assert.ok(component(frame, 'ScreenHeader'), `${state}: header stays inside the inset frame`);
     assert.ok(component(frame, 'DialogFocus')); assert.ok(component(frame, 'ScrollView'));
   }

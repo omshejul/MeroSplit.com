@@ -9,27 +9,30 @@ import TabBarSurface from './TabBarSurface';
 
 export function AppFrame({ children, onTouchStart, nativeTabs = false }: { children: React.ReactNode; onTouchStart?: () => void; nativeTabs?: boolean }) {
   const { palette, dark } = useUI();
-  return <SafeAreaView style={{ flex: 1, backgroundColor: palette.background }} edges={Platform.OS === 'web' ? ['top', 'right', 'bottom', 'left'] : nativeTabs ? ['top'] : ['top', 'bottom']} onTouchStart={onTouchStart}>
+  // Paint the whole window. Only content receives cutout/gesture insets.
+  // UIKit owns the native tab bar's bottom inset; Android resizes for the IME.
+  return <View style={{ flex: 1, backgroundColor: palette.background }} onTouchStart={onTouchStart}>
     <StatusBar style={dark ? 'light' : 'dark'} />
-    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>{children}</KeyboardAvoidingView>
-  </SafeAreaView>;
+    <SafeAreaView style={{ flex: 1 }} edges={nativeTabs && Platform.OS === 'ios' ? ['top', 'left', 'right'] : ['top', 'left', 'right', 'bottom']}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>{children}</KeyboardAvoidingView>
+    </SafeAreaView>
+  </View>;
 }
 
 const pageWidthStyle = Platform.OS === 'web' ? { width: '100%' as const, maxWidth: 760, alignSelf: 'center' as const } : {};
 export const pageContentStyle = { padding: 16, gap: 12, paddingBottom: 24, ...pageWidthStyle };
 
-export function ScreenHeader({ title, busy, onBack, onFeedback, brand = false, children }: { brand?: boolean; title: string; busy: boolean; onFeedback?: () => void; onBack?: () => void; children?: React.ReactNode }) {
+export function ScreenHeader({ title, busy, onBack, onFeedback, brand = false, children, status }: { brand?: boolean; title: string; busy: boolean; onFeedback?: () => void; onBack?: () => void; children?: React.ReactNode; status?: React.ReactNode }) {
   const { palette } = useUI();
-  // The working indicator floats over the title's trailing edge, so actions never shift.
   return <View role="banner" style={styles.header}>
     {brand && <Image source={require('../assets/brand/mark.png')} accessible={false} accessibilityIgnoresInvertColors style={{ width: 32, height: 32 }} />}
     {onBack && <IconAction name="back" label="Back" disabled={busy} onPress={onBack} />}
     <View style={styles.titleArea}>
       <Text style={[styles.title, { color: palette.text }]} accessibilityRole="header" aria-level={1} numberOfLines={1} ellipsizeMode="tail" accessibilityLabel={title}>{title}</Text>
-      {busy && !onFeedback && <View pointerEvents="none" style={[styles.working, { backgroundColor: palette.background }]}><ActivityIndicator accessibilityLabel="Working" color={palette.accent} /></View>}
     </View>
-    {onFeedback && <View style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}>{busy ? <ActivityIndicator accessibilityLabel="Working" color={palette.accent} /> : <IconAction name="feedback" label="Feedback" onPress={onFeedback} />}</View>}
     {children}
+    {onFeedback && <IconAction name="feedback" label="Feedback" onPress={onFeedback} />}
+    {status ?? <View pointerEvents="none" style={styles.working}>{busy && <ActivityIndicator accessibilityLabel="Working" color={palette.accent} />}</View>}
   </View>;
 }
 
@@ -63,7 +66,7 @@ const styles = StyleSheet.create({
   header: { ...pageWidthStyle, flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 56, paddingHorizontal: 16, paddingTop: 4, paddingBottom: 8 },
   titleArea: { flex: 1, minWidth: 0, overflow: 'hidden', justifyContent: 'center' },
   title: { fontSize: 24, lineHeight: 30, fontWeight: '600' },
-  working: { position: 'absolute', right: 0, top: 0, bottom: 0, justifyContent: 'center', paddingLeft: 8 },
+  working: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   tabs: { flexDirection: 'row', marginHorizontal: 16, marginBottom: 8, borderRadius: radii.navigation, padding: 4, gap: 4 },
   tab: { flex: 1, minHeight: 48, alignItems: 'center', justifyContent: 'center', gap: 4, borderRadius: radii.navigation, paddingVertical: 6 },
   tabContent: { zIndex: 1, alignItems: 'center', gap: 4 },

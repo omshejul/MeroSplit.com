@@ -6,7 +6,7 @@ import { syncStatus } from './syncState';
 import DialogFocus from './DialogFocus';
 import { Button, Icon, useUI } from './ui';
 
-export default function SyncStatus(props: { commands: Command[]; pendingFiles: number; drafts: boolean; confirmedAt: string | null; durable: boolean; syncing: boolean; problem: boolean; online?: boolean; reviewRequired?: boolean; updatesAvailable?: boolean; onShowUpdates?: () => void; onExport?: () => void; onRetry?: () => void; onPress: () => void }) {
+export default function SyncStatus(props: { working?: boolean; commands: Command[]; pendingFiles: number; drafts: boolean; confirmedAt: string | null; durable: boolean; syncing: boolean; problem: boolean; online?: boolean; reviewRequired?: boolean; updatesAvailable?: boolean; onShowUpdates?: () => void; onExport?: () => void; onRetry?: () => void; onPress: () => void }) {
   const { ui, palette } = useUI(), status = syncStatus(props), [open, setOpen] = useState(false);
   const updates = props.updatesAvailable && ['Synced', 'Online'].includes(status.label);
   const label = updates ? 'Updates available' : status.label;
@@ -14,7 +14,7 @@ export default function SyncStatus(props: { commands: Command[]; pendingFiles: n
   const icon = updates ? 'info' : ['Synced', 'Online'].includes(status.label) ? 'check' : status.label === 'Needs attention' ? 'info' : status.label === 'Offline' ? 'offline' : 'history';
   return <Menu visible={open} onDismiss={() => setOpen(false)} anchorPosition="bottom" overlayAccessibilityLabel="Close sync status" contentStyle={{ maxWidth: 288, padding: 16, borderRadius: 12 }} anchor={
     <Button kind="plain" accessibilityRole="button" accessibilityLabel={`Sync status: ${label}`} accessibilityHint="Show sync details" accessibilityState={{ expanded: open }} onPress={() => setOpen(value => !value)} style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}>
-      {status.label === 'Syncing' ? <ActivityIndicator color={palette.accent} size={22} /> : <Icon name={icon} size={22} color={color} />}
+      {props.working || status.label === 'Syncing' ? <ActivityIndicator accessibilityLabel="Working" color={palette.accent} size={22} /> : <Icon name={icon} size={22} color={color} />}
     </Button>
   }>
     <DialogFocus active={open} label="Sync details" onEscape={() => setOpen(false)} style={{ gap: 8, maxWidth: 256 }}>
