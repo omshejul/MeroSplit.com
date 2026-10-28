@@ -238,3 +238,84 @@ test('Empty-state suggestions only compose text, and read-only chats disable the
     assert.equal(button(tree, 'Check my share').props.disabled, true);
   } finally { raw.close(); }
 });
+
+test('Quiet receipt keeps the same bubble key across server confirmation and excludes optimistic rows from read ACKs', async () => {
+  const raw = new DatabaseSync(':memory:'), db = sqliteAdapter(raw), calls: any[] = [];
+  let confirm!: (value: any) => void;
+  const send: typeof request = async <T>(_session: Session, path: string, _method?: string, body?: any): Promise<T> => {
+    calls.push({ path, body });
+    if (path.endsWith('/chat')) return new Promise(resolve => { confirm = resolve; });
+    return { seen: 1 } as T;
+  };
+  const app = component(db, send);
+  const composer = (tree: any) => nodes(tree).find(node => node.type?.name === 'ChatComposer')!;
+  try {
+    await migrate(db); app.render(); await app.commit(); app.page(page([]));
+    let tree = app.render(); await app.commit();
+    composer(tree).props.onChange('Yes, ₹200 each.'); tree = app.render(); await app.commit();
+    composer(tree).props.onSend(); await tick(); tree = app.render(); await app.commit();
+    let flat = find(tree, 'FlatList'), row = flat.props.data[0];
+    assert.equal(row.pending.text, 'Yes, ₹200 each.');
+    assert.equal(flat.props.inverted, true);
+    const key = flat.props.keyExtractor(row);
+    const pendingView = app.row({ ...flat.props.renderItem({ item: row, index: 0 }).props });
+    assert.ok(nodes(pendingView).some(node => node.type === 'Icon' && node.props.name === 'history'));
+    assert.ok(!nodes(pendingView).some(node => node.props.title === 'Retry'));
+    assert.equal(composer(tree).props.disabled, false);
+    flat.props.onViewableItemsChanged({ viewableItems: [{ isViewable: true, item: row }] });
+    tree = app.render(); await app.commit();
+    assert.equal(calls.length, 1, 'A local bubble must never emit a seen request');
+    composer(tree).props.onChange('A new draft');
+    confirm({ ...message('99'), client_id: row.client_id, sender_id: session.userId, text: row.text });
+    await tick(); tree = app.render(); await app.commit();
+    flat = find(tree, 'FlatList'); row = flat.props.data[0];
+    assert.equal(flat.props.data.length, 1); assert.equal(row.pending, undefined);
+    assert.equal(flat.props.keyExtractor(row), key);
+    assert.equal(composer(tree).props.text, 'A new draft');
+    const savedView = app.row({ ...flat.props.renderItem({ item: row, index: 0 }).props });
+    assert.ok(nodes(savedView).some(node => node.type === 'Icon' && node.props.name === 'check'));
+    assert.ok(nodes(savedView).some(node => node.props.accessibilityLabel === 'Sent'));
+  } finally { app.unmount(); await chat.flushChatWrites(); raw.close(); }
+});
+
+test('Quiet receipt keeps failure/retry beside its bubble and reuses the immutable client ID', async () => {
+  const raw = new DatabaseSync(':memory:'), db = sqliteAdapter(raw), ids: string[] = []; let fail = true;
+  const send: typeof request = async <T>(_session: Session, path: string, _method?: string, body?: any): Promise<T> => {
+    if (path.endsWith('/chat')) {
+      ids.push(body.client_id);
+      if (fail) throw Error('Connection lost before confirmation');
+      return { ...message('101'), client_id: body.client_id, sender_id: session.userId, text: body.text } as T;
+    }
+    return { seen: 1 } as T;
+  };
+  const app = component(db, send);
+  try {
+    await migrate(db); app.render(); await app.commit(); app.page(page([])); let tree = app.render(); await app.commit();
+    const compose = () => nodes(tree).find(node => node.type?.name === 'ChatComposer')!;
+    compose().props.onChange('Saved message'); tree = app.render(); await app.commit(); compose().props.onSend();
+    await tick(); await chat.flushChatWrites(); await tick(); tree = app.render(); await app.commit();
+    const flat = find(tree, 'FlatList'), row = flat.props.data[0], rendered = flat.props.renderItem({ item: row, index: 0 });
+    const bubble = app.row(rendered.props);
+    assert.ok(nodes(bubble).some(node => node.props.accessibilityLabel === 'Not confirmed'));
+    assert.ok(button(bubble, 'Retry'));
+    assert.ok(!find(tree, 'BottomSafeArea').children.some((node: any) => node?.type === 'ScrollView'));
+    fail = false; rendered.props.onRetry(); await tick(); tree = app.render(); await app.commit();
+    assert.deepEqual(ids, ['synthetic-client-uuid', 'synthetic-client-uuid']);
+    assert.equal(find(tree, 'FlatList').props.data.length, 1);
+    assert.equal(find(tree, 'FlatList').props.data[0].pending, undefined);
+  } finally { app.unmount(); await chat.flushChatWrites(); raw.close(); }
+});
+
+test('Quiet receipt labels offline and rejected messages without claiming they were sent', () => {
+  const raw = new DatabaseSync(':memory:'), app = component(sqliteAdapter(raw), async <T>() => ({}) as T);
+  const pending = { id: 'client', text: 'Unsent', error: 'Unknown network outcome' };
+  const row = chat.chatMessageRows([], [pending], session.userId)[0];
+  try {
+    const offline = app.row({ message: row, own: true, active: false, showDate: false, online: false });
+    assert.ok(nodes(offline).some(node => node.props.accessibilityLabel === 'Waiting for connection'));
+    assert.ok(!nodes(offline).some(node => node.props.title === 'Retry'));
+    const rejected = app.row({ message: { ...row, pending: { ...pending, rejected: true } }, own: true, active: true, showDate: false, online: false });
+    assert.ok(button(rejected, 'Edit message'));
+    assert.ok(nodes(rejected).some(node => node.props.accessibilityLabel === 'Not sent'));
+  } finally { app.unmount(); raw.close(); }
+});
