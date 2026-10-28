@@ -37,6 +37,7 @@ function component(db: any, send: typeof request, extra: Record<string, any> = {
   const pagingBody = pagingSource.statements.filter(node => !ts.isImportDeclaration(node)).map(node => node.getText(pagingSource).replace(/^export /, '')).join('\n');
   env.useScrollPagination = new Function('env', `with(env){${ts.transpile(pagingBody, { target: ts.ScriptTarget.ES2022 })};return useScrollPagination;}`)(env);
   env.LoadingSpinner = 'LoadingSpinner';
+  env.ChatLoadingState = 'ChatLoadingState';
   Object.assign(env, extra);
   const source = ts.createSourceFile('BillChatScreen.tsx', readFileSync(new URL('../src/BillChatScreen.tsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   const body = source.statements.filter(node => !ts.isImportDeclaration(node)).map(node => node.getText(source).replace(/^export (?:default )?/, '')).join('\n');
@@ -348,4 +349,16 @@ for (const motion of [true, false]) test(`Chat follows new messages smoothly onl
     assert.ok(button(tree, 'New messages')); button(tree, 'New messages').props.onPress();
     assert.deepEqual(scrolls.at(-1), { offset: 0, animated: motion });
   } finally { app.unmount(); await chat.flushChatWrites(); raw.close(); }
+});
+
+test('initial history shows placeholders, then only confirmed empty history shows suggestions',async()=>{
+ const raw=new DatabaseSync(':memory:'),db=sqliteAdapter(raw),app=component(db,async<T>()=>({seen:1})as T);
+ const empty=(tree:any)=>find(tree,'FlatList').props.ListEmptyComponent;
+ const has=(tree:any,type:string):boolean=>!!tree&&typeof tree==='object'&&(tree.type===type||tree.type?.name===type||(tree.children??[]).flat(Infinity).some((child:any)=>has(child,type)));
+ try{await migrate(db);assert.ok(has(empty(app.render()),'ChatLoadingState'));await app.commit();assert.ok(has(empty(app.render()),'ChatLoadingState'));app.page(page([]));const known=app.render();assert.equal(has(empty(known),'ChatLoadingState'),false);assert.ok(has(empty(known),'ChatEmptyState'))}finally{app.unmount();raw.close()}
+});
+test('failed, offline and background history do not claim to still be loading',async()=>{
+ const raw=new DatabaseSync(':memory:'),db=sqliteAdapter(raw),app=component(db,async<T>()=>({seen:1})as T);
+ const has=(tree:any):boolean=>!!tree&&typeof tree==='object'&&(tree.type==='ChatLoadingState'||(tree.children??[]).flat(Infinity).some(has));
+ try{await migrate(db);app.render();await app.commit();app.fail(Error('History unavailable'));assert.equal(has(find(app.render(),'FlatList').props.ListEmptyComponent),false);assert.equal(has(find(app.render({online:false}),'FlatList').props.ListEmptyComponent),false);assert.equal(has(find(app.render({active:false}),'FlatList').props.ListEmptyComponent),false)}finally{app.unmount();raw.close()}
 });

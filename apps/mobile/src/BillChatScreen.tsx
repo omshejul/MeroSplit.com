@@ -1,3 +1,4 @@
+import ChatLoadingState from './ChatLoadingState';
 import BottomSafeArea from './BottomSafeArea';
 import { Dialog } from './DialogParts';
 import { useScrollPagination } from './useScrollPagination';
@@ -232,7 +233,7 @@ export default function BillChatScreen({ session, groupId, expenseId, active, on
       onScroll={event => { const { contentOffset } = event.nativeEvent; const atBottom = contentOffset.y < 80; if (atBottom) { forceFollow.current = false; follow.current = true; setNewMessages(false); if (incoming.current.length) showNew(); } else if (!forceFollow.current) follow.current = false; }} scrollEventThrottle={100}
       onContentSizeChange={(width, height) => { if ((follow.current || forceFollow.current) && !paging.loading) { forceFollow.current = true; list.current?.scrollToOffset({ offset: 0, animated: motion.enabled && laidOutMessages.current }); } if (newestFirst.length) laidOutMessages.current = true; }}
       ListFooterComponent={messages.length ? <View style={{ paddingVertical: 12 }}>{paging.canLoadMore && !paging.failed && <Button title={paging.loading ? 'Loading…' : 'Load older'} style={{ minWidth: 120 }} kind="text" disabled={paging.loading} onPress={paging.loadMore} />}{paging.failed && <Button title="Retry" kind="text" disabled={!enabled} onPress={paging.retry} />}</View> : undefined}
-      ListEmptyComponent={<View style={{ flex: 1 }}>{page && <ChatEmptyState disabled={!ready || !active || denied || !page.can_send || !!work.draft} onSuggest={typed} />}</View>}
+      ListEmptyComponent={<View style={{ flex: 1 }}>{!page && !error && enabled ? <ChatLoadingState /> : page && <ChatEmptyState disabled={!ready || !active || denied || !page.can_send || !!work.draft} onSuggest={typed} />}</View>}
       renderItem={({ item, index }) => <ChatMessageRow message={item} own={item.sender_id === session.userId} active={item.pending?.rejected ? active : enabled} showDate={index === newestFirst.length - 1 || new Date(newestFirst[index + 1].created_at).toDateString() !== new Date(item.created_at).toDateString()} onReport={kind => setReport({ message: item, kind })} onBlock={() => void control(() => block(item.sender_id, true))}
         sending={sending === item.client_id} online={online} onRetry={() => {
           if (item.pending?.rejected) void getDatabase().then(db => editRejectedChat(db, session, path, item.client_id)).then(value => { if (current()) { draft.current = value.draft; setWork(value); } }).catch(cause => setError(cause.message));
