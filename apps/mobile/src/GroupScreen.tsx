@@ -156,13 +156,11 @@ function ParticipantAmountRow({ name, amount, photo }: { name: string; amount: s
 
 function BillSearch({ value, onChange, onSearch, onClose, showSubmit, autoFocus }: { value: string; onChange: (value: string) => void; onSearch: () => void; onClose: () => void; showSubmit: boolean; busy: boolean; autoFocus: boolean }) {
   const { palette: colors, ui, inputColors } = useUI();
-  const input = useRef<React.ComponentRef<typeof TextInput>>(null);
   const [focused, setFocused] = useState(false);
   return <View style={s.search}>
     <View style={[ui.input, s.searchField, { borderColor: focused ? colors.accent : 'transparent' }]}>
       {showSubmit ? <Button icon="search" iconOnly kind="text" accessibilityLabel="Run bill search" onPress={onSearch} style={s.searchAction} /> : <Icon name="search" size={20} color={colors.muted} />}
-      <TextInput {...inputColors} ref={input} autoFocus={autoFocus} accessibilityLabel="Search bills" placeholder="Search bills" placeholderTextColor={colors.muted} value={value} onChangeText={onChange} onSubmitEditing={onSearch} onFocus={() => setFocused(true)} onBlur={() => setFocused(false)} returnKeyType="search" autoCapitalize="none" autoCorrect={false} style={[ui.input, s.searchInput, Platform.OS === 'web' && { outlineWidth: 0 }]} />
-      {!!value && <Button icon="close" iconOnly kind="text" accessibilityLabel="Clear search text" onPress={() => { onChange(''); input.current?.focus(); }} style={s.searchAction} />}
+      <TextInput {...inputColors} autoFocus={autoFocus} accessibilityLabel="Search bills" placeholder="Search bills" placeholderTextColor={colors.muted} value={value} onChangeText={onChange} onSubmitEditing={onSearch} onFocus={() => setFocused(true)} onBlur={() => setFocused(false)} returnKeyType="search" autoCapitalize="none" autoCorrect={false} style={[ui.input, s.searchInput, Platform.OS === 'web' && { outlineWidth: 0 }]} />
     </View>
     <Button icon="close" iconOnly kind="text" accessibilityLabel="Close search" onPress={onClose} style={s.searchAction} />
   </View>;
@@ -337,7 +335,7 @@ const s = StyleSheet.create({
   empty: { gap: 10, alignItems: 'center', paddingVertical: 20 },
   pressed: { opacity: 0.65 },
   settled: { fontSize: 36, lineHeight: 44 },
-  search: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  search: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingBottom: 12 },
   searchField: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', borderRadius: 24, borderWidth: 1, paddingVertical: 0, paddingLeft: 12, paddingRight: 2 },
   searchInput: { flex: 1, minWidth: 0, backgroundColor: 'transparent', borderWidth: 0, paddingHorizontal: 8 },
   searchAction: { minWidth: 44, minHeight: 44, paddingHorizontal: 10, borderRadius: 22 },
