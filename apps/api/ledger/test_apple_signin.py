@@ -254,3 +254,16 @@ def test_cross_session_and_rate_limit_do_not_exchange_apple_proofs(keys, setting
         assert post(a, "challenge", {"process": "login"}).status_code == 200
     assert post(a, "challenge", {"process": "login"}).status_code == 429
     assert all(method == "GET" for method, _ in apple["calls"])
+
+
+def test_auto_link_off_requires_explicit_apple_connect(keys, settings, apple):
+    from .models import SignInPreference
+    user = get_user_model().objects.create_user(username='apple-owner', email='relay@privaterelay.appleid.com')
+    EmailAddress.objects.create(user=user, email=user.email, verified=True, primary=True)
+    SignInPreference.objects.create(user=user, auto_link=False)
+    fresh = Client()
+    response = submit(fresh, keys, settings, apple, challenge(fresh))
+    assert response.status_code == 409 and not SocialAccount.objects.exists()
+    owner = authenticated_client(user)
+    response = submit(owner, keys, settings, apple, challenge(owner, 'connect'), 'connect')
+    assert response.status_code == 200 and SocialAccount.objects.get().user_id == user.pk

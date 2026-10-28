@@ -1,4 +1,5 @@
 import RowGroup from './RowGroup';
+import { animateLayout } from './layoutTransition';
 import { ErrorState } from './UIStates';
 import { LoadingState } from './UIStates';
 import { NoticeBanner } from './UIStates';
@@ -22,7 +23,7 @@ import { SectionHeading, Button, useUI } from './ui';
 
 export type BillAttachmentsProps = { session: Session | null; groupId: string; expenseId: string; revision?: number; readOnly?: boolean; busy: boolean; onBusyChange: (busy: boolean) => void; onChanged?: () => Promise<void> };
 export default function BillAttachments({ session, groupId, expenseId, revision, readOnly = false, busy, onBusyChange, onChanged }: BillAttachmentsProps) {
-  const { ui } = useUI(), [items, setItems] = useState<MediaMetadata[]>([]), [canModify, setCanModify] = useState(false), [loading, setLoading] = useState(true), [working, setWorking] = useState(false), [error, setError] = useState('');
+  const { ui, motion } = useUI(), [items, setItems] = useState<MediaMetadata[]>([]), [canModify, setCanModify] = useState(false), [loading, setLoading] = useState(true), [working, setWorking] = useState(false), [error, setError] = useState('');
   useScreenRemovalLock(working);
   const [optionsId, setOptionsId] = useState<string | null>(null);
   const [pending, setPending] = useState<PendingMediaUpload | null>(null);
@@ -35,9 +36,8 @@ export default function BillAttachments({ session, groupId, expenseId, revision,
     let active = true; setLoading(true);
     if (!session) { setLoading(false); return; }
     void getDatabase().then(db => pendingMediaUpload(db, session, path)).then(saved => { if (active) setPending(saved); return request<MediaList>(session, path); })
-      .then(result => { if (active) { setItems(result.attachments); setCanModify(result.can_modify); } })
-      .catch(() => { if (active) setError('Could not load attachments. Refresh when online.'); })
-      .finally(() => { if (active) setLoading(false); });
+      .then(result => { if (active) { animateLayout(!!motion?.enabled); setItems(result.attachments); setCanModify(result.can_modify); setLoading(false); } })
+      .catch(() => { if (active) { animateLayout(!!motion?.enabled); setError('Could not load attachments. Refresh when online.'); setLoading(false); } });
     return () => { active = false; };
   }, [identity, session?.token, revision]);
   async function load() {
@@ -45,7 +45,7 @@ export default function BillAttachments({ session, groupId, expenseId, revision,
     const saved = await pendingMediaUpload(await getDatabase(), session, path);
     if (current()) setPending(saved);
     const result = await request<MediaList>(session, path);
-    if (current()) { setItems(result.attachments); setCanModify(result.can_modify); }
+    if (current()) { animateLayout(!!motion?.enabled); setItems(result.attachments); setCanModify(result.can_modify); }
     return result;
   }
   async function run(action: () => Promise<void>) {

@@ -74,3 +74,44 @@ test('saving invalidates cache without interrupting an unrelated foreground read
  assert.deepEqual(await foreground,{name:'Old'});assert.equal(cache.peek('a','/me'),undefined);
  assert.deepEqual(await cache.read('a','/me',async()=>({name:'New'})),{name:'New'});
 });
+
+test('returning to Me keeps confirmed settings through mutations and a pending background refresh', async () => {
+  const cache = new ReadPrefetch(); cache.configure('a', true);
+  const path = '/me/notifications/preferences';
+  const confirmed = { expense_updates: true, email_reminders: true, push_device_ids: ['phone'] };
+  await cache.read('a', path, async () => confirmed);
+  cache.invalidate('a');
+  assert.deepEqual(cache.peek('a', path), confirmed, 'Me must not paint Unavailable after another setting is saved');
+  assert.equal(cache.fresh('a', path), false, 'retained settings still need revalidation');
+  const pending = deferred<any>();
+  const refreshing = cache.read('a', path, async () => pending.promise);
+  const shared = cache.read('a', path, async () => assert.fail('duplicate background refresh'));
+  assert.deepEqual(cache.peek('a', path), confirmed, 'a pending refresh must not erase the row details');
+  pending.resolve({ ...confirmed, email_reminders: false });
+  await Promise.all([refreshing, shared]);
+  assert.equal(cache.peek<any>('a', path).email_reminders, false);
+});
+
+test('failed settings refresh retains known details and retries; account changes still erase them', async () => {
+  let now = 0; const cache = new ReadPrefetch(() => now); cache.configure('a', true);
+  await cache.read('a', '/me', async () => ({ avatar: 'known-photo' })); now = 60_001;
+  await assert.rejects(cache.read('a', '/me', async () => { throw Error('offline'); }));
+  assert.deepEqual(cache.peek('a', '/me'), { avatar: 'known-photo' });
+  await cache.read('a', '/me', async () => ({ avatar: 'new-photo' }));
+  assert.deepEqual(cache.peek('a', '/me'), { avatar: 'new-photo' });
+  cache.configure('b', true); assert.equal(cache.peek('b', '/me'), undefined);
+});
+
+
+test('a confirmed settings save wins over a late GET and survives a background pause', async () => {
+  let now = 0; const cache = new ReadPrefetch(() => now); cache.configure('a', true);
+  const path = '/me/sign-in-methods';
+  cache.confirm('a', path, { auto_link: true }); now = 60_001;
+  const pending = deferred<any>(); const reading = cache.warm('a', path, () => pending.promise); await tick();
+  assert.deepEqual(cache.peek('a', path), { auto_link: true });
+  cache.confirm('a', path, { auto_link: false });
+  pending.resolve({ auto_link: true }); await reading;
+  assert.deepEqual(cache.peek('a', path), { auto_link: false });
+  cache.configure('a', false); assert.deepEqual(cache.peek('a', path), { auto_link: false });
+  cache.configure('b', true); assert.equal(cache.peek('b', path), undefined);
+});

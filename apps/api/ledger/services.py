@@ -95,6 +95,7 @@ def expense_dict(expense):
         "shares": expense.shares,
         "split": expense.split,
         "date": expense.date.isoformat(),
+        "created_at": expense.created_at.isoformat(timespec="microseconds"),
         "category": expense.category,
         "category_auto": expense.category_auto,
         "notes": expense.notes,
@@ -145,6 +146,7 @@ def attribute_records(group, expenses=(), settlements=(), participants=None):
 def settlement_dict(payment):
     return {"id": str(payment.id), "sender": str(payment.sender_id), "recipient": str(payment.recipient_id),
             "amount": str(payment.amount), "method": payment.method, "recorded_by": payment.recorded_by_id,
+            "created_at": payment.created_at.isoformat(timespec="microseconds"),
             "date": payment.date.isoformat() if payment.date else None, "attempt_id": str(payment.attempt_id) if payment.attempt_id else None,
             "reversed": payment.reversed,
             **({"recorded_by_name": payment._recorded_by_name} if hasattr(payment, "_recorded_by_name") else {}),
@@ -184,7 +186,7 @@ def snapshot(group):
     participants = list(group.participants.select_related("user").order_by("id"))
     from .media import profile_photos
     photos = profile_photos(person.user_id for person in participants if not person.removed and person.user_id and person.user.is_active)
-    expenses = list(group.expenses.order_by("date", "id"))
+    expenses = list(group.expenses.order_by("date", "created_at", "id"))
     settlements = list(group.settlements.order_by("created_at", "id"))
     attribute_records(group, expenses, settlements, participants)
     opening = OpeningBalance.objects.filter(group=group).first()

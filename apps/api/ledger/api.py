@@ -90,6 +90,7 @@ from .schemas import (
     Revision,
     SeenNoticesIn,
     SettlementIn,
+    SignInPreferencesIn,
     SplitwiseImportIn,
     SplitwiseImportResult,
     SplitwisePreviewIn,
@@ -104,6 +105,7 @@ from .services import (
     snapshot,
     visible_group,
 )
+from .sign_in_methods import disconnect_provider, sign_in_methods, update_auto_link
 from .splitwise_import import import_splitwise, preview_splitwise
 from .store_review import groups_for_actor
 
@@ -303,6 +305,21 @@ def account_profile_update(request, body: DisplayNameIn):
 @api.get("/me/notifications/preferences")
 def notification_preferences(request):
     return notification_settings(request.auth)
+
+
+@api.get("/me/sign-in-methods")
+def account_sign_in_methods(request):
+    return sign_in_methods(request.auth)
+
+
+@api.put("/me/sign-in-methods/preferences")
+def account_sign_in_preferences(request, body: SignInPreferencesIn):
+    return update_auto_link(request.auth, body.auto_link)
+
+
+@api.delete("/me/sign-in-methods/{account_id}")
+def account_sign_in_disconnect(request, account_id: int):
+    return disconnect_provider(request.auth, account_id)
 
 
 @api.post('/me/feedback')

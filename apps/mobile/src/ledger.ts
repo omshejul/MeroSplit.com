@@ -32,13 +32,20 @@ export function legacyMatchesServer(legacy: Group, canonical: Group): boolean {
 export function previewPending(accepted: Group, commands: Command[]): Group {
   if (accepted.read_mode === 'summary' && commands.some(command => command.group_id === accepted.id && command.base_version !== accepted.version)) throw new Error('Balances show accepted records. Sync or review saved changes before previewing a new total.');
   let group: Group = JSON.parse(JSON.stringify(accepted));
-  function previewTransaction(row: GroupTransaction) {
+  function previewTransaction(row: GroupTransaction, added = false) {
     if (!group.transactions) return;
     const id = (value: GroupTransaction) => value.kind === 'bill' ? `bill:${value.bill.id}` : `payment:${value.payment.id}`;
-    // Use accepted date/kind/id order, keeping its downloaded rows and cursors.
-    const key = (value: GroupTransaction) => `${value.date ? 1 : 0}|${value.date ?? ''}|${id(value)}`;
+    const day = (value: GroupTransaction) => `${value.date ? 1 : 0}|${value.date ?? ''}`;
+    const key = (value: GroupTransaction) => {
+      const created = (value.kind === 'bill' ? value.bill.created_at : value.payment.created_at) ?? '';
+      const stamp = created.replace('+00:00', 'Z').replace(/(\.\d+)?Z$/, (_match, fraction) => (fraction ?? '.').padEnd(7, '0') + 'Z');
+      return `${day(value)}|${stamp}|${id(value)}`;
+    };
+    const previous = group.transactions.findIndex(value => id(value) === id(row));
+    // Editing/reversing an existing record must not move it within its date.
+    if (previous >= 0 && group.transactions[previous].date === row.date) { group.transactions[previous] = row; return; }
     const rows = group.transactions.filter(value => id(value) !== id(row));
-    const index = rows.findIndex(value => key(value) < key(row));
+    const index = rows.findIndex(value => added ? day(value) <= day(row) : key(value) < key(row));
     rows.splice(index < 0 ? rows.length : index, 0, row);
     group.transactions = rows;
   }
@@ -61,9 +68,11 @@ export function previewPending(accepted: Group, commands: Command[]): Group {
       if (before && !before.deleted) group.balances = addExpense(group.balances, before.paid, before.shares, -1n);
       const vectors = validateExpense(input.total, input.paid, input.split, group.participants.map(p => p.id));
       group.balances = addExpense(group.balances, vectors.paid, vectors.shares);
-      const expense = { ...input, ...vectors, deleted: false, version: before?.version ?? 0 };
-      group.expenses = [...group.expenses.filter(value => value.id !== input.id), expense];
-      previewTransaction({ kind: 'bill', date: expense.date, bill: expense });
+      const expense = { ...input, ...vectors, ...(before?.created_at ? { created_at: before.created_at } : {}), deleted: false, version: before?.version ?? 0 };
+      if (before) group.expenses = group.expenses.map(value => value.id === input.id ? expense : value);
+      else group.expenses.push(expense);
+      group.expenses.sort((a, b) => a.date.localeCompare(b.date) || (a.created_at && b.created_at ? a.created_at.localeCompare(b.created_at) : 0));
+      previewTransaction({ kind: 'bill', date: expense.date, bill: expense }, !before);
     } else if (command.method === 'POST' && command.path.endsWith('/reverse') && command.path.includes('/expenses/')) {
       const id = command.path.split('/').at(-2);
       const before = group.expenses.find(expense => expense.id === id);
@@ -77,7 +86,7 @@ export function previewPending(accepted: Group, commands: Command[]): Group {
         group.balances = addSettlement(group.balances, sender, recipient, amount);
         const payment = { id, sender, recipient, amount, date, provenance: 'pending_manual' };
         group.settlements.push(payment);
-        previewTransaction({ kind: 'payment', date: date ?? null, payment });
+        previewTransaction({ kind: 'payment', date: date ?? null, payment }, true);
       }
     } else if (command.path.endsWith('/reverse') && command.path.includes('/settlements/')) {
       const id = command.path.split('/').at(-2), settlement = group.settlements.find(value => value.id === id);

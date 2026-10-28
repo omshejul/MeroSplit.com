@@ -29,7 +29,7 @@ function harness(file: string, name: string, extra: Record<string, any> = {}) {
   let cursor = 0, states: any[] = [], effects: (() => void)[] = [], cleanups: Record<number, () => void> = {};
   const deps: Record<number, any[]> = {};
   const draftDiscard = { current: null as null | (() => Promise<boolean>) };
-  const env: Record<string, any> = { animateLayout() {}, PeopleSheet: 'PeopleSheet', currencySymbol, cachedRead: () => undefined, getDatabase: async () => ({}), draftDiscard, ScreenDraftDiscard: {}, useContext: () => draftDiscard, expenseDraftStore: () => ({ read: () => ({ then: (done: (value: null) => void) => { done(null); return { catch() {} }; } }), write: async () => {} }), React, Dialog, PersonInviteDialog: 'PersonInviteDialog', useToast: () => () => {}, DetailDialog: 'DetailDialog', useScreenRemovalLock() {}, validUPIAddress, View: 'View', ScrollView: 'ScrollView', KeyboardDialog: 'KeyboardDialog', Pressable: 'Pressable', Text: 'Text', LoadingSpinner: 'LoadingSpinner', NotificationSwitch: 'NotificationSwitch', PushSettings: 'PushSettings', BalanceStatements: 'BalanceStatements', DialogScrollBody: 'DialogScrollBody', Form: 'Form', SectionHeading: 'SectionHeading', Button: 'Button', Icon: 'Icon', SettingsRow: 'SettingsRow', BillPeople: 'BillPeople', DraftAttachment: 'DraftAttachment', LocalAttachment: 'LocalAttachment', AmountField: 'AmountField', TextField: 'TextField', DateField: 'DateField', ErrorText: 'ErrorText', Checkbox: { Item: 'Checkbox' }, RadioChoice: 'RadioChoice', Crypto: { randomUUID: () => 'bill-id' }, StyleSheet: { create: (value: any) => value }, Keyboard: { dismiss() {} }, useWindowDimensions: () => ({ height: 667 }), useSafeAreaInsets: () => ({ top: 20, bottom: 0 }), Platform: { OS: 'native' }, requestAnimationFrame: (fn: () => void) => fn(), useUI: () => ({ ui: {} }), formatMoney, integer, rupeesToPaise, validateExpense, ...extra,
+  const env: Record<string, any> = { animateLayout() {}, PeopleSheet: 'PeopleSheet', currencySymbol, cachedRead: () => undefined, rememberRead() {}, invalidateRead() {}, getDatabase: async () => ({}), draftDiscard, ScreenDraftDiscard: {}, useContext: () => draftDiscard, expenseDraftStore: () => ({ read: () => ({ then: (done: (value: null) => void) => { done(null); return { catch() {} }; } }), write: async () => {} }), React, Dialog, PersonInviteDialog: 'PersonInviteDialog', useToast: () => () => {}, DetailDialog: 'DetailDialog', useScreenRemovalLock() {}, validUPIAddress, View: 'View', ScrollView: 'ScrollView', KeyboardDialog: 'KeyboardDialog', Pressable: 'Pressable', Text: 'Text', LoadingSpinner: 'LoadingSpinner', NotificationSwitch: 'NotificationSwitch', PushSettings: 'PushSettings', BalanceStatements: 'BalanceStatements', DialogScrollBody: 'DialogScrollBody', Form: 'Form', SectionHeading: 'SectionHeading', Button: 'Button', Icon: 'Icon', SettingsRow: 'SettingsRow', BillPeople: 'BillPeople', DraftAttachment: 'DraftAttachment', LocalAttachment: 'LocalAttachment', AmountField: 'AmountField', TextField: 'TextField', DateField: 'DateField', ErrorText: 'ErrorText', Checkbox: { Item: 'Checkbox' }, RadioChoice: 'RadioChoice', Crypto: { randomUUID: () => 'bill-id' }, StyleSheet: { create: (value: any) => value }, Keyboard: { dismiss() {} }, useWindowDimensions: () => ({ height: 667 }), useSafeAreaInsets: () => ({ top: 20, bottom: 0 }), Platform: { OS: 'native' }, requestAnimationFrame: (fn: () => void) => fn(), useUI: () => ({ ui: {} }), formatMoney, integer, rupeesToPaise, validateExpense, ...extra,
     useState: (initial: any) => { const id = cursor++; if (!(id in states)) states[id] = typeof initial === 'function' ? initial() : initial; return [states[id], (value: any) => { states[id] = typeof value === 'function' ? value(states[id]) : value; }]; },
     useRef: (initial: any) => { const id = cursor++; return states[id] ??= { current: initial }; },
     useEffect: (fn: () => any, values: any[]) => { const id = cursor++; if (!deps[id] || values.some((value, i) => value !== deps[id][i])) { effects.push(() => { cleanups[id]?.(); cleanups[id] = fn(); }); deps[id] = values; } },
@@ -1288,4 +1288,47 @@ test('background payment review failure is quiet and leaves manual recording ava
   assert.equal(nodes(tree).find(n => n.props.title?.startsWith('Record '))!.props.disabled, false);
   assert.ok(!nodes(tree).some(n => n.type === 'LoadingSpinner' || n.type === 'ErrorText'));
   app.unmount();
+});
+
+test('Me notification summary stays On through device checks and never invents an initial Off', async () => {
+  const panel = notificationPanel({ expense_updates: true, email_reminders: true, notifications_enabled: true, push_device_ids: ['this-device'] });
+  const { app, props } = panel;
+  assert.equal(nodes(app.render(props)).find(node => node.type === 'SettingsRow')!.props.value, undefined);
+  app.commit(); await tick();
+  assert.equal(nodes(app.render(props)).find(node => node.type === 'SettingsRow')!.props.value, 'On');
+  props.push.state.ready = false; props.push.state.enabled = false; props.push.state.working = true;
+  assert.equal(nodes(app.render(props)).find(node => node.type === 'SettingsRow')!.props.value, 'On');
+  props.push.state.ready = true; props.push.state.enabled = true; props.push.state.working = false;
+  assert.equal(nodes(app.render(props)).find(node => node.type === 'SettingsRow')!.props.value, 'On');
+});
+
+test('Appearance keeps its divider when ProfileSettings continues into the Me list', () => {
+  const app = harness('src/ProfileSettings.tsx', 'ProfileSettings', {
+    colorFamilies: [{ value: 'orchid', label: 'Orchid' }], isDarkOnly: () => false,
+    useUI: () => ({ ui: {}, appearance: 'system', colorFamily: 'orchid', currency: 'INR' }),
+  });
+  const tree = app.render({ name: 'Asha', vpa: '', busy: false, onSaveName() {}, onSaveUPI() {}, onAppearance() {}, onColorFamily() {}, onCurrency() {} });
+  assert.equal(nodes(tree).find(node => node.type === 'SettingsRow' && node.props.label === 'Appearance')!.props.divider, true);
+});
+
+
+test('attachment reveal commits the loaded layout in one animated update and respects reduced motion', async () => {
+  for (const enabled of [true, false]) {
+    const animations: boolean[] = []; let finish!: (value: any) => void;
+    const app = harness('src/BillAttachments.tsx', 'BillAttachments', {
+      useUI: () => ({ ui: {}, motion: { enabled } }), animateLayout: (value: boolean) => animations.push(value),
+      accountOwner: () => 'owner', getDatabase: async () => ({}), pendingMediaUpload: async () => null,
+      request: () => new Promise(resolve => { finish = resolve; }), PrivateMediaImage: 'PrivateMediaImage', RemoveMediaMenu: 'RemoveMediaMenu', mediaSize: () => '1 KB',
+    });
+    const props = { session: { token: 'owner' }, groupId: 'g', expenseId: 'e', busy: false, onBusyChange() {} };
+    app.render(props); app.commit(); await tick();
+    assert.ok(nodes(app.render(props)).some(node => node.children.includes('Loading attachments…')));
+    finish({ attachments: [{ id: 'receipt', name: 'Receipt.pdf', content_type: 'application/pdf', size: 1000 }], can_modify: true });
+    await tick(); const tree = app.render(props);
+    assert.deepEqual(animations, [enabled]);
+    assert.ok(!nodes(tree).some(node => node.children.includes('Loading attachments…')));
+    assert.ok(find(tree, 'accessibilityLabel', 'Open Receipt.pdf'));
+    assert.ok(find(tree, 'label', 'Add photo or PDF'));
+    app.unmount();
+  }
 });

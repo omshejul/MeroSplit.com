@@ -44,11 +44,15 @@ def valid_process(request, process):
 
 class GoogleAccountAdapter(DefaultSocialAccountAdapter):
     def can_authenticate_by_email(self, login, email):
+        from .sign_in_methods import auto_link_enabled
+
         provider = login.account.provider
-        return (provider in {"google", "apple"}
-                and bool(getattr(self.request, f"{provider}_proof_consumed", False))
-                and bool(getattr(self.request, f"{provider}_email_authoritative", False))
-                and EmailAddress.objects.filter(email__iexact=email, verified=True, user__is_active=True).count() == 1)
+        if (provider not in {"google", "apple"}
+                or not getattr(self.request, f"{provider}_proof_consumed", False)
+                or not getattr(self.request, f"{provider}_email_authoritative", False)):
+            return False
+        users = list(EmailAddress.objects.filter(email__iexact=email, verified=True, user__is_active=True).values_list("user_id", flat=True)[:2])
+        return len(users) == 1 and auto_link_enabled(users[0])
 
     def pre_social_login(self, request, sociallogin):
         from .apple_signin import apple_error

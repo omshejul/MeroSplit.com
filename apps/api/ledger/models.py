@@ -4,7 +4,7 @@ from django.conf import settings
 from django.db import models
 from django.db.models import Q
 from django.db.models.fields.json import KeyTextTransform
-from django.db.models.functions import Coalesce
+from django.db.models.functions import Coalesce, Now
 from django.utils import timezone
 
 
@@ -55,13 +55,14 @@ class Expense(models.Model):
     shares = models.JSONField()
     split = models.JSONField()
     date = models.DateField()
+    created_at = models.DateTimeField(default=timezone.now, db_default=Now(), editable=False)
     category = models.CharField(max_length=40, default="other")
     category_auto = models.BooleanField(null=True, default=None)
     notes = models.TextField(blank=True, max_length=2000)
     deleted = models.BooleanField(default=False)
 
     class Meta:
-        indexes = [models.Index(fields=["group", "date", "id"], name="bill_history_keyset")]
+        indexes = [models.Index(fields=["group", "date", "created_at", "id"], name="bill_added_keyset")]
         constraints = [
             models.CheckConstraint(
                 condition=Q(total__gt=0, total__lte=1_000_000_000), name="expense_amount_bound"
@@ -114,8 +115,8 @@ class Settlement(models.Model):
 
     class Meta:
         indexes = [models.Index(fields=["group", "created_at", "id"], name="payment_history_keyset"),
-                   models.Index(fields=["group", "date", "id"], name="payment_transaction_date", condition=Q(date__isnull=False)),
-                   models.Index(fields=["group", "id"], name="payment_unknown_date", condition=Q(date__isnull=True))]
+                   models.Index(fields=["group", "date", "created_at", "id"], name="payment_transaction_date", condition=Q(date__isnull=False)),
+                   models.Index(fields=["group", "created_at", "id"], name="payment_unknown_date", condition=Q(date__isnull=True))]
         constraints = [
             models.CheckConstraint(
                 condition=Q(amount__gt=0, amount__lte=1_000_000_000), name="settlement_amount_bound"
@@ -175,6 +176,11 @@ class PaymentProfile(models.Model):
     user = models.OneToOneField(settings.AUTH_USER_MODEL, primary_key=True, on_delete=models.CASCADE)
     vpa = models.CharField(max_length=254)
     version = models.PositiveIntegerField(default=1)
+
+
+class SignInPreference(models.Model):
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, primary_key=True, on_delete=models.CASCADE)
+    auto_link = models.BooleanField(default=True)
 
 
 class Change(models.Model):

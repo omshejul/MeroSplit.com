@@ -5,10 +5,11 @@ export type Participant = { profile_photo?: ProfilePhoto | null; id: string; nam
 export type Expense = {
   id: string; version: number; description: string; total: string;
   added_by?: string | null; reversal?: { actor_name?: string | null };
+  created_at?: string;
   paid: Amounts; shares: Amounts; split: Split; date: string; category: string; category_auto?: boolean | null; notes: string; deleted: boolean;
 };
-export type Settlement = { id: string; sender: string; recipient: string; amount: string; provenance?: string; method?: string; recorded_by?: number; recorded_by_name?: string | null; reversal?: { actor_name?: string | null }; date?: string | null; attempt_id?: string | null; reversed?: boolean };
-export type BillRow = Pick<Expense, 'id' | 'version' | 'description' | 'total' | 'paid' | 'shares' | 'date' | 'category' | 'category_auto' | 'deleted'>;
+export type Settlement = { id: string; sender: string; recipient: string; amount: string; created_at?: string; provenance?: string; method?: string; recorded_by?: number; recorded_by_name?: string | null; reversal?: { actor_name?: string | null }; date?: string | null; attempt_id?: string | null; reversed?: boolean };
+export type BillRow = Pick<Expense, 'id' | 'version' | 'description' | 'total' | 'paid' | 'shares' | 'date' | 'created_at' | 'category' | 'category_auto' | 'deleted'>;
 export type GroupTransaction = { kind: 'bill'; date: string | null; bill: BillRow } | { kind: 'payment'; date: string | null; payment: Settlement };
 export type ActivityTarget = { kind: 'bill'; groupId: string; expenseId: string } | { kind: 'payment'; groupId: string; settlementId: string } | { kind: 'group'; groupId: string };
 export type ActivityPerson = { id: string; name: string; is_self: boolean };

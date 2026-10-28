@@ -22,6 +22,8 @@ export function expensePayload(expense: Expense, updating = false): Record<strin
 }
 
 export function cachedRead<T>(session: Session, path: string): T | undefined { return readPrefetch.peek<T>(readScope(session), path); }
+export function rememberRead<T>(session: Session, path: string, value: T): void { readPrefetch.confirm(readScope(session), path, value); }
+export function invalidateRead(session: Session, path: string): void { readPrefetch.invalidate(readScope(session), path); }
 export function prefetchRead<T>(session: Session, path: string): Promise<T | undefined> {
   return readPrefetch.warm<T>(readScope(session), path, signal => networkRequest<T>(session, path, 'GET', undefined, 'json', signal));
 }
