@@ -18,7 +18,7 @@ export function animateLayout(enabled: boolean) {
   }
   if (!enabled || preference?.matches) { stop(); return; }
   if (scheduled) return;
-  const scope = [...document.querySelectorAll('[role="dialog"]')].at(-1) ?? document.querySelector('form');
+  const scope = [...document.querySelectorAll('[role="dialog"]')].at(-1) ?? document.querySelector('form') ?? document.querySelector('[role="main"]');
   const selector = 'button, [role="button"], [role="checkbox"], [role="radio"], input, textarea';
   const controls = () => scope ? [...scope.querySelectorAll<HTMLElement>(selector)].filter(node => !node.parentElement?.closest(selector)) : [];
   const before = new Map(controls().map(node => [node, { rect: node.getBoundingClientRect(), opacity: getComputedStyle(node).opacity }]));

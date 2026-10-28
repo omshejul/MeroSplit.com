@@ -6,7 +6,7 @@ import KeyboardDialog from './KeyboardDialog';
 import React, { useEffect, useRef, useState } from 'react';
 import { AppState, Platform, useWindowDimensions, View } from 'react-native';
 
-import { request, cachedRead } from './api';
+import { request, cachedRead, rememberRead } from './api';
 import PushSettings, { type PushControls } from './PushSettings';
 import type { Session } from './types';
 import { SettingsRow } from './ui';
@@ -26,10 +26,11 @@ export default function AccountNotifications({ session, push, busy, onBusyChange
   const [open, setOpen] = useState(false), [preferences, setPreferences] = useState<Preferences | null>(() => cachedRead<Preferences>(session, '/me/notifications/preferences') ?? null), [error, setError] = useState(''), [working, setWorking] = useState(false), [pendingEnabled, setPendingEnabled] = useState<boolean | null>(null);
   const activeToken = useRef(session.token); activeToken.current = session.token;
   const row = useRef<React.ComponentRef<typeof View>>(null), mounted = useRef(true), inFlight = useRef(false), revision = useRef(0);
+  function accept(value: Preferences) { rememberRead(session, '/me/notifications/preferences', value); setPreferences(value); }
   async function load() {
     if (inFlight.current) return;
     const current = ++revision.current;
-    try { const value = confirmed(await request<Preferences>(session, '/me/notifications/preferences')); if (mounted.current && current === revision.current) { setPreferences(value); setError(''); } }
+    try { const value = confirmed(await request<Preferences>(session, '/me/notifications/preferences')); if (mounted.current && current === revision.current) { accept(value); setError(''); } }
     catch { if (mounted.current && current === revision.current) setError('Could not load notifications. Try again.'); }
   }
   useEffect(() => {
@@ -50,7 +51,7 @@ export default function AccountNotifications({ session, push, busy, onBusyChange
         try { if (await push.enable()) saved = confirmed(await request<Preferences>(session, '/me/notifications/preferences')); }
         catch { if (mounted.current) setError('Email is on. Could not enable push notifications.'); }
       }
-      if (mounted.current && activeToken.current === session.token) setPreferences(saved);
+      if (mounted.current && activeToken.current === session.token) accept(saved);
     }
     catch { if (mounted.current && activeToken.current === session.token) { setPreferences(previous); setError('Could not save notifications. Try again.'); } }
     finally { inFlight.current = false; if (mounted.current) { setWorking(false); setPendingEnabled(null); } }
@@ -60,7 +61,8 @@ export default function AccountNotifications({ session, push, busy, onBusyChange
   const pushAvailable = preferences?.push_device_ids ? preferences.push_device_ids.some(id => Platform.OS === 'web' || push.state.ready && (id !== push.state.installationId || push.state.enabled)) : push.state.enabled;
   const enabled = pendingEnabled ?? (!!preferences?.expense_updates && preferences.notifications_enabled !== false && (emailAvailable || pushAvailable));
   const disabled = busy || working || push.state.working || !preferences;
-  const value = !preferences ? 'Unavailable' : !enabled ? 'Off' : pushAvailable ? emailAvailable ? 'Push and email' : 'Push' : 'Email only';
+  const rowEnabled = pendingEnabled ?? (!!preferences?.expense_updates && preferences.notifications_enabled !== false);
+  const value = preferences ? rowEnabled ? 'On' : 'Off' : undefined;
   function close() { setOpen(false); requestAnimationFrame(() => row.current?.focus()); }
   useEffect(() => {
     if (Platform.OS !== 'web' || !open) return;
@@ -68,7 +70,7 @@ export default function AccountNotifications({ session, push, busy, onBusyChange
     document.addEventListener('keydown', escape, true);
     return () => document.removeEventListener('keydown', escape, true);
   }, [open, busy, working]);
-  return <><SettingsRow rowRef={row} icon="notifications" label="Notifications" description={error || undefined} value={value} disabled={busy} onPress={() => { setOpen(true); void load(); }} />
+  return <><SettingsRow rowRef={row} icon="notifications" label="Notifications" value={value} disabled={busy} onPress={() => { setOpen(true); void load(); }} />
     <KeyboardDialog visible={open} dismissable={!busy} onDismiss={() => { if (!busy) close(); }}><Dialog.Title aria-level={2}>Notifications</Dialog.Title>
       <DialogScrollBody maxHeight={Platform.OS === 'web' ? Math.min(560, Math.max(0, height - 224)) : 440} gap={12}>
         {preferences && <><NotificationSwitch icon="notifications" label="Notifications" checked={enabled} disabled={!!disabled} onChange={expense_updates => void update({ ...preferences, expense_updates, email_reminders: expense_updates ? true : preferences.email_reminders }, expense_updates)} />

@@ -185,6 +185,11 @@ class AppleTokenView(APIView):
 def after_account_deletion(actor, result):
     """Capture encrypted credentials before cascade; revoke only AFTER deletion commits."""
     accounts = list(SocialAccount.objects.filter(user=actor, provider="apple").values_list("pk", flat=True))
+    revoke_apple_accounts_after_commit(accounts, result)
+
+
+@sensitive_variables()
+def revoke_apple_accounts_after_commit(accounts, result):
     if not accounts:
         return
     encrypted = list(SocialToken.objects.filter(account_id__in=accounts).values_list("token_secret", flat=True))

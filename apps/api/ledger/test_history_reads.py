@@ -228,7 +228,7 @@ def test_ten_thousand_record_summary_has_bounded_bytes_queries_and_indexed_pages
     assert complete_bytes > len(encoded) * 100
     plans = {}
     for name, query, index in [
-        ("bills", current.expenses.order_by("-date", "-id")[:51], "bill_history_keyset"),
+        ("bills", current.expenses.order_by("-date", "-created_at", "-id")[:51], "bill_added_keyset"),
         ("settlements", current.settlements.order_by("-created_at", "-id")[:51], "payment_history_keyset"),
         ("attempts", current.attempts.order_by("-created_at", "-id")[:51], "attempt_history_keyset"),
         ("activity", current.changes.order_by("-sequence")[:51], "group_change_sequence"),
@@ -237,9 +237,9 @@ def test_ten_thousand_record_summary_has_bounded_bytes_queries_and_indexed_pages
         assert index in plan, plan
         plans[name] = json.loads(plan)[0]["Execution Time"]
     # A late keyset page must not scan/discard all preceding bill rows.
-    position = current.expenses.order_by("-date", "-id").values_list("date", "id")[9900]
+    position = current.expenses.order_by("-date", "-created_at", "-id").values_list("date", "created_at", "id")[9900]
     payload = signing.loads(summary["history"]["bills"]["next_cursor"], salt=CURSOR_SALT)
-    payload["after"] = [position[0].isoformat(), str(position[1])]
+    payload["after"] = [position[0].isoformat(), position[1].isoformat(), str(position[2])]
     with CaptureQueriesContext(connection) as late_queries:
         late = history_page(client.actor, group_id, "bills", cursor=signing.dumps(payload, salt=CURSOR_SALT))
     assert len(late["items"]) == 50
@@ -257,11 +257,11 @@ def test_ten_thousand_record_summary_has_bounded_bytes_queries_and_indexed_pages
     transaction_plans = {}
     transaction_cursor = signing.loads(summary["history"]["transactions"]["next_cursor"], salt=CURSOR_SALT)
     for name, query, index, position in [
-        ("dated", current.settlements.filter(date__isnull=False).order_by("-date", "-id"), "payment_transaction_date", 6500),
-        ("unknown", current.settlements.filter(date__isnull=True).order_by("-id"), "payment_unknown_date", 3200),
+        ("dated", current.settlements.filter(date__isnull=False).order_by("-date", "-created_at", "-id"), "payment_transaction_date", 6500),
+        ("unknown", current.settlements.filter(date__isnull=True).order_by("-created_at", "-id"), "payment_unknown_date", 3200),
     ]:
         payment = query[position]
-        transaction_cursor["after"] = [int(payment.date is not None), payment.date.isoformat() if payment.date else None, 1, str(payment.id)]
+        transaction_cursor["after"] = [int(payment.date is not None), payment.date.isoformat() if payment.date else None, payment.created_at.isoformat(), 1, str(payment.id)]
         with CaptureQueriesContext(connection) as transaction_queries:
             result = history_page(client.actor, group_id, "transactions", cursor=signing.dumps(transaction_cursor, salt=CURSOR_SALT))
         assert len(result["items"]) == 50 and len(json.dumps(result).encode()) < 40_000

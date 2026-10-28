@@ -137,12 +137,12 @@ test('PDF thumbnails use an authorized in-memory image; photos retain fresh priv
   await assert.rejects(mediaThumbnail(session, pdf, async () => { throw new ApiError(404, 'File not found'); }), error => error instanceof ApiError && error.status === 404);
 });
 
-test('avatar upload invalidates the old profile before and after its multipart write', async () => {
+test('avatar upload expires old profile reads while retaining the last confirmed photo', async () => {
  const previousFormData=globalThis.FormData, scope=readScope(session);globalThis.FormData=NativeFormData as unknown as typeof FormData;readPrefetch.configure(scope,true);
  try {
   await readPrefetch.read(scope,'/me',async()=>({avatar:{id:'old'}}));assert.ok(readPrefetch.peek(scope,'/me'));
-  const send:typeof fetch=async()=>{assert.equal(readPrefetch.peek(scope,'/me'),undefined);await readPrefetch.read(scope,'/me',async()=>({avatar:{id:'old'}}));return new Response(JSON.stringify({avatar:{id:'new'}}),{headers:{'content-type':'application/json'}})};
-  await uploadMedia(session,'/me/avatar',file,'new',send);assert.equal(readPrefetch.peek(scope,'/me'),undefined);
+  const send:typeof fetch=async()=>{assert.equal(readPrefetch.fresh(scope,'/me'),false);assert.deepEqual(readPrefetch.peek(scope,'/me'),{avatar:{id:'old'}});await readPrefetch.read(scope,'/me',async()=>({avatar:{id:'old'}}));return new Response(JSON.stringify({avatar:{id:'new'}}),{headers:{'content-type':'application/json'}})};
+  await uploadMedia(session,'/me/avatar',file,'new',send);assert.equal(readPrefetch.fresh(scope,'/me'),false);
   const fresh=await readPrefetch.read(scope,'/me',async()=>({avatar:{id:'new'}}));assert.deepEqual(fresh,{avatar:{id:'new'}});
  }finally{globalThis.FormData=previousFormData;readPrefetch.configure('',false)}
 });

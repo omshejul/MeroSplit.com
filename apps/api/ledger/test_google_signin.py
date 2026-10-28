@@ -336,3 +336,18 @@ def test_google_photo_claim_is_saved_and_exposed_as_profile_fallback(signer, set
     assert SocialAccount.objects.get().extra_data["picture"] == picture
     client.defaults["HTTP_X_SESSION_TOKEN"] = response.json()["meta"]["session_token"]
     assert send(client, "get", "/me").json()["profile_photo"] == {"url": picture}
+
+
+def test_auto_link_off_requires_explicit_connect_but_keeps_existing_google_login(signer, settings):
+    from .models import SignInPreference
+    user = get_user_model().objects.create_user(username='google-new@example.invalid', email='google-new@example.invalid')
+    EmailAddress.objects.create(user=user, email=user.email, verified=True, primary=True)
+    SignInPreference.objects.create(user=user, auto_link=False)
+    fresh = Client()
+    response = submit(fresh, token(signer, settings, challenge(fresh)))
+    assert response.status_code == 409 and not SocialAccount.objects.exists()
+    owner = authenticated_client(user)
+    assert submit(owner, token(signer, settings, challenge(owner, 'connect')), 'connect').status_code == 200
+    again = Client()
+    response = submit(again, token(signer, settings, challenge(again)))
+    assert response.status_code == 200 and response.json()['data']['user']['id'] == user.pk

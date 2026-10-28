@@ -391,3 +391,71 @@ def test_guarded_return_waits_for_group_change_and_rejects_after_lock(client, gr
             assert send(client, "post", f"/groups/{group[0]}/expenses", expense(group[1])).status_code == 200
         assert future.result(timeout=5) == 409
     assert not Settlement.objects.exists() and not CommandReceipt.objects.filter(command_id=body["command_id"]).exists()
+
+
+def test_same_date_bills_use_addition_order_and_edits_do_not_reorder_them(client, group):
+    food = expense(group[1])
+    food.update(id='ffffffff-ffff-4fff-8fff-ffffffffffff', description='Food', date='2026-10-28')
+    shared = expense(group[1])
+    shared.update(id='00000000-0000-4000-8000-000000000001', description='Shared expense', date='2026-10-28')
+    assert send(client, 'post', f'/groups/{group[0]}/expenses', food).status_code == 200
+    assert send(client, 'post', f'/groups/{group[0]}/expenses', shared).status_code == 200
+    first = page(client, group[0], limit=1).json()
+    assert first['items'][0]['bill']['description'] == 'Shared expense'
+    second = page(client, group[0], limit=1, cursor=first['next_cursor']).json()
+    assert second['items'][0]['bill']['description'] == 'Food'
+    edited = {**food, 'command_id': uid(), 'version': 1, 'description': 'Edited food'}
+    assert send(client, 'put', f'/groups/{group[0]}/expenses/{food["id"]}', edited).status_code == 200
+    assert page(client, group[0], limit=1).json()['items'][0]['bill']['description'] == 'Shared expense'
+    complete = send(client, 'get', f'/groups/{group[0]}').json()
+    assert [bill['description'] for bill in reversed(complete['expenses'])] == ['Shared expense', 'Edited food']
+
+
+def test_same_day_bill_and_payment_order_uses_addition_time_before_kind_or_uuid(client, group):
+    bills, payments = populate(group, count=2)
+    stamp = timezone.now()
+    for row, minutes in [(bills[1], 0), (payments[1], 1), (bills[0], 2), (payments[0], 3)]:
+        type(row).objects.filter(pk=row.pk).update(date=date(2026, 10, 28), created_at=stamp + timedelta(minutes=minutes))
+    found, cursor = [], None
+    while True:
+        result = page(client, group[0], limit=1, **({"cursor": cursor} if cursor else {})).json()
+        found.extend((item['kind'], item[item['kind']]['id']) for item in result['items'])
+        cursor = result['next_cursor']
+        if not cursor:
+            break
+    assert found == [('payment', str(payments[0].id)), ('bill', str(bills[0].id)), ('payment', str(payments[1].id)), ('bill', str(bills[1].id))]
+
+
+def test_addition_backfill_uses_first_audit_and_invalidates_old_caches(client, group):
+    import importlib
+
+    from django.apps import apps
+
+    first = expense(group[1])
+    assert send(client, 'post', f'/groups/{group[0]}/expenses', first).status_code == 200
+    saved = Change.objects.get(group_id=group[0], kind='expense_saved', data__id=first['id'])
+    original = timezone.now() - timedelta(days=2)
+    Change.objects.filter(pk=saved.pk).update(created_at=original)
+    current = Group.objects.get(pk=group[0])
+    Change.objects.create(group=current, sequence=current.version + 1, kind='expense_saved', data={'id': first['id']})
+    current.version += 1
+    current.save(update_fields=['version'])
+    imported = Expense.objects.create(group=current, description='Legacy bill', total=100, paid={}, shares={}, split={}, date=date(2026, 1, 2))
+    migration = importlib.import_module('ledger.migrations.0033_bill_addition_order')
+    with connection.schema_editor() as editor:
+        migration.restore_addition_order(apps, editor)
+    assert Expense.objects.get(pk=first['id']).created_at == original
+    assert Expense.objects.get(pk=imported.pk).created_at.isoformat() == '2026-01-02T00:00:00+00:00'
+    current.refresh_from_db()
+    assert current.version == saved.sequence + 2
+    assert Change.objects.filter(group=current, sequence=current.version, kind='history_order_updated').exists()
+
+
+def test_creation_timestamp_is_read_only_even_when_echoed_on_create_and_edit(client, group):
+    body = expense(group[1]) | {'created_at': '2099-01-01T00:00:00+00:00'}
+    assert send(client, 'post', f'/groups/{group[0]}/expenses', body).status_code == 200
+    record = Expense.objects.get(pk=body['id'])
+    assert record.created_at.year != 2099
+    body.update(command_id=uid(), version=1, created_at='2000-01-01T00:00:00+00:00')
+    assert send(client, 'put', f'/groups/{group[0]}/expenses/{body["id"]}', body).status_code == 200
+    assert Expense.objects.get(pk=body['id']).created_at == record.created_at

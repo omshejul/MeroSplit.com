@@ -5,7 +5,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { AppState, Platform, View } from 'react-native';
 import { Text } from 'react-native-paper';
 import * as Crypto from 'expo-crypto';
-import { accountOwner, request } from './api';
+import { accountOwner, cachedRead, invalidateRead, rememberRead, request } from './api';
 
 import { getDatabase } from './native';
 import NotificationSwitch from './NotificationSwitch';
@@ -30,21 +30,23 @@ function StatementDelivery({ delivery }: { delivery: Delivery | null }) {
 
 export default function BalanceStatements({ session, visible, emailEnabled, busy, onBusyChange }: { session: Session; visible: boolean; emailEnabled: boolean; busy: boolean; onBusyChange: (value: boolean) => void }) {
   const { ui } = useUI();
-  const [preferences, setPreferences] = useState<Preferences | null>(null), [error, setError] = useState(''), [working, setWorking] = useState(false);
+  const [preferences, setPreferences] = useState<Preferences | null>(() => cachedRead<Preferences>(session, `${path}/preferences`) ?? null), [error, setError] = useState(''), [working, setWorking] = useState(false);
   const mounted = useRef(true), lock = useRef(false), revision = useRef(0);
-  async function load() {
+  function accept(value: Preferences) { rememberRead(session, `${path}/preferences`, value); setPreferences(value); }
+  async function load(force = false) {
     if (lock.current || !visible) return;
+    if (force) invalidateRead(session, `${path}/preferences`);
     const current = ++revision.current;
     try {
       const value = await request<Preferences>(session, `${path}/preferences`);
-      if (mounted.current && revision.current === current) { setPreferences(value); setError(''); }
+      if (mounted.current && revision.current === current) { accept(value); setError(''); }
     } catch { if (mounted.current && revision.current === current) setError('Could not load balance statements. Try again.'); }
   }
   useEffect(() => { mounted.current = true; void load(); return () => { mounted.current = false; revision.current++; }; }, [session.token, visible, emailEnabled]);
   useEffect(() => {
     if (!visible || !preferences?.delivery || !['pending', 'sending'].includes(preferences.delivery.state) || preferences.delivery.error) return;
     const timer = setInterval(() => {
-      if (Platform.OS === 'web' ? document.visibilityState === 'visible' : AppState.currentState === 'active') void load();
+      if (Platform.OS === 'web' ? document.visibilityState === 'visible' : AppState.currentState === 'active') void load(true);
     }, 5000);
     return () => clearInterval(timer);
   }, [visible, preferences?.delivery?.id, preferences?.delivery?.state, preferences?.delivery?.error, session.token, emailEnabled]);
@@ -57,12 +59,12 @@ export default function BalanceStatements({ session, visible, emailEnabled, busy
   }
   async function update(enabled: boolean, frequency: Preferences['frequency']) {
     const value = await request<Preferences>(session, `${path}/preferences`, 'PUT', { enabled, frequency });
-    if (mounted.current) setPreferences(value);
+    if (mounted.current) accept(value);
   }
   async function send() {
     const delivery = await sendStatementRequest(await getDatabase(), accountOwner(session), Crypto.randomUUID,
       command_id => request<Delivery>(session, `${path}/send`, 'POST', { command_id }));
-    if (mounted.current) setPreferences(value => value && { ...value, delivery });
+    if (mounted.current && preferences) accept({ ...preferences, delivery });
   }
   const disabled = busy || working || !preferences;
   return <View role="region" accessibilityLabel="Balance statements" style={{ gap: 8 }}>

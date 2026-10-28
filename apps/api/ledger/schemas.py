@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date as Date
+from datetime import datetime as DateTime
 from typing import Annotated, Literal
 from uuid import UUID
 
@@ -74,6 +75,8 @@ class Split(Input):
 
 
 class ExpenseIn(Command):
+    # Read-only metadata may be echoed by older editing integrations.
+    created_at: DateTime | None = Field(default=None, exclude=True)
     id: UUID
     description: Annotated[str, Field(min_length=1, max_length=200, pattern=r"\S")]
     total: StrictStr
@@ -138,6 +141,10 @@ class BalanceStatementPreferencesIn(Input):
 class NotificationPreferencesIn(Input):
     expense_updates: StrictBool
     email_reminders: StrictBool
+
+
+class SignInPreferencesIn(Input):
+    auto_link: StrictBool
 
 
 class SeenNoticeIn(Input):
