@@ -86,7 +86,7 @@ def test_read_queues_once_and_cached_decision_never_changes_financial_or_notice_
         ("food", True, "food"),
         ("General", False, "general"),
         ("Other", False, "general"),
-        ("Electricity", False, "utilities"),
+        ("Electricity", False, "electricity"),
         ("A custom manual category", False, "general"),
     ],
 )
@@ -280,7 +280,7 @@ def test_deleted_account_purges_its_cosmetic_metadata_and_redacted_titles_do_not
     peer = get_user_model().objects.create_user(username=uid())
     Participant.objects.filter(pk=group[1][1]).update(user=peer)
     delete_account(client.actor)
-    assert not ExpenseCategoryCache.objects.exists()
+    assert not ExpenseCategoryCache.objects.filter(owner__isnull=False).exists()
     assert not ExpenseCategoryDecision.objects.exists()
     assert icons(authenticated_client(peer), body).json()["items"][0]["state"] == "manual"
     assert not ExpenseCategoryDecision.objects.exists()

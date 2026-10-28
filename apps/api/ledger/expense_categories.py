@@ -9,11 +9,17 @@ from uuid import UUID
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db import transaction
-from django.db.models import F, Q
+from django.db.models import Q
 from django.utils import timezone
 from ninja.errors import HttpError
 
-from .category_gateway import CATEGORIES, DEFINITION_REVISION, CategoryUnavailable, evaluate_title
+from .category_gateway import (
+    CATEGORIES,
+    DEFINITION_REVISION,
+    PREVIOUS_DEFINITION_REVISION,
+    CategoryUnavailable,
+    evaluate_title,
+)
 from .models import Expense, ExpenseCategoryCache, ExpenseCategoryDecision
 from .services import visible_group
 
@@ -31,8 +37,8 @@ def normalized_title(title):
     return " ".join(unicodedata.normalize("NFC", unicodedata.normalize("NFC", title).casefold()).split())
 
 
-def cache_revision():
-    return hashlib.sha256(f"{NORMALIZATION_VERSION}:{DEFINITION_REVISION}".encode()).hexdigest()
+def cache_revision(definition=None):
+    return hashlib.sha256(f"{NORMALIZATION_VERSION}:{definition or DEFINITION_REVISION}".encode()).hexdigest()
 
 
 def normalized_digest(title):
@@ -40,7 +46,7 @@ def normalized_digest(title):
 
 
 def _binding(actor, expense):
-    """The reader owns this cache, even when someone else created the shared-group bill."""
+    """Authorize each bill separately, sharing only its normalized title's category."""
     raw, revision, now = title_digest(expense.description), cache_revision(), timezone.now()
     legacy = ExpenseCategoryDecision.objects.filter(
         expense=expense, requested_by=actor, title_digest=raw, cache__isnull=True,
@@ -50,10 +56,19 @@ def _binding(actor, expense):
     error = legacy.last_error if legacy else ""
     if legacy and legacy.state == "claimed":
         state, error = "uncertain", "legacy_dispatch"
-    cache, _ = ExpenseCategoryCache.objects.select_for_update().get_or_create(
-        owner=actor, title_digest=normalized_digest(expense.description), definition_revision=revision,
+    cache, created = ExpenseCategoryCache.objects.select_for_update().get_or_create(
+        owner=None, title_digest=normalized_digest(expense.description), definition_revision=revision,
         defaults={"state": state, "last_error": error, "category": legacy.category if legacy and state == "ready" else ""},
     )
+    if created and cache.state == "pending":
+        # Existing successful results met the higher threshold. Keep the first
+        # one for everyone; unresolved old results get the new 50% evaluation.
+        previous = ExpenseCategoryCache.objects.filter(
+            title_digest=cache.title_digest, definition_revision=cache_revision(PREVIOUS_DEFINITION_REVISION),
+            state="ready", category__in=CATEGORIES,
+        ).exclude(category="general").order_by("pk").first()
+        if previous:
+            cache.state, cache.category = "ready", previous.category
     row, _ = ExpenseCategoryDecision.objects.get_or_create(
         expense=expense, requested_by=actor, title_digest=raw, definition_revision=revision,
         defaults={"cache": cache},
@@ -156,7 +171,7 @@ def _available(actor_id, expense_id):
 
 def _matches(row, expense, cache):
     return (expense is not None and automatic(expense)
-            and row.requested_by_id == cache.owner_id
+            and cache.owner_id is None
             and title_digest(expense.description) == row.title_digest
             and normalized_digest(expense.description) == cache.title_digest
             and row.definition_revision == cache.definition_revision == cache_revision())
@@ -263,7 +278,7 @@ def process_category_decisions(*, evaluate=None):
         expired | Q(cache__state="uncertain", cache__last_error="abandoned_claim"))
     for identifier in bindings.order_by("pk").values_list("pk", flat=True)[:100]:
         bindings.filter(pk=identifier).update(state="uncertain", category="", last_error="abandoned_claim", lease_until=None)
-    identifier = (ExpenseCategoryDecision.objects.filter(state="pending", cache__state="pending", cache__owner_id=F("requested_by_id"))
+    identifier = (ExpenseCategoryDecision.objects.filter(state="pending", cache__state="pending", cache__owner__isnull=True)
                   .order_by("pk").values_list("pk", flat=True).first())
     if identifier is None or not (claim := _claim(identifier)):
         return 0

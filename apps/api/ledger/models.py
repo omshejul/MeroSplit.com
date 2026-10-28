@@ -529,8 +529,8 @@ class GroupInviteLink(models.Model):
 
 
 class ExpenseCategoryCache(models.Model):
-    """One title-only classification per authenticated account and normalized title."""
-    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    """A shared title-only classification; owned rows support rolling upgrades."""
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.CASCADE)
     title_digest = models.CharField(max_length=64)
     definition_revision = models.CharField(max_length=64)
     state = models.CharField(max_length=12, default="pending")
@@ -541,6 +541,7 @@ class ExpenseCategoryCache(models.Model):
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=["owner", "title_digest", "definition_revision"], name="account_category_title_once"),
+                       models.UniqueConstraint(fields=["title_digest", "definition_revision"], condition=Q(owner__isnull=True), name="shared_category_title_once"),
                        models.CheckConstraint(condition=Q(state__in=["pending", "claimed", "ready", "uncertain", "failed"]), name="account_category_state")]
         indexes = [models.Index(fields=["state", "last_used_at"], name="account_category_retention")]
 

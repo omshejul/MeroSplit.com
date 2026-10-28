@@ -72,21 +72,20 @@ def test_cross_expense_reuse_is_read_only_and_manual_choices_win(client, group):
     assert before == (list(Expense.objects.values()), list(Change.objects.values()), list(ExpenseNotice.objects.values()))
 
 
-def test_two_readers_of_the_same_shared_bill_never_share_a_cache_or_result(client, group):
+def test_two_readers_share_the_same_title_cache_and_result(client, group):
     peer = get_user_model().objects.create_user(username=uid())
     Participant.objects.filter(pk=group[1][1]).update(user=peer)
     peer_client = authenticated_client(peer)
     body = bill(client, group)
     icons(client, body)
     categories.process_category_decisions(evaluate=lambda *args: "food")
-    assert icons(peer_client, body).json()["items"][0] | {} == {
-        "id": body["id"], "group_id": group[0], "title": body["description"], "category": None, "state": "pending"}
-    categories.process_category_decisions(evaluate=lambda *args: "water")
+    assert icons(peer_client, body).json()["items"][0]["category"] == "food"
+    assert categories.process_category_decisions(evaluate=lambda *args: pytest.fail("Global result must be reused")) == 0
     assert icons(client, body).json()["items"][0]["category"] == "food"
-    assert icons(peer_client, body).json()["items"][0]["category"] == "water"
-    assert ExpenseCategoryCache.objects.count() == ExpenseCategoryDecision.objects.count() == 2
+    assert icons(peer_client, body).json()["items"][0]["category"] == "food"
+    assert ExpenseCategoryCache.objects.count() == 1 and ExpenseCategoryDecision.objects.count() == 2
     assert set(ExpenseCategoryDecision.objects.values_list("requested_by_id", "cache__owner_id")) == {
-        (client.actor.pk, client.actor.pk), (peer.pk, peer.pk)}
+        (client.actor.pk, None), (peer.pk, None)}
 
 
 def test_normalization_and_model_revision_both_invalidate(client, group, monkeypatch):
@@ -101,13 +100,15 @@ def test_normalization_and_model_revision_both_invalidate(client, group, monkeyp
 
 
 def test_concurrent_different_bills_and_workers_use_one_normalized_dispatch(client, group):
-    other = another_group(client)
-    bills = [bill(client, group), bill(client, other, description="  synthetic   DINNER ")]
+    peer = authenticated_client(get_user_model().objects.create_user(username=uid()))
+    other = another_group(peer)
+    bills = [bill(client, group), bill(peer, other, description="  synthetic   DINNER ")]
+    readers = {bills[0]["id"]: client, bills[1]["id"]: peer}
     start = Barrier(2)
 
     def read(body):
         start.wait(5)
-        return categories.expense_icons(get_user_model().objects.get(pk=client.actor.pk), body["id"])
+        return categories.expense_icons(get_user_model().objects.get(pk=readers[body["id"]].actor.pk), body["id"])
 
     with ThreadPoolExecutor(max_workers=2) as pool:
         results = list(pool.map(lambda body: isolated(lambda: read(body)), bills))
@@ -129,12 +130,12 @@ def test_concurrent_different_bills_and_workers_use_one_normalized_dispatch(clie
             assert entered.wait(5)
             second = pool.submit(isolated, lambda: categories.process_category_decisions(evaluate=evaluate))
             assert second.result(5) == 0
-            assert all(icons(client, body).json()["items"][0]["state"] == "pending" for body in bills)
+            assert all(icons(readers[body["id"]], body).json()["items"][0]["state"] == "pending" for body in bills)
         finally:
             release.set()
         assert first.result(5) == 1
     assert len(calls) == 1
-    assert all(icons(client, body).json()["items"][0]["category"] == "food" for body in bills)
+    assert all(icons(readers[body["id"]], body).json()["items"][0]["category"] == "food" for body in bills)
 
 
 def test_disjoint_group_reverse_batches_acquire_cache_keys_in_one_order(client, group, monkeypatch):
@@ -231,9 +232,10 @@ def test_legacy_ready_and_claimed_rows_survive_migration_without_backfill(client
             old.objects.create(expense_id=body["id"], requested_by_id=client.actor.pk,
                                title_digest=categories.title_digest(body["description"]), definition_revision=categories.DEFINITION_REVISION,
                                state=state, category=category, lease_until=timezone.now() - timedelta(days=100))
+        MigrationExecutor(connection).migrate([("ledger", "0033_bill_addition_order")])
+        assert not ExpenseCategoryCache.objects.exists()
     finally:
         MigrationExecutor(connection).migrate(latest)
-    assert not ExpenseCategoryCache.objects.exists()
     assert ExpenseCategoryDecision.objects.filter(cache__isnull=True).count() == 2
     assert before == (list(Expense.objects.values(*fields)), list(Change.objects.exclude(kind="history_order_updated").values()))
     assert icons(client, ready).json()["items"][0]["category"] == "food"
