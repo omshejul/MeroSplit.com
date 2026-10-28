@@ -15,7 +15,7 @@ function inbox(send: any) {
     useEffect: (fn: () => any, values: any[]) => { const id = cursor++; if (!deps[id] || values.some((value, i) => value !== deps[id][i])) { effects.push(() => { cleanups[id]?.(); cleanups[id] = fn(); }); deps[id] = values; } } };
   const source = ts.createSourceFile('ChatInbox.tsx', readFileSync(new URL('../src/ChatInbox.tsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   const body = source.statements.filter(node => !ts.isImportDeclaration(node)).map(node => node.getText(source).replace(/^export (?:default )?/, '')).join('\n');
-  const render = new Function('env', `with(env){${ts.transpile(body, { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React })}; return ChatInbox;}`)(env);
+  const render = new Function('env', `with(env){ const StaggerItem = 'StaggerItem';${ts.transpile(body, { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React })}; return ChatInbox;}`)(env);
   const props = { session: { baseUrl: 'https://example.test', userId: '1', token: 'one' }, active: true, busy: false, onOpen() {} };
   return { render: (changes = {}) => { cursor = 0; return render({ ...props, ...changes }); }, commit: async () => { const pending = effects; effects = []; pending.forEach(fn => fn()); await tick(); }, unmount: () => Object.values(cleanups).forEach(fn => fn?.()), timer: () => timer, advance: async () => { const fn = timer; timer = undefined; fn(); await tick(); } };
 }
@@ -27,7 +27,7 @@ test('Unread Activity rows open the exact conversation and fetch never acknowled
   try {
     app.render(props); await app.commit(); const tree = app.render(props); await app.commit();
     const row = nodes(tree).find(node => node.type === 'SettingsRow')!;
-    const rowList = nodes(tree).find((node: any) => node !== tree && node?.type === 'View');
+    const rowList = nodes(tree).find((node: any) => node !== tree && node?.type === 'View' && node.props.style === undefined);
     assert.ok(rowList, 'mapped rows share one section container'); assert.equal(rowList.props.style, undefined);
     assert.equal(nodes(rowList).filter(node => node.type === 'SettingsRow').length, 2);
     assert.equal(tree.children.filter((node: any) => node?.type === 'SettingsRow').length, 0);

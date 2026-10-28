@@ -1,3 +1,4 @@
+import StaggerItem from './StaggerItem';
 import { categoryIcon, categoryMeaning, expenseCategory } from './categoryIcons';
 import type { ExpenseIcons, ExpenseIconRef } from './categoryIcons';
 import React, { useRef } from 'react';
@@ -30,7 +31,7 @@ export default function ActivityScreen({ categoryIcons = {}, onVisibleExpenses, 
     contentContainerStyle={[pageContentStyle, { gap: 0 }]} onRefresh={onRefresh} refreshing={false}
     ListHeaderComponent={<>{header}{error ? <View style={s.message}><ErrorText live>{error}</ErrorText><Button title="Try again" disabled={busy} onPress={onRefresh} /></View> : null}</>}
     ListEmptyComponent={showEmpty && !hasMore && !error ? <View style={s.empty}><Mascot size="empty" visible={emptyVerified && !busy} /><Text accessibilityLiveRegion="polite" style={ui.caption}>No activity yet</Text></View> : undefined}
-    renderItem={({ item, index }) => <ActivityRow categoryIcons={categoryIcons} item={item} busy={busy} onOpen={onOpen} showDay={index === 0 || activityDay(items[index - 1].created_at) !== activityDay(item.created_at)} />}
+    renderItem={({ item, index }) => <StaggerItem index={index}><ActivityRow categoryIcons={categoryIcons} item={item} busy={busy} onOpen={onOpen} showDay={index === 0 || activityDay(items[index - 1].created_at) !== activityDay(item.created_at)} /></StaggerItem>}
     ListFooterComponent={<>{footer}<View style={s.message}>{paging.canLoadMore && !paging.failed && <Button title="Load older" kind="text" disabled={paging.loading} onPress={paging.loadMore} />}{paging.failed && <><ErrorText live>Could not load earlier activity.</ErrorText><Button title="Retry" kind="text" onPress={paging.retry} /></>}</View></>} />;
 }
 

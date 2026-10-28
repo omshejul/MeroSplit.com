@@ -37,7 +37,7 @@ function production(file: string, extra: Record<string, any> = {}) {
   const body = source.statements.filter(node => !ts.isImportDeclaration(node)).map(node => node.getText(source).replace(/^export (?:default )?/, '')).join('\n');
   const names = source.statements.filter(ts.isFunctionDeclaration).map(node => node.name?.text).filter(Boolean);
   const code = ts.transpile(body, { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React });
-  const functions = new Function('env', `with(env){${code}; return {${names.join(',')}};}`)(env);
+  const functions = new Function('env', `with(env){ const StaggerItem = 'StaggerItem';${code}; return {${names.join(',')}};}`)(env);
   return {
     invoke(name: string, argument: any): any { return functions[name](argument); },
     render(name: string, props: any): Element { cursor = 0; return functions[name](props); },
@@ -466,7 +466,7 @@ test('the actual App restart guard blocks editing and waits for pending draft an
   const session={token:'current-account'},calls:string[]=[];
   const env:any={ready:true,session,expired:false,authHeld:false,foreground:true,screen:'home',tab:'Account',busy:false,reading:0,pulling:false,storageError:null,appLink:null,emailEntry:null,feedbackOpen:false,alertOpen:false,upiSetup:false,pushInvitationOpen:false,returnAttemptId:null,returns:[],reviewCommand:null,newPersonInvite:null,pushTarget:null,
    updateSafe:{current:false},activeSessionRef:{current:session},authEpoch:{current:1},lock:{current:false},AppState:{currentState:'active'},authHeldRef:{current:false},draftWrites:{current:Promise.resolve()},flushChatWrites:async()=>{calls.push('chat-flush');},accountOwner:()=> 'current-owner',restartForUpdate,...extra};
-  return {env,calls,restart:new Function('env',`with(env){${code};return restartUpdate;}`)(env)};
+  return {env,calls,restart:new Function('env',`with(env){ const StaggerItem = 'StaggerItem';${code};return restartUpdate;}`)(env)};
  };
  for(const state of [{screen:'expense'},{screen:'settle'},{busy:true},{reading:1},{pushInvitationOpen:true},{authHeld:true},{returnAttemptId:'payment'},{reviewCommand:{}}]) {
   const app=make(state);

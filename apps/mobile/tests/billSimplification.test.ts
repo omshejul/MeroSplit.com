@@ -35,7 +35,7 @@ function harness(file: string, name: string, extra: Record<string, any> = {}) {
   const source = ts.createSourceFile(file, readFileSync(new URL(`../${file}`, import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   const body = source.statements.filter(node => !ts.isImportDeclaration(node)).map(node => node.getText(source).replace(/^export (?:default )?/, '')).join('\n');
   const code = ts.transpile(body, { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React });
-  const render = new Function('env', `with(env){${code}; return ${name};}`)(env);
+  const render = new Function('env', `with(env){ const StaggerItem = 'StaggerItem';${code}; return ${name};}`)(env);
   return { render: (props: any) => {
     cursor = 0; let tree = render(props);
     // Arithmetic/render tests hydrate an empty draft immediately. Real SQLite recovery is covered in expenseDraft.test.ts.
@@ -63,7 +63,7 @@ function appAction(name: string, env: Record<string, any>) {
   const source = ts.createSourceFile('App.tsx', readFileSync(new URL('../App.tsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   const app = source.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === 'AppContent') as ts.FunctionDeclaration;
   const fn = app.body!.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === name)!;
-  return new Function('env', `with(env){${ts.transpile(fn.getText(source), { target: ts.ScriptTarget.ES2022 })};return ${name};}`)(env);
+  return new Function('env', `with(env){ const StaggerItem = 'StaggerItem';${ts.transpile(fn.getText(source), { target: ts.ScriptTarget.ES2022 })};return ${name};}`)(env);
 }
 
 test('combined export flushes saved work and never shares a stale account result', async () => {
@@ -978,7 +978,7 @@ test('Shared Button forwards Paper dialog spacing without changing disabled or p
   const declaration = source.statements.find(node => ts.isVariableStatement(node) && node.declarationList.declarations.some(value => value.name.getText(source) === 'Button'))!;
   const code = ts.transpile(declaration.getText(source).replace(/^export /, ''), { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React });
   const env = { React: { ...React, forwardRef: (render: any) => render }, useState: () => [false, () => {}], View: 'View', Text: 'Text', Pressable: 'Pressable', useUI: () => ({ palette: {}, ui: {} }), usePressFeedback: () => ({ pressedStyle: {} }), PaperButton: 'PaperButton', Icon: 'Icon', radii: { button: 8 }, Platform: { OS: 'ios' } };
-  const Button = new Function('env', `with(env){${code};return Button;}`)(env);
+  const Button = new Function('env', `with(env){ const StaggerItem = 'StaggerItem';${code};return Button;}`)(env);
   const injected = [{ marginRight: 8 }], onPress = () => {};
   for (const disabled of [false, true]) {
     const element = Button({ title: 'Cancel', kind: 'text', compact: true, style: injected, disabled, onPress });
@@ -1075,7 +1075,7 @@ function billDiscardDialog(env: Record<string, any>) {
   function visit(node: ts.Node) { if (ts.isJsxElement(node) && node.openingElement.tagName.getText(source) === 'KeyboardDialog') expression = node; ts.forEachChild(node, visit); }
   visit(source); assert.ok(expression);
   const code = ts.transpile(`const dialog = ${expression!.getText(source)}`, { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React });
-  return new Function('env', `with(env){${code};return dialog;}`)({ React, Dialog, PersonInviteDialog: 'PersonInviteDialog', useToast: () => () => {}, DetailDialog: 'DetailDialog', setDiscarding() {}, draftDiscard: { current: null }, discarding: false, discardLock: { current: false }, blocked: false, localBlocked: false, pending: env.discardBill ? { type: 'GO_BACK' } : null, setPending: (value: unknown) => env.setDiscardBill(!!value), KeyboardDialog: 'KeyboardDialog', DialogFocus: 'DialogFocus', CancelDialogActions: 'CancelDialogActions', Button: 'Button', ...env, navigation: { isFocused: () => true, dispatch: () => env.navigate('group') } });
+  return new Function('env', `with(env){ const StaggerItem = 'StaggerItem';${code};return dialog;}`)({ React, Dialog, PersonInviteDialog: 'PersonInviteDialog', useToast: () => () => {}, DetailDialog: 'DetailDialog', setDiscarding() {}, draftDiscard: { current: null }, discarding: false, discardLock: { current: false }, blocked: false, localBlocked: false, pending: env.discardBill ? { type: 'GO_BACK' } : null, setPending: (value: unknown) => env.setDiscardBill(!!value), KeyboardDialog: 'KeyboardDialog', DialogFocus: 'DialogFocus', CancelDialogActions: 'CancelDialogActions', Button: 'Button', ...env, navigation: { isFocused: () => true, dispatch: () => env.navigate('group') } });
 }
 
 test('Back asks to discard the bill, Cancel retains the form and Discard leaves with the trash action', async () => {

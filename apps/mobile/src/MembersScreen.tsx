@@ -1,3 +1,4 @@
+import StaggerItem from './StaggerItem';
 import PersonInviteDialog from './PersonInviteDialog';
 import { useToast } from './Toast';
 import DetailDialog from './DetailDialog';
@@ -366,7 +367,7 @@ function MemberSettings({ group, selfId, busy, addPersonRequest = 0, onAction, o
       <FeedbackNote section="group-link" feedback={feedback} />
     </View>}
     <View>
-      {group.participants.filter(person => !person.removed).map(person => <MemberRow key={person.id} group={group} person={person} selfId={selfId} organizer={organizer} disabled={disabled} onInvite={() => setManagedPersonId(person.id)} />)}
+      {group.participants.filter(person => !person.removed).map((person, index) => <StaggerItem key={person.id} index={index}><MemberRow group={group} person={person} selfId={selfId} organizer={organizer} disabled={disabled} onInvite={() => setManagedPersonId(person.id)} /></StaggerItem>)}
     </View>
     {previousMembers.length > 0 && <SettingsRow icon="people" label="Previous members" value={String(previousMembers.length)} onPress={() => setShowPrevious(true)} />}
     {showPrevious && previousMembers.length > 0 && <PreviousMembersDialog people={previousMembers} onClose={() => setShowPrevious(false)} />}

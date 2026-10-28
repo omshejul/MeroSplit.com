@@ -3,7 +3,8 @@ import { Dialog } from './DialogParts';
 import { useScrollPagination } from './useScrollPagination';
 import { APP_ORIGIN } from './appLinks';
 import React, { useEffect, useRef, useState } from 'react';
-import { FlatList, Linking, Platform, ScrollView, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { FlatList, KeyboardAvoidingView, Linking, Platform, ScrollView, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import * as Crypto from 'expo-crypto';
 import { accountOwner, ApiError, request } from './api';
@@ -55,7 +56,7 @@ export function ChatComposer({ text, disabled, sendDisabled, onChange, onSend }:
     <TextInput {...inputColors} accessibilityLabel="Message" placeholder="Message…" placeholderTextColor={palette.muted}
       multiline onLayout={event => setExpanded(event.nativeEvent.layout.height > (ui.body?.lineHeight ?? 23) * fontScale + 25)} maxLength={2000} value={text} onChangeText={onChange} editable={!disabled} underlineColorAndroid="transparent"
       style={[ui.body, { flex: 1, minWidth: 0, minHeight: 44, maxHeight: 144, paddingHorizontal: 14, paddingTop: 11, paddingBottom: 11, backgroundColor: 'transparent', textAlignVertical: 'top' }]} />
-    <Button iconOnly icon={({ color }) => <View style={{ transform: [{ rotate: '180deg' }] }}><Icon name="down" size={22} color={color} /></View>}
+    <Button iconOnly icon={({ color }) => <Icon name="send" size={22} color={color} />}
       accessibilityLabel="Send message" kind="primary" disabled={disabled || sendDisabled || !text.trim()} onPress={onSend}
       hitSlop={0} style={{ width: 44, height: 44, borderRadius: 22 }} />
   </ChatComposerSurface>;
@@ -73,7 +74,7 @@ export function ChatEmptyState({ onSuggest, disabled }: { onSuggest: (text: stri
 }
 
 export default function BillChatScreen({ session, groupId, expenseId, active, online, onRead, onUnsentChange, billTitle, billAmount, onOpenBill }: { billTitle?: string; billAmount?: string; onOpenBill?: () => void; session: Session; groupId: string; expenseId: string; active: boolean; online: boolean; onRead?: () => void; onUnsentChange?: (unsent: boolean) => void }) {
-  const { ui, palette } = useUI(), { height } = useWindowDimensions(), path = chatPath(groupId, expenseId);
+  const { ui, palette } = useUI(), { height } = useWindowDimensions(), path = chatPath(groupId, expenseId), insets = useSafeAreaInsets();
   const [messages, setMessages] = useState<ChatMessage[]>([]), [page, setPage] = useState<ChatPage | null>(null), [work, setWork] = useState<ChatWork>({ draft: '', pending: [] });
   const [reconnected, setReconnected] = useState(0), [ready, setReady] = useState(false), [error, setError] = useState(''), [sending, setSending] = useState('');
   const [visible, setVisible] = useState<string[]>([]), [policy, setPolicy] = useState(false), [working, setWorking] = useState(false);
@@ -206,7 +207,8 @@ export default function BillChatScreen({ session, groupId, expenseId, active, on
     return value ? value.messages.some(row => !before.has(row.id)) : null;
   } });
   const newestFirst = [...messages].reverse();
-  return <View role="main" style={{ flex: 1, width: '100%', maxWidth: 760, alignSelf: 'center' }}>
+  const Viewport = Platform.OS === 'android' ? KeyboardAvoidingView : View;
+  return <Viewport role="main" {...(Platform.OS === 'android' ? { behavior: 'height' as const, keyboardVerticalOffset: insets.top } : {})} style={{ flex: 1, width: '100%', maxWidth: 760, alignSelf: 'center' }}>
     <View style={{ flexDirection: 'row', paddingHorizontal: 16, alignItems: 'center' }}><Button kind="plain" accessibilityLabel={`View bill, ${billTitle ?? 'Bill'}${billAmount ? `, ${billAmount}` : ''}`} disabled={!onOpenBill} onPress={onOpenBill} style={{ flex: 1, minWidth: 0, minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
       <Icon name="bill" size={20} color={palette.muted} /><Text numberOfLines={1} style={[ui.body, { flex: 1, fontWeight: '500' }]}>{billTitle ?? 'Bill'}</Text>{billAmount && <Text style={ui.caption}>{billAmount}</Text>}{onOpenBill && <Icon name="next" size={16} color={palette.muted} />}
     </Button><IconAction name="settings" label="Chat settings" disabled={!active} onPress={() => setSettings(true)} /></View>
@@ -233,5 +235,5 @@ export default function BillChatScreen({ session, groupId, expenseId, active, on
       <Dialog.Actions><View style={{ flex: 1, gap: 8 }}><Button title="Agree" kind="primary" disabled={working || !online} onPress={() => void control(async () => { await request(session, '/me/chat-policy', 'PUT', { version: page?.policy_version ?? 1 }); if (current()) { setPage(previous => previous ? { ...previous, policy_accepted: true } : previous); setPolicy(false); await send(true); } })} /><Button title="Cancel" kind="text" disabled={working} onPress={() => setPolicy(false)} /></View></Dialog.Actions>
     </KeyboardDialog>
     <ChatControls key={report?.message.id ?? 'settings'} report={report} blocked={settings ? page?.blocked_users ?? [] : null} policyUrl={APP_ORIGIN + '/chat-policy'} busy={working} error={error} onClose={() => { setReport(null); setSettings(false); }} onReport={reason => void control(async () => { if (!report) return; await request(session, path + '/report', 'POST', { message_id: report.message.id, kind: report.kind, reason }); if (current()) setReport(null); })} onUnblock={id => void control(() => block(id, false))} />
-  </View>;
+  </Viewport>;
 }
