@@ -149,7 +149,7 @@ def test_logged_out_request_retained_for_normal_login_then_explicit_consent():
     assert client.session[oauth.MCP_PENDING_SESSION_KEY] == request_id
     assert client.get("/api/v1/me/mcp/pending").json() == {"authorization_url": f"/oauth/authorize?request={request_id}"}
     response = client.get(f"/oauth/authorize?request={request_id}")
-    assert response.status_code == 200 and b"Allow" in response.content and b"Cancel" in response.content
+    assert response.status_code == 200 and b"Connect Synthetic client" in response.content and b"Cancel" in response.content
     assert actor.email.encode() in response.content and not McpOAuthGrant.objects.exists()
 
 
@@ -550,6 +550,7 @@ def test_https_consent_uses_hidden_form_csrf_without_header(settings, host, deci
     assert "form-action" not in policy
     assert "'self'" in policy["style-src"] and "'self'" in policy["font-src"]
     assert policy["default-src"] == ["'none'"]
+    assert policy["img-src"] == ["'self'"]
     assert policy["frame-ancestors"] == ["'none'"] and policy["base-uri"] == ["'none'"]
     assert b'action="/oauth/authorize"' in page.content
     assert b'name="referrer" content="same-origin"' in page.content
