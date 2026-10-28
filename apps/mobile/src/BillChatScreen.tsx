@@ -87,12 +87,12 @@ export function ChatEmptyState({ onSuggest, disabled }: { onSuggest: (text: stri
 }
 
 export default function BillChatScreen({ session, groupId, expenseId, active, online, onRead, onUnsentChange, billTitle, billAmount, onOpenBill }: { billTitle?: string; billAmount?: string; onOpenBill?: () => void; session: Session; groupId: string; expenseId: string; active: boolean; online: boolean; onRead?: () => void; onUnsentChange?: (unsent: boolean) => void }) {
-  const { ui, palette } = useUI(), { height } = useWindowDimensions(), path = chatPath(groupId, expenseId), insets = useSafeAreaInsets();
+  const { ui, palette, motion } = useUI(), { height } = useWindowDimensions(), path = chatPath(groupId, expenseId), insets = useSafeAreaInsets();
   const [messages, setMessages] = useState<ChatMessage[]>([]), [page, setPage] = useState<ChatPage | null>(null), [work, setWork] = useState<ChatWork>({ draft: '', pending: [] });
   const [reconnected, setReconnected] = useState(0), [ready, setReady] = useState(false), [error, setError] = useState(''), [sending, setSending] = useState('');
   const [visible, setVisible] = useState<string[]>([]), [policy, setPolicy] = useState(false), [working, setWorking] = useState(false);
   const [report, setReport] = useState<{ message: ChatMessage; kind: 'message' | 'user' } | null>(null), [settings, setSettings] = useState(false), [newMessages, setNewMessages] = useState(false), [denied, setDenied] = useState(false);
-  const list = useRef<FlatList<ChatDisplayMessage>>(null), rows = useRef(messages), viewable = useRef(visible), follow = useRef(true), incoming = useRef<ChatMessage[]>([]), forceFollow = useRef(false), alive = useRef(true), draft = useRef('');
+  const list = useRef<FlatList<ChatDisplayMessage>>(null), rows = useRef(messages), viewable = useRef(visible), follow = useRef(true), incoming = useRef<ChatMessage[]>([]), forceFollow = useRef(false), alive = useRef(true), draft = useRef(''), laidOutMessages = useRef(false);
   const scope = `${accountOwner(session)}|${session.token}|${path}`, currentScope = useRef(scope); currentScope.current = scope;
   rows.current = messages; viewable.current = visible;
   const ackVisible = useRef<() => void>(() => {}), readFailed = useRef(false), reads = useRef<ReturnType<typeof startChatReads> | null>(null), sendingLock = useRef(false), composingLock = useRef(false), controlLock = useRef(false), acked = useRef(new Set<string>());
@@ -176,7 +176,7 @@ export default function BillChatScreen({ session, groupId, expenseId, active, on
       await queueChatMessage(await getDatabase(), session, path, id, text);
       if (!current()) return;
       if (draft.current === text) draft.current = '';
-      await reloadWork(); follow.current = true;
+      follow.current = true; forceFollow.current = true; setNewMessages(false); await reloadWork();
       await retry(id);
     } catch (cause) { if (current()) setError(cause instanceof Error ? cause.message : 'Could not save the message.'); }
     finally { composingLock.current = false; }
@@ -211,7 +211,7 @@ export default function BillChatScreen({ session, groupId, expenseId, active, on
   }, [ready, enabled, page?.can_send, reconnected]);
   function showNew() {
     const waiting = incoming.current; incoming.current = []; follow.current = true; forceFollow.current = true; setNewMessages(false);
-    setMessages(previous => mergeChatMessages(previous, waiting)); list.current?.scrollToOffset({ offset: 0, animated: false });
+    setMessages(previous => mergeChatMessages(previous, waiting)); list.current?.scrollToOffset({ offset: 0, animated: motion.enabled });
   }
   const paging = useScrollPagination({ scope, cursor: page?.older_cursor, enabled, load: async signal => {
     follow.current = false; forceFollow.current = false;
@@ -230,7 +230,7 @@ export default function BillChatScreen({ session, groupId, expenseId, active, on
       onViewableItemsChanged={onViewable.current} viewabilityConfig={viewability.current}
       onScrollBeginDrag={() => { forceFollow.current = false; follow.current = false; }}
       onScroll={event => { const { contentOffset } = event.nativeEvent; const atBottom = contentOffset.y < 80; if (atBottom) { forceFollow.current = false; follow.current = true; setNewMessages(false); if (incoming.current.length) showNew(); } else if (!forceFollow.current) follow.current = false; }} scrollEventThrottle={100}
-      onContentSizeChange={(width, height) => { if ((follow.current || forceFollow.current) && !paging.loading) { list.current?.scrollToOffset({ offset: 0, animated: false }); forceFollow.current = false; } }}
+      onContentSizeChange={(width, height) => { if ((follow.current || forceFollow.current) && !paging.loading) { forceFollow.current = true; list.current?.scrollToOffset({ offset: 0, animated: motion.enabled && laidOutMessages.current }); } if (newestFirst.length) laidOutMessages.current = true; }}
       ListFooterComponent={messages.length ? <View style={{ paddingVertical: 12 }}>{paging.canLoadMore && !paging.failed && <Button title={paging.loading ? 'Loading…' : 'Load older'} style={{ minWidth: 120 }} kind="text" disabled={paging.loading} onPress={paging.loadMore} />}{paging.failed && <Button title="Retry" kind="text" disabled={!enabled} onPress={paging.retry} />}</View> : undefined}
       ListEmptyComponent={<View style={{ flex: 1 }}>{page && <ChatEmptyState disabled={!ready || !active || denied || !page.can_send || !!work.draft} onSuggest={typed} />}</View>}
       renderItem={({ item, index }) => <ChatMessageRow message={item} own={item.sender_id === session.userId} active={item.pending?.rejected ? active : enabled} showDate={index === newestFirst.length - 1 || new Date(newestFirst[index + 1].created_at).toDateString() !== new Date(item.created_at).toDateString()} onReport={kind => setReport({ message: item, kind })} onBlock={() => void control(() => block(item.sender_id, true))}
