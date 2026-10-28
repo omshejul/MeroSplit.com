@@ -1,3 +1,4 @@
+import StaggerItem from './StaggerItem';
 import DetailDialog from './DetailDialog';
 import TransactionIcon from './TransactionIcon';
 import { categoryIcon, categoryMeaning, expenseCategory } from './categoryIcons';
@@ -49,7 +50,7 @@ function LegacyPayments({ group, selfId, accepted, busy, onPayment, onPrefetchPa
   const paging = useScrollPagination({ scope: scope + '|payments', cursor: group.history?.settlements?.next_cursor,
     enabled: enabled && !busy, load: signal => onPage?.('settlements', 'next', undefined, signal, accepted) ?? Promise.resolve(false) });
   return <ScrollView ref={ref} nestedScrollEnabled scrollEventThrottle={100} style={{ maxHeight: 320 }}>
-    {payments.map(payment => <PaymentRow key={payment.id} payment={payment} accepted={accepted} group={group} selfId={selfId} busy={busy} onPayment={onPayment} onPrefetchPayment={onPrefetchPayment} />)}
+    {payments.map((payment, index) => <StaggerItem key={payment.id} index={index}><PaymentRow payment={payment} accepted={accepted} group={group} selfId={selfId} busy={busy} onPayment={onPayment} onPrefetchPayment={onPrefetchPayment} /></StaggerItem>)}
     {!payments.length && <Text>{group.history?.settlements?.next_cursor ? 'No payments on this page.' : 'No payments recorded.'}</Text>}
     <PagingFooter paging={paging} />
   </ScrollView>;
@@ -237,15 +238,15 @@ export default function GroupScreen({ categoryIcons, header, noticeVisibility, g
       onScroll={event => { setScrollEpoch(value => value + 1); }}
       keyboardShouldPersistTaps="handled" onViewableItemsChanged={viewable.current} onRefresh={onRefresh} refreshing={refreshing}
       keyExtractor={row => row.kind === 'bill' ? `bill:${row.bill.id}` : `payment:${row.payment.id}`}
-      contentContainerStyle={[pageContentStyle, { gap: 0, paddingBottom: 104 }]} renderItem={({ item: row }) => row.kind === 'payment'
+      contentContainerStyle={[pageContentStyle, { gap: 0, paddingBottom: 104 }]} renderItem={({ item: row, index }) => <StaggerItem index={index}>{row.kind === 'payment'
         ? <PaymentRow payment={row.payment} accepted={accepted} group={group} selfId={selfId} busy={busy} onPayment={onPayment} onPrefetchPayment={onPrefetchPayment} />
-        : <BillTimelineRow categoryIcons={categoryIcons} expense={row.bill} group={group} selfId={selfId} busy={busy} onExpense={onExpense} onPrefetchBill={onPrefetchBill} noticeVisibility={group === accepted ? visibility : undefined} />}
+        : <BillTimelineRow categoryIcons={categoryIcons} expense={row.bill} group={group} selfId={selfId} busy={busy} onExpense={onExpense} onPrefetchBill={onPrefetchBill} noticeVisibility={group === accepted ? visibility : undefined} />}</StaggerItem>}
       ListHeaderComponent={<View style={s.content}>{header}
     {!!previewError && <Text>{previewError}</Text>}
     {group !== accepted && <Text style={ui.caption}>Balances show a pending preview.</Text>}
     {group.archived && <Text style={ui.notice}>Archived. Reopen in settings to make changes.</Text>}
     {!transfers.length && <Text style={celebrateSettled ? [ui.numeric, s.settled] : ui.caption}>{celebrateSettled ? '🎉 All settled' : 'All settled'}</Text>}
-    {transfers.map(transfer => <PersonalTransferRow key={`${transfer.sender}:${transfer.recipient}`} transfer={transfer} group={group} selfId={selfId} disabled={busy || !!group.archived || pending.length > 0} onSettle={onSettle} onExplain={(transfer, restoreFocus) => setExplanation({ group, accepted, commands: pending, selfId, transfer, restoreFocus, load: onLoadBalanceGroup })} />)}
+    {transfers.map((transfer, index) => <StaggerItem key={`${transfer.sender}:${transfer.recipient}`} index={index}><PersonalTransferRow transfer={transfer} group={group} selfId={selfId} disabled={busy || !!group.archived || pending.length > 0} onSettle={onSettle} onExplain={(transfer, restoreFocus) => setExplanation({ group, accepted, commands: pending, selfId, transfer, restoreFocus, load: onLoadBalanceGroup })} /></StaggerItem>)}
     <View style={s.logHeading}>
       <SectionHeading style={[ui.caption, s.logCaption, s.flex]}>Bills and payments</SectionHeading>
       {searchable && !showSearch && <Button title="Search" icon="search" compact small accessibilityLabel="Search bills" onPress={() => setSearching(true)} />}

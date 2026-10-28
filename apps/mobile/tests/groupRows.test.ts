@@ -17,7 +17,7 @@ function production(name: string, overrides: Record<string, any> = {}) {
   const helpers = source.statements.filter(node => ts.isVariableStatement(node) && node.declarationList.declarations.some(d => ['billImpact', 'participantName', 'displayDate', 's'].includes(d.name.getText(source)))).map(node => node.getText(source)).join('\n');
   const node = source.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === name); assert.ok(node);
   const code = ts.transpile(`${helpers}\n${node.getText(source).replace(/^export (?:default )?/, '')}\nreturn ${name};`, { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React });
-  return new Function('env', `with(env) { ${code} }`)({ React, Animated, Keyboard: { dismiss() {} }, TextInput: 'TextInput', Platform: { OS: 'web' }, useLayoutEffect: () => {}, useEffect: () => {}, categoryIcon, categoryMeaning, expenseCategory, TransactionIcon: 'TransactionIcon', PagingFooter: 'PagingFooter', LegacyPayments: 'LegacyPayments', FlatList: 'FlatList', ScrollView: 'ScrollView', pageContentStyle: {}, LoadingSpinner: 'LoadingSpinner', useScrollPagination: () => ({ events: {}, loading: false, failed: false }), expenseBalanceChange, formatMoney, paymentPresentation, personalSettlements, personalTransfers, BalanceExplanation: 'BalanceExplanation', balanceKey: () => '', useRef: () => ({ current: null }), useState: (initial: unknown) => [typeof initial === 'function' ? initial() : initial, () => {}], Avatar: 'Avatar', AmountText: 'AmountText', Text: 'Text', SectionHeading: 'SectionHeading', View: 'View', Pressable: 'Pressable', Icon: 'Icon', Button: 'Button', RecordSummary: 'RecordSummary', ParticipantAmountRow: 'ParticipantAmountRow', LogRow: 'LogRow', LogDate: 'LogDate', BillEffect: 'BillEffect', VisibleExpense: 'VisibleExpense', HistoryPages: 'HistoryPages', BillSearch: 'BillSearch', PaymentRow: 'PaymentRow', BillTimelineRow: 'BillTimelineRow', DetailDialog: 'DetailDialog', BillPeople: 'BillPeople', RecordAttribution: 'RecordAttribution', PersonalTransferRow: 'PersonalTransferRow', PendingChangeRow: 'PendingChangeRow', StyleSheet: { create: (styles: unknown) => styles }, radii: { surface: 16 }, balanceColor: (amount: string) => BigInt(amount) < 0n ? 'negative' : 'positive', useUI: () => ({ motion: { enabled: false }, ui: { numeric: { fontSize: 32, fontWeight: '600' }, caption: { fontSize: 14 }, row: { minHeight: 52, paddingVertical: 6 } }, palette: { muted: 'muted', line: '#334455', surface: 'surface', text: 'text' } }), ...overrides });
+  return new Function('env', `with(env) { const StaggerItem = 'StaggerItem'; ${code} }`)({ React, Animated, Keyboard: { dismiss() {} }, TextInput: 'TextInput', Platform: { OS: 'web' }, useLayoutEffect: () => {}, useEffect: () => {}, categoryIcon, categoryMeaning, expenseCategory, TransactionIcon: 'TransactionIcon', PagingFooter: 'PagingFooter', LegacyPayments: 'LegacyPayments', FlatList: 'FlatList', ScrollView: 'ScrollView', pageContentStyle: {}, LoadingSpinner: 'LoadingSpinner', useScrollPagination: () => ({ events: {}, loading: false, failed: false }), expenseBalanceChange, formatMoney, paymentPresentation, personalSettlements, personalTransfers, BalanceExplanation: 'BalanceExplanation', balanceKey: () => '', useRef: () => ({ current: null }), useState: (initial: unknown) => [typeof initial === 'function' ? initial() : initial, () => {}], Avatar: 'Avatar', AmountText: 'AmountText', Text: 'Text', SectionHeading: 'SectionHeading', View: 'View', Pressable: 'Pressable', Icon: 'Icon', Button: 'Button', RecordSummary: 'RecordSummary', ParticipantAmountRow: 'ParticipantAmountRow', LogRow: 'LogRow', LogDate: 'LogDate', BillEffect: 'BillEffect', VisibleExpense: 'VisibleExpense', HistoryPages: 'HistoryPages', BillSearch: 'BillSearch', PaymentRow: 'PaymentRow', BillTimelineRow: 'BillTimelineRow', DetailDialog: 'DetailDialog', BillPeople: 'BillPeople', RecordAttribution: 'RecordAttribution', PersonalTransferRow: 'PersonalTransferRow', PendingChangeRow: 'PendingChangeRow', StyleSheet: { create: (styles: unknown) => styles }, radii: { surface: 16 }, balanceColor: (amount: string) => BigInt(amount) < 0n ? 'negative' : 'positive', useUI: () => ({ motion: { enabled: false }, ui: { numeric: { fontSize: 32, fontWeight: '600' }, caption: { fontSize: 14 }, row: { minHeight: 52, paddingVertical: 6 } }, palette: { muted: 'muted', line: '#334455', surface: 'surface', text: 'text' } }), ...overrides });
 }
 function elements(tree: unknown): Element[] {
   if (Array.isArray(tree)) return tree.flatMap(elements);
@@ -157,7 +157,7 @@ test('virtualized timeline and legacy bill/payment lists preserve server order',
   const props = { group: value, accepted: value, selfId: 'self', pending: [], busy: true, onPayment() {}, onExpense() {} };
   const list = elements(render(props)).find(node => node.type === 'FlatList')!;
   assert.deepEqual(list.props.data.map((row: any) => row.bill?.id ?? row.payment.id), ['bill', 'first', 'second']);
-  const rows = list.props.data.map((item: any) => list.props.renderItem({ item }));
+  const rows = list.props.data.map((item: any) => list.props.renderItem({ item }).children[0]);
   assert.ok(rows.every((row: any) => row.props.busy));
   assert.ok(rows.filter((row: any) => row.type === 'PaymentRow').every((row: any) => row.props.accepted === value && row.props.onPayment === props.onPayment));
   const fallback = { ...value, transactions: undefined };
@@ -182,7 +182,7 @@ test('actual GroupScreen transaction rows expose offline new/edit bills and thei
   assert.deepEqual(list.props.data.map((row: any) => row.bill.id), ['photo', 'accepted']);
   assert.equal(list.props.data[1].bill.description, 'Saved accepted edit');
   assert.deepEqual(list.props.data.map(list.props.keyExtractor), ['bill:photo', 'bill:accepted']);
-  const row = list.props.renderItem({ item: list.props.data[0] });
+  const row = list.props.renderItem({ item: list.props.data[0] }).children[0];
   assert.equal(row.props.group, projected);
   const rendered = production('BillTimelineRow')(row.props);
   elements(rendered).find(node => node.type === 'LogRow')!.props.onPress();
@@ -288,7 +288,7 @@ test('background summaries preserve displayed bills and accepted payments until 
   const latestBill = billRow({ id: 'newest' }), latest = { ...original, version: 2, expenses: [latestBill], settlements: [], transactions: [{ kind: 'bill', bill: latestBill }], history: { transactions: { next_cursor: 'newer-window' } } };
   const background = view({ ...props, group: latest, accepted: latest });
   assert.equal(background.props.data, original.transactions, 'background head replacement preserves every displayed row');
-  const oldPayment = background.props.renderItem({ item: original.transactions[1] });
+  const oldPayment = background.props.renderItem({ item: original.transactions[1] }).children[0];
   assert.equal(oldPayment.props.accepted, original, 'accepted payment membership advances with the displayed snapshot');
   assert.equal(updates.at(-1), true); assert.deepEqual(offsets, []);
   await paging.load(undefined);
