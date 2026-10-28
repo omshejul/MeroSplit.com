@@ -1,6 +1,6 @@
 import AppLogo from './AppLogo';
 import React, { useEffect, useState } from 'react';
-import { Image, KeyboardAvoidingView, Platform, ScrollView, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, ScrollView, View } from 'react-native';
 import { Text } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { IconAction, useUI } from './ui';

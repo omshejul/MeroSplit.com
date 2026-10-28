@@ -1,3 +1,4 @@
+import { useRowDivider } from './rowDividers';
 import { animateLayout } from './layoutTransition';
 import Tick02Icon from '@hugeicons/core-free-icons/Tick02Icon';
 import EqualSignIcon from '@hugeicons/core-free-icons/EqualSignIcon';
@@ -268,10 +269,10 @@ export const Button = React.forwardRef<React.ComponentRef<typeof View>, ButtonPr
 export function IconAction({ name, label, onPress, disabled = false, hint }: { name: IconName; label: string; onPress: () => void; disabled?: boolean; hint?: string }) {
   return <Tooltip title={hint ?? label}><Button iconOnly icon={name} kind="text" accessibilityLabel={label} accessibilityHint={hint} disabled={disabled} onPress={onPress} style={{ width: 36, height: 36, paddingHorizontal: 6 }} /></Tooltip>;
 }
-export function SettingsRow({ icon, label, value, description, disabled = false, onPress, rowRef, danger = false, chevron = true, external = false }: { icon: IconName; label: string; value?: string; description?: string; disabled?: boolean; onPress: () => void; rowRef?: React.Ref<React.ComponentRef<typeof View>>; danger?: boolean; chevron?: boolean; external?: boolean }) {
-  const { ui, palette } = useUI();
+export function SettingsRow({ icon, label, value, description, disabled = false, onPress, rowRef, danger = false, chevron = true, external = false, divider }: { divider?: boolean; icon: IconName; label: string; value?: string; description?: string; disabled?: boolean; onPress: () => void; rowRef?: React.Ref<React.ComponentRef<typeof View>>; danger?: boolean; chevron?: boolean; external?: boolean }) {
+  const { ui, palette } = useUI(), separated = useRowDivider(divider);
   return <Button ref={rowRef} kind="plain" accessibilityLabel={[label, description, value].filter(Boolean).join(', ')} disabled={disabled} onPress={onPress}
-    style={({ pressed }) => [{ minHeight: 48, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', gap: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: palette.line, opacity: disabled ? 0.4 : 1 }, pressed && { backgroundColor: palette.soft }]}>
+    style={({ pressed }) => [{ minHeight: 48, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', gap: 12, borderBottomWidth: separated ? StyleSheet.hairlineWidth : 0, borderBottomColor: palette.line, opacity: disabled ? 0.4 : 1 }, pressed && { backgroundColor: palette.soft }]}>
     <Icon name={icon} size={20} color={danger ? palette.error : palette.muted} />
     <View style={{ flex: 1, minWidth: 0, gap: 3 }}><Text style={[ui.body, danger && { color: palette.error }]}>{label}</Text>{!!description && <Text style={ui.caption}>{description}</Text>}</View>
     {value !== undefined && <Text numberOfLines={1} style={[ui.caption, { maxWidth: '45%' }]}>{value}</Text>}

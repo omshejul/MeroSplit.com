@@ -1,7 +1,7 @@
-import { DialogScrollBody, CancelDialogActions } from './DialogParts';
+import { DialogScrollBody } from './DialogParts';
 import { ErrorText } from './ui';
 import { Avatar } from './ui';
-import ListRow from './ListRow';
+
 import PaginationFooter from './PaginationFooter';
 import ChatLoadingState from './ChatLoadingState';
 import BottomSafeArea from './BottomSafeArea';
@@ -9,7 +9,7 @@ import { Dialog } from './DialogParts';
 import { useScrollPagination } from './useScrollPagination';
 import { APP_ORIGIN } from './appLinks';
 import React, { useEffect, useRef, useState } from 'react';
-import { FlatList, KeyboardAvoidingView, Linking, Platform, ScrollView, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { FlatList, KeyboardAvoidingView, Linking, Platform, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import * as Crypto from 'expo-crypto';

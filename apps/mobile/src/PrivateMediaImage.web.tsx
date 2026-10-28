@@ -1,12 +1,12 @@
 import MediaPreviewFrame, { mediaPreviewShape } from './MediaPreviewFrame';
 import Avatar from './Avatar';
 import React, { useState } from 'react';
-import { Image, View, Text } from 'react-native';
+import { Image, Text } from 'react-native';
 import { browserMediaUrl } from './mediaPlatform.web';
 import type { MediaMetadata } from './media';
 import type { Session } from './types';
 import PrivateMediaThumbnail from './PrivateMediaThumbnail';
-import { radii, useUI } from './ui';
+import { useUI } from './ui';
 export default function PrivateMediaImage({ session, media, size = 56, profile = false }: { session: Session; media: MediaMetadata; size?: number; profile?: boolean }) {
   const { ui, palette } = useUI(), [failed, setFailed] = useState(false);
   const shape = mediaPreviewShape(size);

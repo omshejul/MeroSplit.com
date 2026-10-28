@@ -1,12 +1,12 @@
 import AttachmentPicker from './AttachmentPicker';
 import React, { useRef } from 'react';
-import { Platform, View } from 'react-native';
+import { View } from 'react-native';
 import * as Crypto from 'expo-crypto';
-import { Alert } from './alerts';
+
 import { clearPickedMedia, clearStagedMedia, pickMedia, stageMediaUpload } from './media';
 import type { PendingMediaUpload } from './media';
 import LocalAttachment from './LocalAttachment';
-import { Button, SettingsRow } from './ui';
+import { Button } from './ui';
 
 export default function DraftAttachment({ value, path, disabled, onChange, onBusy, onError }: {
   value?: PendingMediaUpload; path: string; disabled: boolean;

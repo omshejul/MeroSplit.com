@@ -1,3 +1,4 @@
+import RowGroup from './RowGroup';
 import React, { useState } from 'react';
 import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { Text } from 'react-native-paper';
@@ -22,7 +23,7 @@ export default function PeopleSheet({ visible, onDismiss, title, icon, total, co
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}><Icon name={icon} /><Text accessibilityRole="header" style={[ui.section, { flex: 1 }]}>{title}</Text><Button iconOnly icon="close" kind="text" accessibilityLabel="Close person selector" disabled={disabled} onPress={close} /></View>
               {(total || count !== undefined) && <Text style={ui.caption}>{[total, count === undefined ? '' : `${count} selected`].filter(Boolean).join(' · ')}</Text>}
             </View>
-            <ScrollView style={{ flexShrink: 1, flexGrow: 0 }} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 12 }}>{children}</ScrollView>
+            <ScrollView style={{ flexShrink: 1, flexGrow: 0 }} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 12 }}><RowGroup>{children}</RowGroup></ScrollView>
             <View style={{ padding: 20, paddingBottom: Math.max(16, insets.bottom), gap: 12, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.line }}>
               {!!total && <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}><Text style={ui.label}>Total</Text><Text style={ui.label}>{total}</Text></View>}
               <Button title={icon === 'people' ? 'Apply split' : 'Apply payers'} kind="primary" disabled={disabled || count === 0} onPress={close} />

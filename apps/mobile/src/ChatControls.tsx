@@ -1,11 +1,11 @@
 import { EmptyState } from './UIStates';
-import { DialogScrollBody, CancelDialogActions } from './DialogParts';
+import { DialogScrollBody } from './DialogParts';
 import { ErrorText } from './ui';
 import OverflowMenu from './OverflowMenu';
 import { Dialog } from './DialogParts';
 import React, { useState } from 'react';
-import { Linking, ScrollView, View, useWindowDimensions } from 'react-native';
-import { Menu, Text } from 'react-native-paper';
+import { Linking, View, useWindowDimensions } from 'react-native';
+import { Text } from 'react-native-paper';
 import type { ChatMessage } from './billChat';
 import { TextField } from './FormFields';
 import KeyboardDialog from './KeyboardDialog';

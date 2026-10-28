@@ -14,7 +14,7 @@ import { readPendingSplitwiseImport, retrySplitwiseImport, startSplitwiseImport 
 import type { SplitwiseImportRequest, SplitwisePreview } from './splitwiseImport';
 import type { Group, Session } from './types';
 import { Button, radii, useUI } from './ui';
-import { RadioChoice, TextField } from './FormFields';
+import { TextField } from './FormFields';
 
 export type SplitwiseImportScreenProps = {
   session: Session; busy: boolean; onBusyChange: (busy: boolean) => void;

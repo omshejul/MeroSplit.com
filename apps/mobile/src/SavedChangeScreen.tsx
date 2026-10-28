@@ -3,7 +3,7 @@ import { PersonAmountRow } from './PersonRow';
 import { NoticeBanner } from './UIStates';
 import React, { useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
-import { formatMoney, validateExpense } from './accounting';
+import { validateExpense } from './accounting';
 import { Text } from 'react-native-paper';
 import type { Amounts, Split } from './accounting';
 import type { Command, Expense, Group } from './types';
@@ -22,9 +22,9 @@ function SavedBillSummary({ expense, participants }: { expense: Expense; partici
     <Text style={ui.caption}>{new Date(`${expense.date}T12:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</Text>
     {expense.deleted && <NoticeBanner tone="warning">Deleted. This bill is not included in balances.</NoticeBanner>}
     <Text style={ui.label}>Who paid?</Text>
-    {participants.filter(person => (expense.paid[person.id] ?? '0') !== '0').map(person => <PersonAmountRow avatar={false} style={s.person} titleStyle={s.name} amountStyle={s.amount} key={person.id} name={person.name} amount={expense.paid[person.id]} />)}
+    {participants.filter(person => (expense.paid[person.id] ?? '0') !== '0').map(person => <PersonAmountRow divider={false} avatar={false} style={s.person} titleStyle={s.name} amountStyle={s.amount} key={person.id} name={person.name} amount={expense.paid[person.id]} />)}
     <Text style={ui.label}>Split between</Text>
-    {participants.filter(person => Object.hasOwn(expense.split.values, person.id)).map(person => <PersonAmountRow avatar={false} style={s.person} titleStyle={s.name} amountStyle={s.amount} key={person.id} name={person.name} amount={expense.shares[person.id] ?? '0'} />)}
+    {participants.filter(person => Object.hasOwn(expense.split.values, person.id)).map(person => <PersonAmountRow divider={false} avatar={false} style={s.person} titleStyle={s.name} amountStyle={s.amount} key={person.id} name={person.name} amount={expense.shares[person.id] ?? '0'} />)}
     {!!expense.notes && <Text style={ui.caption}>{expense.notes}</Text>}
   </BillSummary>;
 }

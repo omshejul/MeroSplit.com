@@ -1,3 +1,4 @@
+import RowGroup from './RowGroup';
 import { NoticeBanner } from './UIStates';
 import { CloseDialogActions } from './DialogParts';
 import FieldDialog from './FieldDialog';
@@ -24,8 +25,7 @@ import type { Group, Participant } from './types';
 import { addPerson, currentEmailInvite, emailInvitationRequest, personRequest, saveContact, sendInvitation } from './members';
 import type { AddPersonRequest, EmailInviteRequest } from './members';
 import { EmailField, TextField } from './FormFields';
-import { Avatar, Button, IconAction, SettingsRow, useUI } from './ui';
-
+import { Button, IconAction, SettingsRow, useUI } from './ui';
 
 type Props = {
   group: Group;
@@ -79,7 +79,7 @@ function PreviousMembersDialog({ people, onClose }: { people: Participant[]; onC
   return <KeyboardDialog visible onDismiss={onClose} maxHeight={480}>
     <Dialog.Title aria-level={2}>Previous members</Dialog.Title>
     <DialogScrollBody maxHeight={300} gap={0}>
-      {people.filter(person => person.removed).map(person => <PersonRow key={person.id} name={person.name} photo={person.profile_photo} />)}
+      <RowGroup>{people.filter(person => person.removed).map(person => <PersonRow key={person.id} name={person.name} photo={person.profile_photo} />)}</RowGroup>
     </DialogScrollBody>
     <CancelDialogActions cancelTitle="Close previous members" disabled={false} onCancel={onClose} />
   </KeyboardDialog>;
@@ -178,7 +178,6 @@ function MemberSettings({ group, selfId, busy, addPersonRequest = 0, onAction, o
   const needsOpeningAgreement = !!opening && !opening.accepted && self?.user_id != null
     && (opening.balances[selfId] ?? '0') !== '0' && !Object.hasOwn(opening.acknowledgments, selfId);
   const name = (id: string) => group.participants.find(person => person.id === id)?.name ?? 'Former member';
-
 
   async function perform(section: string, work: () => Promise<void>, success?: string) {
     if (disabled || inFlight.current) return;
@@ -349,9 +348,9 @@ function MemberSettings({ group, selfId, busy, addPersonRequest = 0, onAction, o
       <Button title={feedback?.section === 'group-link' && !feedback.error ? 'Copied' : 'Copy group link'} icon={feedback?.section === 'group-link' && !feedback.error ? 'check' : 'copy'} disabled={disabled || !!group.archived} onPress={() => void createGroupLink()} />
       <FeedbackNote section="group-link" feedback={feedback} />
     </View>}
-    <View>
+    <RowGroup>
       {group.participants.filter(person => !person.removed).map(person => <MemberRow key={person.id} group={group} person={person} selfId={selfId} organizer={organizer} disabled={disabled} onInvite={() => setManagedPersonId(person.id)} />)}
-    </View>
+    </RowGroup>
     {previousMembers.length > 0 && <SettingsRow icon="people" label="Previous members" value={String(previousMembers.length)} onPress={() => setShowPrevious(true)} />}
     {showPrevious && previousMembers.length > 0 && <PreviousMembersDialog people={previousMembers} onClose={() => setShowPrevious(false)} />}
     <PersonInviteDialog person={managedPerson} invites={managedInvites} busy={disabled}
@@ -393,7 +392,7 @@ function MemberSettings({ group, selfId, busy, addPersonRequest = 0, onAction, o
     {opening && <DetailDialog busy={disabled} icon="payment" title="Previous balances" initialOpen={needsOpeningAgreement}>
         <NoticeBanner tone={opening.accepted ? 'success' : 'warning'}>{opening.accepted ? 'Agreed and included in balances.' : 'Waiting for agreement. Not included in balances yet.'}</NoticeBanner>
         <Text style={ui.body}>From {opening.source}</Text><Text style={ui.caption}>As of {opening.cutoff}</Text>
-        {group.participants.map(person => <PreviousBalanceRow key={person.id} person={person} selfId={selfId} balance={opening.balances[person.id] ?? '0'} agreed={Object.hasOwn(opening.acknowledgments, person.id)} />)}
+        <RowGroup>{group.participants.map(person => <PreviousBalanceRow key={person.id} person={person} selfId={selfId} balance={opening.balances[person.id] ?? '0'} agreed={Object.hasOwn(opening.acknowledgments, person.id)} />)}</RowGroup>
         {needsOpeningAgreement && <>
           <Button title="I agree to my previous balance" kind="primary" disabled={disabled || !!group.archived} onPress={() => confirm(
             'Agree to your previous balance?', `${balanceDescription(opening.balances[selfId])}. From ${opening.source}, as of ${opening.cutoff}. It affects balances once all required members agree.`,

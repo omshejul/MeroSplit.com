@@ -1,6 +1,6 @@
 // Isolated manual/native QA entry. Production index.ts never imports this file.
-import React, { useRef, useState } from 'react';
-import { ScrollView, View } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { Platform, ScrollView } from 'react-native';
 import { Text } from 'react-native-paper';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AppFrame, ScreenHeader, pageContentStyle } from '../../src/AppNavigation';
@@ -10,6 +10,9 @@ import { recalculateLocal, putLocalExpense } from '../fixtures';
 import PersonRow, { PersonAmountRow } from '../../src/PersonRow';
 import PersonChoice, { PersonSelectionList } from '../../src/PersonChoice';
 import ChoiceGroup from '../../src/ChoiceGroup';
+import { getDatabase } from '../../src/native';
+import { expenseDraftStore } from '../../src/expenseDraft';
+import PeopleSheet from '../../src/PeopleSheet';
 import FieldDialog from '../../src/FieldDialog';
 import { EmptyState, ErrorState, LoadingState, NoticeBanner } from '../../src/UIStates';
 import PaginationFooter from '../../src/PaginationFooter';
@@ -52,7 +55,7 @@ import DeleteAccount from '../../src/DeleteAccount';
 import SplitwiseImportScreen from '../../src/SplitwiseImportScreen';
 import HomeTabs from '../../src/HomeTabs';
 
-const session: Session = { userId: '99999', token: 'synthetic-component-qa', email: 'qa@example.invalid', baseUrl: 'https://ui-qa.invalid', displayName: 'Me' };
+const session: Session = { userId: '99999', token: 'synthetic-component-qa', email: 'qa@example.invalid', baseUrl: Platform.OS === 'web' ? window.location.origin : 'https://ui-qa.invalid', displayName: 'Me' };
 const base: Group = { id: 'component-qa', name: 'Weekend trip', owner_id: 99999, version: 1, participants: [{ id: 'a', name: 'Me', user_id: 99999 }, { id: 'b', name: 'Asha', user_id: 2 }, { id: 'c', name: 'Dev' }], expenses: [], settlements: [], balances: {}, transfers: [], activity: [], invites: [] };
 const initial = putLocalExpense(base, { id: 'bill-qa', version: 1, description: 'Dinner with friends', total: '1001', paid: { a: '1001' }, split: { mode: 'equal', values: { a: '1', b: '1', c: '1' } }, date: '2026-10-28', notes: 'A synthetic bill for component QA.', category: 'food', deleted: false });
 initial.settlements = [{ id: 'payment-qa', sender: 'b', recipient: 'a', amount: '100', date: '2026-10-28', provenance: 'manual' }];
@@ -61,8 +64,8 @@ const command: Command = { command_id: 'saved-qa', group_id: group.id, method: '
 let preferences = { expense_updates: true, email_reminders: true }, statement = { enabled: false, frequency: 'monthly', next_at: null, delivery: null as any }, connections = [{ id: 'agent-1', client_name: 'QA assistant' }];
 const originalFetch = globalThis.fetch;
 globalThis.fetch = (async (input: any, options?: RequestInit) => {
-  const url = new URL(typeof input === 'string' ? input : input.url);
-  if (url.hostname !== 'ui-qa.invalid') return originalFetch(input, options);
+  const url = new URL(typeof input === 'string' ? input : input.url, typeof window !== 'undefined' && window.location?.origin || session.baseUrl);
+  if (url.origin !== session.baseUrl || !url.pathname.startsWith('/api/v1/')) return originalFetch(input, options);
   const path = url.pathname.replace(/^\/api\/v1/, ''), method = options?.method ?? 'GET', body = options?.body ? JSON.parse(String(options.body)) : {};
   let result: any;
   if (path === '/me/notifications/preferences') result = method === 'PUT' ? preferences = { ...preferences, ...body } : preferences;
@@ -85,6 +88,7 @@ function Gallery() {
   const { ui, palette, changeAppearance, changeCurrency, changeColorFamily, dark } = useUI();
   const [page, setPage] = useState<Page>('Home'), [result, setResult] = useState('Ready'), [chosen, setChosen] = useState('a'), [open, setOpen] = useState(false), [failed, setFailed] = useState(false), [dialog, setDialog] = useState(''), [value, setValue] = useState('Asha'), [email, setEmail] = useState('asha@example.invalid'), [tab, setTab] = useState('Groups');
   const writes = useRef(Promise.resolve()), [members, setMembers] = useState(group), [name, setName] = useState('Me'), [vpa, setVpa] = useState('');
+  useEffect(() => { if (page === 'Expense') void expenseDraftStore('component-gallery-qa', group.id, null, writes, getDatabase).read().catch(cause => setResult(`QA storage: ${String(cause)}`)); }, [page]);
   const done = (label: string) => { setResult(label); setDialog(''); setOpen(false); };
   const push: any = { state: { ready: true, enabled: false, optedIn: false, pendingOff: false, installationId: 'qa', permission: 'granted', working: false, error: '' }, enable: async () => true, disable: async () => {}, refresh: async () => {} };
   let content: React.ReactNode;
@@ -92,7 +96,7 @@ function Gallery() {
   if (page === 'Rows') content = <><AppLogo size={40} /><PersonRow name="Asha" trailing={<Button title="Manage Asha" onPress={() => done('Managed Asha')} />}><Text style={ui.caption}>Organizer</Text></PersonRow><PersonAmountRow name="Dev" amount="0" /><PersonAmountRow name="Asha" amount="-1" /><BillSummary title="Dinner" amount="1001"><Text style={ui.caption}>28 Oct · 3 people</Text></BillSummary><AttachmentRow title="Receipt.pdf" subtitle="PDF · 1 KB" label="Open QA receipt" thumbnail={<MediaPreviewFrame label="PDF preview" text="PDF" />} disabled={false} onOpen={() => done('Opened receipt')} /><OverflowMenu open={open} disabled={false} label="QA options" onOpen={() => { setOpen(true); setResult('Menu opened'); }} onClose={() => { setOpen(false); setResult('Menu closed'); }}><Button title="Report QA message" kind="menu" onPress={() => done('Reported message')} /></OverflowMenu><ResendControls busy={false} resendSeconds={0} onResend={() => done('Resent code')} onChangeEmail={() => done('Changed email')} /><GroupList groups={[{ kind: 'shared', group }]} commands={[]} userId={session.userId} busy={false} direct={false} onOpen={() => setPage('Group')} /></>;
   if (page === 'States') content = <><NoticeBanner tone="warning">Pending sync</NoticeBanner><NoticeBanner tone="success">Saved</NoticeBanner><ErrorState error="Connection unavailable" onRetry={() => done('Retried connection')} /><EmptyState message="No bills yet" illustration={<Icon name="bill" />} /><LoadingState label="Loading files…" spinner /><PaginationFooter paging={{ canLoadMore: true, loading: false, failed, loadMore: () => { setFailed(true); setResult('Load failed'); }, retry: () => { setFailed(false); setResult('Retried page'); } }} /><MediaPreviewFrame label="Retry QA preview" text="Retry" onRetry={() => done('Retried preview')} /><AttachmentPicker disabled={false} onPick={photo => done(photo ? 'Picked Photo' : 'Picked Files')} /></>;
   if (page === 'Selectors') content = <><PersonChoice person={group.participants[0]} title="Me" amount="₹3.34" selected={chosen === 'a'} disabled={false} onPress={() => setChosen(chosen === 'a' ? '' : 'a')} /><PersonSelectionList people={group.participants} selected={chosen} onSelect={id => { setChosen(id); setResult(`Selected ${id}`); }} /><ChoiceGroup label="Split method" group="qa-method" options={[{ value: 'equal', label: 'Equally' }, { value: 'exact', label: 'Exact amounts' }]} selected={value} disabled={false} onChoose={setValue} /><PersonDetailsFields name={{ label: 'Their name', value, onChangeText: setValue }} email={{ label: 'Optional email', value: email, onChangeText: setEmail }} /><UPIAddressField label="UPI ID" value={vpa} onChangeText={setVpa} /><Button title="Edit field" onPress={() => setOpen(true)} /><FieldDialog visible={open} title="Edit QA name" disabled={false} canSave={!!value.trim()} onClose={() => setOpen(false)} onSave={() => done(`Saved ${value}`)}><PersonDetailsFields name={{ label: 'Name', value, onChangeText: setValue }} email={{ label: 'Email', value: email, onChangeText: setEmail }} /></FieldDialog></>;
-  if (page === 'Dialogs') content = <>{['Feedback', 'Invite', 'Switch', 'UPI', 'Help'].map(item => <Button key={item} title={`Open ${item}`} onPress={() => setDialog(item)} />)}<DeleteAccount email={session.email} busy={false} onDelete={async () => done('QA delete callback')} /><FeedbackDialog visible={dialog === 'Feedback'} onClose={() => setDialog('')} onSubmit={async () => done('Feedback submitted')} /><SendInviteDialog visible={dialog === 'Invite'} email={email} busy={false} error="" onSend={() => done('Invite sent')} onCancel={() => setDialog('')} />{dialog === 'Switch' && <SwitchAccountDialog currentEmail={session.email} targetEmail={email} invitation busy={false} onSwitch={() => done('Switched QA account')} onCancel={() => setDialog('')} />}<UPISetupDialog visible={dialog === 'UPI'} busy={false} needsName={false} onSaveName={async () => {}} onSave={async text => { setVpa(text); done('UPI saved'); }} onSkip={() => setDialog('')} /><PaymentHelpDialog visible={dialog === 'Help'} name="Asha" vpa="asha@bank" onClose={() => setDialog('')} /></>;
+  if (page === 'Dialogs') content = <>{['People', 'Feedback', 'Invite', 'Switch', 'UPI', 'Help'].map(item => <Button key={item} title={`Open ${item}`} onPress={() => setDialog(item)} />)}<PeopleSheet visible={dialog === 'People'} title="Who paid?" icon="pay" total="₹10.01" count={3} disabled={false} maxHeight={800} onDismiss={() => setDialog('')}>{group.participants.map(person => <PersonChoice key={person.id} person={person} title={person.name} selected disabled={false} onPress={() => {}} />)}</PeopleSheet><DeleteAccount email={session.email} busy={false} onDelete={async () => done('QA delete callback')} /><FeedbackDialog visible={dialog === 'Feedback'} onClose={() => setDialog('')} onSubmit={async () => done('Feedback submitted')} /><SendInviteDialog visible={dialog === 'Invite'} email={email} busy={false} error="" onSend={() => done('Invite sent')} onCancel={() => setDialog('')} />{dialog === 'Switch' && <SwitchAccountDialog currentEmail={session.email} targetEmail={email} invitation busy={false} onSwitch={() => done('Switched QA account')} onCancel={() => setDialog('')} />}<UPISetupDialog visible={dialog === 'UPI'} busy={false} needsName={false} onSaveName={async () => {}} onSave={async text => { setVpa(text); done('UPI saved'); }} onSkip={() => setDialog('')} /><PaymentHelpDialog visible={dialog === 'Help'} name="Asha" vpa="asha@bank" onClose={() => setDialog('')} /></>;
   if (page === 'Profile') content = <ProfileSettings name={name} vpa={vpa} busy={false} onSaveName={async value => { setName(value); setResult(`Name ${value}`); }} onSaveUPI={async value => { setVpa(value); setResult(`UPI ${value}`); }} onAppearance={changeAppearance} onColorFamily={changeColorFamily} onCurrency={changeCurrency} />;
   if (page === 'Expense') content = <ExpenseForm group={group} selfId="a" busy={false} owner="component-gallery-qa" writes={writes} onSave={async value => { setResult(`Saved bill ${value.total}`); }} />;
   if (page === 'Payment') content = <SettleForm group={group} selfId="a" busy={false} initial={group.transfers[0]} onSave={async payment => done(`Recorded ${payment.amount}`)} onCancel={() => setPage('Home')} onReviewAttempt={async () => {}} onPrepareUPI={async () => { throw Error('QA does not launch payments'); }} onCancelUPI={async () => {}} returnPayment={null} onArmReturn={async () => { throw Error('QA does not launch payments'); }} onReturnPaymentChange={async () => {}} onResolveReturn={async () => {}} />;
@@ -116,7 +120,7 @@ function Gallery() {
   if (page === 'Join') content = <GroupJoinDialog session={session} token={'a'.repeat(64)} onJoined={async () => { setPage('Group'); setResult('Joined fixture'); }} onCancel={() => setPage('Home')} />;
   const virtualized = ['Group', 'Activity', 'Versions', 'Tabs'].includes(page);
   return <AppFrame><ScreenHeader title={`QA ${page}`} busy={false} onBack={page === 'Home' ? undefined : () => { setPage('Home'); setOpen(false); setDialog(''); }}><Button title={dark ? 'Light' : 'Dark'} onPress={() => void changeAppearance(dark ? 'light' : 'dark')} /></ScreenHeader><Text accessibilityLiveRegion="polite" style={[ui.caption, { paddingHorizontal: 16 }]}>{result}</Text>
-    {page === 'Sign in' ? <SignInLayout busy={false}>{content}</SignInLayout> : virtualized ? content : <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={pageContentStyle}>{page === 'Members' && <Button title="Add person" onPress={() => setOpen(true)} />}{content}</ScrollView>}
+    {page === 'Sign in' ? <SignInLayout busy={false}>{content}</SignInLayout> : virtualized ? content : <ScrollView key={page} keyboardShouldPersistTaps="handled" contentContainerStyle={pageContentStyle}>{page === 'Members' && <Button title="Add person" onPress={() => setOpen(true)} />}{content}</ScrollView>}
     {page === 'Rows' && <FloatingActionContainer><Button title="QA floating action" onPress={() => done('Floating action')} /></FloatingActionContainer>}
   </AppFrame>;
 }

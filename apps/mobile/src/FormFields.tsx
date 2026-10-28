@@ -1,7 +1,7 @@
 import React, { useId } from 'react';
 import { StyleSheet, TextInput, View } from 'react-native';
 import type { StyleProp, ViewStyle } from 'react-native';
-import { Text } from 'react-native-paper';
+
 export { default as RadioChoice } from './RadioChoice';
 import FieldLabel from './FieldLabel';
 import { useUI } from './ui';

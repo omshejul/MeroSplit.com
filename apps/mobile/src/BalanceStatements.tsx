@@ -6,12 +6,12 @@ import { AppState, Platform, View } from 'react-native';
 import { Text } from 'react-native-paper';
 import * as Crypto from 'expo-crypto';
 import { accountOwner, request } from './api';
-import { RadioChoice } from './FormFields';
+
 import { getDatabase } from './native';
 import NotificationSwitch from './NotificationSwitch';
 import { sendStatementRequest, type StatementDelivery as Delivery } from './statementRequest';
 import type { Session } from './types';
-import { Button, ErrorText, useUI } from './ui';
+import { Button, useUI } from './ui';
 
 type Preferences = { enabled: boolean; frequency: 'monthly' | 'weekly'; next_at: string | null; delivery: Delivery | null };
 const path = '/me/balance-statements';

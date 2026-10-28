@@ -15,7 +15,7 @@ const { PersonChoice, SplitFields, PayerFields } = new Function('env', `with(env
 function nodes(tree: any, type: any): any[] {
   if (Array.isArray(tree)) return tree.flatMap(n => nodes(n, type));
   if (!tree) return [];
-  return [...(tree.type === type ? [tree] : []), ...(tree.children ?? []).flatMap((n: any) => nodes(n, type))];
+  return [...(tree.type === type && (type !== 'Button' || tree.props.accessibilityRole === 'checkbox') ? [tree] : []), ...(tree.children ?? []).flatMap((n: any) => nodes(n, type))];
 }
 const participants = [{ id: 'a', name: 'Asha' }, { id: 'b', name: 'Dev' }, { id: 'c', name: 'Removed', removed: true }];
 const draft = { amount: '10.01', mode: 'equal', participantIds: ['a', 'b'], payerIds: ['a'], payerAmounts: {}, splitValues: {} };

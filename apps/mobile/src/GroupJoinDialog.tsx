@@ -1,7 +1,7 @@
 import PersonRow from './PersonRow';
 import { ErrorState } from './UIStates';
 import { LoadingState } from './UIStates';
-import { ErrorText } from './ui';
+
 import React, { useEffect, useRef, useState } from 'react';
 import { Modal, ScrollView, View } from 'react-native';
 import { Text } from 'react-native-paper';
@@ -12,7 +12,7 @@ import type { Session } from './types';
 import DialogFocus from './DialogFocus';
 import { AppFrame, ScreenHeader, pageContentStyle } from './AppNavigation';
 import { TextField } from './FormFields';
-import { Avatar, Button, useUI } from './ui';
+import { Button, useUI } from './ui';
 
 type Person = { id: string; name: string; profile_photo?: import("./types").ProfilePhoto | null };
 type Preview = { name: string; already_member: boolean; version: number; people: Person[] };

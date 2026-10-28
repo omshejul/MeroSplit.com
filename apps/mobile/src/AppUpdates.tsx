@@ -7,7 +7,7 @@ import * as Updates from 'expo-updates';
 import Constants from 'expo-constants';
 import { requireOptionalNativeModule } from 'expo';
 import KeyboardDialog from './KeyboardDialog';
-import DialogFocus from './DialogFocus';
+
 import { DialogScrollBody } from './DialogParts';
 import LoadingSpinner from './LoadingSpinner';
 import { Button, useUI } from './ui';

@@ -1,9 +1,11 @@
+import RowGroup from './RowGroup';
+import { useRowDivider } from './rowDividers';
 import { PersonSelectionList } from './PersonChoice';
 import DetailDialog from './DetailDialog';
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Text } from 'react-native-paper';
-import { RadioChoice } from './FormFields';
+
 import type { CachedGroup, Command, Group } from './types';
 import { Button, useUI } from './ui';
 
@@ -17,7 +19,8 @@ export function SavedCommandRow({ command, group, busy, onOpen, onReview, onDisc
   onOpen: (group: CachedGroup) => void; onReview: (command: Command) => void; onDiscard: (command: Command) => void;
 }) {
   const { ui, palette } = useUI();
-  return <View style={[styles.row, { borderBottomColor: palette.line }]}>
+  const divider = useRowDivider();
+  return <View style={[styles.row, { borderBottomColor: palette.line, borderBottomWidth: divider ? StyleSheet.hairlineWidth : 0 }]}>
     <Text style={ui.rowTitle}>{String(command.body.description ?? group?.group.name ?? 'Saved change')}</Text>
     <Text style={ui.caption}>{command.error ?? (command.state === 'pending' ? 'Pending sync' : 'Needs review')}</Text>
     {group ? command.state !== 'pending' ? <Button title="Review" kind="text" disabled={busy} onPress={() => onReview(command)} />
@@ -30,8 +33,8 @@ export function SavedChanges({ commands, groups, busy, expired, expanded = false
   const needsReview = commands.some(command => command.state !== 'pending');
   if (!commands.length) return null;
   return <DetailDialog busy={busy} title={needsReview ? 'Needs review' : 'Pending sync'} initialOpen={expanded || needsReview}>
-    {commands.map(command => <SavedCommandRow key={command.command_id} command={command}
-      group={groups.find(group => group.group.id === command.group_id)} busy={busy} onOpen={onOpen} onReview={onReview} onDiscard={onDiscard} />)}
+    <RowGroup>{commands.map(command => <SavedCommandRow key={command.command_id} command={command}
+      group={groups.find(group => group.group.id === command.group_id)} busy={busy} onOpen={onOpen} onReview={onReview} onDiscard={onDiscard} />)}</RowGroup>
     {!expired && <Button title="Retry" disabled={busy} onPress={onRetry} />}
   </DetailDialog>;
 }

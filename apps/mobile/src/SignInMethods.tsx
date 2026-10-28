@@ -1,4 +1,4 @@
-import { ErrorState } from './UIStates';
+
 import React from 'react';
 import { Image, Platform, StyleSheet, View } from 'react-native';
 import { Text } from 'react-native-paper';

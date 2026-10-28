@@ -2,9 +2,9 @@ import { LoadingState } from './UIStates';
 import ResendControls from './ResendControls';
 import { Dialog } from './DialogParts';
 import React, { useState } from 'react';
-import { ActivityIndicator, ScrollView, View } from 'react-native';
+import { ScrollView, View } from 'react-native';
 import { Text } from 'react-native-paper';
-import DialogFocus from './DialogFocus';
+
 import KeyboardDialog from './KeyboardDialog';
 import { DialogScrollBody } from './DialogParts';
 import { TextField } from './FormFields';

@@ -1,5 +1,5 @@
 import { ErrorState } from './UIStates';
-import { ErrorText } from './ui';
+
 import React, { useEffect, useRef, useState } from 'react';
 import { AppState, Linking, Platform, Text, View } from 'react-native';
 import NotificationSwitch from './NotificationSwitch';

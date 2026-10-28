@@ -11,7 +11,7 @@ export default function PersonRow({ name, photo, title = name, avatar = true, ti
     <Text accessibilityLabel={title} style={[ui.rowTitle, titleStyle]}>{title}</Text>{children}
   </ListRow>;
 }
-export function PersonAmountRow({ amount, amountLabel, amountStyle, ...props }: Props & { amount?: string; amountLabel?: string; amountStyle?: React.ComponentProps<typeof Text>['style'] }) {
+export function PersonAmountRow({ amount, amountLabel, amountStyle, ...props }: Props & ({ amount: string; amountLabel?: never } | { amount?: never; amountLabel: string }) & { amountStyle?: React.ComponentProps<typeof Text>['style'] }) {
   const { ui } = useUI();
-  return <PersonRow {...props} trailing={amountLabel !== undefined ? <Text style={[ui.amount, amountStyle]}>{amountLabel}</Text> : <AmountText amount={amount ?? '0'} style={amountStyle} />} />;
+  return <PersonRow {...props} trailing={amountLabel !== undefined ? <Text style={[ui.amount, amountStyle]}>{amountLabel}</Text> : <AmountText amount={amount} style={amountStyle} />} />;
 }

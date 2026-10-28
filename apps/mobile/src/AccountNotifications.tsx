@@ -9,7 +9,7 @@ import { AppState, Platform, useWindowDimensions, View } from 'react-native';
 import { request, cachedRead } from './api';
 import PushSettings, { type PushControls } from './PushSettings';
 import type { Session } from './types';
-import { Button, ErrorText, SettingsRow } from './ui';
+import { SettingsRow } from './ui';
 import NotificationSwitch from './NotificationSwitch';
 import BalanceStatements from './BalanceStatements';
 

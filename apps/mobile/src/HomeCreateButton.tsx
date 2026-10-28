@@ -1,7 +1,7 @@
 import FloatingActionContainer from './FloatingActionContainer';
 import React from 'react';
-import { Platform, View } from 'react-native';
-import { pageWidthStyle } from './AppNavigation';
+import { Platform } from 'react-native';
+
 import AddActionButton from './AddActionButton';
 
 // Custom tabs already sit outside the content area. Native iOS tabs overlay it.

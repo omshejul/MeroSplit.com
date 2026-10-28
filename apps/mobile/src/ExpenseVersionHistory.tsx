@@ -7,7 +7,7 @@ import { Text } from 'react-native-paper';
 import { accountOwner, ApiError, request } from './api';
 import { getDatabase } from './native';
 import { readExpenseHistory, saveExpenseHistory, forgetExpenseHistory } from './storage';
-import { Button, ErrorText, useUI } from './ui';
+import { useUI } from './ui';
 import LoadingSpinner from './LoadingSpinner';
 import { pageContentStyle } from './AppNavigation';
 import { useScrollPagination } from './useScrollPagination';

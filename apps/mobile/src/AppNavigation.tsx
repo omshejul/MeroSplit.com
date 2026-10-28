@@ -4,7 +4,7 @@ import FloatingActionContainer from './FloatingActionContainer';
 import BottomSafeArea from './BottomSafeArea';
 import AddActionButton from './AddActionButton';
 import React from 'react';
-import { Animated, Image, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
+import { Animated, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { Text } from 'react-native-paper';

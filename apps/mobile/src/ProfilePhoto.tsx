@@ -1,5 +1,5 @@
 import { ErrorState } from './UIStates';
-import { ErrorText } from './ui';
+
 import Avatar from './Avatar';
 import type { ProfilePhoto as ProfilePhotoValue } from './types';
 import React, { useEffect, useRef, useState } from 'react';

@@ -1,15 +1,15 @@
+import RowGroup from './RowGroup';
 import FieldDialog from './FieldDialog';
 import { TextField, UPIAddressField } from './FormFields';
 import ChoiceGroup from './ChoiceGroup';
 import { currencies, type Currency } from './currency';
 import { Dialog } from './DialogParts';
-import { CancelDialogActions, DialogScrollBody } from './DialogParts';
+import { DialogScrollBody } from './DialogParts';
 import KeyboardDialog from './KeyboardDialog';
 import { validUPIAddress } from './upi';
 import React, { useEffect, useRef, useState } from 'react';
-import { Keyboard, Platform, ScrollView, TextInput, useWindowDimensions, View } from 'react-native';
-import { Text } from 'react-native-paper';
-import { RadioChoice } from './FormFields';
+import { Keyboard, Platform, TextInput, useWindowDimensions, View } from 'react-native';
+
 import { colorFamilies, isDarkOnly } from './theme';
 import { Button, ErrorText, SettingsRow, useUI, type AppearancePreference, type ColorFamily } from './ui';
 
@@ -70,10 +70,10 @@ export default function ProfileSettings({ name, vpa, busy, onSaveName, onSaveUPI
     finally { inFlight.current = false; setSaving(false); }
   }
   return <>
-    <SettingsRow rowRef={nameRow} icon="edit" label="Name" value={name} disabled={busy} onPress={() => open('name')} />
+    <RowGroup><SettingsRow rowRef={nameRow} icon="edit" label="Name" value={name} disabled={busy} onPress={() => open('name')} />
     <SettingsRow rowRef={upiRow} icon="pay" label="UPI ID" value={vpa || 'Not set'} disabled={busy} onPress={() => open('upi')} />
     <SettingsRow rowRef={currencyRow} icon="pay" label="Default currency" value={currency} disabled={busy} onPress={() => open('currency')} />
-    <SettingsRow rowRef={appearanceRow} icon="appearance" label="Appearance" value={darkOnly ? family : colorFamily === 'basic' ? mode : `${family} · ${mode}`} disabled={busy} onPress={() => open('appearance')} />
+    <SettingsRow rowRef={appearanceRow} icon="appearance" label="Appearance" value={darkOnly ? family : colorFamily === 'basic' ? mode : `${family} · ${mode}`} disabled={busy} onPress={() => open('appearance')} /></RowGroup>
     <KeyboardDialog visible={!!editing && isChoice} onDismiss={() => { if (!disabled) close(); }} dismissable={!disabled} maxHeight={height}>
       <Dialog.Title aria-level={2}>{isCurrency ? 'Default currency' : 'Appearance'}</Dialog.Title>
       {isChoice && <><DialogScrollBody maxHeight={Platform.OS === 'web' ? Math.min(560, Math.max(0, height - 224)) : 440} gap={0} paddingVertical={0}><View ref={choices} onLayout={focusInitialChoice}>

@@ -5,7 +5,7 @@ import { Platform } from 'react-native';
 import { NavigationContainer, StackActions, getStateFromPath, useIsFocused, useNavigationContainerRef, usePreventRemove, type NavigationAction } from '@react-navigation/native';
 import { createNativeStackNavigator, type NativeStackScreenProps } from '@react-navigation/native-stack';
 import KeyboardDialog from './KeyboardDialog';
-import DialogFocus from './DialogFocus';
+
 import { CancelDialogActions } from './DialogParts';
 import { Button, useUI } from './ui';
 import { ScreenDraftDiscard, ScreenRemovalLock } from './screenRemoval';

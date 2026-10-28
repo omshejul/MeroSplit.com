@@ -31,7 +31,7 @@ test('actual bill and payment row controls warm on hover/focus without triggerin
  const parsed=ts.createSourceFile('GroupScreen.tsx',readFileSync(new URL('../src/GroupScreen.tsx',import.meta.url),'utf8'),ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
  const fn=parsed.statements.find(n=>ts.isFunctionDeclaration(n)&&n.name?.text==='LogRow')!;
  const React={createElement:(type:any,props:any,...children:any[])=>({type,props,children})};
- const render=new Function('env',`with(env){${ts.transpile(fn.getText(parsed),{target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.React})};return LogRow;}`)(withSharedUI({React,useUI:()=>({ui:{},palette:{}}),Button:'Button',LogDate:'LogDate',View:'View',s:{}}));
+ const render=new Function('env',`with(env){${ts.transpile(fn.getText(parsed),{target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.React})};return LogRow;}`)(withSharedUI(withSharedUI({React,useUI:()=>({ui:{},palette:{}}),Button:'Button',LogDate:'LogDate',View:'View',s:{}})));
  let warmed=0,opened=0;const row=render({label:'Bill',busy:false,onPrefetch:()=>warmed++,onPress:()=>opened++});
  assert.equal(warmed,0);row.props.onHoverIn();row.props.onFocus();assert.equal(warmed,2);assert.equal(opened,0);row.props.onPress();assert.equal(opened,1);
 });

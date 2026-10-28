@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { View } from 'react-native';
 import KeyboardDialog from './KeyboardDialog';
 import { Dialog, DialogScrollBody } from './DialogParts';
-import { Button, SettingsRow, type IconName } from './ui';
+import { SettingsRow, type IconName } from './ui';
 
 // Details open in a separate surface, leaving the surrounding screen in place.
 export default function DetailDialog({ title, children, initialOpen = false, icon = 'info', busy = false }: {

@@ -4,7 +4,7 @@ import { useWindowDimensions } from 'react-native';
 import { Text } from 'react-native-paper';
 import { request } from './api';
 import { NameOnlyForm } from './EmailLinkScreens';
-import DialogFocus from './DialogFocus';
+
 import KeyboardDialog from './KeyboardDialog';
 import { CancelDialogActions, DialogScrollBody } from './DialogParts';
 import type { Session } from './types';

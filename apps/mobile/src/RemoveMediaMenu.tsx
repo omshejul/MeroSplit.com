@@ -1,6 +1,6 @@
 import OverflowMenu from './OverflowMenu';
 import React from 'react';
-import { Menu } from 'react-native-paper';
+
 import { Button } from './ui';
 
 export default function RemoveMediaMenu({ open, disabled, label, removeLabel, onOpen, onClose, onRemove }: {

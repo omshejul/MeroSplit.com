@@ -3,7 +3,7 @@ import { Text } from 'react-native-paper';
 import React, { useEffect, useRef, useState } from 'react';
 
 import KeyboardDialog from './KeyboardDialog';
-import DialogFocus from './DialogFocus';
+
 import { DialogScrollBody } from './DialogParts';
 import { UPIAddressField } from './FormFields';
 import { Button, ErrorText, useUI } from './ui';

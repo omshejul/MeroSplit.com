@@ -13,7 +13,7 @@ import { Text } from 'react-native-paper';
 import { formatMoney } from './accounting';
 import { activityDay, activityPresentation, activityTime } from './activityPresentation';
 import type { ActivityItem, ActivityTarget } from './types';
-import { AmountText, balanceColor, Button, ErrorText, Icon, IconBadge, useUI } from './ui';
+import { AmountText, balanceColor, Icon, IconBadge, useUI } from './ui';
 
 type Props = {
   categoryIcons?: ExpenseIcons; onVisibleExpenses?: (refs: ExpenseIconRef[]) => void; header?: React.ReactNode; footer?: React.ReactNode; items: ActivityItem[]; busy: boolean; emptyVerified?: boolean; showEmpty?: boolean; error?: string | null; hasMore?: boolean;

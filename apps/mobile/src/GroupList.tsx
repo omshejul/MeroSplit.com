@@ -1,3 +1,4 @@
+import RowGroup from './RowGroup';
 import ListRow from './ListRow';
 import { EmptyState } from './UIStates';
 import React from 'react';
@@ -7,7 +8,7 @@ import { Text } from 'react-native-paper';
 import { position } from './GroupScreen';
 import { groupDisplayName, selfParticipant } from './personalBalances';
 import type { CachedGroup, Command } from './types';
-import { Button, Avatar, balanceColor, Icon, IconBadge, radii, useUI } from './ui';
+import { Avatar, balanceColor, Icon, IconBadge, radii, useUI } from './ui';
 
 function GroupListRow({ row, waiting, userId, busy, onOpen }: { row: CachedGroup; waiting: Command[]; userId?: string; busy: boolean; onOpen: () => void }) {
   const { palette, ui } = useUI();
@@ -27,7 +28,7 @@ export default function GroupList({ groups, commands, userId, busy, direct, empt
     const caption = <EmptyState message={emptyLabel ?? (direct ? 'No people yet' : 'No groups yet')} />;
     return decorated && !direct ? <Mascot size="empty" visible={emptyVerified && !busy && !commands.length}>{caption}</Mascot> : caption;
   }
-  return <View role="list" accessibilityLabel={direct ? 'People' : 'Groups'} style={[styles.list, { backgroundColor: palette.surface }]}>{groups.map(row => <View key={row.group.id} role="listitem"><GroupListRow row={row} waiting={commands.filter(value => value.group_id === row.group.id)} userId={userId} busy={busy} onOpen={() => onOpen(row)} /></View>)}</View>;
+  return <RowGroup role="list" accessibilityLabel={direct ? 'People' : 'Groups'} style={[styles.list, { backgroundColor: palette.surface }]}>{groups.map(row => <View key={row.group.id} role="listitem"><GroupListRow row={row} waiting={commands.filter(value => value.group_id === row.group.id)} userId={userId} busy={busy} onOpen={() => onOpen(row)} /></View>)}</RowGroup>;
 }
 const styles = StyleSheet.create({
   list: { borderRadius: radii.surface, paddingHorizontal: 12 },

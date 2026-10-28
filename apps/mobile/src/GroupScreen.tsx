@@ -1,3 +1,5 @@
+import { useRowDivider } from './rowDividers';
+import RowGroup from './RowGroup';
 import { EmptyState } from './UIStates';
 import { NoticeBanner } from './UIStates';
 import PaginationFooter from './PaginationFooter';
@@ -23,8 +25,8 @@ import { personalSettlements, personalTransfers } from './personalBalances';
 import { paymentPresentation } from './activityPresentation';
 import { VisibleExpense } from './useExpenseNotices';
 import type { NoticeVisibility } from './useExpenseNotices';
-import type { BillRow, Command, Expense, Group, GroupTransaction, Participant, Settlement, HistoryResource, HistoryWindow } from './types';
-import { SectionHeading, AmountText, Avatar, balanceColor, Button, Icon, radii, useUI } from './ui';
+import type { BillRow, Command, Expense, Group, GroupTransaction, Participant, Settlement, HistoryResource } from './types';
+import { SectionHeading, AmountText, balanceColor, Button, Icon, useUI } from './ui';
 
 type Transfer = { sender: string; recipient: string; amount: string };
 type Props = {
@@ -63,12 +65,13 @@ function PersonalTransferRow({ transfer, group, selfId, disabled, onSettle, onRe
   const { palette: colors, ui } = useUI();
   const [reminding, setReminding] = useState(false);
   const row = useRef<React.ComponentRef<typeof View>>(null);
+  const divider = useRowDivider();
   const outgoing = transfer.sender === selfId, counterpart = outgoing ? transfer.recipient : transfer.sender;
   const person = group.participants.find(person => person.id === counterpart), removed = person?.removed;
   const name = participantName(group.participants, selfId, counterpart);
   const action = outgoing && person?.user_id != null && !!person.payment_profile?.vpa ? 'Pay' : 'Record';
-  return <View style={ui.row}>
-    <PersonRow name={name} photo={person?.profile_photo} titleStyle={[s.logTitle]} ref={row} accessibilityRole="button" accessibilityLabel={`Why ${outgoing ? 'you owe' : 'you are owed'} ${formatMoney(transfer.amount)} ${outgoing ? 'to' : 'by'} ${name}`} onPress={() => onExplain(transfer, () => row.current?.focus())} style={{ flex: 1, gap: 10, minHeight: 44, borderBottomWidth: 0, paddingVertical: 0 }} trailing={<AmountText amount={transfer.amount} style={[s.balanceAmount, { color: outgoing ? colors.negative : colors.positive }]} />}>
+  return <View style={[ui.row, { borderBottomWidth: divider ? StyleSheet.hairlineWidth : 0 }]}>
+    <PersonRow divider={false} name={name} photo={person?.profile_photo} titleStyle={[s.logTitle]} ref={row} accessibilityRole="button" accessibilityLabel={`Why ${outgoing ? 'you owe' : 'you are owed'} ${formatMoney(transfer.amount)} ${outgoing ? 'to' : 'by'} ${name}`} onPress={() => onExplain(transfer, () => row.current?.focus())} style={{ flex: 1, gap: 10, minHeight: 44, borderBottomWidth: 0, paddingVertical: 0 }} trailing={<AmountText amount={transfer.amount} style={[s.balanceAmount, { color: outgoing ? colors.negative : colors.positive }]} />}>
       <Text style={[ui.rowSub, s.logCaption]}>{outgoing ? 'You owe' : 'Owes you'}{removed ? ' · Removed' : ''}</Text>
     </PersonRow>
     <Button title={action} kind={action === 'Pay' ? 'outlined' : 'text'} icon={action === 'Pay' ? 'pay' : undefined} compact accessibilityLabel={`${action} payment ${outgoing ? 'to' : 'from'} ${name}, ${formatMoney(transfer.amount)}`} disabled={disabled || !!removed} onPress={() => onSettle(transfer)} />
@@ -246,7 +249,7 @@ export default function GroupScreen({ categoryIcons, header, noticeVisibility, g
     {group !== accepted && <Text style={ui.caption}>Balances show a pending preview.</Text>}
     {group.archived && <NoticeBanner>Archived. Reopen in settings to make changes.</NoticeBanner>}
     {!transfers.length && <Text style={celebrateSettled ? [ui.numeric, s.settled] : ui.caption}>{celebrateSettled ? '🎉 All settled' : 'All settled'}</Text>}
-    {transfers.map(transfer => <PersonalTransferRow key={`${transfer.sender}:${transfer.recipient}`} transfer={transfer} group={group} selfId={selfId} disabled={busy || !!group.archived || pending.length > 0} onSettle={onSettle} onRemind={online ? onRemind : undefined} onExplain={(transfer, restoreFocus) => setExplanation({ group, accepted, commands: pending, selfId, transfer, restoreFocus, load: onLoadBalanceGroup })} />)}
+    <RowGroup>{transfers.map(transfer => <PersonalTransferRow key={`${transfer.sender}:${transfer.recipient}`} transfer={transfer} group={group} selfId={selfId} disabled={busy || !!group.archived || pending.length > 0} onSettle={onSettle} onRemind={online ? onRemind : undefined} onExplain={(transfer, restoreFocus) => setExplanation({ group, accepted, commands: pending, selfId, transfer, restoreFocus, load: onLoadBalanceGroup })} />)}</RowGroup>
     <View style={s.logHeading}>
       <SectionHeading style={[ui.caption, s.logCaption, s.flex]}>Bills and payments</SectionHeading>
       {searchable && !showSearch && <Button title="Search" icon="search" compact small accessibilityLabel="Search bills" onPress={() => setSearching(true)} />}

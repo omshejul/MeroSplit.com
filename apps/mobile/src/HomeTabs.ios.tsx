@@ -1,8 +1,8 @@
 import FallbackTabLayout from './FallbackTabLayout';
 import React, { useRef } from 'react';
-import { Animated, Platform, View } from 'react-native';
+import { Animated, Platform } from 'react-native';
 import { Tabs } from 'react-native-screens';
-import { AppTabs } from './AppNavigation';
+
 import type { HomeTabsProps } from './HomeTabs';
 import { useUI } from './ui';
 import { useHomeTabSwipe } from './useHomeTabSwipe';

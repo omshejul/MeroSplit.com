@@ -1,7 +1,7 @@
-import { DialogScrollBody, CancelDialogActions } from './DialogParts';
+import { DialogScrollBody } from './DialogParts';
 import { Dialog } from './DialogParts';
 import React, { useRef, useState } from 'react';
-import { ScrollView, useWindowDimensions } from 'react-native';
+import { useWindowDimensions } from 'react-native';
 import { Text } from 'react-native-paper';
 import { accountDeletionInput } from './accountDeletion';
 import { EmailField, TextField } from './FormFields';

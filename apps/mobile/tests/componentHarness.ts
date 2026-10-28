@@ -15,8 +15,10 @@ const programs = [...files, 'SignInMethods'].map(name => {
 export function withSharedUI<T extends Record<string, any>>(input: T): T & Record<string, any> {
   if (!input?.React?.createElement || input.__sharedUI) return input;
   const env: Record<string, any> = input; env.__sharedUI = true;
-  for (const name of ['View', 'Text', 'Button', 'ErrorText', 'Avatar', 'Icon', 'TextField', 'EmailField', 'RadioChoice', 'SectionHeading', 'DialogScrollBody', 'CancelDialogActions', 'BottomSafeArea']) env[name] ??= name;
+  for (const name of ['RowGroup', 'PeopleSheet', 'View', 'Text', 'Button', 'ErrorText', 'Avatar', 'Icon', 'TextField', 'EmailField', 'RadioChoice', 'SectionHeading', 'DialogScrollBody', 'CancelDialogActions', 'BottomSafeArea']) env[name] ??= name;
   if (env.TextField === 'TextField' && input.TextInput) env.TextField = input.TextInput;
+  env.useRowDivider ??= (divider?: boolean) => divider ?? true; env.animateLayout ??= () => {};
+  env.StyleSheet ??= { hairlineWidth: 1, create: (value: any) => value };
   env.pageWidthStyle ??= {}; env.radii ??= { control: 12, surface: 16 }; env.Platform ??= { OS: 'native' };
   const shared = new Set<Function>(), original = input.React.createElement;
   env.React = { ...input.React, Fragment: input.React.Fragment ?? 'Fragment', createElement(type: any, props: any, ...children: any[]) {

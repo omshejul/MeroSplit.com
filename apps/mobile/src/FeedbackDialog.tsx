@@ -2,7 +2,7 @@ import { Dialog } from './DialogParts';
 import React, { useEffect, useRef, useState } from 'react';
 import * as Crypto from 'expo-crypto';
 import KeyboardDialog from './KeyboardDialog';
-import DialogFocus from './DialogFocus';
+
 import { CancelDialogActions, DialogScrollBody } from './DialogParts';
 import { TextField } from './FormFields';
 import { Button, ErrorText } from './ui';

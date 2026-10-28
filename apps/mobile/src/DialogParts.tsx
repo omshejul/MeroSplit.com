@@ -1,3 +1,4 @@
+import RowGroup from './RowGroup';
 import React, { useContext } from 'react';
 import { Platform, ScrollView, StyleSheet, View } from 'react-native';
 import { Dialog as PaperDialog, Text } from 'react-native-paper';
@@ -41,7 +42,7 @@ export function DialogScrollBody({ maxHeight = 520, gap = 12, paddingVertical = 
 }) {
   const { bodyHeight } = useContext(DialogContext);
   return <Dialog.ScrollArea style={{ flexShrink: 1, maxHeight: Math.min(maxHeight, bodyHeight), paddingHorizontal: paddingHorizontal ?? 20, borderTopWidth: 0, borderBottomWidth: 0 }}>
-    <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingVertical, gap, paddingRight: Platform.OS === 'web' ? 16 : 0 }}>{children}</ScrollView>
+    <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingVertical, gap, paddingRight: Platform.OS === 'web' ? 16 : 0 }}><RowGroup style={{ gap }}>{children}</RowGroup></ScrollView>
   </Dialog.ScrollArea>;
 }
 

@@ -26,7 +26,7 @@ import { validateUPIPayment, type UPILaunchQuote } from './src/upi';
 import { formatMoney } from './src/accounting';
 import { emptyGroup, previewPending } from './src/ledger';
 import { getDatabase, savedSession, saveSession, retireSyncPause, shareJson, storageIsDurable, isOnline, claimFirstSplitUPIPrompt } from './src/native';
-import { storageRevision, discardCommand, discardUnsentGroup, enqueue, enqueueBill, confirmedSync, confirmSync, readGroup, listGroups, pendingCommands, createPendingGroup, listLegacyGroups, listLegacyRecoveries, listUnavailableGroups, replaceCommand, saveGroup, readVisibleGroup, wipeAccount } from './src/storage';
+import { storageRevision, discardCommand, enqueue, enqueueBill, confirmedSync, confirmSync, readGroup, listGroups, pendingCommands, createPendingGroup, listLegacyGroups, listLegacyRecoveries, listUnavailableGroups, replaceCommand, saveGroup, readVisibleGroup, wipeAccount } from './src/storage';
 import GroupScreen, { ExpenseDetail, PaymentDetail } from './src/GroupScreen';
 import ExpenseForm from './src/ExpenseForm';
 import ExpenseVersionHistory from './src/ExpenseVersionHistory';
@@ -50,7 +50,7 @@ import SplitwiseImportScreen from './src/SplitwiseImportScreen';
 import AccountHeader from './src/AccountHeader';
 import GroupList from './src/GroupList';
 import { groupListRows } from './src/groupListRows';
-import Mascot from './src/Mascot';
+
 import { AddExpenseButton, AppFrame, pageContentStyle, ScreenHeader } from './src/AppNavigation';
 import HomeTabs from './src/HomeTabs';
 import HomeCreateButton, { HomeCreateInset } from './src/HomeCreateButton';
@@ -1387,7 +1387,6 @@ function AppContent() {
       {listNotice}
       {homeContext}
       {screen === 'signInMethods' && session && <SignInMethods key={owner} session={session} busy={lock.current || expired} connections={providerConnections} onGoogle={authenticate => launch(() => finishGoogleSignIn('connect', authenticate))} onApple={authenticate => launch(() => finishGoogleSignIn('connect', authenticate, 'Apple'))} />}
-
 
       {screen === 'home' && (tab === 'Groups' || tab === 'Friends') && <>
         <GroupList emptyLabel={!direct && showHidden ? 'No removed groups' : !direct && showArchived ? 'No archived groups' : !direct && archivedGroups.length ? 'No active groups' : undefined} emptyVerified={!showArchived && !showHidden && !archivedGroups.length && !hiddenGroups.length && mascotEligible && !!owner && verifiedEmptyOwner === owner} decorated={!showArchived && !showHidden && !archivedGroups.length && !hiddenGroups.length} groups={visibleGroups} commands={commands} userId={session?.userId} busy={busy} direct={direct} onOpen={row => open(() => openGroup(row))} />

@@ -1,11 +1,11 @@
 import MediaPreviewFrame, { mediaPreviewShape } from './MediaPreviewFrame';
 import Avatar from './Avatar';
 import React, { useEffect, useRef, useState } from 'react';
-import { Image, Platform, Text, View } from 'react-native';
+import { Image, Platform } from 'react-native';
 import { mediaThumbnail } from './media';
 import type { MediaMetadata } from './media';
 import type { Session } from './types';
-import { Button, Icon, radii, useUI } from './ui';
+import { Icon, useUI } from './ui';
 
 export default function PrivateMediaThumbnail({ session, media, size = 56, profile = false }: { session: Session; media: MediaMetadata; size?: number; profile?: boolean }) {
   const { palette, ui } = useUI(), [url, setUrl] = useState<string | null>(null), [failed, setFailed] = useState(false);

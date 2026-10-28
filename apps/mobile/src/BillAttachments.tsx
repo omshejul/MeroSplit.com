@@ -1,12 +1,13 @@
+import RowGroup from './RowGroup';
 import { ErrorState } from './UIStates';
 import { LoadingState } from './UIStates';
 import { NoticeBanner } from './UIStates';
-import { ErrorText } from './ui';
+
 import AttachmentPicker from './AttachmentPicker';
 import AttachmentRow from './AttachmentRow';
 import React, { useEffect, useRef, useState } from 'react';
 import { useScreenRemovalLock } from './screenRemoval';
-import { Platform, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 import { Alert } from './alerts';
 import * as Crypto from 'expo-crypto';
 import { accountOwner, request } from './api';
@@ -17,7 +18,7 @@ import LocalAttachment from './LocalAttachment';
 import PrivateMediaImage from './PrivateMediaImage';
 import RemoveMediaMenu from './RemoveMediaMenu';
 import type { Session } from './types';
-import { SectionHeading, Button, Icon, SettingsRow, useUI } from './ui';
+import { SectionHeading, Button, useUI } from './ui';
 
 export type BillAttachmentsProps = { session: Session | null; groupId: string; expenseId: string; revision?: number; readOnly?: boolean; busy: boolean; onBusyChange: (busy: boolean) => void; onChanged?: () => Promise<void> };
 export default function BillAttachments({ session, groupId, expenseId, revision, readOnly = false, busy, onBusyChange, onChanged }: BillAttachmentsProps) {
@@ -109,9 +110,9 @@ export default function BillAttachments({ session, groupId, expenseId, revision,
     {!session ? <Text style={ui.caption}>Sign in to view attachments.</Text> : <>
       {loading && <LoadingState label="Loading attachments…" />}
       {working && <LoadingState label="Processing file…" />}
-      {items.map(item => <AttachmentRow key={item.id} title={item.name} label={`Open ${item.name}`} subtitle={`${item.content_type === 'application/pdf' ? 'PDF' : 'Image'} · ${mediaSize(item.size)}`} thumbnail={<PrivateMediaImage session={session} media={item} />} disabled={disabled}
+      <RowGroup>{items.map(item => <AttachmentRow key={item.id} title={item.name} label={`Open ${item.name}`} subtitle={`${item.content_type === 'application/pdf' ? 'PDF' : 'Image'} · ${mediaSize(item.size)}`} thumbnail={<PrivateMediaImage session={session} media={item} />} disabled={disabled}
         onOpen={() => void run(() => openPrivateMedia(session, item))} options={editable && <RemoveMediaMenu open={optionsId === item.id} disabled={disabled || !!pending} label={`Options for ${item.name}`} removeLabel="Remove attachment"
-          onOpen={() => setOptionsId(item.id)} onClose={() => setOptionsId(null)} onRemove={() => remove(item)} />} />)}
+          onOpen={() => setOptionsId(item.id)} onClose={() => setOptionsId(null)} onRemove={() => remove(item)} />} />)}</RowGroup>
       {pending && <><LocalAttachment file={pending.file} disabled={disabled} onError={setError} /><NoticeBanner tone="warning">Upload not confirmed: {pending.file.name}.</NoticeBanner><Button title="Retry upload" icon="refresh" disabled={disabled || readOnly} onPress={() => void run(finishUpload)} /><Button title="Remove file" icon="remove" kind="text" disabled={disabled || readOnly} onPress={() => void run(async () => { await removePendingMediaUpload(await getDatabase(), session, path); if (current()) setPending(null); await load(); await onChanged?.(); })} /></>}
       {editable && !pending && items.length < 10 && <AttachmentPicker disabled={disabled} onPick={photo => void run(() => add(photo))} />}
       {!loading && readOnly && <Text style={ui.caption}>Read-only while archived or waiting to sync.</Text>}

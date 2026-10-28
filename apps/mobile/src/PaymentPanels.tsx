@@ -2,7 +2,7 @@ import { CloseDialogActions } from './DialogParts';
 import { Dialog } from './DialogParts';
 import { DialogScrollBody, CancelDialogActions } from './DialogParts';
 import KeyboardDialog from './KeyboardDialog';
-import DialogFocus from './DialogFocus';
+
 import React, { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { Text } from 'react-native-paper';

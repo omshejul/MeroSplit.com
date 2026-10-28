@@ -1,12 +1,12 @@
 import AttachmentRow from './AttachmentRow';
 import MediaPreviewFrame from './MediaPreviewFrame';
 import React, { useEffect, useState } from 'react';
-import { Image, View } from 'react-native';
-import { Text } from 'react-native-paper';
+import { Image } from 'react-native';
+
 import type { PickedMedia } from './media';
 import { mediaSize } from './media';
 import { localMediaUrl, clearLocalMediaUrl, openLocalMedia } from './mediaPlatform';
-import { Button, Icon, useUI } from './ui';
+import { useUI } from './ui';
 
 // The same private, local preview is used by bill drafts and pending uploads.
 export default function LocalAttachment({ file, disabled, onError }: { file: PickedMedia; disabled: boolean; onError: (message: string) => void }) {
