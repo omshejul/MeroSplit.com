@@ -40,5 +40,5 @@ const styles = StyleSheet.create({
   field: { gap: 7 },
   inputRow: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, paddingRight: 8 },
   inputWithRight: { flex: 1, minWidth: 0, minHeight: 46, borderWidth: 0, backgroundColor: 'transparent' },
-  amount: { fontSize: 32, fontWeight: '600', minHeight: 64, fontVariant: ['tabular-nums'] },
+  amount: { fontVariant: ['tabular-nums'] },
 });
