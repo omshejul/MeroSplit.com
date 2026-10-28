@@ -66,11 +66,11 @@ export function ChatMessageRow({ message, own, showDate, active, onReport, onBlo
 export function ChatComposer({ text, disabled, sendDisabled, onChange, onSend }: { text: string; disabled: boolean; sendDisabled?: boolean; onChange: (text: string) => void; onSend: () => void }) {
   const { ui, palette, inputColors } = useUI(), { fontScale = 1 } = useWindowDimensions();
   const [expanded, setExpanded] = useState(false);
-  return <ChatComposerSurface style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 4, padding: 4, borderRadius: expanded ? 18 : 28, borderWidth: 1, borderColor: palette.line }}>
+  return <ChatComposerSurface style={{ flexDirection: 'row', alignItems: expanded ? 'flex-end' : 'center', gap: 4, padding: 4, borderRadius: expanded ? 18 : 28, borderWidth: 1, borderColor: palette.line }}>
     <TextInput {...inputColors} accessibilityLabel="Message" placeholder="Message…" placeholderTextColor={palette.muted}
       multiline onLayout={event => setExpanded(event.nativeEvent.layout.height > (ui.body?.lineHeight ?? 23) * fontScale + 25)} maxLength={2000} value={text} onChangeText={onChange} editable={!disabled} underlineColorAndroid="transparent"
-      style={[ui.body, { flex: 1, minWidth: 0, minHeight: 44, maxHeight: 144, paddingHorizontal: 14, paddingTop: 11, paddingBottom: 11, backgroundColor: 'transparent', textAlignVertical: 'top' }]} />
-    <Button iconOnly icon={({ color }) => <View style={{ transform: [{ translateX: -3 }, { rotate: '45deg' }] }}><Icon name="send" size={22} color={color} /></View>}
+      style={[ui.body, { flex: 1, minWidth: 0, minHeight: 44, maxHeight: 144, paddingHorizontal: 14, paddingTop: 10, paddingBottom: 10, backgroundColor: 'transparent', textAlignVertical: 'top' }]} />
+    <Button iconOnly icon={({ color }) => <Icon name="send" size={22} color={color} />}
       accessibilityLabel="Send message" kind="primary" disabled={disabled || sendDisabled || !text.trim()} onPress={onSend}
       hitSlop={0} style={{ width: 44, height: 44, borderRadius: 22 }} />
   </ChatComposerSurface>;

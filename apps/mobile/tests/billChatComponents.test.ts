@@ -220,6 +220,14 @@ test('Compact composer keeps drafts editable while sending and rejects empty sen
   try {
     let tree = app.composer({ text: '   ', disabled: false, onChange: () => {}, onSend: () => {} });
     assert.equal(find(tree, 'TextInput').props.accessibilityLabel, 'Message');
+    assert.equal(tree.props.style.alignItems, 'center');
+    const inputStyle = Object.assign({}, ...find(tree, 'TextInput').props.style);
+    assert.ok(23 + inputStyle.paddingTop + inputStyle.paddingBottom <= 44);
+    const sendButton = nodes(tree).find(node => node.props.accessibilityLabel === 'Send message')!;
+    const glyph = sendButton.props.icon({ color: '#000' });
+    assert.equal(glyph.type, 'Icon');
+    assert.equal(glyph.props.name, 'send');
+    assert.equal(glyph.props.style, undefined);
     assert.equal(nodes(tree).find(node => node.props.accessibilityLabel === 'Send message')!.props.disabled, true);
     tree = app.composer({ text: 'New draft', disabled: false, sendDisabled: true, onChange: () => {}, onSend: () => {} });
     assert.equal(find(tree, 'TextInput').props.editable, true);
