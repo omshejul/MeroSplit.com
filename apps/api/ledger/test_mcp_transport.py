@@ -95,6 +95,10 @@ def test_official_sdk_negotiation_tools_schema_resource_and_no_session_affinity(
                 assert by_name["reverse_expense"].annotations.destructive_hint
                 assert by_name["reverse_external_payment"].annotations.destructive_hint
                 assert by_name["save_expense"].annotations.destructive_hint
+                bill_instructions = by_name["save_expense"].description
+                assert "ask what the expense was for and wait for their answer" in bill_instructions
+                assert "Never invent a description such as Shared expense" in bill_instructions
+                assert "Use a description already supplied without asking again" in bill_instructions
                 assert [tool.name for tool in tools if tool.meta and "ui" in tool.meta] == ["render_group"]
                 payment_schema = by_name["record_external_payment"].input_schema
                 assert {"attempt_id", "expected_group_version"}.isdisjoint(payment_schema["properties"])

@@ -613,3 +613,5 @@ def test_public_setup_verifies_without_financial_reads_or_manual_keys():
     assert 'Return here and reply <strong>done</strong>' in text
     assert 'after their reply, rediscover the tools' in text
     assert 'A status message alone is not a complete handoff.' in text
+    assert 'Open the provided authorization URL manually only if the browser did not open automatically' in text
+    assert 'use that same pending flow rather than starting another login' in text
