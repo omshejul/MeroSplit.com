@@ -140,7 +140,7 @@ def authorize(request):
                 "account_email": request.user.email, "expected_user_id": str(request.user.pk)})
             response["Cache-Control"] = "no-store"
             response["Referrer-Policy"] = "same-origin"
-            response["Content-Security-Policy"] = "default-src 'none'; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'"
+            response["Content-Security-Policy"] = "default-src 'none'; img-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'"
             return response
         if request.method != "POST":
             raise oauth.OAuthError(status=405)
