@@ -686,7 +686,7 @@ test('balance dialog hides changed calculations, ignores late closed loads, and 
   const changed = app.render({ ...props, currentKey: 'newer group' }); app.commit();
   assert.ok(!nodes(changed).some(node => typeof node.type === 'function' && node.type.name === 'ExplanationBody'));
   assert.ok(nodes(changed).some(node => node.props.accessibilityRole === 'alert'));
-  find(tree, 'title', 'Close').props.onPress(); assert.equal(closes, 1); assert.equal(restores, 1);
+  find(tree, 'accessibilityLabel', 'Close explanation').props.onPress(); assert.equal(closes, 1); assert.equal(restores, 1);
   assert.doesNotThrow(() => app.render({ ...props, selection: null }), 'closing renders safely before effects clear the loaded result');
   app.commit();
   const next = { ...selection };
@@ -698,6 +698,36 @@ test('balance dialog hides changed calculations, ignores late closed loads, and 
   assert.equal(nodes(tree).find(node => node.type === 'KeyboardDialog')!.props.visible, false);
   assert.ok(!nodes(tree).some(node => typeof node.type === 'function' && node.type.name === 'ExplanationBody'));
   app.unmount();
+});
+
+test('running balance expands in the same dialog and collapses accessibly', () => {
+  const app = harness('src/BalanceExplanationDialog.tsx', 'InlineDetails', { useUI: () => ({ ui: {}, palette: {} }) });
+  const props = { title: 'Show running balance', expandedTitle: 'Hide running balance', children: 'Running history' };
+  let tree = app.render(props), toggle = find(tree, 'accessibilityRole', 'button');
+  assert.equal(toggle.props.accessibilityState.expanded, false);
+  assert.ok(!nodes(tree).some(node => node.children.includes('Running history')));
+  toggle.props.onPress(); tree = app.render(props); toggle = find(tree, 'accessibilityRole', 'button');
+  assert.equal(toggle.props.accessibilityLabel, 'Hide running balance');
+  assert.equal(toggle.props.accessibilityState.expanded, true);
+  assert.ok(nodes(tree).some(node => node.children.includes('Running history')));
+  assert.ok(!nodes(tree).some(node => node.type === 'KeyboardDialog'));
+  toggle.props.onPress(); tree = app.render(props);
+  assert.equal(find(tree, 'accessibilityRole', 'button').props.accessibilityState.expanded, false);
+});
+
+test('quick answer shows the other person\'s share when you paid an unequal bill', () => {
+  const group = { id: 'friend', version: 1, name: 'Friend', participants: [{ id: 'A', name: 'Riya' }, { id: 'B', name: 'Asha' }], expenses: [{ id: 'bill', description: 'Lunch', total: '1000', paid: { A: '1000' }, shares: { A: '667', B: '333' }, split: { mode: 'exact', values: { A: '667', B: '333' } }, date: '2026-10-28', deleted: false }], settlements: [], balances: { A: '333', B: '-333' }, transfers: [{ sender: 'B', recipient: 'A', amount: '333' }], activity: [] };
+  const value = explainTransfer(group as any, group as any, 'A', group.transfers[0]);
+  const app = harness('src/BalanceExplanationDialog.tsx', 'ExplanationBody', { IconBadge: 'IconBadge', balanceColor: () => '', useUI: () => ({ ui: {}, palette: {} }) });
+  const tree = app.render({ value, selfId: 'A' });
+  assert.ok(nodes(tree).some(node => node.children.includes('Asha owes you')));
+  assert.ok(nodes(tree).some(node => node.children.includes("Asha's share")));
+  assert.ok(!nodes(tree).some(node => node.children.includes('Your share')));
+  assert.ok(!nodes(tree).some(node => node.type === 'DetailDialog'));
+  const partial = { ...group, expenses: [{ ...group.expenses[0], total: '2500', paid: { A: '500', B: '2000' }, shares: { A: '1250', B: '1250' } }], balances: { A: '-750', B: '750' }, transfers: [{ sender: 'A', recipient: 'B', amount: '750' }] };
+  const partialTree = app.render({ value: explainTransfer(partial as any, partial as any, 'A', partial.transfers[0]), selfId: 'A' });
+  assert.ok(nodes(partialTree).some(node => node.children.includes('Effect on your balance')));
+  assert.ok(nodes(partialTree).some(node => node.children.includes('Your share ') && node.children.includes('₹12.50')));
 });
 
 test('payment address stays selectable, copies the full ID and recovers from clipboard denial', async () => {

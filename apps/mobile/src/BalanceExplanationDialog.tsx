@@ -1,7 +1,6 @@
-import DetailDialog from './DetailDialog';
 import { Dialog } from './DialogParts';
 import React, { useEffect, useState } from 'react';
-import { View, useWindowDimensions } from 'react-native';
+import { StyleSheet, View, useWindowDimensions } from 'react-native';
 import { Text } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { formatMoney, type Transfer } from './accounting';
@@ -10,55 +9,95 @@ import type { BalanceSource } from './balanceExplanationStorage';
 import type { Command, Group } from './types';
 import KeyboardDialog from './KeyboardDialog';
 import { DialogScrollBody } from './DialogParts';
-import { balanceColor, Button, SectionHeading, useUI } from './ui';
+import { balanceColor, Button, Icon, IconBadge, SectionHeading, useUI, type IconName } from './ui';
 
 export type BalanceSelection = { group: Group; accepted: Group; commands: Command[]; selfId: string; transfer: Transfer; restoreFocus: () => void; load?: (expected: Group) => Promise<BalanceSource> };
 type Explanation = ReturnType<typeof explainTransfer>;
 const nameFor = (group: Group, selfId: string, id: string) => id === selfId ? 'You' : group.participants.find(person => person.id === id)?.name ?? 'Former member';
 const netText = (name: string, amount: string) => BigInt(amount) > 0n ? `${name} ${name === 'You' ? 'are' : 'is'} owed ${formatMoney(amount)}` : BigInt(amount) < 0n ? `${name} ${name === 'You' ? 'owe' : 'owes'} ${formatMoney((-BigInt(amount)).toString())}` : `${name} ${name === 'You' ? 'are' : 'is'} settled up`;
+const dateText = (date: string | null) => date ? new Date(`${date}T12:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Date unavailable';
+const absolute = (amount: string) => (BigInt(amount) < 0n ? -BigInt(amount) : BigInt(amount)).toString();
+type HistoryRow = Explanation['history']['entries'][number] | Explanation['history']['excluded'][number];
 
-function CalculationLine({ label, amount, subtract = false }: { label: string; amount: string; subtract?: boolean }) {
-  const { ui, palette } = useUI();
-  return <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}><Text style={[ui.body, { flex: 1, minWidth: 0 }]}>{label}</Text><Text style={[ui.body, { fontVariant: ['tabular-nums'], color: balanceColor(subtract ? -BigInt(amount) : amount, palette) }]}>{subtract ? '−' : '+'}{formatMoney(amount)}</Text></View>;
+function InlineDetails({ title, expandedTitle, icon = 'history', children }: { title: string; expandedTitle?: string; icon?: IconName; children: React.ReactNode }) {
+  const { ui, palette } = useUI(), [open, setOpen] = useState(false);
+  return <View style={{ borderTopWidth: StyleSheet.hairlineWidth, borderColor: palette.line }}>
+    <Button kind="plain" accessibilityRole="button" accessibilityState={{ expanded: open }} accessibilityLabel={open ? expandedTitle ?? title : title} onPress={() => setOpen(value => !value)} style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 52, paddingVertical: 12, backgroundColor: pressed ? palette.soft : undefined })}>
+      <Icon name={icon} size={20} color={palette.muted} /><Text style={[ui.body, { flex: 1 }]}>{open ? expandedTitle ?? title : title}</Text><View style={{ transform: [{ rotate: open ? '180deg' : '0deg' }] }}><Icon name="down" size={18} color={palette.muted} /></View>
+    </Button>
+    {open && <View style={{ gap: 16, paddingBottom: 12 }}>{children}</View>}
+  </View>;
 }
 
-function LedgerDetails({ group, selfId }: { group: Group; selfId: string }) {
+function balanceText(group: Group, selfId: string, amount: string, past = false) {
+  if (amount === '0') return 'Settled up · ' + formatMoney('0');
+  if (group.participants.length !== 2) return past ? `You ${BigInt(amount) > 0n ? 'were owed' : 'owed'} ${formatMoney(absolute(amount))}` : netText('You', amount);
+  const other = group.participants.find(person => person.id !== selfId)!.name;
+  return BigInt(amount) < 0n ? `You ${past ? 'owed' : 'owe'} ${other} ${formatMoney(absolute(amount))}` : `${other} ${past ? 'owed' : 'owes'} you ${formatMoney(amount)}`;
+}
+
+function RecordRow({ row, group, selfId, current = false }: { row: HistoryRow; group: Group; selfId: string; current?: boolean }) {
+  const { ui, palette } = useUI();
+  const bill = row.kind === 'bill' ? row.bill : null, payment = row.kind === 'payment' ? row.payment : null;
+  const paid = bill ? Object.entries(bill.paid).filter(([, amount]) => BigInt(amount) > 0n).map(([id, amount]) => `${nameFor(group, selfId, id)} paid ${formatMoney(amount)}`).join(', ') : '';
+  const title = bill ? bill.description : payment!.sender === selfId ? `You paid ${nameFor(group, selfId, payment!.recipient)}` : `${nameFor(group, selfId, payment!.sender)} paid you`;
+  return <View style={{ gap: 4 }}>
+    <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}><Text style={ui.body}>{title}</Text><Text style={ui.caption}>{dateText(row.date)}</Text></View>
+    <Text style={ui.caption}>{bill ? `${paid}. Your share ${formatMoney(bill.shares[selfId] ?? '0')}.` : `Recorded payment of ${formatMoney(payment!.amount)}.`}</Text>
+    {row.excluded ? <Text style={ui.caption}>Reversed. No effect on balances.</Text> : 'balance' in row && row.balance !== null ? <Text style={[ui.body, { color: balanceColor(row.balance, palette) }]}>{balanceText(group, selfId, row.balance, !current)}</Text> : <Text style={ui.caption}>Balance effect: {BigInt(row.effect) < 0n ? '−' : '+'}{formatMoney(absolute(row.effect))}</Text>}
+  </View>;
+}
+
+function HistoryRecords({ rows, group, selfId }: { rows: HistoryRow[]; group: Group; selfId: string }) {
   const { ui } = useUI(), [limit, setLimit] = useState(20);
-  const names = (values: Record<string, string>) => Object.entries(values).filter(([, value]) => value !== '0').map(([id, value]) => `${nameFor(group, selfId, id)} ${formatMoney(value)}`).join(', ');
-  const entries = [...group.expenses.map(bill => ({ key: `bill:${bill.id}`, date: bill.date, title: `${bill.description} · ${formatMoney(bill.total)}`, detail: `${bill.deleted ? 'Reversed. No effect on balances. ' : ''}Paid: ${names(bill.paid)}. Shares: ${names(bill.shares)}.` })),
-    ...group.settlements.map(payment => ({ key: `payment:${payment.id}`, date: payment.date, title: `${nameFor(group, selfId, payment.sender)} to ${nameFor(group, selfId, payment.recipient)} · ${formatMoney(payment.amount)}`, detail: payment.reversed ? 'Payment record reversed. No effect on balances.' : 'Recorded payment.' }))]
-    .sort((a, b) => (b.date ?? '').localeCompare(a.date ?? '') || a.key.localeCompare(b.key));
   return <>
-    {entries.slice(0, limit).map(entry => <View key={entry.key} style={{ gap: 3 }}><Text style={ui.body}>{entry.title}</Text><Text style={ui.caption}>{entry.date ? new Date(`${entry.date}T12:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Date unavailable'}</Text><Text style={ui.caption}>{entry.detail}</Text></View>)}
-    {!entries.length && <Text style={ui.caption}>No bills or payment records.</Text>}
-    {entries.length > limit && <Button title="Show more records" kind="text" onPress={() => setLimit(value => value + 20)} />}
-    {group.opening_balance && <><SectionHeading>Starting balances</SectionHeading><Text style={ui.caption}>{group.opening_balance.accepted ? 'Agreed starting balances are included.' : 'Waiting for agreement. These amounts are not included.'}</Text>{Object.entries(group.opening_balance.balances).map(([id, amount]) => <Text key={id} style={ui.body}>{netText(nameFor(group, selfId, id), amount)}</Text>)}</>}
+    {rows.slice(0, limit).map((row, index) => <RecordRow key={row.key} row={row} group={group} selfId={selfId} current={index === rows.length - 1} />)}
+    {!rows.length && <Text style={ui.caption}>No bills or recorded payments changed your balance.</Text>}
+    {rows.length > limit && <Button title="Show more records" kind="text" onPress={() => setLimit(value => value + 20)} />}
   </>;
 }
 
 function ExplanationBody({ value, selfId }: { value: Explanation; selfId: string }) {
-  const { ui } = useUI(), { group, plan, index, people } = value;
-  const own = people.find(person => person.id === selfId)!, chosen = plan[index], sender = nameFor(group, selfId, chosen.sender), recipient = nameFor(group, selfId, chosen.recipient);
+  const { ui, palette } = useUI(), { group, plan, index, people, history } = value;
+  const own = people.find(person => person.id === selfId)!, chosen = plan[index], sender = nameFor(group, selfId, chosen.sender), recipient = nameFor(group, selfId, chosen.recipient), direct = people.length === 2;
+  const bill = history.single;
+  const otherId = direct ? group.participants.find(person => person.id !== selfId)!.id : '';
+  const share = bill && BigInt(bill.paid[selfId] ?? '0') === 0n ? { label: 'Your share', amount: bill.shares[selfId] ?? '0' } : bill && bill.paid[selfId] === bill.total ? { label: `${nameFor(group, selfId, otherId)}'s share`, amount: bill.shares[otherId] ?? '0' } : { label: 'Effect on your balance', amount: absolute(own.balance) };
   return <>
-    <Text style={ui.body}>Suggested payment</Text>
-    <Text style={ui.section}>{sender} to {recipient === 'You' ? 'you' : recipient} · {formatMoney(chosen.amount)}</Text>
-    <SectionHeading>Your balance</SectionHeading>
-    <CalculationLine label="Bills you paid" amount={own.paid} />
-    <CalculationLine label="Your share of the bills" amount={own.share} subtract />
-    {own.sent !== '0' && <CalculationLine label="Payments you recorded sending" amount={own.sent} />}
-    {own.received !== '0' && <CalculationLine label="Payments recorded to you" amount={own.received} subtract />}
-    {own.opening !== '0' && <CalculationLine label="Agreed starting balance" amount={(BigInt(own.opening) < 0n ? -BigInt(own.opening) : BigInt(own.opening)).toString()} subtract={BigInt(own.opening) < 0n} />}
-    <Text style={ui.section}>{netText('You', own.balance)}</Text>
-    <Text style={ui.caption}>We add up everyone's bills and recorded payments, then suggest who can pay whom to settle the group. A suggested payment can cover bills involving other people.</Text>
-    <DetailDialog icon="payment" title="How this payment fits">
-      <Text style={ui.body}>{index ? 'If the earlier suggested payments below are made, ' : ''}{sender === 'You' && index ? 'you' : sender} {sender === 'You' ? 'owe' : 'owes'} {formatMoney(value.owing)}. {recipient} {recipient === 'You' ? 'are' : 'is'} owed {formatMoney(value.owed)}. This step uses the smaller amount, {formatMoney(chosen.amount)}.</Text>
-      <SectionHeading>Everyone's balance</SectionHeading>
-      {people.map(person => <Text key={person.id} style={ui.body}>{netText(person.name, person.balance)}</Text>)}
-      <SectionHeading>Suggested payments in order</SectionHeading>
-      {plan.map((row, step) => <Text key={`${row.sender}:${row.recipient}`} style={ui.body}>{step + 1}. {nameFor(group, selfId, row.sender)} to {nameFor(group, selfId, row.recipient)} · {formatMoney(row.amount)}{step === index ? ' · This payment' : ''}</Text>)}
-    </DetailDialog>
-    <DetailDialog icon="bill" title="Bills and recorded payments"><LedgerDetails group={group} selfId={selfId} /></DetailDialog>
     {value.pending && <Text style={ui.caption}>Includes changes waiting to sync.</Text>}
+    <View style={{ gap: 6 }}>
+      <Text style={ui.body}>{direct ? sender === 'You' ? `You owe ${recipient}` : `${sender} owes you` : 'Suggested payment'}</Text>
+      {!direct && <Text style={ui.body}>{sender} to {recipient === 'You' ? 'you' : recipient}</Text>}
+      <Text style={[ui.amount, { fontSize: 36, lineHeight: 44, textAlign: 'left', flexShrink: 1, color: balanceColor(own.balance, palette) }]}>{formatMoney(chosen.amount)}</Text>
+      <Text style={ui.body}>{bill ? `${BigInt(bill.paid[selfId] ?? '0') === 0n ? 'Your share of' : 'From'} ${bill.description}.` : 'Your balance combines bills and recorded payments.'}{history.settledDate ? ` Your earlier balance was settled on ${dateText(history.settledDate)}.` : ''}</Text>
+    </View>
+    {bill ? <View style={{ gap: 12, marginVertical: 12 }}>
+      <SectionHeading>What makes up {formatMoney(absolute(own.balance))}</SectionHeading>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}><IconBadge name="bill" /><View style={{ flex: 1, gap: 4 }}><Text style={ui.body}>{bill.description}</Text><Text style={ui.caption}>{dateText(bill.date)}</Text></View><Text style={ui.body}>{formatMoney(bill.total)}</Text></View>
+      <Text style={ui.caption}>{Object.entries(bill.paid).filter(([, amount]) => BigInt(amount) > 0n).map(([id, amount]) => `${nameFor(group, selfId, id)} paid ${formatMoney(amount)}`).join(', ')}</Text>
+      {BigInt(bill.paid[selfId] ?? '0') > 0n && bill.paid[selfId] !== bill.total && <Text style={ui.caption}>Your share {formatMoney(bill.shares[selfId] ?? '0')}.</Text>}
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}><Text style={ui.body}>{share.label}</Text><Text style={ui.body}>{formatMoney(share.amount)}</Text></View>
+      {bill.split.mode === 'equal' && bill.split.values[selfId] === '1' && bill.split.values[otherId] === '1' && <Text style={ui.caption}>Split equally between you and {nameFor(group, selfId, otherId)}.</Text>}
+      {history.settledDate && <Text style={ui.caption}>No amount carried over from earlier bills.</Text>}
+    </View> : <View style={{ gap: 12, marginVertical: 12 }}>
+      <SectionHeading>Recent changes to your balance</SectionHeading>
+      {history.recent.slice(-3).map(row => <RecordRow key={row.key} row={row} group={group} selfId={selfId} current={row.key === history.entries.at(-1)?.key} />)}
+      {history.recent.length > 3 && <Text style={ui.caption}>All {history.recent.length} changes are in the running balance below.</Text>}
+      {!history.recent.length && <Text style={ui.body}>{netText('You', own.opening)} from the agreed starting balance.</Text>}
+    </View>}
+    {!direct && <Text style={ui.caption}>{netText('You', own.balance)} across this group. Group balances are combined to suggest repayments, including bills involving other people.</Text>}
+    <InlineDetails title="Show running balance" expandedTitle="Hide running balance">
+      <Text style={ui.caption}>{history.ordered ? 'Based on current bills and recorded payment dates. Balances are shown after each date.' : 'Some records have no date or predate the agreed starting balance. Their effects are shown below; a chronological running balance is unavailable.'}</Text>
+      {group.opening_balance?.accepted && <><SectionHeading>Agreed starting balance</SectionHeading><Text style={ui.body}>{balanceText(group, selfId, history.opening, true)}</Text><Text style={ui.caption}>{dateText(group.opening_balance.cutoff)} · {group.opening_balance.source}</Text></>}
+      <HistoryRecords rows={history.entries} group={group} selfId={selfId} />
+      {group.opening_balance && !group.opening_balance.accepted && <Text style={ui.caption}>The proposed starting balance is waiting for agreement and is not included.</Text>}
+    </InlineDetails>
+    {!!history.excluded.length && <InlineDetails title={`${history.excluded.length} reversed record${history.excluded.length === 1 ? '' : 's'} excluded`} icon="refresh"><HistoryRecords rows={history.excluded} group={group} selfId={selfId} /></InlineDetails>}
+    {!direct && <InlineDetails title="Group payment plan" icon="payment">
+      {people.map(person => <Text key={person.id} style={ui.body}>{netText(person.name, person.balance)}</Text>)}
+      <SectionHeading>Suggested payments</SectionHeading>
+      {plan.map((row, step) => <Text key={`${row.sender}:${row.recipient}`} style={ui.body}>{nameFor(group, selfId, row.sender)} to {nameFor(group, selfId, row.recipient)} · {formatMoney(row.amount)}{step === index ? ' · This payment' : ''}</Text>)}
+    </InlineDetails>}
   </>;
 }
 
@@ -85,7 +124,7 @@ export default function BalanceExplanation({ selection, currentKey, onClose }: {
       <DialogScrollBody maxHeight={Math.max(80, maxHeight - 150)} gap={12}>
         {stale ? <Text accessibilityRole="alert" style={ui.error}>{changedBalance}</Text> : error ? <><Text accessibilityRole="alert" style={ui.error}>{error}</Text><Button title="Try again" kind="text" onPress={() => setRetry(value => value + 1)} /></> : !result || !selection ? <Text accessibilityLiveRegion="polite" style={ui.caption}>Loading the full breakdown…</Text> : <><ExplanationBody value={result.value} selfId={selection.selfId} />{result.saved && <Text style={ui.caption}>Saved on this device.</Text>}</>}
       </DialogScrollBody>
-      <Dialog.Actions><Button title="Close" accessibilityLabel="Close explanation" kind="text" onPress={close} /></Dialog.Actions>
+      <Dialog.Actions><Button title="Got it" accessibilityLabel="Close explanation" kind="text" onPress={close} /></Dialog.Actions>
     </View>
   </KeyboardDialog>;
 }

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import { addExpense, addSettlement, proposeTransfers } from '../src/accounting.ts';
-import { explainTransfer, balanceKey } from '../src/balanceExplanation.ts';
+import { explainTransfer, balanceKey, balanceHistory } from '../src/balanceExplanation.ts';
 import { loadBalanceSource } from '../src/balanceExplanationStorage.ts';
 import { accountOwner, ApiError } from '../src/api.ts';
 import { migrate, saveGroup, readGroup, readVisibleGroup } from '../src/storage.ts';
@@ -19,6 +19,61 @@ function ledger(expenses: Expense[], settlements: Group['settlements'] = [], ope
   for (const row of settlements) if (!row.reversed) balances = addSettlement(balances, row.sender, row.recipient, row.amount);
   return { id: 'group', name: 'Trip', version: 7, participants, expenses, settlements, opening_balance: opening, balances, transfers: proposeTransfers(balances), activity: [] };
 }
+
+function friendLedger() {
+  const group = ledger([
+    { ...bill('early', { A: '1000' }, { A: '667', B: '333' }), description: 'test', date: '2026-10-19' },
+    { ...bill('later', { A: '5400' }, { A: '2700', B: '2700' }), description: 'test', date: '2026-10-26' },
+    { ...bill('food', { B: '2500' }, { A: '1250', B: '1250' }), description: 'Food', date: '2026-10-28' },
+  ], [
+    { id: 'reversed', sender: 'B', recipient: 'A', amount: '3533', date: '2026-10-19', reversed: true },
+    { id: 'paid', sender: 'B', recipient: 'A', amount: '3033', date: '2026-10-27' },
+  ]);
+  return { ...group, is_direct: true, participants: group.participants.slice(0, 2), balances: { A: group.balances.A, B: group.balances.B } };
+}
+
+test('friend quick answer identifies Food after an exactly settled earlier balance', () => {
+  const group = friendLedger(), history = explainTransfer(group, group, 'A', group.transfers[0]).history;
+  assert.equal(history.single?.description, 'Food');
+  assert.equal(history.settledDate, '2026-10-27');
+  assert.deepEqual(history.entries.map(row => row.balance), ['333', '3033', '0', '-1250']);
+  assert.deepEqual(history.recent.map(row => row.key), ['bill:food']);
+  assert.equal(history.excluded[0].effect, '0');
+  const opposite = balanceHistory(group, 'B');
+  assert.deepEqual(opposite.entries.map(row => row.balance), ['-333', '-3033', '0', '1250']);
+  assert.equal(opposite.single?.id, 'food');
+});
+
+test('same-day records expose only the closing balance and never invent an intra-day settlement', () => {
+  const group = friendLedger();
+  group.expenses[2].date = '2026-10-27';
+  const history = balanceHistory(group, 'A');
+  assert.equal(history.settledDate, null);
+  assert.equal(history.single, null);
+  assert.deepEqual(history.entries.filter(row => row.date === '2026-10-27').map(row => row.balance), [null, '-1250']);
+});
+
+test('undated payments suppress chronology and settled claims while preserving exact effects', () => {
+  const group = friendLedger(); group.settlements[1].date = null;
+  const history = balanceHistory(group, 'A');
+  assert.equal(history.ordered, false); assert.equal(history.settledDate, null); assert.equal(history.single, null);
+  assert.ok(history.entries.every(row => row.balance === null));
+  assert.equal(history.entries.reduce((sum, row) => sum + BigInt(row.effect), 0n), -1250n);
+  group.settlements[1].date = '2026-99-99';
+  assert.equal(balanceHistory(group, 'A').ordered, false);
+});
+
+test('openings, partial repayments, deleted bills and group netting do not become a single-bill claim', () => {
+  const group = friendLedger(); group.settlements[1].amount = '3000';
+  group.balances = { A: '-1217', B: '1217' };
+  assert.equal(balanceHistory(group, 'A').single, null);
+  const opening = ledger([], [], { id: 'opening', accepted: true, balances: { A: '-250', B: '250', C: '0', D: '0' }, source: 'Agreed', cutoff: '2026-10-01', acknowledgments: {} });
+  assert.equal(balanceHistory(opening, 'A').opening, '-250');
+  const chain = ledger([bill('B paid for A', { B: '20000' }, { A: '20000' }), bill('C paid for B', { C: '20000' }, { B: '20000' })]);
+  assert.equal(explainTransfer(chain, chain, 'A', chain.transfers[0]).history.single, null);
+  const deleted = ledger([bill('Dinner', { B: '501' }, { A: '501' }), bill('Deleted', { B: '999' }, { A: '999' }, true)]);
+  assert.equal(balanceHistory(deleted, 'A').excluded[0].effect, '0');
+});
 
 test('third-person netting explains the same complete Simplify plan without inventing a pairwise bill', () => {
   const group = ledger([bill('B paid for A', { B: '20000' }, { A: '20000' }), bill('C paid for B', { C: '20000' }, { B: '20000' })]);
