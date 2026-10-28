@@ -220,3 +220,18 @@ test('update restart checkpoint blocks a failed chat write only for its account 
   assert.equal((await readChatWork(db,active,path)).draft,'Keep this draft');
  } finally {await flushChatWrites();raw.close();}
 });
+
+// Optimistic rows belong only to the display; confirmed server rows remain authoritative.
+test('Quiet receipt merges pending bubbles without duplicating a confirmed own client ID', async () => {
+  const { chatMessageRows } = await import('../src/billChat.ts');
+  const own = { id: '91', client_id: 'client-a', sender_id: '1', sender: 'You', text: 'Hello', hidden: false, created_at: '2026-10-28T10:00:00Z', seen_token: 'real-token' };
+  const pending = [{ id: 'client-a', text: 'Hello' }, { id: 'client-b', text: 'Next', created_at: '2026-10-28T10:01:00Z' }];
+  const displayed = chatMessageRows([own], pending, '1');
+  assert.equal(displayed.length, 2);
+  assert.equal(displayed[0].pending?.id, 'client-b');
+  assert.equal(displayed[0].created_at, pending[1].created_at);
+  assert.equal(displayed[0].seen_token, '');
+  assert.equal(displayed[1], own);
+  assert.equal(chatMessageRows([{ ...own, sender_id: '2' }], pending, '1').length, 3);
+  assert.equal(chatMessageRows([], [{ id: 'legacy', text: 'Saved before this update' }], '1')[0].created_at, '');
+});
