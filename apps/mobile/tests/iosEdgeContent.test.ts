@@ -8,11 +8,12 @@ function component(name:string,os:string){
  const fn=source.statements.find(n=>ts.isFunctionDeclaration(n)&&n.name?.text===name)!;
  const React={createElement:(type:any,props:any,...children:any[])=>({type,props:props??{},children})};
  const styles:any={floating:{position:'absolute',bottom:0,paddingBottom:16},floatingContent:{},tabs:{},title:{}};
- return new Function('env',`with(env){${ts.transpile(fn.getText(source),{target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.React}).replace('export ','')};return ${name};}`)({React,Platform:{OS:os},View:'View',SafeAreaView:'SafeAreaView',BottomSafeArea:'BottomSafeArea',Button:'Button',TabBarSurface:'TabBarSurface',TabButton:'TabButton',tabs:[],styles,pageWidthStyle:{}});
+ return new Function('env',`with(env){${ts.transpile(fn.getText(source),{target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.React}).replace('export ','')};return ${name};}`)({React,Platform:{OS:os},View:'View',SafeAreaView:'SafeAreaView',BottomSafeArea:'BottomSafeArea',Button:'Button',AddActionButton:'AddActionButton',TabBarSurface:'TabBarSurface',TabButton:'TabButton',tabs:[],styles,pageWidthStyle:{}});
 }
 test('only sticky controls consume the iOS bottom inset, with unchanged Android/web placement',()=>{
  for(const os of ['ios','android','web']){
   const floating=component('AddExpenseButton',os)({disabled:false,onPress(){}}),tabs=component('AppTabs',os)({selected:'Groups',busy:false,onSelect(){}});
+  assert.equal(floating.children[0].children[0].type,'AddActionButton');assert.equal(floating.children[0].children[0].props.title,'Add expense');
   assert.equal(floating.type,'BottomSafeArea');assert.equal(tabs.type,'BottomSafeArea');
   assert.equal(floating.props.style.bottom,0);assert.equal(floating.props.style.paddingBottom,16);assert.equal(floating.props.pointerEvents,'box-none');
  }

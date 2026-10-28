@@ -246,7 +246,7 @@ export default function GroupScreen({ categoryIcons, header, noticeVisibility, g
       onScroll={event => { setScrollEpoch(value => value + 1); }}
       keyboardShouldPersistTaps="handled" onViewableItemsChanged={viewable.current} onRefresh={onRefresh} refreshing={refreshing}
       keyExtractor={row => row.kind === 'bill' ? `bill:${row.bill.id}` : `payment:${row.payment.id}`}
-      contentContainerStyle={[pageContentStyle, { gap: 0, paddingBottom: 104 }]} renderItem={({ item: row }) => <StaggerItem entry={entries.current.get(transactionKey(row))}>{row.kind === 'payment'
+      contentContainerStyle={[pageContentStyle, { gap: 0, paddingBottom: 120 }]} renderItem={({ item: row }) => <StaggerItem entry={entries.current.get(transactionKey(row))}>{row.kind === 'payment'
         ? <PaymentRow payment={row.payment} accepted={accepted} group={group} selfId={selfId} busy={busy} onPayment={onPayment} onPrefetchPayment={onPrefetchPayment} />
         : <BillTimelineRow categoryIcons={categoryIcons} expense={row.bill} group={group} selfId={selfId} busy={busy} onExpense={onExpense} onPrefetchBill={onPrefetchBill} noticeVisibility={group === accepted ? visibility : undefined} />}</StaggerItem>}
       ListHeaderComponent={<View style={s.content}>{header}

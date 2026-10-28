@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import ts from 'typescript';
 
-const React = { createElement: (type: any, props: any, ...children: any[]) => ({ type, props: props ?? {}, children }) };
+const React = { createElement: (type: any, props: any, ...children: any[]) => typeof type === 'function' ? type(props) : ({ type, props: props ?? {}, children }) };
+const actionSource = readFileSync(new URL('../src/AddActionButton.tsx', import.meta.url), 'utf8').replace(/^import .*$/mg, '').replace('export default ', '');
+const actionCode = ts.transpile(actionSource, { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React });
 const source = ts.createSourceFile('HomeCreateButton.tsx', readFileSync(new URL('../src/HomeCreateButton.tsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
 const fn = source.statements.find(node => ts.isFunctionDeclaration(node))!;
 const insetFn = source.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === 'HomeCreateInset')!;
@@ -15,7 +17,7 @@ test('Create capsule anchors above custom/native navigation and keeps margins tr
     let loaded = 0, clicked = 0;
     const env = { React, View: 'View', Button: 'Button', Icon: 'Icon', GlassSurface: 'GlassSurface', useUI: () => ({ palette: { accent: 'accent', muted: 'muted' } }), Platform: { OS, Version }, pageWidthStyle: OS === 'web' ? { maxWidth: 760, alignSelf: 'center' } : {},
       require: (name: string) => { assert.equal(name, 'react-native-screens/experimental'); loaded++; return { SafeAreaView: 'NativeSafeAreaView' }; } };
-    const render = new Function('env', `with(env){${code};return HomeCreateButton;}`)(env);
+    const render = new Function('env', `with(env){${actionCode};${code};return HomeCreateButton;}`)(env);
     const tree = render({ direct, disabled: false, onPress: () => clicked++ });
     const native = OS === 'ios' && Version >= 26;
     assert.equal(tree.type, native ? 'NativeSafeAreaView' : 'View');
@@ -71,7 +73,7 @@ test('Create capsule keeps the existing create route, appears on Groups/People o
   const padding = find(node => ts.isJsxAttribute(node) && node.name.getText(app) === 'contentContainerStyle' && node.getText(app).includes('showCreate')) as ts.JsxAttribute;
   const styles = new Function('showCreate', 'showAddExpense', 'pageContentStyle', 'createClearance=104', `return ${(padding.initializer as ts.JsxExpression).expression!.getText(app)}`);
   assert.equal(styles(true, false, {})[1].paddingBottom, 104);
-  assert.equal(styles(false, true, {})[1].paddingBottom, 104);
+  assert.equal(styles(false, true, {})[1].paddingBottom, 120);
   assert.equal(styles(false, false, {})[1], false);
   assert.equal(styles(true, false, {}, 180)[1].paddingBottom, 180, 'Larger accessibility text gets measured clearance');
 });
