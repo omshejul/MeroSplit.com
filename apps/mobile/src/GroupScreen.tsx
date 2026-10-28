@@ -7,7 +7,7 @@ import BillPeople from './BillPeople';
 import BalanceExplanation, { type BalanceSelection } from './BalanceExplanationDialog';
 import { balanceKey } from './balanceExplanation';
 import type { BalanceSource } from './balanceExplanationStorage';
-import { Animated, Platform, FlatList, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { Animated, Keyboard, Platform, FlatList, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { useScrollPagination } from './useScrollPagination';
 import { pageContentStyle } from './AppNavigation';
 import { expenseBalanceChange, formatMoney } from './accounting';
@@ -154,11 +154,17 @@ function ParticipantAmountRow({ name, amount, photo }: { name: string; amount: s
   </View>;
 }
 
-function BillSearch({ value, onChange, onSearch, showSubmit, busy, autoFocus }: { value: string; onChange: (value: string) => void; onSearch: () => void; showSubmit: boolean; busy: boolean; autoFocus: boolean }) {
+function BillSearch({ value, onChange, onSearch, onClose, showSubmit, autoFocus }: { value: string; onChange: (value: string) => void; onSearch: () => void; onClose: () => void; showSubmit: boolean; busy: boolean; autoFocus: boolean }) {
   const { palette: colors, ui, inputColors } = useUI();
+  const input = useRef<React.ComponentRef<typeof TextInput>>(null);
+  const [focused, setFocused] = useState(false);
   return <View style={s.search}>
-    <TextInput {...inputColors} autoFocus={autoFocus} accessibilityLabel="Search bills" placeholder="Find a bill by name or note" placeholderTextColor={colors.muted} value={value} onChangeText={onChange} onSubmitEditing={onSearch} returnKeyType="search" style={[ui.input, s.flex]} />
-    {showSubmit && <Button title="Search" disabled={busy} onPress={onSearch} />}
+    <View style={[ui.input, s.searchField, { borderColor: focused ? colors.accent : 'transparent' }]}>
+      {showSubmit ? <Button icon="search" iconOnly kind="text" accessibilityLabel="Run bill search" onPress={onSearch} style={s.searchAction} /> : <Icon name="search" size={20} color={colors.muted} />}
+      <TextInput {...inputColors} ref={input} autoFocus={autoFocus} accessibilityLabel="Search bills" placeholder="Search bills" placeholderTextColor={colors.muted} value={value} onChangeText={onChange} onSubmitEditing={onSearch} onFocus={() => setFocused(true)} onBlur={() => setFocused(false)} returnKeyType="search" autoCapitalize="none" autoCorrect={false} style={[ui.input, s.searchInput, Platform.OS === 'web' && { outlineWidth: 0 }]} />
+      {!!value && <Button icon="close" iconOnly kind="text" accessibilityLabel="Clear search text" onPress={() => { onChange(''); input.current?.focus(); }} style={s.searchAction} />}
+    </View>
+    <Button icon="close" iconOnly kind="text" accessibilityLabel="Close search" onPress={onClose} style={s.searchAction} />
   </View>;
 }
 
@@ -191,7 +197,7 @@ export default function GroupScreen({ categoryIcons, header, noticeVisibility, g
   useEffect(() => () => opacity.stopAnimation(), [opacity]);
   const [explanation, setExplanation] = useState<BalanceSelection | null>(null);
   const historyResource = group.transactions ? 'transactions' : 'bills';
-  const [search, setSearch] = useState(group.history?.[historyResource]?.query ?? ''), [searching, setSearching] = useState(false);
+  const [search, setSearch] = useState(group.history?.[historyResource]?.query ?? ''), [searching, setSearching] = useState(!!group.history?.[historyResource]?.query);
   const historyWindow = group.history?.[historyResource];
   const expenses = group.read_mode === 'summary' ? group.expenses : group.expenses.filter(expense => group.expenses.length < 5 || `${expense.description} ${expense.notes}`.toLowerCase().includes(search.trim().toLowerCase()));
   const transfers = personalTransfers(group, selfId);
@@ -199,7 +205,26 @@ export default function GroupScreen({ categoryIcons, header, noticeVisibility, g
   const rows: GroupTransaction[] = group.transactions ?? (group.read_mode === 'summary' ? expenses : [...expenses].reverse()).map(bill => ({ kind: 'bill', date: bill.date, bill }));
   const payments = personalSettlements(group, selfId);
   const searchable = rows.length >= 5 || !!(historyWindow?.next_cursor || historyWindow?.previous?.length || historyWindow?.query);
-  const showSearch = searching || !!historyWindow?.query || !!search;
+  const showSearch = searching;
+  const searchRequest = useRef<AbortController | null>(null);
+  useEffect(() => () => searchRequest.current?.abort(), []);
+  async function runSearch(query: string) {
+    searchRequest.current?.abort();
+    const controller = new AbortController(); searchRequest.current = controller;
+    try {
+      const applied = await onHistoryPage?.(historyResource, 'search', query, controller.signal, accepted);
+      if (controller.signal.aborted) return false;
+      if (applied) list.current?.scrollToOffset({ offset: 0, animated: false });
+      return applied ?? !historyWindow?.query;
+    } catch { return false; }
+    finally { if (searchRequest.current === controller) searchRequest.current = null; }
+  }
+  async function closeSearch() {
+    Keyboard.dismiss();
+    // A server filter must be removed successfully before hiding its controls.
+    if ((historyWindow?.query || searchRequest.current) && !await runSearch('')) return;
+    setSearch(''); setSearching(false);
+  }
   const list = useRef<FlatList<GroupTransaction>>(null), frame = useRef<React.ComponentRef<typeof View>>(null);
   const [viewport, setViewport] = useState<{ x: number; y: number; width: number; height: number } | null>(null), [scrollEpoch, setScrollEpoch] = useState(0);
   const visible = useRef(onVisibleBills); visible.current = onVisibleBills;
@@ -212,7 +237,7 @@ export default function GroupScreen({ categoryIcons, header, noticeVisibility, g
     <FlatList ref={list} contentInsetAdjustmentBehavior="automatic" data={rows} nestedScrollEnabled scrollEventThrottle={100} onEndReachedThreshold={0.3}
       onLayout={event => { frame.current?.measureInWindow((x, y, width, height) => setViewport({ x, y, width, height })); }}
       onScroll={event => { setScrollEpoch(value => value + 1); }}
-      onViewableItemsChanged={viewable.current} onRefresh={onRefresh} refreshing={refreshing}
+      keyboardShouldPersistTaps="handled" onViewableItemsChanged={viewable.current} onRefresh={onRefresh} refreshing={refreshing}
       keyExtractor={row => row.kind === 'bill' ? `bill:${row.bill.id}` : `payment:${row.payment.id}`}
       contentContainerStyle={[pageContentStyle, { gap: 0, paddingBottom: 104 }]} renderItem={({ item: row }) => row.kind === 'payment'
         ? <PaymentRow payment={row.payment} accepted={accepted} group={group} selfId={selfId} busy={busy} onPayment={onPayment} onPrefetchPayment={onPrefetchPayment} />
@@ -221,14 +246,13 @@ export default function GroupScreen({ categoryIcons, header, noticeVisibility, g
     {!!previewError && <Text>{previewError}</Text>}
     {group !== accepted && <Text style={ui.caption}>Balances show a pending preview.</Text>}
     {group.archived && <Text style={ui.notice}>Archived. Reopen in settings to make changes.</Text>}
-    {!transfers.length && <Text style={celebrateSettled ? ui.numeric : ui.caption}>{celebrateSettled ? '🎉 All settled' : 'All settled'}</Text>}
+    {!transfers.length && <Text style={celebrateSettled ? [ui.numeric, s.settled] : ui.caption}>{celebrateSettled ? '🎉 All settled' : 'All settled'}</Text>}
     {transfers.map(transfer => <PersonalTransferRow key={`${transfer.sender}:${transfer.recipient}`} transfer={transfer} group={group} selfId={selfId} disabled={busy || !!group.archived || pending.length > 0} onSettle={onSettle} onExplain={(transfer, restoreFocus) => setExplanation({ group, accepted, commands: pending, selfId, transfer, restoreFocus, load: onLoadBalanceGroup })} />)}
-    {/* Search opens from the heading line; an active query or typed text keeps it open. */}
     <View style={s.logHeading}>
       <SectionHeading style={[ui.caption, s.logCaption, s.flex]}>Bills and payments</SectionHeading>
       {searchable && !showSearch && <Button title="Search" icon="search" compact small accessibilityLabel="Search bills" onPress={() => setSearching(true)} />}
     </View>
-      {showSearch && <BillSearch value={search} onChange={setSearch} onSearch={() => { void onHistoryPage?.(historyResource, 'search', search.trim(), undefined, accepted).then(applied => { if (applied) list.current?.scrollToOffset({ offset: 0, animated: false }); }).catch(() => {}); }} showSubmit={group.read_mode === 'summary'} busy={busy} autoFocus={searching} />}
+      {showSearch && <BillSearch value={search} onChange={setSearch} onSearch={() => { void runSearch(search.trim()); }} onClose={() => { void closeSearch(); }} showSubmit={group.read_mode === 'summary'} busy={busy} autoFocus={searching} />}
 </View>}
       ListEmptyComponent={<View style={s.empty}><Icon name="bill" size={32} /><Text style={ui.section}>{historyWindow?.next_cursor ? 'No matching records on this page.' : historyWindow?.query || search.trim() ? 'No matching bills' : 'No bills or payments yet'}</Text></View>}
       ListFooterComponent={<>
@@ -312,6 +336,10 @@ const s = StyleSheet.create({
   logHeading: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 44 },
   empty: { gap: 10, alignItems: 'center', paddingVertical: 20 },
   pressed: { opacity: 0.65 },
+  settled: { fontSize: 36, lineHeight: 44 },
   search: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  searchField: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', borderRadius: 24, borderWidth: 1, paddingVertical: 0, paddingLeft: 12, paddingRight: 2 },
+  searchInput: { flex: 1, minWidth: 0, backgroundColor: 'transparent', borderWidth: 0, paddingHorizontal: 8 },
+  searchAction: { minWidth: 44, minHeight: 44, paddingHorizontal: 10, borderRadius: 22 },
   flex: { flex: 1, minWidth: 0 },
 });
