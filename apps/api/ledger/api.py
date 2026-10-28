@@ -84,6 +84,7 @@ from .schemas import (
     OpeningIn,
     ParticipantIn,
     ParticipantNameIn,
+    PaymentReminderIn,
     ProfileIn,
     PushDeviceIn,
     Revision,
@@ -378,6 +379,12 @@ def _chat_json(data):
 @api.get('/groups/{group_id}/expenses/{expense_id}/chat')
 def bill_chat_get(request, group_id: UUID, expense_id: UUID, limit: int = 50, before: str | None = None, after: str | None = None, known: str = ''):
     return _chat_json(bill_chat.chat_page(request.auth, group_id, expense_id, limit=limit, before=before, after=after, known=known))
+
+
+@api.post('/groups/{group_id}/payment-reminders')
+def payment_reminder_send(request, group_id: UUID, body: PaymentReminderIn):
+    from .activity_notifications import send_payment_reminder
+    return send_payment_reminder(request.auth, group_id, body.model_dump(mode="json"))
 
 
 @api.get('/groups/{group_id}/expenses/{expense_id}/chat/status')

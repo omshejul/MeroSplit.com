@@ -17,6 +17,7 @@ let suppressForeground = (_data: unknown) => true;
 Notifications.setNotificationHandler({ handleNotification: async notification => { const show = !suppressForeground(notification.request.content.data); return { shouldShowBanner: show, shouldShowList: show, shouldPlaySound: show, shouldSetBadge: false }; } });
 
 export function usePushNotifications(session: Session | null, callbacks: Callbacks) {
+  const { currency } = useUI();
   const [preferences, setPreferences] = useState<PushPreferences | null>(null), [permission, setPermission] = useState<PushPermission>('ask');
   const [working, setWorking] = useState(false), [verified, setVerified] = useState(false), [error, setError] = useState('');
   const saved = useRef<PushPreferences | null>(null), activeSession = useRef(session), handlers = useRef(callbacks), mounted = useRef(true);
@@ -119,7 +120,7 @@ export function usePushNotifications(session: Session | null, callbacks: Callbac
     void refresh().catch(() => {});
     void clearReadPrompts().catch(() => {});
     if (session) void open(Notifications.getLastNotificationResponse()).catch(() => {});
-  }, [owner, session?.token]);
+  }, [owner, session?.token, currency]);
   useEffect(() => {
     const foreground = AppState.addEventListener('change', value => { if (value === 'active') { if (!running.current) void refresh().catch(() => {}); void clearReadPrompts().catch(() => {}); } });
     const rotated = Notifications.addPushTokenListener(token => { if (!running.current) void run(() => refreshNow(token)).catch(() => {}); });

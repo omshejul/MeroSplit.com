@@ -193,6 +193,14 @@ class SplitwiseImportResult(WriteResult):
 
 class PushDeviceIn(Input):
     bill_chat: StrictBool = False
+    ledger_updates: StrictBool = False
+    currency: Literal["INR", "USD", "EUR", "GBP", "AED", "AUD", "CAD", "SGD", "NZD", "CHF", "JPY"] = "INR"
     provider: Literal["expo"]
     token: Annotated[str, Field(min_length=1, max_length=4096, pattern=r"^(ExpoPushToken|ExponentPushToken)\[[A-Za-z0-9_-]+\]$")]
     platform: Literal["ios", "android"]
+
+
+class PaymentReminderIn(Command):
+    sender: UUID
+    amount: Annotated[str, Field(pattern=r"^[1-9][0-9]{0,9}$")]
+    group_version: Annotated[StrictInt, Field(ge=0)]

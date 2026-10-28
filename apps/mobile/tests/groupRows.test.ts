@@ -391,6 +391,23 @@ test('manual payment details omit an unconfirmed label and dangling separator', 
 });
 
 
+test('Remind is available only for an active linked person who owes you', async () => {
+  const render = production('PersonalTransferRow');
+  const linked = { ...group, participants: [{ id: 'self', name: 'You', user_id: 1 }, { id: 'other', name: 'Noor', user_id: 2 }] };
+  const calls: unknown[] = [];
+  const props = { transfer: { sender: 'other', recipient: 'self', amount: '50000' }, group: linked, selfId: 'self', disabled: false,
+    onSettle() {}, onExplain() {}, onRemind: async (value: unknown) => { calls.push(value); } };
+  const button = (tree: unknown) => elements(tree).find(node => node.props.title === 'Remind');
+  const reminder = button(render(props))!;
+  assert.equal(reminder.props.disabled, false);
+  reminder.props.onPress(); await Promise.resolve();
+  assert.deepEqual(calls, [props.transfer]);
+  assert.equal(button(render({ ...props, disabled: true }))!.props.disabled, true);
+  assert.equal(button(render({ ...props, transfer: { sender: 'self', recipient: 'other', amount: '50000' } })), undefined);
+  assert.equal(button(render({ ...props, onRemind: undefined })), undefined);
+  assert.equal(button(render({ ...props, group })) , undefined);
+});
+
 test('balance explanation target and Record remain independent siblings with unchanged payment guards', () => {
   const render = production('PersonalTransferRow'), transfer = { sender: 'other', recipient: 'self', amount: '501' };
   let explanations = 0, records = 0;
