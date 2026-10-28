@@ -38,3 +38,12 @@ DeviceNotRegistered retires the matching device binding. An old receipt cannot r
 The database prevents duplicate event creation, but a lost HTTP response/crash can cause another provider attempt. Stable event IDs, Expo collapseId and Android tag coalesce retries; exactly-once remote delivery is not promised.
 
 Protocol reference: https://docs.expo.dev/push-notifications/sending-notifications/ (checked during implementation).
+
+
+## Bill-chat previews
+
+Chat-enabled devices receive `Sender · Bill` with a single-line message preview. Multiple currently unread, eligible messages in one bill use `Bill · N new messages` and the latest two sender-prefixed previews. Hidden, cancelled, seen and blocked messages are excluded; enabling updates again does not include messages from before the new preference boundary. Names use the same participant display rules as chat, with `Someone` and `Bill conversation` as empty-name fallbacks. Preview text strips control/bidi formatting and has bounded length. No preview is stored in routing data or worker logs.
+
+The conversation identifier includes recipient and bill, so different accounts and bills cannot replace one another. Expo `collapseId` coalesces pending updates and replaces the iOS notification; Android `tag` replaces the displayed conversation summary, and iOS `threadId` identifies its group. Existing event/message IDs and authorized tap routing remain intact. This is a native text notification, without a custom notification extension, avatar or inline reply. Existing new-bill and membership notifications remain generic.
+
+Chat previews include user content in the push sent through Expo/APNs/FCM and may appear on the lock screen according to the user's OS preview settings. Dispatch still checks active session/device binding, notification preference, current financial membership, blocking and hidden/deleted/archived state. Once accepted by a provider, content cannot be remotely retracted and a later removal/read/opt-out may race an already submitted request. Receipts still mean provider acceptance, never read state or proven device delivery.
