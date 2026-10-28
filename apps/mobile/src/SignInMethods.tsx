@@ -15,9 +15,11 @@ import { ErrorState } from './UIStates';
 import { Button, Icon, useUI } from './ui';
 
 function ConnectedProviderRow({ account, leading, disabled, onDisconnect }: { account: ConnectedProvider; leading: React.ReactNode; disabled: boolean; onDisconnect: () => void }) {
-  const { ui } = useUI(), name = account.provider === 'google' ? 'Google' : 'Apple';
+  const { ui, palette } = useUI(), name = account.provider === 'google' ? 'Google' : 'Apple';
   return <ListRow leading={leading} style={{ minHeight: 72, paddingVertical: 14, flexWrap: 'wrap' }} bodyStyle={{ flexBasis: 160 }} trailing={
-    <Button title="Disconnect" accessibilityLabel={`Disconnect ${name}: ${account.email || account.uid}`} kind="text" small disabled={disabled || !account.can_disconnect} onPress={onDisconnect} />}>
+    <Button title="Disconnect" accessibilityLabel={`Disconnect ${name}: ${account.email || account.uid}`} kind="text" small style={{ minWidth: 72, minHeight: 48, paddingHorizontal: 4, paddingVertical: 0, flexShrink: 0 }} disabled={disabled || !account.can_disconnect} onPress={onDisconnect}>
+      <View pointerEvents="none" style={{ alignItems: 'center', gap: 4 }}><View accessible={false} aria-hidden><Icon name="unlink" size={26} color={palette.accent} /></View><Text style={[ui.caption, { color: palette.accent, fontSize: 12, lineHeight: 16, fontWeight: '500' }]}>Disconnect</Text></View>
+    </Button>}>
     <Text style={ui.body}>{name}</Text><Text selectable style={ui.caption}>{account.email || `${name} ID: ${account.uid}`}</Text>
     {account.email.endsWith('@privaterelay.appleid.com') && <Text style={ui.caption}>Apple private email</Text>}
     {!account.can_disconnect && <Text style={ui.caption}>Verify your email before disconnecting.</Text>}
@@ -36,11 +38,11 @@ export default function SignInMethods({ session, busy, connections, onGoogle, on
     ]);
   }
   return <View style={{ gap: 20 }}>
-    {linked && <NotificationSwitch icon="key" label="Auto-link accounts" description="Link Google or Apple sign-ins that use the same verified email." checked={linked.autoLink} disabled={disabled} onChange={value => { void connections.setAutoLink(value); }} />}
+    {linked && <NotificationSwitch icon="key" label="Auto-link accounts" description="Link sign-ins with the same verified email." checked={linked.autoLink} disabled={disabled} onChange={value => { void connections.setAutoLink(value); }} />}
     <RowGroup>
       <ListRow leading={<Icon name="mail" />}><Text style={ui.body}>Email</Text><Text selectable style={ui.caption}>{session.email}</Text></ListRow>
       {linked?.accounts.map(account => <ConnectedProviderRow key={account.id} account={account} disabled={disabled} onDisconnect={() => disconnect(account)} leading={account.provider === 'google'
-        ? <Image accessible={false} importantForAccessibility="no" source={dark ? require('../assets/oauth/google-g-dark.png') : require('../assets/oauth/google-g-light.png')} resizeMode="contain" style={{ width: 22, height: 22 }} /> : <Icon name="key" />} />)}
+        ? <Image accessible={false} importantForAccessibility="no" source={dark ? require('../assets/oauth/google-g-dark.png') : require('../assets/oauth/google-g-light.png')} resizeMode="contain" style={{ width: 26, height: 26 }} /> : <Icon name="apple" />} />)}
     </RowGroup>
     {linked ? <>
       {!linked.google && <View style={{ gap: 12 }}><Text style={ui.caption}>Add Google as another way to sign in.</Text><GoogleSignInButton baseUrl={session.baseUrl} process="connect" current={session} busy={disabled} onAuthenticate={onGoogle} /></View>}

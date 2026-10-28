@@ -150,7 +150,7 @@ test('methods screen identifies accounts, confirms exact disconnect and disables
   const React = { createElement: (type: any, props: any, ...children: any[]): any => typeof type === 'function' ? type({ ...props, children }) : ({ type, props: { ...props, children } }), Fragment: 'Fragment' };
   const screen = load('src/SignInMethods.tsx', { react: React,
     'react-native': { View: 'View', Image: 'Image', Platform: { OS: 'ios' } }, 'react-native-paper': { Text: 'Text' },
-    './ui': { Button: 'Button', Icon: 'Icon', useUI: () => ({ ui: {}, dark: false }) },
+    './ui': { Button: 'Button', Icon: 'Icon', useUI: () => ({ ui: {}, palette: { accent: '#C7A6F2' }, dark: false }) },
     './alerts': { Alert: { alert: (...args: any[]) => alerts.push(args) } },
     './ListRow': { __esModule: true, default: (props: any) => React.createElement('Row', props, props.children, props.trailing) },
     './RowGroup': { __esModule: true, default: 'RowGroup' }, './NotificationSwitch': { __esModule: true, default: 'Switch' },
