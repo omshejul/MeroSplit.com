@@ -242,7 +242,7 @@ export const Button = React.forwardRef<React.ComponentRef<typeof View>, ButtonPr
       setFocused(Platform.OS === 'web' && !!target.matches?.(':focus-visible')); onFocus?.(event);
     }} onBlur={event => { setFocused(false); onBlur?.(event); }}
     style={state => [!plain && { minHeight: menu ? 44 : small ? 28 : 32, minWidth: iconOnly ? 32 : compact ? 64 : 80,
-      paddingHorizontal: iconOnly ? 6 : small ? 14 : 20, paddingVertical: small ? 4 : 6,
+      paddingHorizontal: iconOnly ? 6 : small ? 12 : 16, paddingVertical: iconOnly ? (small ? 4 : 6) : small ? 6 : 8,
       flexDirection: 'row', alignItems: 'center', justifyContent: menu ? 'flex-start' : 'center', gap: 8,
       borderRadius: 6, borderWidth: kind === 'secondary' || kind === 'outlined' ? 1 : 0,
       borderColor: palette.line, backgroundColor: kind === 'danger' ? palette.error : kind === 'primary' ? palette.accent : kind === 'secondary' ? palette.soft : 'transparent' },
