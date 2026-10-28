@@ -17,7 +17,7 @@ function production(name: string, overrides: Record<string, any> = {}) {
   const helpers = source.statements.filter(node => ts.isVariableStatement(node) && node.declarationList.declarations.some(d => ['billImpact', 'participantName', 'displayDate', 's'].includes(d.name.getText(source)))).map(node => node.getText(source)).join('\n');
   const node = source.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === name); assert.ok(node);
   const code = ts.transpile(`${helpers}\n${node.getText(source).replace(/^export (?:default )?/, '')}\nreturn ${name};`, { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React });
-  return new Function('env', `with(env) { ${code} }`)({ React, Animated, Platform: { OS: 'web' }, useLayoutEffect: () => {}, useEffect: () => {}, categoryIcon, categoryMeaning, expenseCategory, TransactionIcon: 'TransactionIcon', PagingFooter: 'PagingFooter', LegacyPayments: 'LegacyPayments', FlatList: 'FlatList', ScrollView: 'ScrollView', pageContentStyle: {}, LoadingSpinner: 'LoadingSpinner', useScrollPagination: () => ({ events: {}, loading: false, failed: false }), expenseBalanceChange, formatMoney, paymentPresentation, personalSettlements, personalTransfers, BalanceExplanation: 'BalanceExplanation', balanceKey: () => '', useRef: () => ({ current: null }), useState: (initial: unknown) => [typeof initial === 'function' ? initial() : initial, () => {}], Avatar: 'Avatar', AmountText: 'AmountText', Text: 'Text', SectionHeading: 'SectionHeading', View: 'View', Pressable: 'Pressable', Icon: 'Icon', Button: 'Button', RecordSummary: 'RecordSummary', ParticipantAmountRow: 'ParticipantAmountRow', LogRow: 'LogRow', LogDate: 'LogDate', BillEffect: 'BillEffect', VisibleExpense: 'VisibleExpense', HistoryPages: 'HistoryPages', BillSearch: 'BillSearch', PaymentRow: 'PaymentRow', BillTimelineRow: 'BillTimelineRow', DetailDialog: 'DetailDialog', BillPeople: 'BillPeople', RecordAttribution: 'RecordAttribution', PersonalTransferRow: 'PersonalTransferRow', PendingChangeRow: 'PendingChangeRow', StyleSheet: { create: (styles: unknown) => styles }, radii: { surface: 16 }, balanceColor: (amount: string) => BigInt(amount) < 0n ? 'negative' : 'positive', useUI: () => ({ motion: { enabled: false }, ui: { numeric: { fontSize: 32, fontWeight: '600' }, caption: { fontSize: 14 }, row: { minHeight: 52, paddingVertical: 6 } }, palette: { muted: 'muted', line: '#334455', surface: 'surface', text: 'text' } }), ...overrides });
+  return new Function('env', `with(env) { ${code} }`)({ React, Animated, Keyboard: { dismiss() {} }, TextInput: 'TextInput', Platform: { OS: 'web' }, useLayoutEffect: () => {}, useEffect: () => {}, categoryIcon, categoryMeaning, expenseCategory, TransactionIcon: 'TransactionIcon', PagingFooter: 'PagingFooter', LegacyPayments: 'LegacyPayments', FlatList: 'FlatList', ScrollView: 'ScrollView', pageContentStyle: {}, LoadingSpinner: 'LoadingSpinner', useScrollPagination: () => ({ events: {}, loading: false, failed: false }), expenseBalanceChange, formatMoney, paymentPresentation, personalSettlements, personalTransfers, BalanceExplanation: 'BalanceExplanation', balanceKey: () => '', useRef: () => ({ current: null }), useState: (initial: unknown) => [typeof initial === 'function' ? initial() : initial, () => {}], Avatar: 'Avatar', AmountText: 'AmountText', Text: 'Text', SectionHeading: 'SectionHeading', View: 'View', Pressable: 'Pressable', Icon: 'Icon', Button: 'Button', RecordSummary: 'RecordSummary', ParticipantAmountRow: 'ParticipantAmountRow', LogRow: 'LogRow', LogDate: 'LogDate', BillEffect: 'BillEffect', VisibleExpense: 'VisibleExpense', HistoryPages: 'HistoryPages', BillSearch: 'BillSearch', PaymentRow: 'PaymentRow', BillTimelineRow: 'BillTimelineRow', DetailDialog: 'DetailDialog', BillPeople: 'BillPeople', RecordAttribution: 'RecordAttribution', PersonalTransferRow: 'PersonalTransferRow', PendingChangeRow: 'PendingChangeRow', StyleSheet: { create: (styles: unknown) => styles }, radii: { surface: 16 }, balanceColor: (amount: string) => BigInt(amount) < 0n ? 'negative' : 'positive', useUI: () => ({ motion: { enabled: false }, ui: { numeric: { fontSize: 32, fontWeight: '600' }, caption: { fontSize: 14 }, row: { minHeight: 52, paddingVertical: 6 } }, palette: { muted: 'muted', line: '#334455', surface: 'surface', text: 'text' } }), ...overrides });
 }
 function elements(tree: unknown): Element[] {
   if (Array.isArray(tree)) return tree.flatMap(elements);
@@ -322,7 +322,7 @@ test('search opens from the heading line, stays open for an active query, and pa
   assert.ok(view(base, { ...base }).filter(node => node.type === 'BillTimelineRow').every(node => node.props.noticeVisibility === undefined), 'previews never mark bills seen');
   const queried = view({ ...base, history: { transactions: { query: 'rent', next_cursor: null } } });
   const field = queried.find(node => node.type === 'BillSearch')!;
-  assert.equal(field.props.value, 'rent'); assert.equal(field.props.showSubmit, true); assert.equal(field.props.autoFocus, false);
+  assert.equal(field.props.value, 'rent'); assert.equal(field.props.showSubmit, true); assert.equal(field.props.autoFocus, true);
   assert.ok(!queried.some(node => node.type === 'Button' && node.props.title === 'Search'));
   const partial = view({ ...base, expenses: bills.slice(0, 1), transactions: base.transactions.slice(0, 1), history: { transactions: { next_cursor: 'older' } } });
   assert.ok(partial.some(node => node.type === 'Button' && node.props.title === 'Search'));
@@ -357,7 +357,7 @@ test('settled presentation celebrates only a known accepted zero without pending
   const value = { ...group, balances: { self: '0', other: '0' }, expenses: [], settlements: [], transfers: [], activity: [] };
   const base = { group: value, accepted: value, selfId: 'self', pending: [], busy: false };
   const heading = elements(render(base)).find(node => node.type === 'Text' && text(node) === '🎉 All settled')!;
-  assert.equal(heading.props.style.fontSize, 32); assert.equal(heading.props.numberOfLines, undefined);
+  assert.equal(Object.assign({}, ...heading.props.style).fontSize, 36); assert.equal(heading.props.numberOfLines, undefined);
   for (const props of [
     { pending: [{ state: 'pending' }] },
     { accepted: { ...value, balances: {} } },
@@ -497,4 +497,52 @@ test('pending bill stays editable but cannot request server history or reversal 
  assert.equal(buttons.find(node=>node.props.title==='Reverse record')?.props.disabled,true);
  assert.equal(buttons.find(node=>node.props.title==='Version history')?.props.disabled,true);
  assert.ok(!elements(tree).some(node=>node.type==='RecordAttribution'&&node.props.action==='Added'));
+});
+
+test('inline search separates clearing text from closing, with accessible touch targets', () => {
+  const changed: string[] = []; let closed = 0;
+  const tree = production('BillSearch')({ value: 'rent', onChange: (value: string) => changed.push(value), onSearch() {}, onClose: () => closed++, showSubmit: true, autoFocus: true });
+  const actions = elements(tree).filter(node => node.type === 'Button');
+  const clear = actions.find(node => node.props.accessibilityLabel === 'Clear search text')!;
+  const close = actions.find(node => node.props.accessibilityLabel === 'Close search')!;
+  clear.props.onPress(); assert.deepEqual(changed, ['']); assert.equal(closed, 0);
+  close.props.onPress(); assert.equal(closed, 1);
+  for (const action of actions) { assert.ok(action.props.style.minWidth >= 44); assert.ok(action.props.style.minHeight >= 44); }
+  assert.ok(!(tree.children[0] as Element).children.flat().includes(close), 'close sits outside the field');
+});
+
+test('closing local search restores all rows, hides the field and permits reopening', () => {
+  let cursor = 0; const states: any[] = [];
+  const render = production('GroupScreen', { useState: (initial: any) => { const i = cursor++; if (!(i in states)) states[i] = typeof initial === 'function' ? initial() : initial; return [states[i], (value: any) => { states[i] = value; }]; } });
+  const value = { ...group, expenses: Array.from({ length: 6 }, (_, i) => ({ ...billRow(), id: `b${i}`, description: `Bill ${i}` })), transfers: [], settlements: [] };
+  const view = () => { cursor = 0; return elements(render({ group: value, accepted: value, pending: [], busy: false, selfId: 'self' })); };
+  view().find(node => node.props.accessibilityLabel === 'Search bills')!.props.onPress();
+  view().find(node => node.type === 'BillSearch')!.props.onChange('Bill 1');
+  assert.equal(view().find(node => node.type === 'FlatList')!.props.data.length, 1);
+  view().find(node => node.type === 'BillSearch')!.props.onClose();
+  assert.ok(!view().some(node => node.type === 'BillSearch'));
+  assert.equal(view().find(node => node.type === 'FlatList')!.props.data.length, 6);
+  view().find(node => node.props.accessibilityLabel === 'Search bills')!.props.onPress();
+  assert.equal(view().find(node => node.type === 'BillSearch')!.props.value, '');
+});
+
+test('closing a server search clears its query, cancels older requests and stays open on reset failure', async () => {
+  const slots: any[] = []; let cursor = 0, dismissed = 0;
+  const reads: { query: string; signal: AbortSignal; resolve: (applied: boolean) => void }[] = [];
+  const render = production('GroupScreen', {
+    Keyboard: { dismiss() { dismissed++; } },
+    useState: (initial: any) => { const i = cursor++; if (!(i in slots)) slots[i] = typeof initial === 'function' ? initial() : initial; return [slots[i], (value: any) => { slots[i] = value; }]; },
+    useRef: (initial: any) => { const i = cursor++; return slots[i] ??= { current: initial }; },
+  });
+  const value = { ...group, expenses: [], transfers: [], settlements: [], read_mode: 'summary', history: { bills: { query: 'rent' } } };
+  const view = () => { cursor = 0; return elements(render({ group: value, accepted: value, pending: [], busy: false, selfId: 'self', onHistoryPage: (_resource: string, _direction: string, query: string, signal: AbortSignal) => new Promise<boolean>(resolve => reads.push({ query, signal, resolve })) })); };
+  const field = () => view().find(node => node.type === 'BillSearch');
+  field()!.props.onSearch(); assert.equal(reads[0].query, 'rent');
+  field()!.props.onClose(); assert.equal(reads[0].signal.aborted, true); assert.equal(reads[1].query, '');
+  reads[1].resolve(false); await new Promise(resolve => setImmediate(resolve));
+  assert.ok(field(), 'failed reset cannot hide an active filter'); assert.equal(field()!.props.value, 'rent');
+  field()!.props.onClose(); reads[2].resolve(true); await new Promise(resolve => setImmediate(resolve));
+  assert.ok(!field(), 'successful reset closes search'); assert.equal(dismissed, 2);
+  reads[0].resolve(true); await new Promise(resolve => setImmediate(resolve));
+  assert.ok(!field(), 'late aborted search cannot reopen it');
 });
