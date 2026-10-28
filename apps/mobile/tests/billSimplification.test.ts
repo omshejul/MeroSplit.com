@@ -1,3 +1,4 @@
+import { currencySymbol } from '../src/currency.ts';
 import { explainTransfer, balanceKey } from '../src/balanceExplanation.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -27,7 +28,7 @@ function harness(file: string, name: string, extra: Record<string, any> = {}) {
   let cursor = 0, states: any[] = [], effects: (() => void)[] = [], cleanups: Record<number, () => void> = {};
   const deps: Record<number, any[]> = {};
   const draftDiscard = { current: null as null | (() => Promise<boolean>) };
-  const env: Record<string, any> = { cachedRead: () => undefined, getDatabase: async () => ({}), draftDiscard, ScreenDraftDiscard: {}, useContext: () => draftDiscard, expenseDraftStore: () => ({ read: () => ({ then: (done: (value: null) => void) => { done(null); return { catch() {} }; } }), write: async () => {} }), React, Dialog, PersonInviteDialog: 'PersonInviteDialog', useToast: () => () => {}, DetailDialog: 'DetailDialog', useScreenRemovalLock() {}, validUPIAddress, View: 'View', ScrollView: 'ScrollView', KeyboardDialog: 'KeyboardDialog', Pressable: 'Pressable', Text: 'Text', LoadingSpinner: 'LoadingSpinner', NotificationSwitch: 'NotificationSwitch', PushSettings: 'PushSettings', BalanceStatements: 'BalanceStatements', DialogScrollBody: 'DialogScrollBody', Form: 'Form', SectionHeading: 'SectionHeading', Button: 'Button', Icon: 'Icon', SettingsRow: 'SettingsRow', BillPeople: 'BillPeople', DraftAttachment: 'DraftAttachment', LocalAttachment: 'LocalAttachment', AmountField: 'AmountField', TextField: 'TextField', DateField: 'DateField', ErrorText: 'ErrorText', Checkbox: { Item: 'Checkbox' }, RadioChoice: 'RadioChoice', Crypto: { randomUUID: () => 'bill-id' }, StyleSheet: { create: (value: any) => value }, Keyboard: { dismiss() {} }, useWindowDimensions: () => ({ height: 667 }), useSafeAreaInsets: () => ({ top: 20, bottom: 0 }), Platform: { OS: 'native' }, requestAnimationFrame: (fn: () => void) => fn(), useUI: () => ({ ui: {} }), formatMoney, integer, rupeesToPaise, validateExpense, ...extra,
+  const env: Record<string, any> = { currencySymbol, cachedRead: () => undefined, getDatabase: async () => ({}), draftDiscard, ScreenDraftDiscard: {}, useContext: () => draftDiscard, expenseDraftStore: () => ({ read: () => ({ then: (done: (value: null) => void) => { done(null); return { catch() {} }; } }), write: async () => {} }), React, Dialog, PersonInviteDialog: 'PersonInviteDialog', useToast: () => () => {}, DetailDialog: 'DetailDialog', useScreenRemovalLock() {}, validUPIAddress, View: 'View', ScrollView: 'ScrollView', KeyboardDialog: 'KeyboardDialog', Pressable: 'Pressable', Text: 'Text', LoadingSpinner: 'LoadingSpinner', NotificationSwitch: 'NotificationSwitch', PushSettings: 'PushSettings', BalanceStatements: 'BalanceStatements', DialogScrollBody: 'DialogScrollBody', Form: 'Form', SectionHeading: 'SectionHeading', Button: 'Button', Icon: 'Icon', SettingsRow: 'SettingsRow', BillPeople: 'BillPeople', DraftAttachment: 'DraftAttachment', LocalAttachment: 'LocalAttachment', AmountField: 'AmountField', TextField: 'TextField', DateField: 'DateField', ErrorText: 'ErrorText', Checkbox: { Item: 'Checkbox' }, RadioChoice: 'RadioChoice', Crypto: { randomUUID: () => 'bill-id' }, StyleSheet: { create: (value: any) => value }, Keyboard: { dismiss() {} }, useWindowDimensions: () => ({ height: 667 }), useSafeAreaInsets: () => ({ top: 20, bottom: 0 }), Platform: { OS: 'native' }, requestAnimationFrame: (fn: () => void) => fn(), useUI: () => ({ ui: {} }), formatMoney, integer, rupeesToPaise, validateExpense, ...extra,
     useState: (initial: any) => { const id = cursor++; if (!(id in states)) states[id] = typeof initial === 'function' ? initial() : initial; return [states[id], (value: any) => { states[id] = typeof value === 'function' ? value(states[id]) : value; }]; },
     useRef: (initial: any) => { const id = cursor++; return states[id] ??= { current: initial }; },
     useEffect: (fn: () => any, values: any[]) => { const id = cursor++; if (!deps[id] || values.some((value, i) => value !== deps[id][i])) { effects.push(() => { cleanups[id]?.(); cleanups[id] = fn(); }); deps[id] = values; } },
@@ -69,7 +70,7 @@ function appAction(name: string, env: Record<string, any>) {
 test('combined export flushes saved work and never shares a stale account result', async () => {
   const calls: any[] = [], notices: any[] = [], ownerRef = { current: 'owner-a' }, session = { token: 'session-a' };
   const data = { account_data_status: 'unavailable_offline' };
-  const env: Record<string, any> = { browse: async (_key: string, work: any) => work(() => true), owner: 'owner-a', ownerRef, session, activeSessionRef: { current: session },
+  const env: Record<string, any> = { currencySymbol, browse: async (_key: string, work: any) => work(() => true), owner: 'owner-a', ownerRef, session, activeSessionRef: { current: session },
     draftWrites: { current: Promise.resolve() }, flushChatWrites: async () => {}, getDatabase: async () => ({}), isOnline: () => false,
     portableExport: async () => data, setNotice: (...args: any[]) => notices.push(args), shareJson: async (...args: any[]) => calls.push(args) };
   await appAction('exportData', env)(); assert.deepEqual(calls, [['merosplit-data', data]]); assert.equal(notices.length, 1);
@@ -366,7 +367,7 @@ test('pre-save file picker stages privately before the durable draft, previews a
 test('bill save preserves both draft and file if enqueue fails, then reuses the same bill/file IDs on retry', async () => {
   const file = { id: 'file-id', path: '/groups/g/expenses/bill-id/attachments', file: { uri: 'file:///staged.png' } };
   const events: string[] = [], expense = { id: 'bill-id' }; let fail = true;
-  const env: Record<string, any> = { selected: { group: {} }, session: {}, owner: 'owner', groupId: 'g', expenseId: null, reviewCommand: null,
+  const env: Record<string, any> = { currencySymbol, selected: { group: {} }, session: {}, owner: 'owner', groupId: 'g', expenseId: null, reviewCommand: null,
     perform: (action: any) => action(), draftWrites: { current: Promise.resolve() }, getDatabase: async () => ({}),
     expensePayload: (value: any) => value, command: (_method: string, _path: string, body: any) => body,
     queue: async (body: any, _replacing: unknown, attachment: unknown) => { assert.equal(body.id, 'bill-id'); assert.equal(attachment, file); events.push('queue bill and file'); if (fail) throw Error('Disk full'); },
@@ -951,7 +952,7 @@ test('profile read prompts once only when missing UPI, never overwrites another 
   const session = { baseUrl: 'https://synthetic.invalid', userId: '1', token: 'session-a' }, activeSessionRef = { current: session };
   const owner = `${session.baseUrl}|1`, prompts: boolean[] = [], addresses: string[] = [];
   let me = { display_name: 'Asha', payment_profile: null as null | { vpa: string } };
-  const route = {}; const env: Record<string, any> = { navigation: { ref: { getRootState: () => route } }, profileRevision: { current: 0 }, profilePromptSafe: { current: true }, request: async () => me, rememberName: async () => {}, activeSessionRef, ownerRef: { current: owner }, accountOwner: (value: any) => `${value.baseUrl}|${value.userId}`, setVpa: (value: string) => addresses.push(value), setUpiSetup: (value: boolean) => prompts.push(value), upiPrompts: { current: new Set() } };
+  const route = {}; const env: Record<string, any> = { currencySymbol, navigation: { ref: { getRootState: () => route } }, profileRevision: { current: 0 }, profilePromptSafe: { current: true }, request: async () => me, rememberName: async () => {}, activeSessionRef, ownerRef: { current: owner }, accountOwner: (value: any) => `${value.baseUrl}|${value.userId}`, setVpa: (value: string) => addresses.push(value), setUpiSetup: (value: boolean) => prompts.push(value), upiPrompts: { current: new Set() } };
   const read = appAction('readProfile', env);
   await read(session); await read(session); assert.deepEqual(prompts, [true]);
   me = { ...me, payment_profile: { vpa: 'known@example' } }; await read(session);
@@ -1119,7 +1120,7 @@ test('actual bill save transfers file ownership at commit, retaining exact queue
       await saveMediaUpload(base, other, { ...attachment, id: 'other-file', file: { ...attachment.file, uri: pathToFileURL(otherFile).href } });
       const otherBefore = JSON.stringify({ commands: await pendingCommands(base, accountOwner(other)), media: await pendingMediaUpload(base, other, attachment.path) });
       let discardOpen = false, completion: Promise<unknown> | undefined; const screens: string[] = [];
-      const env: Record<string, any> = { selected: { group: { ...group, version: 1 } }, session, owner, groupId: 'g', expenseId: null, reviewCommand: null,
+      const env: Record<string, any> = { currencySymbol, selected: { group: { ...group, version: 1 } }, session, owner, groupId: 'g', expenseId: null, reviewCommand: null,
         perform: (action: any) => action(), draftWrites: { current: Promise.resolve() }, getDatabase: async () => db,
         expensePayload, uuid: () => 'bill-command', enqueueExpenseWithMedia, enqueue, enqueueBill, replaceCommand,
         requireConnectionForTemporaryStorage() {}, load: async () => { if (phase === 'after commit' && failing) throw Error('Projection read failed'); },
@@ -1172,7 +1173,7 @@ async function unmountBeforeBillCommit(commits: boolean) {
     }) };
     const session = { baseUrl: 'https://inflight.invalid', userId: '7', email: 'seven@example.invalid', token: 'synthetic' }, owner = accountOwner(session);
     const attachment = { id: 'file-id', path: '/groups/g/expenses/bill-id/attachments', file: { uri: pathToFileURL(file).href, name: 'receipt.png', type: 'image/png', size: Buffer.byteLength(bytes) } };
-    const env: Record<string, any> = { selected: { group: { ...group, version: 1 } }, session, owner, groupId: 'g', expenseId: null, reviewCommand: null,
+    const env: Record<string, any> = { currencySymbol, selected: { group: { ...group, version: 1 } }, session, owner, groupId: 'g', expenseId: null, reviewCommand: null,
       perform: (action: any) => action(), draftWrites: { current: Promise.resolve() }, getDatabase: async () => db,
       expensePayload, uuid: () => 'inflight-command', enqueueExpenseWithMedia, enqueue, enqueueBill, replaceCommand,
       requireConnectionForTemporaryStorage() {}, load: async () => {}, setReviewCommand() {}, setReviewInput() {}, navigate() {}, isOnline: () => false };

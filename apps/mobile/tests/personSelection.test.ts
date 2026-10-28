@@ -1,3 +1,4 @@
+import { currencySymbol } from '../src/currency.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -6,7 +7,7 @@ import * as accounting from '../src/accounting.ts';
 
 const source = ts.createSourceFile('ExpenseForm.tsx', readFileSync(new URL('../src/ExpenseForm.tsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
 const body = source.statements.filter(n => !ts.isImportDeclaration(n)).map(n => n.getText(source).replace(/^export (?:default )?/, '')).join('\n');
-const env: any = { ...accounting, React: { createElement: (type: any, props: any, ...children: any[]) => ({ type, props: props ?? {}, children }) },
+const env: any = { currencySymbol, ...accounting, React: { createElement: (type: any, props: any, ...children: any[]) => ({ type, props: props ?? {}, children }) },
   StyleSheet: { create: (value: any) => value, hairlineWidth: 1 }, View: 'View', Text: 'Text', Button: 'Button', Avatar: 'Avatar', TextField: 'TextField',
   useUI: () => ({ ui: {}, palette: { line: '#ddd', accent: '#639', outline: '#888' }, dark: false }) };
 const { PersonChoice, SplitFields, PayerFields } = new Function('env', `with(env){${ts.transpile(body, { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React })};return {PersonChoice, SplitFields, PayerFields};}`)(env);

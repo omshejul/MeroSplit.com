@@ -1,3 +1,4 @@
+import { currencySymbol } from './currency';
 import Form from './Form';
 import { ScreenDraftDiscard, useScreenRemovalLock } from './screenRemoval';
 import React, { useContext, useEffect, useRef, useState } from 'react';
@@ -97,7 +98,7 @@ function PayerFields({ participants, draft, disabled, preserveRemoved, label, on
   return <View style={styles.reveal}>
     {participants.filter(person => !person.removed || draft.payerIds.includes(person.id)).map(person => <View key={`payer-${person.id}`} style={styles.field}>
       <PersonChoice person={person} title={label(person.id)} amount={draft.payerIds.length === 1 && draft.payerIds.includes(person.id) ? (() => { try { return formatMoney(rupeesToPaise(draft.amount)); } catch { return undefined; } })() : undefined} selected={draft.payerIds.includes(person.id)} disabled={disabled || (preserveRemoved && !!person.removed)} onPress={() => onToggle(person.id)} />
-      {draft.payerIds.length > 1 && draft.payerIds.includes(person.id) && <TextField autoCorrect={false} label={`Paid by ${label(person.id)} (₹)`} value={draft.payerAmounts[person.id] ?? ''}
+      {draft.payerIds.length > 1 && draft.payerIds.includes(person.id) && <TextField autoCorrect={false} label={`Paid by ${label(person.id)} (${currencySymbol()})`} value={draft.payerAmounts[person.id] ?? ''}
         onChangeText={value => onChange({ payerAmounts: { ...draft.payerAmounts, [person.id]: value } })} keyboardType="decimal-pad" editable={!disabled && !person.removed}
         right={!disabled && !person.removed && difference !== null && difference !== 0n && integer(paise(draft.payerAmounts[person.id] || '0')) + difference >= 0n
           ? <PayerAdjustment difference={difference} name={label(person.id)} onPress={() => onAdjust(person.id)} /> : null} />}
@@ -123,7 +124,7 @@ function SplitFields({ participants, draft, disabled, preserveRemoved, label, on
     }} />)}
     {draft.mode !== 'equal' && <>
       {participants.filter(person => draft.participantIds.includes(person.id)).map(person => <TextField autoCorrect={false} key={`value-${person.id}`}
-        label={`${label(person.id)} ${draft.mode === 'exact' ? '(₹)' : draft.mode === 'percent' ? '(%)' : '(shares)'}`} value={draft.splitValues[person.id] ?? ''}
+        label={`${label(person.id)} ${draft.mode === 'exact' ? `(${currencySymbol()})` : draft.mode === 'percent' ? '(%)' : '(shares)'}`} value={draft.splitValues[person.id] ?? ''}
         onChangeText={value => onChange({ splitValues: { ...draft.splitValues, [person.id]: value } })} keyboardType="decimal-pad" editable={!disabled && !person.removed} />)}
       {!!status && <Text accessibilityLiveRegion="polite" style={ui.caption}>{status}</Text>}
     </>}
@@ -239,7 +240,7 @@ export default function ExpenseForm({ group, expense, selfId, busy, onSave, owne
     <Text style={ui.caption}>{group.name}</Text>
     {group.archived && <Text style={ui.notice}>Reopen this group in settings before saving a bill.</Text>}
     {expense && expense.version !== draft.expenseVersion && <Text style={ui.notice}>A newer edit exists. Review it before saving this older draft.</Text>}
-    <AmountField autoCorrect={false} label="Amount (₹)" value={draft.amount} onChangeText={amount => change({ amount })} placeholder="0" editable={!disabled} />
+    <AmountField autoCorrect={false} label={`Amount (${currencySymbol()})`} value={draft.amount} onChangeText={amount => change({ amount })} placeholder="0" editable={!disabled} />
     <TextField autoCorrect={false} label="Description" value={draft.description} onChangeText={description => change({ description })} placeholder="What was it for?" maxLength={200} editable={!disabled} />
     <BillPeople icon="pay" title="Who paid?" summary={draft.payerIds.length === 1 ? label(draft.payerIds[0]) : draft.payerIds.length ? `${draft.payerIds.length} people` : 'Choose who paid'}
       inline={group.participants.filter(person => !person.removed || draft.payerIds.includes(person.id)).length === 1} disabled={disabled}>

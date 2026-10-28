@@ -37,7 +37,7 @@ export function WebPaymentQuote({ quote, url, disabled, onCopy, onOpen, onReview
 }) {
   const { ui } = useUI();
   return <View style={{ gap: 7 }}>
-    <Text style={ui.rowTitle}>{quote.recipient} · {formatMoney(quote.amount)}</Text>
+    <Text style={ui.rowTitle}>{quote.recipient} · {formatMoney(quote.amount, quote.currency)}</Text>
     <View accessibilityRole="image" accessibilityLabel="Scan this UPI payment QR with your payment app" style={{ alignSelf: 'center', padding: 12, backgroundColor: '#FFFFFF' }}><QRCode value={url} size={200} quietZone={12} /></View>
     <PaymentAddress name={quote.recipient} vpa={quote.vpa} />
     <Button title="Copy payment link" kind="text" disabled={disabled} onPress={() => onCopy(url)} />

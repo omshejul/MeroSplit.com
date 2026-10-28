@@ -1,3 +1,4 @@
+import { currencySymbol } from './currency.ts';
 export const MAX_AMOUNT = 1_000_000_000n;
 export type Amounts = Record<string, string>;
 export type Split = { mode: 'equal' | 'exact' | 'percent' | 'shares'; values: Amounts };
@@ -22,17 +23,17 @@ function scaled(value: string, precision: number): bigint {
 
 export function rupeesToPaise(value: string): string {
   const amount = scaled(value, 2);
-  if (amount <= 0n || amount > MAX_AMOUNT) throw new Error('Amount must be above zero and at most ₹1,00,00,000.');
+  if (amount <= 0n || amount > MAX_AMOUNT) throw new Error(`Amount must be above zero and at most ${currencySymbol()}1,00,00,000.`);
   return amount.toString();
 }
 
-export function formatMoney(value: string): string {
+export function formatMoney(value: string, currency?: string): string {
   const amount = integer(value, true);
   const absolute = amount < 0n ? -amount : amount;
   const whole = (absolute / 100n).toString();
   const tail = whole.slice(-3);
   const head = whole.slice(0, -3).replace(/\B(?=(\d{2})+(?!\d))/g, ',');
-  return `${amount < 0n ? '-' : ''}₹${head ? `${head},` : ''}${tail}.${(absolute % 100n).toString().padStart(2, '0')}`;
+  return `${amount < 0n ? '-' : ''}${currencySymbol(currency)}${head ? `${head},` : ''}${tail}.${(absolute % 100n).toString().padStart(2, '0')}`;
 }
 
 export function validateExpense(

@@ -1,3 +1,4 @@
+import { DEFAULT_CURRENCY, isCurrency, type Currency } from './currency';
 import { serverReachable } from './connectivity';
 import * as SQLite from 'expo-sqlite';
 import * as SecureStore from 'expo-secure-store';
@@ -83,4 +84,11 @@ export async function claimPushInvitation(owner: string): Promise<boolean> {
   if (await SecureStore.getItemAsync(key)) return false;
   await SecureStore.setItemAsync(key, 'shown');
   return true;
+}
+
+const CURRENCY_KEY = 'merosplit.currency';
+export async function savedCurrency(): Promise<Currency> { const value = await SecureStore.getItemAsync(CURRENCY_KEY); return isCurrency(value) ? value : DEFAULT_CURRENCY; }
+export async function saveCurrency(value: Currency): Promise<void> {
+  if (!isCurrency(value)) throw new Error('Choose a currency.');
+  await SecureStore.setItemAsync(CURRENCY_KEY, value);
 }

@@ -1,3 +1,4 @@
+import { DEFAULT_CURRENCY, setDefaultCurrency, type Currency } from './currency';
 import SendHorizontalIcon from '@hugeicons/core-free-icons/SendHorizontalIcon';
 import PersonAvatar from './Avatar';
 import type { ProfilePhoto } from './types';
@@ -67,7 +68,7 @@ import { Tooltip, MD3DarkTheme, MD3LightTheme, PaperProvider, ThemeProvider, Tex
 import type { PressableProps, StyleProp, ViewStyle, TextStyle } from 'react-native';
 import { ToastProvider } from './Toast';
 import type { MD3Theme } from 'react-native-paper';
-import { savedAppearance, saveAppearance, savedColorFamily, saveColorFamily } from './native';
+import { savedAppearance, saveAppearance, savedColorFamily, saveColorFamily, savedCurrency, saveCurrency } from './native';
 import type { AppearancePreference } from './native';
 export type { AppearancePreference } from './native';
 import { isDarkOnly, lookColors, type ColorFamily, type Palette, type ThemeColors } from './theme';
@@ -172,10 +173,10 @@ function makeTheme({ palette, elevation }: ThemeColors, dark: boolean): MD3Theme
     elevation: { level0: 'transparent', level1, level2, level3, level4, level5 },
   } };
 }
-type UITheme = MD3Theme & { palette: Palette; ui: ReturnType<typeof makeUI>; inputColors: ReturnType<typeof makeInputColors>; appearance: AppearancePreference; changeAppearance: (value: AppearancePreference) => Promise<void>; colorFamily: ColorFamily; changeColorFamily: (value: ColorFamily) => Promise<void>; motion: MotionPreference };
+type UITheme = MD3Theme & { palette: Palette; ui: ReturnType<typeof makeUI>; inputColors: ReturnType<typeof makeInputColors>; appearance: AppearancePreference; changeAppearance: (value: AppearancePreference) => Promise<void>; colorFamily: ColorFamily; changeColorFamily: (value: ColorFamily) => Promise<void>; motion: MotionPreference; currency: Currency; changeCurrency: (value: Currency) => Promise<void> };
 export function useUI() {
-  const { palette, ui, inputColors, dark, appearance, changeAppearance, colorFamily, changeColorFamily, motion } = useTheme<UITheme>();
-  return { palette, ui, inputColors, dark, appearance, changeAppearance, colorFamily, changeColorFamily, motion };
+  const { palette, ui, inputColors, dark, appearance, changeAppearance, colorFamily, changeColorFamily, motion, currency, changeCurrency } = useTheme<UITheme>();
+  return { palette, ui, inputColors, dark, appearance, changeAppearance, colorFamily, changeColorFamily, motion, currency, changeCurrency };
 }
 function LibraryIcon({ name, color, size }: { name: string; color?: string; size: number }) {
   const { palette } = useUI();
@@ -187,6 +188,7 @@ export function UIProvider({ children }: { children: React.ReactNode }) {
   const system = useColorScheme();
   const [appearance, changeAppearance] = useSavedChoice<AppearancePreference>(initialBrowserAppearance(), savedAppearance, saveAppearance);
   const [colorFamily, changeColorFamily] = useSavedChoice<ColorFamily>(initialBrowserColorFamily(), savedColorFamily, saveColorFamily);
+  const [currency, changeCurrency] = useSavedChoice<Currency>(DEFAULT_CURRENCY, savedCurrency, saveCurrency, setDefaultCurrency);
   const [motion, setMotion] = useState<MotionPreference>({ enabled: false, active: false });
   useWebInteractions(motion.enabled);
   useEffect(() => observeMotionPreference(value => setMotion(previous => previous.enabled === value.enabled && previous.active === value.active ? previous : value)), []);
@@ -197,9 +199,9 @@ export function UIProvider({ children }: { children: React.ReactNode }) {
     const colors = lookColors(colorFamily, dark), theme = makeTheme(colors, dark);
     return { ...theme, palette: colors.palette,
       fonts: fontsLoaded ? configureFonts({ config: { fontFamily: appFontFamily } }) : theme.fonts,
-      ui: makeUI(colors.palette, fontsLoaded ? appFontFamily : undefined), inputColors: makeInputColors(colors.palette), appearance, changeAppearance, colorFamily, changeColorFamily, motion, animation: { scale: motion.enabled ? motionDuration.paperScale : 0 },
+      ui: makeUI(colors.palette, fontsLoaded ? appFontFamily : undefined), inputColors: makeInputColors(colors.palette), appearance, changeAppearance, colorFamily, changeColorFamily, currency, changeCurrency, motion, animation: { scale: motion.enabled ? motionDuration.paperScale : 0 },
     };
-  }, [dark, appearance, changeAppearance, colorFamily, changeColorFamily, motion, fontsLoaded]);
+  }, [dark, appearance, changeAppearance, colorFamily, changeColorFamily, currency, changeCurrency, motion, fontsLoaded]);
   useLayoutEffect(() => syncBrowserTheme(value.palette.background, dark), [value.palette.background, dark]);
   // PaperProvider overwrites animation.scale. Its public ThemeProvider also
   // supplies the corrected theme to Portals, without replacing their owner.
