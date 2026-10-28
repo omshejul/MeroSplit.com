@@ -14,11 +14,12 @@ function one(tree: unknown, type: string) { const rows = elements(tree).filter(n
 function button(tree: unknown, title: string) { const value = elements(tree).find(node => (node.type === 'Button' && node.props.title === title || node.type === 'SettingsRow' && node.props.label === title)); assert.ok(value, title); return value; }
 const session = { token: 'synthetic-one', baseUrl: 'https://example.invalid/', email: 'one@example.invalid', userId: '1' };
 function harness(os = 'ios') {
-  const slots: any[] = [], effects: (() => void)[] = [], calls: any[] = [], shares: any[] = [], urls: string[] = [], busy: boolean[] = [];
+  const slots: any[] = [], effects: (() => void)[] = [], calls: any[] = [], copies: string[] = [], busy: boolean[] = [];
   const viewport = { height: 667, width: 375, fontScale: 1 }, insets = { top: 20, bottom: 0, left: 0, right: 0 };
   const listeners = new Map<string, (event: any) => void>(); let index = 0, focused = 0;
   let input = { session, busy: false, onBusyChange: (value: boolean) => busy.push(value) };
   let request: (session: unknown, path: string, method: string) => Promise<unknown> = async () => ({ connections: [] });
+  let copy: () => Promise<void> = async () => {};
   const React = {
     Fragment: 'Fragment', createElement: (type: unknown, props: object | null, ...children: unknown[]): Element => ({ type, props: props ?? {}, children }),
     useState(initial: unknown) { const i = index++; if (!(i in slots)) slots[i] = initial; return [slots[i], (value: unknown) => { slots[i] = value; }]; },
@@ -34,12 +35,13 @@ function harness(os = 'ios') {
   const modules: Record<string, unknown> = {
     react: { ...React, default: React },
     'react-native-safe-area-context': { useSafeAreaInsets: () => insets },
-    'react-native': { useWindowDimensions: () => viewport, View: 'View', Platform: { OS: os }, Linking: { openURL: async (value: string) => { urls.push(value); } }, Share: { share: async (value: unknown) => { shares.push(value); } } },
+    'react-native': { useWindowDimensions: () => viewport, View: 'View', Platform: { OS: os },  },
     'react-native-paper': { Text: 'Text', Dialog: { Title: 'Title', Actions: 'Actions' } },
+    './clipboard': { copyText: (value: string) => { copies.push(value); return copy(); } },
     './appLinks': { APP_ORIGIN: 'https://merosplit.com' },
     './api': { request: (active: unknown, path: string, method = 'GET') => { calls.push({ session: active, path, method }); return request(active, path, method); } },
     './DialogParts': { Dialog: { Title: 'Title', Actions: 'Actions' }, DialogScrollBody: 'ScrollBody' }, './KeyboardDialog': { __esModule: true, default: 'KeyboardDialog' },
-    './ui': { Button: 'Button', ErrorText: 'ErrorText', SettingsRow: 'SettingsRow', useUI: () => ({ ui: {} }) },
+    './ui': { Button: 'Button', ErrorText: 'ErrorText', SettingsRow: 'SettingsRow', Icon: 'Icon', useUI: () => ({ ui: {}, palette: { soft: '#2D2536' } }) },
   };
   const exports: any = {}, source = readFileSync(new URL('../src/MCPSettings.tsx', import.meta.url), 'utf8');
   const code = ts.transpile(source, { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.React });
@@ -49,7 +51,8 @@ function harness(os = 'ios') {
     (fn: () => void) => fn(),
   );
   return {
-    calls, shares, urls, busy, listeners, viewport, insets,
+    calls, copies, busy, listeners, viewport, insets,
+    copyWith(handler: typeof copy) { copy = handler; },
     respond(handler: typeof request) { request = handler; },
     render(next: Partial<typeof input> = {}) { input = { ...input, ...next }; index = 0; const tree = exports.default(input); one(tree, 'SettingsRow').props.rowRef.current = { focus: () => focused++ }; return tree; },
     async flush() { effects.splice(0).forEach(effect => effect()); await turn(); },
@@ -58,7 +61,7 @@ function harness(os = 'ios') {
   };
 }
 
-test('Me has one settings row, opens a persistent scrolling dialog and keeps Close connections outside the body', async () => {
+test('Connect MCP offers clipboard setup and a device list, with header dismissal', async () => {
   const app = harness(); let tree = app.render(); await app.flush(); tree = app.render();
   assert.equal(one(tree, 'SettingsRow').props.label, 'Connect MCP');
   assert.equal(one(tree, 'KeyboardDialog').props.visible, false);
@@ -66,46 +69,60 @@ test('Me has one settings row, opens a persistent scrolling dialog and keeps Clo
   one(tree, 'SettingsRow').props.onPress(); tree = app.render();
   assert.equal(one(tree, 'KeyboardDialog').props.visible, true);
   assert.ok(elements(one(tree, 'ScrollBody')).some(node => node.type === 'Text' && node.children.includes('Loading connections…')));
-  assert.equal(button(tree, 'Close connections').props.disabled, false, 'loading cannot trap someone in the dialog');
-  assert.equal(elements(one(tree, 'ScrollBody')).includes(button(tree, 'Close connections')), false);
-  assert.equal(one(tree, 'Actions').children[0], button(tree, 'Close connections'));
+  assert.equal(one(tree, 'KeyboardDialog').props.dismissable, true, 'loading cannot trap someone in the dialog');
   await turn(); tree = app.render();
   assert.deepEqual(app.calls, [{ session, path: '/me/mcp', method: 'GET' }]);
   const text = elements(tree).filter(node => node.type === 'Text').flatMap(node => node.children).join(' ');
   assert.doesNotMatch(text, /https:\/\/|get_account_context|Connect MeroSplit to this client/);
-  button(tree, 'Setup instructions').props.onPress(); button(tree, 'Share setup prompt').props.onPress(); await turn();
-  assert.deepEqual(app.urls, ['https://merosplit.com/mcp/setup']);
-  assert.deepEqual(app.shares, [{ message: 'Connect MeroSplit to this client using the instructions at https://merosplit.com/mcp/setup, then verify with get_account_context.' }]);
-  button(tree, 'Close connections').props.onPress(); assert.equal(one(app.render(), 'KeyboardDialog').props.visible, false);
+  assert.match(text, /Connected devices/);
+  assert.match(text, /No connected devices/);
+  assert.deepEqual(elements(tree).filter(node => node.type === 'Button').map(node => node.props.title), ['Copy prompt']);
+  button(tree, 'Copy prompt').props.onPress(); await turn(); tree = app.render();
+  assert.deepEqual(app.copies, ['Connect MeroSplit to this client using the instructions at https://merosplit.com/mcp/setup, then verify with get_account_context.']);
+  assert.ok(button(tree, 'Copied'));
+  one(tree, 'KeyboardDialog').props.onDismiss(); assert.equal(one(app.render(), 'KeyboardDialog').props.visible, false);
   assert.equal(app.focusCount(), 1); app.unmount();
 });
 
-test('Disconnect keeps shared busy guards, exact selected ID, one request and a reachable fixed footer', async () => {
+test('clipboard denial reports failure and permits retry without making a ledger request', async () => {
+  const app = harness(); let tree = app.render(); await app.flush(); one(tree, 'SettingsRow').props.onPress(); await turn();
+  app.copyWith(async () => { throw Error('clipboard denied'); });
+  button(app.render(), 'Copy prompt').props.onPress(); await turn(); tree = app.render();
+  assert.ok(one(tree, 'ErrorText').children.includes('Could not copy the prompt. Try again.'));
+  assert.equal(elements(tree).some(node => node.props.title === 'Copied'), false);
+  app.copyWith(async () => {}); button(tree, 'Copy prompt').props.onPress(); await turn(); tree = app.render();
+  assert.ok(button(tree, 'Copied'));
+  assert.equal(elements(tree).some(node => node.type === 'ErrorText'), false);
+  assert.equal(app.calls.length, 1); app.unmount();
+});
+
+test('Disconnect keeps busy guards and the selected ID, then reloads devices', async () => {
   const app = harness(); let finish!: () => void;
   app.respond(async (_active, _path, method) => method === 'DELETE' ? new Promise<void>(resolve => { finish = resolve; }) : { connections: [{ id: 'client/one', client_name: 'Assistant One' }] });
   let tree = app.render(); await app.flush(); one(tree, 'SettingsRow').props.onPress(); await turn(); tree = app.render();
-  const disconnect = button(tree, 'Disconnect'), done = button(tree, 'Close connections');
+  const disconnect = button(tree, 'Disconnect');
   assert.equal(disconnect.props.accessibilityLabel, 'Disconnect Assistant One');
-  disconnect.props.onPress(); disconnect.props.onPress(); done.props.onPress(); tree = app.render();
+  disconnect.props.onPress(); disconnect.props.onPress(); one(tree, 'KeyboardDialog').props.onDismiss(); tree = app.render();
   assert.equal(one(tree, 'KeyboardDialog').props.visible, true);
   assert.equal(one(tree, 'KeyboardDialog').props.dismissable, false);
-  one(tree, 'KeyboardDialog').props.onDismiss(); assert.equal(app.focusCount(), 0);
-  for (const title of ['Close connections', 'Disconnect', 'Refresh', 'Share setup prompt', 'Setup instructions']) assert.equal(button(tree, title).props.disabled, true);
+  assert.equal(app.focusCount(), 0);
+  for (const title of ['Disconnect', 'Copy prompt']) assert.equal(button(tree, title).props.disabled, true);
   assert.deepEqual(app.busy, [true]);
   assert.equal(app.calls.filter(call => call.method === 'DELETE').length, 1);
   assert.equal(app.calls[1].path, '/me/mcp/client%2Fone');
   finish(); await turn(); assert.deepEqual(app.busy, [true, false]);
-  tree = app.render(); assert.equal(button(tree, 'Close connections').props.disabled, false);
+  assert.equal(one(app.render(), 'KeyboardDialog').props.dismissable, true);
   assert.equal(app.calls.at(-1).method, 'GET'); app.unmount();
 });
 
-test('loading failure stays inline, Refresh retries and external busy blocks entry and dismissal', async () => {
+test('loading failure stays inline, reopening retries and external busy blocks entry and dismissal', async () => {
   const app = harness(); app.respond(async () => { throw Error('synthetic offline'); });
   let tree = app.render(); await app.flush(); tree = app.render({ busy: true });
   one(tree, 'SettingsRow').props.onPress(); assert.equal(app.calls.length, 0);
   tree = app.render({ busy: false }); one(tree, 'SettingsRow').props.onPress(); await turn(); tree = app.render();
-  assert.ok(one(tree, 'ErrorText').children.includes('Could not load connections. Try again.'));
-  app.respond(async () => ({ connections: [] })); button(tree, 'Refresh').props.onPress(); await turn(); tree = app.render();
+  assert.ok(one(tree, 'ErrorText').children.includes('Could not load connected devices. Close and reopen to try again.'));
+  app.respond(async () => ({ connections: [] })); one(tree, 'KeyboardDialog').props.onDismiss();
+  one(app.render(), 'SettingsRow').props.onPress(); await turn(); tree = app.render();
   assert.equal(elements(tree).filter(node => node.type === 'ErrorText').length, 0);
   tree = app.render({ busy: true }); one(tree, 'KeyboardDialog').props.onDismiss();
   assert.equal(one(app.render(), 'KeyboardDialog').props.visible, true); app.unmount();

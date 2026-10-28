@@ -4,24 +4,83 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="referrer" content="same-origin">
-  <title>Connect to MeroSplit</title>
+  <title>Connect {{ client_name }} to MeroSplit</title>
   <style>
-    :root{color-scheme:light dark;font-family:system-ui,sans-serif}body{margin:0;padding:24px;line-height:1.5}main{max-width:440px;margin:8vh auto}h1{font-size:28px;line-height:1.2}p,li{overflow-wrap:anywhere}button{font:inherit;padding:12px 24px;min-height:48px;border-radius:12px;cursor:pointer}form{display:flex;gap:12px;flex-wrap:wrap;margin-top:28px}small{opacity:.7}
+    :root{color-scheme:light dark;--background:#F7F4FA;--surface:#FFF;--text:#1E1626;--muted:#625A6B;--accent:#6B3FA0;--on-accent:#FFF;--soft:#EEE7F5;--line:#DAD0E4}
+    @media(prefers-color-scheme:dark){:root{--background:#141018;--surface:#1D1823;--text:#F3EEF7;--muted:#BDB2C8;--accent:#C7A6F2;--on-accent:#1E1626;--soft:#2D2536;--line:#453B50}}
+    *{box-sizing:border-box}
+    body{margin:0;min-height:100svh;display:grid;place-items:center;padding:32px 16px;background:var(--background);color:var(--text);font-size:15px;line-height:1.5}
+    main{width:100%;max-width:480px}
+    .brand{text-align:center;font-size:19px;font-weight:600;margin:0 0 24px}
+    .card{padding:28px;border:1px solid var(--line);border-radius:20px;background:var(--surface);display:flex;flex-direction:column;gap:24px}
+    .apps{display:flex;align-items:center;justify-content:center;gap:20px}
+    .app-mark{width:48px;height:48px;display:grid;place-items:center;border:1px solid var(--line);border-radius:12px;background:var(--soft);font-size:24px;font-weight:600}
+    .app-mark img{width:36px;height:36px;display:block}
+    .connection{color:var(--muted);font-size:24px}
+    h1{margin:0;font-size:26px;font-weight:600;line-height:1.25;text-wrap:balance;overflow-wrap:anywhere}
+    p{margin:0;overflow-wrap:anywhere}
+    .intro{margin-top:8px;color:var(--muted)}
+    .account{display:flex;align-items:center;gap:12px;padding:14px;border:1px solid var(--line);border-radius:12px}
+    .avatar{flex-shrink:0;width:40px;height:40px;border-radius:50%;display:grid;place-items:center;background:var(--soft);color:var(--accent);font-size:18px;font-weight:600}
+    .identity{min-width:0}
+    .account-name{font-weight:600}
+    .email,.note{color:var(--muted);font-size:13px}
+    .permissions{list-style:none;margin:0;padding:0}
+    .permissions li{display:flex;gap:14px;padding:18px 0;border-top:1px solid var(--line)}
+    .permissions li:last-child{border-bottom:1px solid var(--line)}
+    .permissions svg{width:22px;height:22px;flex-shrink:0;margin-top:2px;color:var(--muted);fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+    h2{margin:0 0 4px;font-size:15px;font-weight:600;line-height:1.5}
+    .permission-detail{color:var(--muted);font-size:14px}
+    .scope{margin-top:12px}
+    .notice{display:flex;align-items:flex-start;gap:12px;font-size:14px}
+    .info{flex-shrink:0;border:1.5px solid var(--muted);border-radius:50%;width:20px;height:20px;text-align:center;font-size:12px;line-height:17px;color:var(--muted)}
+    form{display:flex;flex-direction:column;gap:8px}
+    button{font:inherit;min-height:48px;padding:12px 16px;border-radius:10px;border:1px solid var(--line);background:transparent;color:var(--text);font-weight:500;cursor:pointer;overflow-wrap:anywhere}
+    button.primary{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
+    button:hover{filter:brightness(.94)}
+    button:focus-visible{outline:3px solid var(--accent);outline-offset:3px}
+    .revoke{text-align:center;margin-top:4px}
+    @media(max-width:360px){.card{padding:20px}h1{font-size:24px}}
   </style>
 <link rel="stylesheet" href="/assets/typography.css">
 </head>
 <body><main>
-  <small>MeroSplit</small>
-  <h1>Connect {{ client_name }}?</h1>
-  <p>Signed in as <strong>{{ account_name }}</strong><br>{{ account_email }}</p>
-  <p>This client will be able to:</p>
-  <ul><li>Read your groups, balances and transaction history.</li><li>Create groups and record or change bills and payments using your existing permissions.</li></ul>
-  <p>Recording a payment does not transfer money. You can disconnect this client in Me at any time.</p>
-  <form method="post" action="/oauth/authorize">
-    {% csrf_token %}
-    <input type="hidden" name="request" value="{{ authorization.id }}">
-    <input type="hidden" name="expected_user_id" value="{{ expected_user_id }}">
-    <button type="submit" name="decision" value="allow">Allow</button>
-    <button type="submit" name="decision" value="cancel">Cancel</button>
-  </form>
+  <p class="brand">MeroSplit</p>
+  <section class="card" aria-labelledby="consent-title">
+    <div class="apps" aria-hidden="true">
+      <span class="app-mark"><img src="/assets/merosplit-logo.svg" alt=""></span>
+      <span class="connection">↔</span>
+      <span class="app-mark">{{ client_name|first }}</span>
+    </div>
+    <header>
+      <h1 id="consent-title">Connect {{ client_name }} to MeroSplit</h1>
+      <p class="intro">Let {{ client_name }} help manage your shared expenses.</p>
+    </header>
+    <div class="account" aria-label="Signed-in MeroSplit account">
+      <span class="avatar" aria-hidden="true">{{ account_name|first }}</span>
+      <div class="identity"><p class="account-name">{{ account_name }}</p><p class="email">{{ account_email }}</p></div>
+    </div>
+    <div>
+      <ul class="permissions" aria-label="Permissions">
+        <li>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8zM14 3v5h5M9 12h6M9 16h6"/></svg>
+          <div><h2>View your expenses</h2><p class="permission-detail">Read your groups, balances and transaction history.</p></div>
+        </li>
+        <li>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 4 5 5M4 20l5-1L20 8a2 2 0 0 0-5-5L4 14z"/></svg>
+          <div><h2>Manage your expenses</h2><p class="permission-detail">Create groups. Add or edit bills and recorded payments.</p></div>
+        </li>
+      </ul>
+      <p class="note scope">Your existing group permissions still apply.</p>
+    </div>
+    <p class="notice"><span class="info" aria-hidden="true">i</span><span>Recording payments never moves money.</span></p>
+    <form method="post" action="/oauth/authorize">
+      {% csrf_token %}
+      <input type="hidden" name="request" value="{{ authorization.id }}">
+      <input type="hidden" name="expected_user_id" value="{{ expected_user_id }}">
+      <button class="primary" type="submit" name="decision" value="allow">Connect {{ client_name }}</button>
+      <button type="submit" name="decision" value="cancel">Cancel</button>
+      <p class="note revoke">Disconnect anytime in Me.</p>
+    </form>
+  </section>
 </main></body></html>
