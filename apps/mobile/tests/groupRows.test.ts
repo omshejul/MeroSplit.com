@@ -499,16 +499,21 @@ test('pending bill stays editable but cannot request server history or reversal 
  assert.ok(!elements(tree).some(node=>node.type==='RecordAttribution'&&node.props.action==='Added'));
 });
 
-test('inline search separates clearing text from closing, with accessible touch targets', () => {
-  const changed: string[] = []; let closed = 0;
-  const tree = production('BillSearch')({ value: 'rent', onChange: (value: string) => changed.push(value), onSearch() {}, onClose: () => closed++, showSubmit: true, autoFocus: true });
-  const actions = elements(tree).filter(node => node.type === 'Button');
-  const clear = actions.find(node => node.props.accessibilityLabel === 'Clear search text')!;
-  const close = actions.find(node => node.props.accessibilityLabel === 'Close search')!;
-  clear.props.onPress(); assert.deepEqual(changed, ['']); assert.equal(closed, 0);
-  close.props.onPress(); assert.equal(closed, 1);
-  for (const action of actions) { assert.ok(action.props.style.minWidth >= 44); assert.ok(action.props.style.minHeight >= 44); }
-  assert.ok(!(tree.children[0] as Element).children.flat().includes(close), 'close sits outside the field');
+test('inline search has one close X and bottom spacing before results', () => {
+  let closed = 0;
+  const render = production('BillSearch');
+  for (const value of ['', 'rent']) {
+    const tree = render({ value, onChange() {}, onSearch() {}, onClose: () => closed++, showSubmit: true, autoFocus: true });
+    const actions = elements(tree).filter(node => node.type === 'Button');
+    const closes = actions.filter(node => node.props.icon === 'close');
+    assert.equal(closes.length, 1);
+    assert.equal(closes[0].props.accessibilityLabel, 'Close search');
+    closes[0].props.onPress();
+    assert.equal(tree.props.style.paddingBottom, 12);
+    for (const action of actions) { assert.ok(action.props.style.minWidth >= 44); assert.ok(action.props.style.minHeight >= 44); }
+    assert.ok(!(tree.children[0] as Element).children.flat().includes(closes[0]), 'close stays outside the field');
+  }
+  assert.equal(closed, 2);
 });
 
 test('closing local search restores all rows, hides the field and permits reopening', () => {
