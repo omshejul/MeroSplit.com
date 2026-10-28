@@ -16,6 +16,7 @@ from ninja.errors import HttpError
 from .category_gateway import (
     CATEGORIES,
     DEFINITION_REVISION,
+    LEGACY_DEFINITION_REVISION,
     PREVIOUS_DEFINITION_REVISION,
     CategoryUnavailable,
     evaluate_title,
@@ -61,10 +62,10 @@ def _binding(actor, expense):
         defaults={"state": state, "last_error": error, "category": legacy.category if legacy and state == "ready" else ""},
     )
     if created and cache.state == "pending":
-        # Existing successful results met the higher threshold. Keep the first
-        # one for everyone; unresolved old results get the new 50% evaluation.
+        # Existing successful results were already the highest choice. Keep the
+        # first one for everyone; unresolved old results get the new policy.
         previous = ExpenseCategoryCache.objects.filter(
-            title_digest=cache.title_digest, definition_revision=cache_revision(PREVIOUS_DEFINITION_REVISION),
+            title_digest=cache.title_digest, definition_revision__in=[cache_revision(PREVIOUS_DEFINITION_REVISION), cache_revision(LEGACY_DEFINITION_REVISION)],
             state="ready", category__in=CATEGORIES,
         ).exclude(category="general").order_by("pk").first()
         if previous:
@@ -278,14 +279,15 @@ def process_category_decisions(*, evaluate=None):
         expired | Q(cache__state="uncertain", cache__last_error="abandoned_claim"))
     for identifier in bindings.order_by("pk").values_list("pk", flat=True)[:100]:
         bindings.filter(pk=identifier).update(state="uncertain", category="", last_error="abandoned_claim", lease_until=None)
-    identifier = (ExpenseCategoryDecision.objects.filter(state="pending", cache__state="pending", cache__owner__isnull=True)
+    identifier = (ExpenseCategoryDecision.objects.filter(state="pending", definition_revision=cache_revision(),
+                  cache__state="pending", cache__owner__isnull=True, cache__definition_revision=cache_revision())
                   .order_by("pk").values_list("pk", flat=True).first())
     if identifier is None or not (claim := _claim(identifier)):
         return 0
     row, title = claim
     try:
         category = (evaluate or evaluate_title)(title, key)
-        if category not in CATEGORIES or category == "general":
+        if category not in CATEGORIES:
             category = None
         state, error = ("ready" if category else "uncertain"), ""
     except CategoryUnavailable as cause:
