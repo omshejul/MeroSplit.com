@@ -70,6 +70,6 @@ const styles = StyleSheet.create({
   title: { fontSize: 24, lineHeight: 30, fontWeight: '600' },
   tabs: { flexDirection: 'row', marginHorizontal: 16, marginBottom: 8, borderRadius: radii.navigation, padding: 4, gap: 4 },
   tab: { flex: 1, minHeight: 48, alignItems: 'center', justifyContent: 'center', gap: 4, borderRadius: radii.navigation, paddingVertical: 6 },
-  tabContent: { zIndex: 1, alignItems: 'center', gap: 4 },
+  tabContent: { zIndex: 1, alignItems: 'center', gap: Platform.OS === 'ios' ? 4 : 1 },
   tabText: { fontSize: 13, fontWeight: '500' },
 });
