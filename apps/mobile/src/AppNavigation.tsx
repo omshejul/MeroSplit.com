@@ -1,4 +1,5 @@
 import BottomSafeArea from './BottomSafeArea';
+import AddActionButton from './AddActionButton';
 import React from 'react';
 import { Animated, Image, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -58,7 +59,7 @@ export function AppTabs({ selected, busy, onSelect }: { selected: string; busy: 
 export function AddExpenseButton({ disabled, onPress }: { disabled: boolean; onPress: () => void }) {
   return <BottomSafeArea pointerEvents="box-none" style={styles.floating}>
     <View pointerEvents="box-none" style={[pageWidthStyle, styles.floatingContent]}>
-      <Button title="Add expense" kind="primary" icon="add" disabled={disabled} onPress={onPress} style={{ minHeight: 36 }} />
+      <AddActionButton title="Add expense" disabled={disabled} onPress={onPress} />
     </View>
   </BottomSafeArea>;
 }
