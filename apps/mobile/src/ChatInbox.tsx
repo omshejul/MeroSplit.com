@@ -1,4 +1,3 @@
-import StaggerItem from './StaggerItem';
 import React, { useEffect, useRef, useState } from 'react';
 import { Text, View } from 'react-native';
 import { request } from './api';
@@ -29,7 +28,7 @@ export default function ChatInbox({ session, active, busy, onOpen, onEmptyChange
   return <View role="region" accessibilityLabel="Unread chats" style={{ gap: 8 }}>
     <View style={{ gap: 8 }}>
     <SectionHeading>Unread chats</SectionHeading>
-    <View>{page?.conversations.map((row, index) => <StaggerItem key={`${row.group_id}|${row.expense_id}`} index={index}><SettingsRow icon="people" label={`${row.bill} · ${row.group}`} value={`${row.unread} unread`} disabled={busy || !active} onPress={() => onOpen(row.group_id, row.expense_id)} /></StaggerItem>)}</View>
+    <View>{page?.conversations.map(row => <SettingsRow key={`${row.group_id}|${row.expense_id}`} icon="people" label={`${row.bill} · ${row.group}`} value={`${row.unread} unread`} disabled={busy || !active} onPress={() => onOpen(row.group_id, row.expense_id)} />)}</View>
     {before && <Button title="Latest chats" kind="text" disabled={busy} onPress={() => setBefore(null)} />}
     {page?.next_cursor && <Button title="Older chats" kind="text" disabled={busy} onPress={() => setBefore(page.next_cursor)} />}
     {!!error && <Text style={ui.caption}>{error}</Text>}

@@ -1,4 +1,3 @@
-import StaggerItem from './StaggerItem';
 import { Dialog } from './DialogParts';
 import { CancelDialogActions, DialogScrollBody } from './DialogParts';
 import KeyboardDialog from './KeyboardDialog';
@@ -75,9 +74,9 @@ export default function ProfileSettings({ name, vpa, busy, onSaveName, onSaveUPI
     finally { inFlight.current = false; setSaving(false); }
   }
   return <>
-    <StaggerItem index={0}><SettingsRow rowRef={nameRow} icon="edit" label="Name" value={name} disabled={busy} onPress={() => open('name')} /></StaggerItem>
-    <StaggerItem index={1}><SettingsRow rowRef={upiRow} icon="pay" label="UPI ID" value={vpa || 'Not set'} disabled={busy} onPress={() => open('upi')} /></StaggerItem>
-    <StaggerItem index={2}><SettingsRow rowRef={appearanceRow} icon="appearance" label="Appearance" value={darkOnly ? family : colorFamily === 'basic' ? mode : `${family} · ${mode}`} disabled={busy} onPress={() => open('appearance')} /></StaggerItem>
+    <SettingsRow rowRef={nameRow} icon="edit" label="Name" value={name} disabled={busy} onPress={() => open('name')} />
+    <SettingsRow rowRef={upiRow} icon="pay" label="UPI ID" value={vpa || 'Not set'} disabled={busy} onPress={() => open('upi')} />
+    <SettingsRow rowRef={appearanceRow} icon="appearance" label="Appearance" value={darkOnly ? family : colorFamily === 'basic' ? mode : `${family} · ${mode}`} disabled={busy} onPress={() => open('appearance')} />
     <KeyboardDialog visible={!!editing} onDismiss={() => { if (!disabled) close(); }} dismissable={!disabled} maxHeight={isAppearance ? height : undefined}>
       <Dialog.Title aria-level={2}>{isAppearance ? 'Appearance' : isName ? 'Name' : 'UPI ID'}</Dialog.Title>
       {isAppearance ? <>

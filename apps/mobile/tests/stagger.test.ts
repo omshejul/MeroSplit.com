@@ -17,22 +17,25 @@ function harness(os: string) {
   const exports: any = {};
   const code = ts.transpile(readFileSync(new URL('../src/StaggerItem.tsx', import.meta.url), 'utf8'), { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.React });
   new Function('require', 'exports', code)((name: string) => modules[name], exports);
-  return { animations, render(index: number, motion = enabled) { cursor = 0; enabled = motion; return exports.default({ index, children: 'pressable row' }); }, cleanup() { slots.forEach(s => s?.cleanup?.()); }, exports };
+  return { animations, render(entry?: { delay: number; played: boolean }, motion = enabled) { cursor = 0; enabled = motion; return exports.default({ entry, children: 'pressable row' }); }, cleanup() { slots.forEach(s => s?.cleanup?.()); }, exports };
 }
 for (const os of ['ios', 'android', 'web']) {
-  test(`${os}: rows stagger once, remain visible and do not block interaction`, () => {
-    const h = harness(os), row = h.render(3);
-    assert.equal(h.animations.length, 1); assert.equal(h.animations[0].options.delay, 90);
-    assert.equal(h.animations[0].options.duration, 180); assert.equal(h.animations[0].options.useNativeDriver, os !== 'web'); assert.equal(h.animations[0].options.isInteraction, false);
-    assert.deepEqual(row.props.style.opacity.outputRange, [0.88, 1]); assert.deepEqual(row.props.style.transform[0].translateY.outputRange, [8, 0]);
-    assert.equal(row.props.pointerEvents, undefined); assert.equal(row.props.accessible, undefined);
-    h.render(4); assert.equal(h.animations.length, 1, 'reordering cannot replay entry');
-    h.render(4, false); h.render(4, true); assert.equal(h.animations.length, 1, 'resume cannot replay entry'); assert.equal(h.animations[0].value.value, 1);
-    h.cleanup(); assert.equal(h.animations[0].stopped, true);
+  test(`${os}: a transaction waits until visible, staggers once and survives recycling`, () => {
+    const h = harness(os); h.render(); assert.equal(h.animations.length, 0, 'offscreen rows do not spend their entrance');
+    const entry = { delay: 70, played: false }, row = h.render(entry);
+    assert.equal(h.animations.length, 1); assert.equal(entry.played, true);
+    const options = h.animations[0].options;
+    assert.equal(options.delay, 70); assert.equal(options.duration, 260);
+    assert.equal(options.useNativeDriver, os !== 'web'); assert.equal(options.isInteraction, false);
+    assert.deepEqual(row.props.style.opacity.outputRange, [0.35, 1]); assert.deepEqual(row.props.style.transform[0].translateY.outputRange, [12, 0]);
+    h.render(entry); assert.equal(h.animations.length, 1, 'refresh does not replay');
+    h.cleanup(); const recycled = harness(os); recycled.render(entry); assert.equal(recycled.animations.length, 0, 'a recycled row stays still');
+    assert.equal(row.props.pointerEvents, undefined);
   });
-  test(`${os}: reduced motion and later virtualized rows stay still`, () => {
-    const reduced = harness(os); reduced.render(0, false); reduced.render(0, true); assert.equal(reduced.animations.length, 0);
-    for (const index of [8, 10000]) { const later = harness(os); later.render(index); assert.equal(later.animations.length, 0); }
-    const last = harness(os); last.render(7); assert.equal(last.animations[0].options.delay, 210);
+  test(`${os}: reduced motion and resume never replay an entered transaction`, () => {
+    const entry = { delay: 0, played: false }, reduced = harness(os);
+    reduced.render(entry, false); reduced.render(entry, true); assert.equal(reduced.animations.length, 0);
+    const h = harness(os), later = { delay: 0, played: false }; h.render(later); h.render(later, false); h.render(later, true);
+    assert.equal(h.animations.length, 1); assert.equal(h.animations[0].value.value, 1); assert.equal(h.animations[0].stopped, true);
   });
 }

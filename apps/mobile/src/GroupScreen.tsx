@@ -1,4 +1,4 @@
-import StaggerItem from './StaggerItem';
+import StaggerItem, { type ListEntry } from './StaggerItem';
 import DetailDialog from './DetailDialog';
 import TransactionIcon from './TransactionIcon';
 import { categoryIcon, categoryMeaning, expenseCategory } from './categoryIcons';
@@ -50,7 +50,7 @@ function LegacyPayments({ group, selfId, accepted, busy, onPayment, onPrefetchPa
   const paging = useScrollPagination({ scope: scope + '|payments', cursor: group.history?.settlements?.next_cursor,
     enabled: enabled && !busy, load: signal => onPage?.('settlements', 'next', undefined, signal, accepted) ?? Promise.resolve(false) });
   return <ScrollView ref={ref} nestedScrollEnabled scrollEventThrottle={100} style={{ maxHeight: 320 }}>
-    {payments.map((payment, index) => <StaggerItem key={payment.id} index={index}><PaymentRow payment={payment} accepted={accepted} group={group} selfId={selfId} busy={busy} onPayment={onPayment} onPrefetchPayment={onPrefetchPayment} /></StaggerItem>)}
+    {payments.map(payment => <PaymentRow key={payment.id} payment={payment} accepted={accepted} group={group} selfId={selfId} busy={busy} onPayment={onPayment} onPrefetchPayment={onPrefetchPayment} />)}
     {!payments.length && <Text>{group.history?.settlements?.next_cursor ? 'No payments on this page.' : 'No payments recorded.'}</Text>}
     <PagingFooter paging={paging} />
   </ScrollView>;
@@ -226,19 +226,27 @@ export default function GroupScreen({ categoryIcons, header, noticeVisibility, g
   }
   const list = useRef<FlatList<GroupTransaction>>(null), frame = useRef<React.ComponentRef<typeof View>>(null);
   const [viewport, setViewport] = useState<{ x: number; y: number; width: number; height: number } | null>(null), [scrollEpoch, setScrollEpoch] = useState(0);
+  const entries = useRef(new Map<string, ListEntry>()), [entryRevision, setEntryRevision] = useState(0);
+  const transactionKey = (row: GroupTransaction) => row.kind === 'bill' ? `bill:${row.bill.id}` : `payment:${row.payment.id}`;
   const visible = useRef(onVisibleBills); visible.current = onVisibleBills;
-  const viewable = useRef(({ viewableItems }: { viewableItems: { isViewable: boolean; item: GroupTransaction }[] }) => visible.current?.(viewableItems.filter(row => row.isViewable && row.item.kind === 'bill').map(row => row.item.kind === 'bill' ? row.item.bill.id : '')));
+  const viewable = useRef(({ viewableItems }: { viewableItems: { isViewable: boolean; index?: number | null; item: GroupTransaction }[] }) => {
+    const shown = viewableItems.filter(row => row.isViewable).sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
+    const fresh = shown.filter(row => !entries.current.has(transactionKey(row.item)));
+    fresh.forEach((row, index) => entries.current.set(transactionKey(row.item), { delay: Math.min(index, 6) * 35, played: false }));
+    if (fresh.length) setEntryRevision(value => value + 1);
+    visible.current?.(shown.filter(row => row.item.kind === 'bill').map(row => row.item.kind === 'bill' ? row.item.bill.id : ''));
+  });
   const paging = useScrollPagination({ scope: `${pagingScope}|${group.version}|${historyResource}|${historyWindow?.query || ''}`,
     cursor: historyWindow?.next_cursor, enabled: active && online && !busy,
     load: signal => onHistoryPage?.(historyResource, 'next', undefined, signal, accepted) ?? Promise.resolve(false) });
   const visibility = noticeVisibility ? { ...noticeVisibility, viewport, scrollEpoch } : undefined;
   return <Animated.View ref={frame} role="region" accessibilityLabel={group.name} style={{ flex: 1, opacity }}>
-    <FlatList ref={list} contentInsetAdjustmentBehavior="automatic" data={rows} nestedScrollEnabled scrollEventThrottle={100} onEndReachedThreshold={0.3}
+    <FlatList ref={list} contentInsetAdjustmentBehavior="automatic" data={rows} extraData={entryRevision} nestedScrollEnabled scrollEventThrottle={100} onEndReachedThreshold={0.3}
       onLayout={event => { frame.current?.measureInWindow((x, y, width, height) => setViewport({ x, y, width, height })); }}
       onScroll={event => { setScrollEpoch(value => value + 1); }}
       keyboardShouldPersistTaps="handled" onViewableItemsChanged={viewable.current} onRefresh={onRefresh} refreshing={refreshing}
       keyExtractor={row => row.kind === 'bill' ? `bill:${row.bill.id}` : `payment:${row.payment.id}`}
-      contentContainerStyle={[pageContentStyle, { gap: 0, paddingBottom: 104 }]} renderItem={({ item: row, index }) => <StaggerItem index={index}>{row.kind === 'payment'
+      contentContainerStyle={[pageContentStyle, { gap: 0, paddingBottom: 104 }]} renderItem={({ item: row }) => <StaggerItem entry={entries.current.get(transactionKey(row))}>{row.kind === 'payment'
         ? <PaymentRow payment={row.payment} accepted={accepted} group={group} selfId={selfId} busy={busy} onPayment={onPayment} onPrefetchPayment={onPrefetchPayment} />
         : <BillTimelineRow categoryIcons={categoryIcons} expense={row.bill} group={group} selfId={selfId} busy={busy} onExpense={onExpense} onPrefetchBill={onPrefetchBill} noticeVisibility={group === accepted ? visibility : undefined} />}</StaggerItem>}
       ListHeaderComponent={<View style={s.content}>{header}
@@ -246,7 +254,7 @@ export default function GroupScreen({ categoryIcons, header, noticeVisibility, g
     {group !== accepted && <Text style={ui.caption}>Balances show a pending preview.</Text>}
     {group.archived && <Text style={ui.notice}>Archived. Reopen in settings to make changes.</Text>}
     {!transfers.length && <Text style={celebrateSettled ? [ui.numeric, s.settled] : ui.caption}>{celebrateSettled ? '🎉 All settled' : 'All settled'}</Text>}
-    {transfers.map((transfer, index) => <StaggerItem key={`${transfer.sender}:${transfer.recipient}`} index={index}><PersonalTransferRow transfer={transfer} group={group} selfId={selfId} disabled={busy || !!group.archived || pending.length > 0} onSettle={onSettle} onExplain={(transfer, restoreFocus) => setExplanation({ group, accepted, commands: pending, selfId, transfer, restoreFocus, load: onLoadBalanceGroup })} /></StaggerItem>)}
+    {transfers.map(transfer => <PersonalTransferRow key={`${transfer.sender}:${transfer.recipient}`} transfer={transfer} group={group} selfId={selfId} disabled={busy || !!group.archived || pending.length > 0} onSettle={onSettle} onExplain={(transfer, restoreFocus) => setExplanation({ group, accepted, commands: pending, selfId, transfer, restoreFocus, load: onLoadBalanceGroup })} />)}
     <View style={s.logHeading}>
       <SectionHeading style={[ui.caption, s.logCaption, s.flex]}>Bills and payments</SectionHeading>
       {searchable && !showSearch && <Button title="Search" icon="search" compact small accessibilityLabel="Search bills" onPress={() => setSearching(true)} />}
