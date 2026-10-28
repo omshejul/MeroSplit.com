@@ -5,6 +5,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import close_old_connections
 from django.utils import timezone
 
+from ledger.activity_notifications import send_activity_notifications
 from ledger.balance_statements import send_balance_statements
 from ledger.bill_email import send_pending_bill_emails
 from ledger.chat_notifications import send_chat_notifications
@@ -50,6 +51,9 @@ class Command(BaseCommand):
                 chat = send_chat_notifications(limit=options['limit'])
                 statements = send_balance_statements(limit=options['limit'])
                 memberships = send_membership_notifications(limit=options['limit'])
+                activity = send_activity_notifications(limit=options['limit'])
+                if activity:
+                    self.stdout.write(f'Processed {activity} financial notifications')
                 feedback = send_feedback_notifications(limit=min(options['limit'], 5))
                 if feedback:
                     self.stdout.write(f'Processed {feedback} feedback notifications')

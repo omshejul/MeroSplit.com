@@ -223,4 +223,8 @@ def change_payment(actor, group_id, attempt_id, payload, action):
         data.update(
             settlement_id=str(payment.id), amount=str(payment.amount), quoted_amount=str(attempt.amount)
         )
-    return record_change(group, actor, payload["command_id"], fingerprint, f"payment_{action}", data)
+    result = record_change(group, actor, payload["command_id"], fingerprint, f"payment_{action}", data)
+    if action == "confirm":
+        from .activity_notifications import queue_activity
+        queue_activity(group, result)
+    return result

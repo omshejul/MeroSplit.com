@@ -57,7 +57,7 @@ def recipient(group):
 @pytest.fixture
 def providers(monkeypatch):
     calls = {"push": [], "email": []}
-    def push(device, data):
+    def push(device, data, **content):
         assert not connection.in_atomic_block
         calls["push"].append(data)
         return f"synthetic-ticket-{len(calls['push'])}"
@@ -275,7 +275,7 @@ def test_seen_or_off_during_provider_submission_retains_honest_acceptance(client
     register(recipient)
     add_bill(client, group)
     clock[0] += timedelta(seconds=30)
-    def push(device, data):
+    def push(device, data, **content):
         assert not connection.in_atomic_block
         assert seen(recipient, [{"id": data["notice_id"], "expense_version": 1}]).json() == {"seen": 1}
         return "accepted-despite-in-flight-seen"
@@ -301,7 +301,7 @@ def test_missing_push_route_or_provider_failure_never_triggers_immediate_email(c
     enable(recipient)
     register(recipient)
     add_bill(client, group)
-    def unavailable(*args):
+    def unavailable(*args, **kwargs):
         raise PushFailure("network_error")
     monkeypatch.setattr("ledger.push_provider.send_bill_notification", unavailable)
     clock[0] += timedelta(seconds=30)

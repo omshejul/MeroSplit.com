@@ -249,6 +249,8 @@ class PushDevice(models.Model):
     platform = models.CharField(max_length=7)
     revision = models.PositiveIntegerField(default=1)
     bill_chat = models.BooleanField(default=False)
+    ledger_updates = models.BooleanField(default=False)
+    currency = models.CharField(max_length=3, default="INR")
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -288,6 +290,40 @@ class ExpensePushDelivery(models.Model):
             ),
         ]
         indexes = [models.Index(fields=["state", "due_at"], name="expense_push_due")]
+
+
+class ActivityPush(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    change = models.ForeignKey(Change, null=True, on_delete=models.CASCADE)
+    command = models.ForeignKey(CommandReceipt, null=True, on_delete=models.CASCADE)
+    group = models.ForeignKey(Group, on_delete=models.CASCADE)
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name="authored_activity_pushes")
+    created_at = models.DateTimeField(default=timezone.now)
+    participant = models.ForeignKey(Participant, on_delete=models.CASCADE)
+    recipient = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    device = models.ForeignKey(PushDevice, on_delete=models.CASCADE)
+    device_revision = models.PositiveIntegerField()
+    event_id = models.UUIDField(default=uuid.uuid4)
+    kind = models.CharField(max_length=24)
+    payload = models.JSONField(default=dict)
+    state = models.CharField(max_length=9, default="pending")
+    due_at = models.DateTimeField()
+    first_attempt_at = models.DateTimeField(null=True)
+    attempts = models.PositiveSmallIntegerField(default=0)
+    lease_id = models.UUIDField(null=True)
+    lease_until = models.DateTimeField(null=True)
+    provider_id = models.CharField(max_length=200, blank=True)
+    last_error = models.CharField(max_length=40, blank=True)
+
+    class Meta:
+        indexes = [models.Index(fields=["state", "due_at", "id"], name="activity_push_due")]
+        constraints = [
+            models.UniqueConstraint(fields=["change", "device", "device_revision"], name="activity_push_once"),
+            models.UniqueConstraint(fields=["command", "device", "device_revision"], name="reminder_push_once"),
+            models.CheckConstraint(condition=Q(change__isnull=False, command__isnull=True) | Q(change__isnull=True, command__isnull=False), name="activity_push_source"),
+            models.CheckConstraint(condition=Q(kind__in=["bill_updated", "bill_deleted", "payment_recorded", "payment_reminder"]), name="activity_push_kind"),
+            models.CheckConstraint(condition=Q(state__in=["pending", "sending", "queued", "sent", "cancelled", "held"]), name="activity_push_state"),
+        ]
 
 
 class NotificationPreference(models.Model):

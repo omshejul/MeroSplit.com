@@ -222,6 +222,7 @@ def test_legacy_ready_and_claimed_rows_survive_migration_without_backfill(client
     ready, claimed = bill(client, group), bill(client, group, description="Legacy taxi")
     before = list(Expense.objects.values()), list(Change.objects.values())
     executor = MigrationExecutor(connection)
+    latest = executor.loader.graph.leaf_nodes()
     try:
         executor.migrate([("ledger", "0028_expense_category_decisions")])
         old = executor.loader.project_state([("ledger", "0028_expense_category_decisions")]).apps.get_model("ledger", "ExpenseCategoryDecision")
@@ -230,7 +231,7 @@ def test_legacy_ready_and_claimed_rows_survive_migration_without_backfill(client
                                title_digest=categories.title_digest(body["description"]), definition_revision=categories.DEFINITION_REVISION,
                                state=state, category=category, lease_until=timezone.now() - timedelta(days=100))
     finally:
-        MigrationExecutor(connection).migrate([("ledger", "0029_normalized_category_cache")])
+        MigrationExecutor(connection).migrate(latest)
     assert not ExpenseCategoryCache.objects.exists()
     assert ExpenseCategoryDecision.objects.filter(cache__isnull=True).count() == 2
     assert before == (list(Expense.objects.values()), list(Change.objects.values()))

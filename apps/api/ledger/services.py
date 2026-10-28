@@ -408,6 +408,9 @@ def save_expense(actor, group_id, payload, expense_id=None, *, category_supplied
     if expense_id is None:
         from .push import queue_new_bill
         queue_new_bill(expense, actor)
+    else:
+        from .activity_notifications import queue_activity
+        queue_activity(group, result, before=before)
     return result
 
 
@@ -440,7 +443,7 @@ def reverse_expense(actor, group_id, expense_id, payload):
     from .models import BillChatNotice
     cancel_chat_notices(BillChatNotice.objects.filter(message__expense=expense), 'bill_reversed')
     keep_removed_balances_zero(group)
-    return record_change(
+    result = record_change(
         group,
         actor,
         payload["command_id"],
@@ -448,6 +451,9 @@ def reverse_expense(actor, group_id, expense_id, payload):
         "expense_reversed",
         original,
     )
+    from .activity_notifications import queue_activity
+    queue_activity(group, result)
+    return result
 
 
 @transaction.atomic
@@ -523,7 +529,7 @@ def record_settlement(actor, group_id, payload):
         attempt=attempt,
     )
     keep_removed_balances_zero(group)
-    return record_change(
+    result = record_change(
         group,
         actor,
         payload["command_id"],
@@ -538,6 +544,9 @@ def record_settlement(actor, group_id, payload):
             "date": payment.date.isoformat() if payment.date else None,
         },
     )
+    from .activity_notifications import queue_activity
+    queue_activity(group, result)
+    return result
 
 
 @transaction.atomic

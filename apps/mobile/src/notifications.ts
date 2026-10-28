@@ -1,5 +1,6 @@
 import { accountOwner, ApiError, request } from './api.ts';
 import type { Expense, Group, Session } from './types.ts';
+import { currencyCode } from './currency.ts';
 
 export type PushPermission = 'ask' | 'granted' | 'denied';
 export type PushDevice = { provider: 'expo'; token: string; platform: 'ios' | 'android' };
@@ -36,7 +37,7 @@ export async function refreshPushDevice(session: Session, state: PushPreferences
   if (state.pending_off || !state.opted_in || permission !== 'granted') return unregisterPushDevice(session, state, save, send);
   const device = await getDevice();
   if (!/^(?:Expo|Exponent)PushToken\[[^\]]+\]$/.test(device.token) || device.provider !== 'expo' || !['ios', 'android'].includes(device.platform)) throw new Error('Notifications are unavailable on this device.');
-  const result = await send<{ id: string; enabled: boolean }>(session, `/me/push-devices/${state.installation_id}`, 'PUT', { ...device, bill_chat: true });
+  const result = await send<{ id: string; enabled: boolean }>(session, `/me/push-devices/${state.installation_id}`, 'PUT', { ...device, bill_chat: true, ledger_updates: true, currency: currencyCode() });
   if (result.id !== state.installation_id || result.enabled !== true) throw new Error('Could not enable notifications. Try again when connected.');
   const next = { ...state, binding: device }; await save(next); return next;
 }
@@ -68,7 +69,9 @@ export function notificationForAccount(session: Session | null, data: unknown): 
   if (!session || !data || typeof data !== 'object' || Array.isArray(data)) return false;
   const value = data as Record<string, unknown>;
   if (value.recipient_user_id !== session.userId) return false;
-  if (value.type !== 'group_membership') return value.type === 'new_bill' || value.type === 'bill_chat';
+  if (value.type !== 'group_membership') return value.type === 'new_bill' || value.type === 'bill_chat'
+    || ['bill_updated', 'bill_deleted', 'payment_recorded', 'payment_reminder'].includes(String(value.type))
+      && typeof value.event_id === 'string' && uuid.test(value.event_id) && typeof value.group_id === 'string' && uuid.test(value.group_id);
   if (typeof value.recipient_user_id !== 'string' || !/^[1-9]\d*$/.test(value.recipient_user_id)
     || typeof value.group_id !== 'string' || !uuid.test(value.group_id) || typeof value.event_id !== 'string'
     || Object.keys(value).some(key => !['type', 'event_id', 'recipient_user_id', 'group_id'].includes(key))) return false;
@@ -77,12 +80,13 @@ export function notificationForAccount(session: Session | null, data: unknown): 
 }
 
 export async function notificationTarget(session: Session, data: unknown, send: typeof request = request): Promise<PushTarget | null> {
-  if (!notificationForAccount(session, data) || !uuid.test(data.group_id ?? '')
-    || data.type !== 'group_membership' && !uuid.test(data.expense_id ?? '')) return null;
+  if (!notificationForAccount(session, data) || !uuid.test(data.group_id ?? '')) return null;
+  const groupOnly = ['group_membership', 'bill_deleted', 'payment_recorded', 'payment_reminder'].includes(data.type);
+  if (!groupOnly && !uuid.test(data.expense_id ?? '')) return null;
   try {
     let group = await send<Group>(session, `/groups/${data.group_id}/summary`);
     if (group.id !== data.group_id) return null;
-    if (data.type === 'group_membership') return { group, expenseId: null };
+    if (groupOnly) return { group, expenseId: null };
     if (group.read_mode === 'summary' && !group.expenses.some(expense => expense.id === data.expense_id)) {
       try {
         const detail = await send<Expense & { group_id: string; group_version: number }>(session, `/groups/${group.id}/expenses/${data.expense_id}?version=${group.version}`);
