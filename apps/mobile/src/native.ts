@@ -76,3 +76,11 @@ export async function claimFirstSplitUPIPrompt(owner: string): Promise<boolean> 
   await SecureStore.setItemAsync(key, 'shown');
   return true;
 }
+
+// Remember the contextual invitation per account and backend on this device.
+export async function claimPushInvitation(owner: string): Promise<boolean> {
+  const key = `splitdumb.push-invitation.${await digestStringAsync(CryptoDigestAlgorithm.SHA256, owner)}`;
+  if (await SecureStore.getItemAsync(key)) return false;
+  await SecureStore.setItemAsync(key, 'shown');
+  return true;
+}

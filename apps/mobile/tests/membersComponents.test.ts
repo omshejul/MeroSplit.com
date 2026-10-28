@@ -464,11 +464,11 @@ test('the actual App restart guard blocks editing and waits for pending draft an
  const code=ts.transpile(`${guard}\n${restart}`,{target:ts.ScriptTarget.ES2022});
  const make=(extra:Record<string,any>={})=>{
   const session={token:'current-account'},calls:string[]=[];
-  const env:any={ready:true,session,expired:false,authHeld:false,foreground:true,screen:'home',tab:'Account',busy:false,reading:0,pulling:false,storageError:null,appLink:null,emailEntry:null,feedbackOpen:false,alertOpen:false,upiSetup:false,returnAttemptId:null,returns:[],reviewCommand:null,newPersonInvite:null,pushTarget:null,
+  const env:any={ready:true,session,expired:false,authHeld:false,foreground:true,screen:'home',tab:'Account',busy:false,reading:0,pulling:false,storageError:null,appLink:null,emailEntry:null,feedbackOpen:false,alertOpen:false,upiSetup:false,pushInvitationOpen:false,returnAttemptId:null,returns:[],reviewCommand:null,newPersonInvite:null,pushTarget:null,
    updateSafe:{current:false},activeSessionRef:{current:session},authEpoch:{current:1},lock:{current:false},AppState:{currentState:'active'},authHeldRef:{current:false},draftWrites:{current:Promise.resolve()},flushChatWrites:async()=>{calls.push('chat-flush');},accountOwner:()=> 'current-owner',restartForUpdate,...extra};
   return {env,calls,restart:new Function('env',`with(env){${code};return restartUpdate;}`)(env)};
  };
- for(const state of [{screen:'expense'},{screen:'settle'},{busy:true},{reading:1},{authHeld:true},{returnAttemptId:'payment'},{reviewCommand:{}}]) {
+ for(const state of [{screen:'expense'},{screen:'settle'},{busy:true},{reading:1},{pushInvitationOpen:true},{authHeld:true},{returnAttemptId:'payment'},{reviewCommand:{}}]) {
   const app=make(state);
   await assert.rejects(app.restart(async()=>{assert.fail('unsafe reload');}),/Finish what's in progress/);
   assert.deepEqual(app.calls,[]);assert.equal(app.env.lock.current,false);
@@ -650,15 +650,15 @@ test('actual App join callback adopts only the active account and ignores late a
     const attr=node.attributes.properties.find(p=>ts.isJsxAttribute(p)&&p.name.getText(source)==='onJoined') as ts.JsxAttribute;
     callback=(attr.initializer as ts.JsxExpression).expression as ts.ArrowFunction;
   }ts.forEachChild(node,visit);}visit(source);assert.ok(callback);
-  for(const changeAt of ['none','before','fetch','save']){
+  for(const changeAt of ['none','before','fetch','save','load']){
     const session={token:'A',userId:'a'},active={current:{token:changeAt==='before'?'B':'A'}},calls:string[]=[];
     const env={session,activeSessionRef:active,accountOwner:(v:any)=>v.userId,
       fetchGroup:async()=>{calls.push('fetch');if(changeAt==='fetch')active.current.token='B';return{id:'g'};},
       getDatabase:async()=>({}),saveGroup:async(_db:any,owner:any)=>{assert.equal(owner,'a');calls.push('save');if(changeAt==='save')active.current.token='B';},
-      forgetGroupInvite:()=>calls.push('forget'),saveGroupInvite:async()=>{},setAppLink(){},navigate(){calls.push('open');},load:async()=>calls.push('load')};
+      forgetGroupInvite:()=>calls.push('forget'),saveGroupInvite:async()=>{},setAppLink(){},navigate(){calls.push('open');},load:async()=>{calls.push('load');if(changeAt==='load')active.current.token='B';},setPushOpportunity:(value:any)=>{assert.equal(value.token,'A');assert.equal(value.groupId,'g');calls.push('push-opportunity');}};
     const code=ts.transpile('const done='+callback!.getText(source),{target:ts.ScriptTarget.ES2022});
     const run=new Function('env',`with(env){${code};return done;}`)(env);await run('g');
-    assert.deepEqual(calls,changeAt==='none'?['fetch','save','forget','open','load']:changeAt==='before'?[]:changeAt==='fetch'?['fetch']:['fetch','save']);
+    assert.deepEqual(calls,changeAt==='none'?['fetch','save','forget','open','load','push-opportunity']:changeAt==='load'?['fetch','save','forget','open','load']:changeAt==='before'?[]:changeAt==='fetch'?['fetch']:['fetch','save']);
   }
 });
 
