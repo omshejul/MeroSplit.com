@@ -35,6 +35,8 @@ def register_device(request, installation_id, payload):
         raise HttpError(503, "Push notifications are not configured for this provider")
     payload = dict(payload)
     bill_chat = payload.pop("bill_chat", False)
+    ledger_updates = payload.pop("ledger_updates", False)
+    currency = payload.pop("currency", "INR")
     token = request.headers.get("X-Session-Token")
     session = app_settings.TOKEN_STRATEGY.lookup_session(token) if token else request.session
     user = get_session_user(session) if session else None
@@ -71,15 +73,16 @@ def register_device(request, installation_id, payload):
         }
         if device:
             device.bill_chat = bill_chat
+            device.ledger_updates, device.currency = ledger_updates, currency
             if any(getattr(device, key) != value for key, value in binding.items()):
                 device.revision += 1
                 for key, value in binding.items():
                     setattr(device, key, value)
                 device.save()
             else:
-                device.save(update_fields=["updated_at", "bill_chat"])
+                device.save(update_fields=["updated_at", "bill_chat", "ledger_updates", "currency"])
         else:
-            device = PushDevice.objects.create(id=installation_id, bill_chat=bill_chat, **binding)
+            device = PushDevice.objects.create(id=installation_id, bill_chat=bill_chat, ledger_updates=ledger_updates, currency=currency, **binding)
     return {"id": str(device.id), "enabled": True}
 
 
@@ -255,7 +258,8 @@ def send_pending_bill_notifications(*, limit=100):
             continue
         data["expense_version"] = notice.expense_version
         try:
-            provider_id = send_bill_notification(delivery.device, data)
+            from .notification_content import new_bill_content
+            provider_id = send_bill_notification(delivery.device, data, **new_bill_content(delivery))
         except PushFailure as error:
             if error.invalid_token:
                 PushDevice.objects.filter(id=delivery.device_id, revision=delivery.device_revision).delete()

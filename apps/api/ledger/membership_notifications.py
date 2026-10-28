@@ -128,7 +128,8 @@ def send_membership_notifications(*, limit=100):
             else:
                 data = {'type': 'group_membership', 'event_id': f'membership:{job.change_id}:{job.recipient_id}',
                         'recipient_user_id': str(job.recipient_id), 'group_id': str(job.change.group_id)}
-                provider_id = push_provider.send_bill_notification(job.device, data, body='You were added in MeroSplit.')
+                from .notification_content import membership_content
+                provider_id = push_provider.send_bill_notification(job.device, data, **membership_content(job))
         except (email_delivery.EmailDeliveryUnavailable, push_provider.PushFailure) as error:
             if isinstance(error, push_provider.PushFailure) and error.invalid_token:
                 PushDevice.objects.filter(pk=job.device_id, revision=job.device_revision).delete()

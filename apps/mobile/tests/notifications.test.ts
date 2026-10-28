@@ -6,6 +6,7 @@ import { accountOwner, ApiError, request } from '../src/api.ts';
 import { consentToPush, dismissReadPushes, emptyPushPreferences, notificationForAccount, notificationTarget, pushPermission, refreshPushDevice, unregisterPushDevice } from '../src/notifications.ts';
 import type { PushDevice, PushPreferences } from '../src/notifications.ts';
 import type { Group, Session } from '../src/types.ts';
+import { setDefaultCurrency } from '../src/currency.ts';
 
 const session: Session = { baseUrl: 'https://example.test', userId: '1', email: 'qa@example.test', token: 'synthetic' };
 const installation = '4b8f5680-c7c4-45ec-8a2f-842fb5854090';
@@ -17,6 +18,52 @@ const groupId = 'e8ba5bee-0f17-42a5-b46f-0e4f27b07260', expenseId = '13dc400e-26
 const data = { type: 'new_bill', recipient_user_id: '1', group_id: groupId, expense_id: expenseId, event_id: 'synthetic-event' };
 const membership = { type: 'group_membership', recipient_user_id: '1', group_id: groupId, event_id: `membership:${installation}:1` };
 const group: Group = { id: groupId, name: 'Synthetic trip', version: 1, participants: [], expenses: [{ id: expenseId, version: 1, description: 'Dinner', total: '100', paid: {}, shares: {}, split: { mode: 'equal', values: {} }, date: '2026-10-17', category: 'general', notes: '', deleted: false }], settlements: [], balances: {}, transfers: [], activity: [] };
+
+test('Financial push routes validate account and IDs, deleted bills and payments safely open the authorized group', async () => {
+  for (const type of ['bill_updated', 'bill_deleted', 'payment_recorded', 'payment_reminder']) {
+    const payload = { ...data, type, event_id: installation };
+    assert.equal(notificationForAccount(session, payload), true);
+    assert.equal(notificationForAccount(session, { ...payload, recipient_user_id: '2' }), false);
+    assert.equal(notificationForAccount(session, { ...payload, event_id: 'invalid' }), false);
+    let reads = 0;
+    const target = await notificationTarget(session, payload, async <T>(_session: Session, path: string): Promise<T> => {
+      reads++; assert.equal(path, `/groups/${groupId}/summary`); return group as T;
+    });
+    assert.equal(reads, 1);
+    assert.equal(target?.expenseId, type === 'bill_updated' ? expenseId : null);
+    assert.equal(await notificationTarget(session, payload, async () => { throw new ApiError(404, 'Access revoked'); }), null);
+  }
+});
+
+test('Registration sends the selected display currency and financial push capability without converting stored amounts', async () => {
+  setDefaultCurrency('EUR');
+  try {
+    await refreshPushDevice(session, opted, 'granted', async () => device, async () => {}, async <T>(_session: Session, _path: string, _method?: string, body?: unknown): Promise<T> => {
+      assert.deepEqual(body, { ...device, bill_chat: true, ledger_updates: true, currency: 'EUR' });
+      return { id: installation, enabled: true } as T;
+    });
+  } finally { setDefaultCurrency('INR'); }
+});
+
+test('Reminder retry reuses its command after a lost response and offline never sends', async () => {
+  const source = ts.createSourceFile('App.tsx', readFileSync(new URL('../App.tsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  let declaration: ts.FunctionDeclaration | undefined;
+  const visit = (node: ts.Node) => { if (ts.isFunctionDeclaration(node) && node.name?.text === 'remindPayment') declaration = node; ts.forEachChild(node, visit); };
+  visit(source); assert.ok(declaration);
+  const sent: any[] = [], notices: string[] = []; let ids = 0, connected = true;
+  const env = { perform: (work: () => Promise<void>) => work(), activeSessionRef: { current: session }, selected: { group }, isOnline: () => connected, pending: [], groupId,
+    reminderRetry: { current: null }, accountOwner, uuid: () => `command-${++ids}`, setNotice: (value: string) => notices.push(value),
+    request: async (_session: Session, path: string, method: string, body: unknown) => { sent.push({ path, method, body }); if (sent.length === 1) throw new Error('Response lost'); } };
+  const code = ts.transpile(`${declaration.getText(source)}; return remindPayment;`, { target: ts.ScriptTarget.ES2022 });
+  const remind = new Function('env', `with(env){${code}}`)(env);
+  const transfer = { sender: 'person', recipient: 'self', amount: '50000' };
+  await assert.rejects(remind(transfer), /Response lost/);
+  await remind(transfer);
+  assert.deepEqual(sent[0], sent[1]); assert.equal(ids, 1);
+  assert.equal(env.reminderRetry.current, null); assert.deepEqual(notices, ['Reminder queued.']);
+  connected = false;
+  await assert.rejects(remind(transfer), /Reconnect/); assert.equal(sent.length, 2);
+});
 
 test('Notification permissions interpret iOS granular authorization and Android status', () => {
   for (const status of [2, 3, 4]) assert.equal(pushPermission({ status: 'denied', ios: { status } }), 'granted');
@@ -53,7 +100,7 @@ test('Consent is persisted before registration, and only confirmed current-token
   const consent = await consentToPush(session, initial, save);
   assert.equal(writes[0].opted_in, true); assert.equal(writes[0].binding, null);
   const send: typeof request = async <T>(active: Session, path: string, method?: string, body?: unknown): Promise<T> => {
-    calls.push(`${method} ${path}`); assert.equal(active, session); assert.deepEqual(body, { ...device, bill_chat: true }); assert.equal(writes.length, 1);
+    calls.push(`${method} ${path}`); assert.equal(active, session); assert.deepEqual(body, { ...device, bill_chat: true, ledger_updates: true, currency: 'INR' }); assert.equal(writes.length, 1);
     return { id: installation, enabled: true } as T;
   };
   const result = await refreshPushDevice(session, consent, 'granted', async () => device, save, send);
@@ -61,7 +108,7 @@ test('Consent is persisted before registration, and only confirmed current-token
   assert.deepEqual(calls, [`PUT /me/push-devices/${installation}`]);
   const newer = { ...device, token: 'ExpoPushToken[rotated]' };
   await refreshPushDevice(session, result, 'granted', async () => newer, save, async <T>(_active: Session, _path: string, _method?: string, body?: unknown): Promise<T> => {
-    assert.deepEqual(body, { ...newer, bill_chat: true }); return { id: installation, enabled: true } as T;
+    assert.deepEqual(body, { ...newer, bill_chat: true, ledger_updates: true, currency: 'INR' }); return { id: installation, enabled: true } as T;
   });
   assert.deepEqual(writes.at(-1)?.binding, newer);
 });
