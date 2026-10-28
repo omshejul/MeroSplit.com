@@ -601,3 +601,10 @@ def test_public_setup_verifies_without_financial_reads_or_manual_keys():
     assert 'claude mcp login' not in text
     assert '"mcpServers":{"merosplit":{"url":' in text
     assert 'Other Streamable HTTP clients' in text
+    assert 'config/mcpServer/reload' in text and 'mcpServerStatus/list' in text
+    assert 'Authenticated; tool loading pending' in text
+    assert 'start a new chat to load the tools' not in text
+    assert 'Muse Code' in text and 'muse mcp login merosplit' in text and 'muse resume' in text
+    assert 'VS Code and Copilot' in text and 'MCP: List Servers' in text
+    assert 'complete browser OAuth if needed' in text
+    assert 'Report success only after the account check succeeds' in text
