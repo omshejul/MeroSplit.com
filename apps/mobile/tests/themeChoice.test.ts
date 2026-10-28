@@ -1,3 +1,4 @@
+import { withSharedUI } from './componentHarness.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -12,7 +13,7 @@ const tick = async () => { for (let i = 0; i < 20; i++) await Promise.resolve();
 const deferred = <T,>() => { let resolve!: (value: T) => void, reject!: (error: Error) => void; const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
 function source(file: string, names?: string[]) {
   const parsed = ts.createSourceFile(file, readFileSync(new URL(`../${file}`, import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
-  const kept = parsed.statements.filter(node => !ts.isImportDeclaration(node) && !(ts.isExportDeclaration(node)) && (!names || ts.isFunctionDeclaration(node) && names.includes(node.name?.text ?? '') || ts.isVariableStatement(node) && names?.some(name => node.getText(parsed).includes(`${name} =`))));
+  const kept = parsed.statements.filter(node => !ts.isImportDeclaration(node) && !ts.isExportDeclaration(node) && !(ts.isExportDeclaration(node)) && (!names || ts.isFunctionDeclaration(node) && names.includes(node.name?.text ?? '') || ts.isVariableStatement(node) && names?.some(name => node.getText(parsed).includes(`${name} =`))));
   return ts.transpile(kept.map(node => node.getText(parsed).replace(/^export (?:default )?/, '')).join('\n'), { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React });
 }
 function hooks() {
@@ -31,7 +32,7 @@ function hooks() {
 }
 function savedChoice<T>(initial: T, read: () => Promise<T>, write: (value: T) => Promise<void>) {
   const h = hooks(), applied: T[] = [];
-  const useSavedChoice = new Function('env', `with(env){ const StaggerItem = 'StaggerItem';${source('src/savedChoice.ts')};return useSavedChoice;}`)(h.env);
+  const useSavedChoice = new Function('env', `with(env){ const StaggerItem = 'StaggerItem';${source('src/savedChoice.ts')};return useSavedChoice;}`)(withSharedUI(h.env));
   const render = () => { h.reset(); return useSavedChoice(initial, read, write, (value: T) => applied.push(value)) as [T, (value: T) => Promise<void>]; };
   render(); h.commit();
   return { render, applied, unmount: h.unmount };
@@ -64,7 +65,7 @@ test('writes stay ordered, the newest choice is shown, a failed write keeps the 
 });
 
 function storage(file: string, names: string[], env: Record<string, any>) {
-  return new Function('env', `with(env){ const StaggerItem = 'StaggerItem';${source(file, names)};return { ${names.join(', ')} };}`)({ defaultColorFamily, isColorFamily, ...env });
+  return new Function('env', `with(env){ const StaggerItem = 'StaggerItem';${source(file, names)};return { ${names.join(', ')} };}`)(withSharedUI({ defaultColorFamily, isColorFamily, ...env }));
 }
 test('native and browser keep color separate from the saved System, Light or Dark choice and recover unknown values', async () => {
   const secure = new Map<string, string>([['splitdumb.appearance', 'dark']]);
@@ -95,7 +96,7 @@ test('Appearance dialog offers four colors and three modes, applies each at once
     useUI: () => ({ ui: {}, inputColors: {}, appearance: 'system', colorFamily: 'cove' }),
     useState: (initial: any) => { const id = cursor++; if (!(id in states)) states[id] = initial; return [states[id], (value: any) => { states[id] = typeof value === 'function' ? value(states[id]) : value; }]; },
     useRef: (initial: any) => { const id = cursor++; return states[id] ??= { current: initial }; }, useEffect: () => {} };
-  const ProfileSettings = new Function('env', `with(env){ const StaggerItem = 'StaggerItem';${source('src/ProfileSettings.tsx')};return ProfileSettings;}`)(env);
+  const ProfileSettings = new Function('env', `with(env){ const StaggerItem = 'StaggerItem';${source('src/ProfileSettings.tsx')};return ProfileSettings;}`)(withSharedUI(env));
   const props = { name: 'Asha', vpa: '', busy: false, onSaveName: async () => {}, onSaveUPI: async () => {}, onAppearance: async (value: string) => { calls.push(`mode ${value}`); }, onColorFamily: async (value: string) => { calls.push(`color ${value}`); } };
   // ChoiceGroup is a component; expand it like React would.
   const expand = (tree: any): any => { for (const node of nodes(tree)) node.children = node.children.map((child: any) => typeof child?.type === 'function' ? child.type(child.props) : child); return tree; };
@@ -153,7 +154,7 @@ test('web Appearance starts on the selected color, keeps Tab inside Color, Mode 
     useState: (initial: any) => { const id = cursor++; if (!(id in states)) states[id] = initial; return [states[id], (value: any) => { states[id] = typeof value === 'function' ? value(states[id]) : value; }]; },
     useRef: (initial: any) => { const id = cursor++; return states[id] ??= { current: initial }; },
     useEffect: (fn: () => any, values: any[]) => { const id = cursor++; if (!deps[id] || values.some((value, i) => value !== deps[id][i])) { deps[id] = values; effects.push(fn); } } };
-  const ProfileSettings = new Function('env', `with(env){ const StaggerItem = 'StaggerItem';${source('src/ProfileSettings.tsx')};return ProfileSettings;}`)(env);
+  const ProfileSettings = new Function('env', `with(env){ const StaggerItem = 'StaggerItem';${source('src/ProfileSettings.tsx')};return ProfileSettings;}`)(withSharedUI(env));
   const cleanups: any[] = [];
   const render = () => { cursor = 0; const tree = ProfileSettings({ name: 'Asha', vpa: '', busy: false, onSaveName: async () => {}, onSaveUPI: async () => {}, onAppearance: async () => {}, onColorFamily: async () => {} }); return tree; };
   const commit = () => effects.splice(0).forEach(fn => cleanups.push(fn()));
@@ -185,7 +186,7 @@ function appFunction(name: string, env: Record<string, any>) {
   const parsed = ts.createSourceFile('App.tsx', readFileSync(new URL('../App.tsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   const app = parsed.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === 'AppContent') as ts.FunctionDeclaration;
   const fn = app.body!.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === name)!;
-  return new Function('env', `with(env){ const StaggerItem = 'StaggerItem';${ts.transpile(fn.getText(parsed), { target: ts.ScriptTarget.ES2022 })};return ${name};}`)(env);
+  return new Function('env', `with(env){ const StaggerItem = 'StaggerItem';${ts.transpile(fn.getText(parsed), { target: ts.ScriptTarget.ES2022 })};return ${name};}`)(withSharedUI(env));
 }
 test('background sync never drives the pull spinner; a user pull shows it until its own work settles, including rejected pulls', async () => {
   const app = readFileSync(new URL('../App.tsx', import.meta.url), 'utf8');
@@ -207,8 +208,8 @@ test('background sync never drives the pull spinner; a user pull shows it until 
 
 test('header keeps action positions unchanged while automatic work is pending', () => {
   const env: Record<string, any> = { React, View: 'View', Text: 'Text', ActivityIndicator: 'ActivityIndicator', IconAction: 'IconAction', useUI: () => ({ palette: { text: 'text' } }) };
-  const header = new Function('env', `with(env){ const StaggerItem = 'StaggerItem';${source('src/AppNavigation.tsx', ['ScreenHeader'])};return ScreenHeader;}`)(env);
-  const styles = new Function('env', `with(env){ const StaggerItem = 'StaggerItem';const pageWidthStyle={};const radii={};const Platform=env.Platform??{OS:"web"};const StyleSheet={create:v=>v};${source('src/AppNavigation.tsx', ['styles'])};return styles;}`)(env); env.styles=styles;
+  const header = new Function('env', `with(env){ const StaggerItem = 'StaggerItem';${source('src/AppNavigation.tsx', ['ScreenHeader'])};return ScreenHeader;}`)(withSharedUI(env));
+  const styles = new Function('env', `with(env){ const StaggerItem = 'StaggerItem';const pageWidthStyle={};const radii={};const Platform=env.Platform??{OS:"web"};const StyleSheet={create:v=>v};${source('src/AppNavigation.tsx', ['styles'])};return styles;}`)(withSharedUI(env)); env.styles=styles;
   const props={title:'Goa trip',onBack(){},children:React.createElement('IconAction',{name:'add'})};
   const idle=header({...props,busy:false}),busy=header({...props,busy:true});
   const shape=(tree:Element)=>tree.children.flat().filter(Boolean).map((n:Element)=>n.type);

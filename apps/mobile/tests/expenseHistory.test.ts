@@ -1,3 +1,4 @@
+import { withSharedUI } from './componentHarness.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -29,11 +30,11 @@ function component(send: (...args: any[]) => Promise<any>) {
     useEffect: (fn: () => any, values: any[]) => { const id = cursor++; if (!dependencies[id] || values.some((v, i) => v !== dependencies[id][i])) { effects.push(() => { cleanup[id]?.(); cleanup[id] = fn(); }); dependencies[id] = values; } },
   };
   const hook = ts.createSourceFile('useScrollPagination.ts', readFileSync(new URL('../src/useScrollPagination.ts', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true);
-  const hookBody = hook.statements.filter(n => !ts.isImportDeclaration(n)).map(n => n.getText(hook).replace(/^export /, '')).join('\n');
-  Object.assign(env, { useScrollPagination: new Function('env', `with(env){${ts.transpile(hookBody, { target: ts.ScriptTarget.ES2022 })};return useScrollPagination;}`)(env) });
+  const hookBody = hook.statements.filter(n => !ts.isImportDeclaration(n) && !ts.isExportDeclaration(n)).map(n => n.getText(hook).replace(/^export /, '')).join('\n');
+  Object.assign(env, { useScrollPagination: new Function('env', `with(env){${ts.transpile(hookBody, { target: ts.ScriptTarget.ES2022 })};return useScrollPagination;}`)(withSharedUI(env)) });
   const source = ts.createSourceFile('ExpenseVersionHistory.tsx', readFileSync(new URL('../src/ExpenseVersionHistory.tsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
-  const body = source.statements.filter(n => !ts.isImportDeclaration(n)).map(n => n.getText(source).replace(/^export (?:default )?/, '')).join('\n');
-  const methods = new Function('env', `with(env){${ts.transpile(body, { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React })};return {ExpenseVersionHistory,VersionHistoryRow};}`)(env);
+  const body = source.statements.filter(n => !ts.isImportDeclaration(n) && !ts.isExportDeclaration(n)).map(n => n.getText(source).replace(/^export (?:default )?/, '')).join('\n');
+  const methods = new Function('env', `with(env){${ts.transpile(body, { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React })};return {ExpenseVersionHistory,VersionHistoryRow};}`)(withSharedUI(env));
   return { render: (changes: any = {}) => { cursor = 0; return methods.ExpenseVersionHistory({ session, groupId: 'group', expenseId: 'bill', groupVersion: 3, title: 'Dinner', active: true, online: true, onInvalidated: () => { invalidations++; }, ...changes }); },
     cacheHistory: async (value: ExpenseHistoryPage, before?: number) => { await ready; return saveExpenseHistory(db, accountOwner(session), 'group', 'bill', value, before); },
     row: methods.VersionHistoryRow, invalidations: () => invalidations, commit: async () => { const run = effects; effects = []; run.forEach(fn => fn()); await tick(); }, unmount: () => { Object.values(cleanup).forEach(fn => fn?.()); raw.close(); } };
@@ -124,7 +125,7 @@ test('empty bounded pages retain earlier-history navigation instead of claiming 
     return { ...page('earlier-real-edit'), items: [{ ...version('earlier-real-edit'), sequence:1 }] };
   });
   app.render(); await app.commit(); let tree = app.render();
-  assert.equal(tree.props.ListEmptyComponent.children[0], 'No recorded changes on this page.');
+  assert.equal(tree.props.ListEmptyComponent.children.flat(Infinity).find((n: any) => n?.type === 'Text').children[0], 'No recorded changes on this page.');
   tree.props.ListFooterComponent.children.flat(Infinity).find((node: any) => node?.props?.title === 'Load older').props.onPress();
   await tick(); tree = app.render(); await app.commit();
   assert.equal(calls, 2); assert.equal(tree.props.data[0].version.id, 'earlier-real-edit');
@@ -249,7 +250,7 @@ test('cached empty history stays visible during slow background refresh without 
   const app = component(() => new Promise(resolve => finish = resolve));
   await app.cacheHistory({ ...page(), items: [] });
   app.render(); await app.commit(); const tree = app.render();
-  assert.equal(tree.props.ListEmptyComponent.type, 'Text');
-  assert.equal(tree.props.ListEmptyComponent.children[0], 'No version history was recorded.');
+  assert.equal(tree.props.ListEmptyComponent.type, 'View');
+  assert.equal(tree.props.ListEmptyComponent.children.flat(Infinity).find((n: any) => n?.type === 'Text').children[0], 'No version history was recorded.');
   finish({ ...page(), items: [] }); await tick(); app.unmount();
 });

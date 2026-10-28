@@ -50,8 +50,8 @@ export default function OAuthContinuation({ session, busy, onSaveName, beforeCon
   }
   if (pending?.scope !== scope) return null;
   const disabled = busy || working;
-  return <KeyboardDialog visible dismissable={false} onDismiss={dismiss} maxHeight={Math.max(0, height - 48)}>
-    <DialogFocus label="Review agent access" busy={disabled} onEscape={dismiss}>
+  return <KeyboardDialog label="Review agent access" visible dismissable={false} onDismiss={dismiss} maxHeight={Math.max(0, height - 48)}>
+
       <Dialog.Title aria-level={2}>Review agent access</Dialog.Title>
       <DialogScrollBody maxHeight={Math.min(360, Math.max(40, height - 220))} gap={12}>
         <Text style={ui.body}>An agent is asking to connect to MeroSplit as {session.email}. Review what it can do before allowing it.</Text>
@@ -61,6 +61,6 @@ export default function OAuthContinuation({ session, busy, onSaveName, beforeCon
       <CancelDialogActions cancelTitle="Not now" disabled={disabled} onCancel={dismiss}>
         {!!session.displayName?.trim() && <Button title="Review access" kind="primary" disabled={disabled} onPress={() => void continueConnection()} />}
       </CancelDialogActions>
-    </DialogFocus>
+
   </KeyboardDialog>;
 }

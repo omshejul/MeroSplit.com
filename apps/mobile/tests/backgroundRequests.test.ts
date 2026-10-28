@@ -1,3 +1,4 @@
+import { withSharedUI } from './componentHarness.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -13,7 +14,7 @@ function production(name: string, env: any, source = app) {
   let found: ts.FunctionDeclaration | undefined;
   function visit(node: ts.Node) { if (ts.isFunctionDeclaration(node) && node.name?.text === name) found = node; ts.forEachChild(node, visit); }
   visit(source); assert.ok(found, name);
-  return new Function('env', `with(env){ const StaggerItem = 'StaggerItem';${ts.transpile(found.getText(source).replace(/^export (?:default )?/, ''), { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React })};return ${name}}`)(env);
+  return new Function('env', `with(env){ const StaggerItem = 'StaggerItem';${ts.transpile(found.getText(source).replace(/^export (?:default )?/, ''), { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React })};return ${name}}`)(withSharedUI(env));
 }
 const React = { createElement: (type: any, props: any, ...children: any[]) => ({ type, props: props ?? {}, children }) };
 function nodes(tree: any): any[] { return Array.isArray(tree) ? tree.flatMap(nodes) : tree?.children ? [tree, ...tree.children.flatMap(nodes)] : []; }
@@ -114,7 +115,7 @@ test('actual account export callsite keeps its deferred read outside the submiss
   f.env.exportData = production('exportData', f.env);
   let callback: ts.Expression | undefined;
   function visit(n: ts.Node) { if (ts.isJsxSelfClosingElement(n) && n.tagName.getText(app) === 'ExportData') { const attr = n.attributes.properties.find(p => ts.isJsxAttribute(p) && p.name.getText(app) === 'onExport') as ts.JsxAttribute; callback = (attr.initializer as ts.JsxExpression).expression; } ts.forEachChild(n, visit); } visit(app); assert.ok(callback);
-  const run = new Function('env', `with(env){ const StaggerItem = 'StaggerItem';return ${callback.getText(app)};}`)(f.env);
+  const run = new Function('env', `with(env){ const StaggerItem = 'StaggerItem';return ${callback.getText(app)};}`)(withSharedUI(f.env));
   const exporting = run(); await Promise.resolve();
   assert.equal(f.state.busy, false); assert.equal(f.env.lock.current, false);
   data.resolve({ account_data_status: 'included' }); await exporting;
@@ -128,7 +129,7 @@ test('actual GroupScreen search callback never scrolls for a stale discarded res
   let searchFunction: ts.FunctionDeclaration | undefined;
   function find(n: ts.Node) { if (ts.isFunctionDeclaration(n) && n.name?.text === 'runSearch') searchFunction = n; ts.forEachChild(n, find); } find(file); assert.ok(searchFunction);
   const env = { AbortController, searchRequest: { current: null }, historyWindow: {}, onHistoryPage: () => response.promise, historyResource: 'transactions', search: 'text', accepted: {}, list: { current: { scrollToOffset: (v: any) => offsets.push(v) } } };
-  const run = new Function('env', `with(env){ const StaggerItem = 'StaggerItem';${ts.transpile(searchFunction.getText(file), {target: ts.ScriptTarget.ES2022})};return ${callback.getText(file)};}`)(env);
+  const run = new Function('env', `with(env){ const StaggerItem = 'StaggerItem';${ts.transpile(searchFunction.getText(file), {target: ts.ScriptTarget.ES2022})};return ${callback.getText(file)};}`)(withSharedUI(env));
   run(); response.resolve(false); for (let i = 0; i < 10; i++) await Promise.resolve(); assert.deepEqual(offsets, []);
 });
 
@@ -164,7 +165,7 @@ test('actual background sync coalesces without taking the submission lock', asyn
   f.env.syncAccount = production('syncAccount', f.env); f.env.sync = production('sync', f.env);
   let declaration: ts.VariableDeclaration | undefined;
   function visit(n: ts.Node) { if (ts.isVariableDeclaration(n) && n.name.getText(app) === 'syncQuietly') declaration = n; ts.forEachChild(n, visit); } visit(app); assert.ok(declaration?.initializer);
-  const sync = new Function('env', `with(env){ const StaggerItem = 'StaggerItem';return ${declaration.initializer.getText(app)};}`)(f.env);
+  const sync = new Function('env', `with(env){ const StaggerItem = 'StaggerItem';return ${declaration.initializer.getText(app)};}`)(withSharedUI(f.env));
   sync(); sync(); assert.equal(runs, 1); assert.equal(f.state.busy, false); assert.equal(f.env.lock.current, false);
   await f.env.perform(async () => {}); done.resolve(); for (let i = 0; i < 20; i++) await Promise.resolve();
   assert.equal(f.state.reading, 0);
@@ -185,7 +186,7 @@ test('the actual ProfileSettings callsite keeps a typed name draft editable duri
   const f = fixture(), pending = production('openBill', f.env)({ id: 'bill' });
   let element: ts.JsxSelfClosingElement | undefined;
   function visit(n: ts.Node) { if (ts.isJsxSelfClosingElement(n) && n.tagName.getText(app) === 'ProfileSettings') element = n; ts.forEachChild(n, visit); } visit(app); assert.ok(element);
-  const props = new Function('env', `with(env){ const StaggerItem = 'StaggerItem';${ts.transpile('return '+element.getText(app), { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React })}}`)({ React, ProfileSettings: 'ProfileSettings', owner: 'owner', myName: 'Original', vpa: '', busy: f.state.busy, saveName() {}, saveUPI() {} }).props;
+  const props = new Function('env', `with(env){ const StaggerItem = 'StaggerItem';${ts.transpile('return '+element.getText(app), { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React })}}`)(withSharedUI({ React, ProfileSettings: 'ProfileSettings', owner: 'owner', myName: 'Original', vpa: '', busy: f.state.busy, saveName() {}, saveUPI() {} })).props;
   const source = ts.createSourceFile('ProfileSettings.tsx', readFileSync(new URL('../src/ProfileSettings.tsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   let cursor = 0; const slots: any[] = [];
   const env = { React, useState: (initial: any) => { const i = cursor++; if (!(i in slots)) slots[i] = initial; return [slots[i], (value: any) => slots[i] = value]; }, useRef: (initial: any) => { const i = cursor++; return slots[i] ??= { current: initial }; }, useEffect() {},
@@ -213,7 +214,7 @@ test('actual App stack and hardware Back ignore loading while auth and local cri
   const evaluate = new Function('busy', 'authHeld', `return ${blocked.getText(app)};`);
   assert.equal(evaluate(true, false), false); assert.equal(evaluate(false, true), true);
   const env: any = { busy: true, authHeldRef: { current: false }, screen: 'expenseDetail', tab: 'Groups', showArchived: false, showHidden: false };
-  const run = new Function('env', `with(env){ const StaggerItem = 'StaggerItem';${ts.transpile('const back=' + handler.getText(app) + ';return back;', { target: ts.ScriptTarget.ES2022 })}}`)(env);
+  const run = new Function('env', `with(env){ const StaggerItem = 'StaggerItem';${ts.transpile('const back=' + handler.getText(app) + ';return back;', { target: ts.ScriptTarget.ES2022 })}}`)(withSharedUI(env));
   assert.equal(run(), false); env.authHeldRef.current = true; assert.equal(run(), true);
 });
 

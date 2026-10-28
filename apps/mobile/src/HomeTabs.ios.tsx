@@ -1,3 +1,4 @@
+import FallbackTabLayout from './FallbackTabLayout';
 import React, { useRef } from 'react';
 import { Animated, Platform, View } from 'react-native';
 import { Tabs } from 'react-native-screens';
@@ -19,7 +20,7 @@ export default function HomeTabs({ selected, busy, onSelect, render }: HomeTabsP
   const { palette, dark } = useUI();
   const provenance = useRef(0);
   const swipe = useHomeTabSwipe(selected, busy, onSelect);
-  if (!usesNativeHomeTabs) return <><View style={{ flex: 1, overflow: 'hidden' }}><Animated.View {...swipe}>{render(selected)}</Animated.View></View><AppTabs selected={selected} busy={busy} onSelect={onSelect} /></>;
+  if (!usesNativeHomeTabs) return <FallbackTabLayout selected={selected} busy={busy} onSelect={onSelect} render={render} />;
   return <Tabs.Host
     colorScheme={dark ? 'dark' : 'light'}
     nativeContainerStyle={{ backgroundColor: palette.background }}

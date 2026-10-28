@@ -1,3 +1,5 @@
+import PersonChoice from './PersonChoice';
+import { NoticeBanner } from './UIStates';
 import { animateLayout } from './layoutTransition';
 import { currencySymbol } from './currency';
 import Form from './Form';
@@ -53,22 +55,6 @@ function startingDraft(group: Group, expense: Expense | undefined, selfId: strin
     mode: expense?.split.mode ?? 'equal', participantIds: expense ? Object.keys(expense.split.values) : activeIds,
     splitValues: expense ? Object.fromEntries(Object.entries(expense.split.values).map(([id, value]) => [id, expense.split.mode === 'exact' ? rupees(value) : value])) : {},
   };
-}
-
-function PersonChoice({ person, title, selected, disabled, amount, onPress }: {
-  person: Group['participants'][number]; title: string; selected: boolean; disabled: boolean; amount?: string; onPress: () => void;
-}) {
-  const { ui, palette, dark } = useUI();
-  return <Button kind="plain" accessibilityRole="checkbox" accessibilityLabel={`${title}${amount ? `, ${amount}` : ''}`}
-    accessibilityState={{ checked: selected, disabled }} disabled={disabled} onPress={onPress}
-    style={[styles.personRow, { borderBottomColor: palette.line }]}>
-    <Avatar name={person.name} photo={person.profile_photo} />
-    <Text style={[ui.body, { flex: 1, minWidth: 0 }]}>{title}</Text>
-    {!!amount && <Text style={[ui.caption, { flexShrink: 1, textAlign: 'right', fontVariant: ['tabular-nums'] }]}>{amount}</Text>}
-    <View accessible={false} aria-hidden style={[styles.selectionMark, { borderColor: selected ? palette.accent : palette.outline, backgroundColor: selected ? palette.accent : 'transparent' }]}>
-      {selected && <Icon name="tick" size={18} color={dark ? '#161616' : '#FFFFFF'} />}
-    </View>
-  </Button>;
 }
 
 type ExpenseSelectionProps = {
@@ -240,8 +226,8 @@ export default function ExpenseForm({ group, expense, selfId, busy, onSave, owne
   try { formattedTotal = formatMoney(rupeesToPaise(draft.amount)); } catch { /* Keep incomplete input editable. */ }
   return <Form label="Bill" style={styles.form} onSubmit={() => { if (!disabled && !group.archived) void save(); }}>
     <Text style={ui.caption}>{group.name}</Text>
-    {group.archived && <Text style={ui.notice}>Reopen this group in settings before saving a bill.</Text>}
-    {expense && expense.version !== draft.expenseVersion && <Text style={ui.notice}>A newer edit exists. Review it before saving this older draft.</Text>}
+    {group.archived && <NoticeBanner>Reopen this group in settings before saving a bill.</NoticeBanner>}
+    {expense && expense.version !== draft.expenseVersion && <NoticeBanner>A newer edit exists. Review it before saving this older draft.</NoticeBanner>}
     <AmountField autoCorrect={false} label={`Amount (${currencySymbol()})`} value={draft.amount} onChangeText={amount => change({ amount })} placeholder="0" editable={!disabled} />
     <TextField autoCorrect={false} label="Description" value={draft.description} onChangeText={description => change({ description })} placeholder="What was it for?" maxLength={200} editable={!disabled} />
     <BillPeople total={formattedTotal} count={draft.payerIds.length} icon="pay" title="Who paid?" summary={draft.payerIds.length === 1 ? label(draft.payerIds[0]) : draft.payerIds.length ? `${draft.payerIds.length} people` : 'Choose who paid'}

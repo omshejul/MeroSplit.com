@@ -1,3 +1,7 @@
+import { LoadingState } from './UIStates';
+import { NoticeBanner } from './UIStates';
+import { ErrorText } from './ui';
+import PersonChoice from './PersonChoice';
 import React, { useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import * as Crypto from 'expo-crypto';
@@ -22,8 +26,7 @@ const balanceText = (value: string) => integer(value, true) > 0n ? `Is owed ${fo
 function ImportChoice({ member, index, selected, disabled, label, onSelect }: {
   member: string; index: number; selected: boolean; disabled: boolean; label: string; onSelect: (index: number) => void;
 }) {
-  return <RadioChoice label={member} value={String(index)} selected={selected}
-    onPress={() => onSelect(index)} disabled={disabled} accessibilityLabel={label} />;
+  return <PersonChoice person={{ name: member }} title={member} accessibilityLabel={label} selected={selected} role="radio" disabled={disabled} onPress={() => onSelect(index)} />;
 }
 
 function ImportIdentity({ members, balances, selected, disabled, onSelect }: {
@@ -106,9 +109,9 @@ export default function SplitwiseImportScreen({ session, busy, onBusyChange, onI
     if (current()) onImported(group, true);
   }
   return <View style={styles.form}>
-    {checking ? <Text style={ui.caption}>Checking for a saved import…</Text> : pending ? <>
+    {checking ? <LoadingState label="Checking for a saved import…" /> : pending ? <>
       <Text style={ui.section}>{pending.name}</Text>
-      <Text style={[ui.notice, ui.warning]}>Import not confirmed. Your file and choices are saved.</Text>
+      <NoticeBanner tone="warning">Import not confirmed. Your file and choices are saved.</NoticeBanner>
       <Button title={working ? 'Finishing import…' : 'Retry saved import'} kind="primary" disabled={disabled} onPress={() => void run(finishImport)} />
       <Button title="Close for now" kind="text" disabled={disabled} onPress={onCancel} />
     </> : <>
@@ -116,7 +119,7 @@ export default function SplitwiseImportScreen({ session, busy, onBusyChange, onI
       {preview && <>
         <Text style={ui.caption}>{preview.expense_count} bills · {preview.payment_count} payments · {preview.members.length} people · {preview.currency}</Text>
         {preview.duplicate_group ? <>
-          <Text style={ui.notice}>This file was already imported as {preview.duplicate_group.name}.</Text>
+          <NoticeBanner>This file was already imported as {preview.duplicate_group.name}.</NoticeBanner>
           <Button title="Open existing group" kind="primary" disabled={disabled} onPress={() => void run(openExisting)} />
         </> : <>
           <TextField label="Group name" value={name} onChangeText={setName} maxLength={100} editable={!disabled} />
@@ -129,7 +132,7 @@ export default function SplitwiseImportScreen({ session, busy, onBusyChange, onI
         <Button title="Choose another CSV" kind="text" disabled={disabled} onPress={() => void run(pickFile)} />
       </>}
     </>}
-    {!!error && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={ui.error}>{error}</Text>}
+    {!!error && <ErrorText live>{error}</ErrorText>}
   </View>;
 }
 const styles = StyleSheet.create({

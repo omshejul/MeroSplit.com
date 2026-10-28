@@ -11,7 +11,7 @@ export default function SendInviteDialog({ visible, email, busy, error, onSend, 
 }) {
   const { ui } = useUI();
   return <KeyboardDialog visible={visible} dismissable={!busy} onDismiss={() => { if (!busy) onCancel(); }}>
-    <DialogFocus active={visible} busy={busy} onEscape={onCancel}>
+
       <Dialog.Title aria-level={2}>Send invite?</Dialog.Title>
       <DialogScrollBody maxHeight={280} gap={8}>
         <Text style={ui.body}>Send an invite to {email}?</Text>
@@ -20,6 +20,6 @@ export default function SendInviteDialog({ visible, email, busy, error, onSend, 
       <CancelDialogActions disabled={busy} onCancel={onCancel}>
         <Button title={busy ? 'Sending' : 'Send'} kind="primary" disabled={busy} onPress={onSend} />
       </CancelDialogActions>
-    </DialogFocus>
+
   </KeyboardDialog>;
 }

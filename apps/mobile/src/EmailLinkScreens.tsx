@@ -1,3 +1,5 @@
+import { LoadingState } from './UIStates';
+import ResendControls from './ResendControls';
 import { Dialog } from './DialogParts';
 import React, { useState } from 'react';
 import { ActivityIndicator, ScrollView, View } from 'react-native';
@@ -17,17 +19,17 @@ export function EmailLinkScreen({ title, busy, children }: { title: string; busy
 }
 export function EmailLinkDialog({ title, children }: { title: string; children: React.ReactNode }) {
   return <KeyboardDialog visible dismissable={false} onDismiss={() => {}}>
-    <DialogFocus>
+
     <Dialog.Title aria-level={2}>{title}</Dialog.Title>
     <DialogScrollBody maxHeight={400} gap={12}>{children}</DialogScrollBody>
-    </DialogFocus>
+
   </KeyboardDialog>;
 }
 
 export function EmailLinkStatus({ opening, error, sent, canRenew, busy, onRetry, onRenew, onSignIn }: { opening: boolean; error: string; sent: boolean; canRenew: boolean; busy: boolean; onRetry: () => void; onRenew: () => void; onSignIn: () => void }) {
   const { ui } = useUI();
   return <View style={{ gap: 12 }}>
-    {opening ? <><ActivityIndicator accessibilityLabel="Opening" /><Text style={ui.body}>Opening…</Text></> : <>
+    {opening ? <LoadingState label="Opening…" spinner /> : <>
       <Text accessibilityRole={error ? 'alert' : undefined} style={error ? ui.error : ui.body}>{sent ? 'New link sent.' : error}</Text>
       {canRenew && <Button title={busy ? 'Sending…' : 'Send new link'} kind="primary" disabled={busy} onPress={onRenew} />}
       <Button title="Try again" disabled={busy} onPress={onRetry} />
@@ -38,9 +40,7 @@ export function EmailLinkStatus({ opening, error, sent, canRenew, busy, onRetry,
 export function EmailLinkSent({ busy, resendSeconds, onResend, onCode, onChangeEmail }: { busy: boolean; resendSeconds: number; onResend: () => void; onCode: () => void; onChangeEmail: () => void }) {
   const { ui } = useUI();
   return <View style={{ gap: 12 }}><Text style={ui.body}>Open the sign-in link in your email.</Text>
-    <Button contentStyle={{ minHeight: 48 }} title={busy ? 'Sending…' : resendSeconds > 0 ? `Resend in ${resendSeconds}s` : 'Send new link'} disabled={busy || resendSeconds > 0} onPress={onResend} />
-    <Button contentStyle={{ minHeight: 48 }} title="Use a code instead" kind="text" disabled={busy} onPress={onCode} />
-    <Button contentStyle={{ minHeight: 48 }} title="Use another email" kind="text" disabled={busy} onPress={onChangeEmail} />
+    <ResendControls busy={busy} resendSeconds={resendSeconds} onResend={onResend} onChangeEmail={onChangeEmail} onAlternative={onCode} alternativeLabel="Use a code instead" resendLabel="Send new link" primary />
   </View>;
 }
 export function NameOnlyForm({ busy, onSave, autoFocus = true }: { autoFocus?: boolean; busy: boolean; onSave: (name: string) => Promise<void> }) {

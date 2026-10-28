@@ -1,3 +1,6 @@
+import { ErrorState, LoadingState } from './UIStates';
+import { CloseDialogActions } from './DialogParts';
+import { ErrorText } from './ui';
 import { Dialog } from './DialogParts';
 import React, { useEffect, useState } from 'react';
 import { StyleSheet, View, useWindowDimensions } from 'react-native';
@@ -122,9 +125,9 @@ export default function BalanceExplanation({ selection, currentKey, onClose }: {
     <View style={{ flexShrink: 1 }}>
       <Dialog.Title aria-level={2}>Why this amount?</Dialog.Title>
       <DialogScrollBody maxHeight={Math.max(80, maxHeight - 150)} gap={12}>
-        {stale ? <Text accessibilityRole="alert" style={ui.error}>{changedBalance}</Text> : error ? <><Text accessibilityRole="alert" style={ui.error}>{error}</Text><Button title="Try again" kind="text" onPress={() => setRetry(value => value + 1)} /></> : !result || !selection ? <Text accessibilityLiveRegion="polite" style={ui.caption}>Loading the full breakdown…</Text> : <><ExplanationBody value={result.value} selfId={selection.selfId} />{result.saved && <Text style={ui.caption}>Saved on this device.</Text>}</>}
+        {stale ? <ErrorText live>{changedBalance}</ErrorText> : error ? <ErrorState error={error} retryLabel="Try again" onRetry={() => setRetry(value => value + 1)} /> : !result || !selection ? <LoadingState label="Loading the full breakdown…" /> : <><ExplanationBody value={result.value} selfId={selection.selfId} />{result.saved && <Text style={ui.caption}>Saved on this device.</Text>}</>}
       </DialogScrollBody>
-      <Dialog.Actions><Button title="Got it" accessibilityLabel="Close explanation" kind="text" onPress={close} /></Dialog.Actions>
+      <CloseDialogActions title="Got it" accessibilityLabel="Close explanation" kind="text" onClose={close} />
     </View>
   </KeyboardDialog>;
 }

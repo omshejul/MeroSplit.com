@@ -1,3 +1,5 @@
+import { ErrorState } from './UIStates';
+import { ErrorText } from './ui';
 import Avatar from './Avatar';
 import type { ProfilePhoto as ProfilePhotoValue } from './types';
 import React, { useEffect, useRef, useState } from 'react';
@@ -94,7 +96,7 @@ export default function ProfilePhoto({ session, busy, onChanged, compact = false
         {avatar && <RemoveMediaMenu open={optionsOpen} disabled={disabled} label="Photo options" removeLabel="Remove photo"
           onOpen={() => setOptionsOpen(true)} onClose={() => setOptionsOpen(false)} onRemove={remove} />}
       </View>
-      {(!!error || phase === 'failed') && <><Text accessibilityRole="alert" style={ui.error}>{error || 'Photo not saved. Retry the upload.'}</Text><Button title={phase === 'failed' ? 'Retry upload' : 'Refresh'} accessibilityLabel={phase === 'failed' ? 'Retry photo upload' : 'Refresh photo'} kind="text" disabled={busy || working} onPress={() => void run(async () => { if (phase === 'failed' && preview) await upload(preview); else await load(); })} /></>}
+      {(!!error || phase === 'failed') && <ErrorState error={error || 'Photo not saved. Retry the upload.'} retryLabel={phase === 'failed' ? 'Retry upload' : 'Refresh'} retryAccessibilityLabel={phase === 'failed' ? 'Retry photo upload' : 'Refresh photo'} disabled={busy || working} onRetry={() => void run(async () => { if (phase === 'failed' && preview) await upload(preview); else await load(); })} />}
     </>}
     {cropFile && <ProfilePhotoCrop file={cropFile} onDone={finishCrop} />}
   </View>;

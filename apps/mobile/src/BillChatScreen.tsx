@@ -1,3 +1,8 @@
+import { DialogScrollBody, CancelDialogActions } from './DialogParts';
+import { ErrorText } from './ui';
+import { Avatar } from './ui';
+import ListRow from './ListRow';
+import PaginationFooter from './PaginationFooter';
 import ChatLoadingState from './ChatLoadingState';
 import BottomSafeArea from './BottomSafeArea';
 import { Dialog } from './DialogParts';
@@ -45,7 +50,7 @@ export function ChatMessageRow({ message, own, showDate, active, onReport, onBlo
   return <ChatMessageArrival pending={!!pending} style={{ gap: 4, paddingVertical: 8 }}>
     {showDate && Number.isFinite(date.getTime()) && <Text style={[ui.caption, { textAlign: 'center', paddingVertical: 12 }]}>{date.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}</Text>}
     <View style={{ flexDirection: 'row', justifyContent: own ? 'flex-end' : 'flex-start', alignItems: 'flex-end', gap: 6 }}>
-      {!own && <View accessible={false} style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: palette.soft, alignItems: 'center', justifyContent: 'center' }}><Text style={[ui.caption, { color: palette.text }]}>{message.sender.trim().split(/\s+/).map(word => word[0]).slice(0, 2).join('')}</Text></View>}
+      {!own && <Avatar name={message.sender} size={32} />}
       <View style={{ maxWidth: '78%', flexShrink: 1, gap: 5 }}>
         {!own && <Text style={ui.caption}>{message.sender}</Text>}
         <View style={{ alignSelf: own ? 'flex-end' : 'flex-start', maxWidth: '100%', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 18, borderBottomRightRadius: own ? 5 : 18, borderBottomLeftRadius: own ? 18 : 5, backgroundColor: own ? palette.accent : palette.soft }}>
@@ -232,7 +237,7 @@ export default function BillChatScreen({ session, groupId, expenseId, active, on
       onScrollBeginDrag={() => { forceFollow.current = false; follow.current = false; }}
       onScroll={event => { const { contentOffset } = event.nativeEvent; const atBottom = contentOffset.y < 80; if (atBottom) { forceFollow.current = false; follow.current = true; setNewMessages(false); if (incoming.current.length) showNew(); } else if (!forceFollow.current) follow.current = false; }} scrollEventThrottle={100}
       onContentSizeChange={(width, height) => { if ((follow.current || forceFollow.current) && !paging.loading) { forceFollow.current = true; list.current?.scrollToOffset({ offset: 0, animated: motion.enabled && laidOutMessages.current }); } if (newestFirst.length) laidOutMessages.current = true; }}
-      ListFooterComponent={messages.length ? <View style={{ paddingVertical: 12 }}>{paging.canLoadMore && !paging.failed && <Button title={paging.loading ? 'Loading…' : 'Load older'} style={{ minWidth: 120 }} kind="text" disabled={paging.loading} onPress={paging.loadMore} />}{paging.failed && <Button title="Retry" kind="text" disabled={!enabled} onPress={paging.retry} />}</View> : undefined}
+      ListFooterComponent={messages.length ? <PaginationFooter paging={paging} loadingLabel="Loading…" error="" disabled={!enabled} /> : undefined}
       ListEmptyComponent={<View style={{ flex: 1 }}>{!page && !error && enabled ? <ChatLoadingState /> : page && <ChatEmptyState disabled={!ready || !active || denied || !page.can_send || !!work.draft} onSuggest={typed} />}</View>}
       renderItem={({ item, index }) => <ChatMessageRow message={item} own={item.sender_id === session.userId} active={item.pending?.rejected ? active : enabled} showDate={index === newestFirst.length - 1 || new Date(newestFirst[index + 1].created_at).toDateString() !== new Date(item.created_at).toDateString()} onReport={kind => setReport({ message: item, kind })} onBlock={() => void control(() => block(item.sender_id, true))}
         sending={sending === item.client_id} online={online} onRetry={() => {
@@ -242,14 +247,14 @@ export default function BillChatScreen({ session, groupId, expenseId, active, on
     {newMessages && <Button title="New messages" kind="text" onPress={showNew} />}
     <BottomSafeArea style={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 8, gap: 8 }}>
 
-      {!!error && !work.pending.some(row => row.error === error) && <Text accessibilityRole="alert" style={ui.error}>{error}</Text>}
+      {!!error && !work.pending.some(row => row.error === error) && <ErrorText live>{error}</ErrorText>}
       {temporaryUnsent && <Text accessibilityLiveRegion="polite" style={ui.caption}>Unsent text lasts only in this tab.</Text>}
       {!online && <Text style={ui.caption}>{durable ? 'Offline. Your draft stays here.' : 'Offline. Retry when connected.'}</Text>}
       {page && !page.can_send ? <Text style={ui.caption}>This conversation is read-only.</Text> : <ChatComposer text={work.draft} disabled={!ready || !active || denied} sendDisabled={!page?.can_send || !!sending} onChange={typed} onSend={() => void send()} />}
       {denied && <Text style={ui.caption}>This conversation is unavailable. Your unsent text is saved.</Text>}
     </BottomSafeArea>
     <KeyboardDialog visible={policy} onDismiss={() => setPolicy(false)} dismissable={!working} maxHeight={height * 0.85}>
-      <Dialog.Title aria-level={2}>Before your first message</Dialog.Title><ScrollView style={{ flexShrink: 1, paddingHorizontal: 24 }}><Text style={ui.body}>Group members can read this chat. Only people included in this bill get notifications. Keep chat respectful. No harassment, threats, illegal or sexual content. You can report messages and block chat users. Agree to send this message.</Text><Button title="Read chat policy" kind="text" onPress={() => void Linking.openURL(APP_ORIGIN + '/chat-policy')} /></ScrollView>
+      <Dialog.Title aria-level={2}>Before your first message</Dialog.Title><DialogScrollBody paddingHorizontal={24} maxHeight={height * 0.65}><Text style={ui.body}>Group members can read this chat. Only people included in this bill get notifications. Keep chat respectful. No harassment, threats, illegal or sexual content. You can report messages and block chat users. Agree to send this message.</Text><Button title="Read chat policy" kind="text" onPress={() => void Linking.openURL(APP_ORIGIN + '/chat-policy')} /></DialogScrollBody>
       <Dialog.Actions><View style={{ flex: 1, gap: 8 }}><Button title="Agree" kind="primary" disabled={working || !online} onPress={() => void control(async () => { await request(session, '/me/chat-policy', 'PUT', { version: page?.policy_version ?? 1 }); if (current()) { setPage(previous => previous ? { ...previous, policy_accepted: true } : previous); setPolicy(false); await send(true); } })} /><Button title="Cancel" kind="text" disabled={working} onPress={() => setPolicy(false)} /></View></Dialog.Actions>
     </KeyboardDialog>
     <ChatControls key={report?.message.id ?? 'settings'} report={report} blocked={settings ? page?.blocked_users ?? [] : null} policyUrl={APP_ORIGIN + '/chat-policy'} busy={working} error={error} onClose={() => { setReport(null); setSettings(false); }} onReport={reason => void control(async () => { if (!report) return; await request(session, path + '/report', 'POST', { message_id: report.message.id, kind: report.kind, reason }); if (current()) setReport(null); })} onUnblock={id => void control(() => block(id, false))} />

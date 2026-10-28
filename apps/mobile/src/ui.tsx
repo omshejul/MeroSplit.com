@@ -291,9 +291,9 @@ export function DateField({ label, value, onChange, disabled = false }: { label:
       {Platform.OS === 'ios' && <Button title="Close calendar" kind="text" onPress={() => setOpen(false)} />}</>}
   </View>;
 }
-export function Avatar({ name, photo }: { name: string; photo?: ProfilePhoto | null }) {
+export function Avatar({ name, photo, size = 36 }: { name: string; photo?: ProfilePhoto | null; size?: number }) {
   const { ui, palette } = useUI();
-  return <PersonAvatar photo={photo} backgroundColor={palette.soft}><Text style={ui.initials}>{name.trim().split(/\s+/).map(word => word[0]).join('').slice(0, 2).toUpperCase()}</Text></PersonAvatar>;
+  return <PersonAvatar size={size} photo={photo} backgroundColor={palette.soft}><Text style={ui.initials}>{name.trim().split(/\s+/).map(word => word[0]).join('').slice(0, 2).toUpperCase()}</Text></PersonAvatar>;
 }
 const makeUI = (colors: Palette, fontFamily?: string) => StyleSheet.create({
   section: { fontFamily, fontSize: 18, lineHeight: 24, fontWeight: '600', color: colors.text },

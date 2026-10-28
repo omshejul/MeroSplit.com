@@ -1,3 +1,4 @@
+import AttachmentPicker from './AttachmentPicker';
 import React, { useRef } from 'react';
 import { Platform, View } from 'react-native';
 import * as Crypto from 'expo-crypto';
@@ -30,7 +31,5 @@ export default function DraftAttachment({ value, path, disabled, onChange, onBus
   return value ? <View>
     <LocalAttachment file={value.file} disabled={disabled} onError={onError} />
     <Button title="Remove file" icon="remove" kind="text" disabled={disabled} onPress={() => void run(async () => { await onChange(undefined); await clearStagedMedia(value.file); })} />
-  </View> : <SettingsRow label="Add photo or PDF" icon="attachment" chevron={false} disabled={disabled} onPress={() => Platform.OS === 'web' ? void run(() => add(false)) : Alert.alert('Add photo or PDF', undefined, [
-    { text: 'Cancel', style: 'cancel' }, { text: 'Photo', onPress: () => void run(() => add(true)) }, { text: 'Files', onPress: () => void run(() => add(false)) },
-  ])} />;
+  </View> : <AttachmentPicker disabled={disabled} onPick={photo => void run(() => add(photo))} />;
 }

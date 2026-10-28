@@ -94,8 +94,8 @@ function RouteScene({ route, navigation }: NativeStackScreenProps<Routes, Screen
   });
   return <ScreenRemovalLock.Provider value={setLocalBlocked}><ScreenDraftDiscard.Provider value={draftDiscard}>
     {render(route, focused, onQueued)}
-    <KeyboardDialog visible={!!pending} dismissable={!discarding} onDismiss={() => { if (!discardLock.current) setPending(null); }}>
-      <DialogFocus active={!!pending} busy={discarding} label="Discard draft" onEscape={() => { if (!discardLock.current) setPending(null); }}>
+    <KeyboardDialog label="Discard draft" visible={!!pending} dismissable={!discarding} onDismiss={() => { if (!discardLock.current) setPending(null); }}>
+
         <Dialog.Title>Do you want to discard the draft?</Dialog.Title>
         <CancelDialogActions disabled={blocked || localBlocked || discarding} onCancel={() => { if (!discardLock.current) setPending(null); }}>
           <Button title="Discard" kind="danger" icon="remove" disabled={blocked || localBlocked || discarding} onPress={() => {
@@ -109,7 +109,7 @@ function RouteScene({ route, navigation }: NativeStackScreenProps<Routes, Screen
             })();
           }} />
         </CancelDialogActions>
-      </DialogFocus>
+
     </KeyboardDialog>
   </ScreenDraftDiscard.Provider></ScreenRemovalLock.Provider>;
 }

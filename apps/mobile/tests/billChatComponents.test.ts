@@ -1,3 +1,4 @@
+import { withSharedUI } from './componentHarness.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -34,15 +35,15 @@ function component(db: any, send: typeof request, extra: Record<string, any> = {
     useEffect: (fn: () => any, values: any[]) => { const id = cursor++; if (!deps[id] || values.some((value, i) => value !== deps[id][i])) { effects.push(() => { cleanups[id]?.(); cleanups[id] = fn(); }); deps[id] = values; } },
   };
   const pagingSource = ts.createSourceFile('useScrollPagination.ts', readFileSync(new URL('../src/useScrollPagination.ts', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true);
-  const pagingBody = pagingSource.statements.filter(node => !ts.isImportDeclaration(node)).map(node => node.getText(pagingSource).replace(/^export /, '')).join('\n');
-  env.useScrollPagination = new Function('env', `with(env){${ts.transpile(pagingBody, { target: ts.ScriptTarget.ES2022 })};return useScrollPagination;}`)(env);
+  const pagingBody = pagingSource.statements.filter(node => !ts.isImportDeclaration(node) && !ts.isExportDeclaration(node)).map(node => node.getText(pagingSource).replace(/^export /, '')).join('\n');
+  env.useScrollPagination = new Function('env', `with(env){${ts.transpile(pagingBody, { target: ts.ScriptTarget.ES2022 })};return useScrollPagination;}`)(withSharedUI(env));
   env.LoadingSpinner = 'LoadingSpinner';
   env.ChatLoadingState = 'ChatLoadingState';
   Object.assign(env, extra);
   const source = ts.createSourceFile('BillChatScreen.tsx', readFileSync(new URL('../src/BillChatScreen.tsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
-  const body = source.statements.filter(node => !ts.isImportDeclaration(node)).map(node => node.getText(source).replace(/^export (?:default )?/, '')).join('\n');
+  const body = source.statements.filter(node => !ts.isImportDeclaration(node) && !ts.isExportDeclaration(node)).map(node => node.getText(source).replace(/^export (?:default )?/, '')).join('\n');
   const code = ts.transpile(body, { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React });
-  const render = new Function('env', `with(env){${code}; return {BillChatScreen,ChatComposer,ChatEmptyState,ChatMessageRow};}`)(env);
+  const render = new Function('env', `with(env){${code}; return {BillChatScreen,ChatComposer,ChatEmptyState,ChatMessageRow};}`)(withSharedUI(env));
   const props = { session, groupId: 'group', expenseId: 'bill', active: true, online: true };
   return { render: (changes = {}) => { cursor = 0; return render.BillChatScreen({ ...props, ...changes }); }, composer: render.ChatComposer, empty: render.ChatEmptyState, row: render.ChatMessageRow,
     commit: async () => { const pending = effects; effects = []; pending.forEach(fn => fn()); await tick(); },

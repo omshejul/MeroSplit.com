@@ -31,7 +31,7 @@ export default function FeedbackDialog({ visible, onClose, onSubmit }: {
     finally { lock.current = false; if (mounted.current) setBusy(false); }
   }
   return <KeyboardDialog visible={visible} dismissable={!busy} onDismiss={close}>
-    <DialogFocus active={visible} busy={busy} onEscape={close}>
+
       <Dialog.Title aria-level={2}>Feedback</Dialog.Title>
       <DialogScrollBody maxHeight={320} gap={12}>
         <>
@@ -42,6 +42,6 @@ export default function FeedbackDialog({ visible, onClose, onSubmit }: {
       <CancelDialogActions cancelTitle={sent ? 'Close feedback' : 'Cancel'} disabled={busy} onCancel={close}>
         <Button title={sent ? 'Sent' : busy ? 'Sending' : 'Send feedback'} icon={sent ? 'check' : 'feedback'} kind="primary" disabled={sent || busy || !text.trim()} onPress={() => void submit()} />
       </CancelDialogActions>
-    </DialogFocus>
+
   </KeyboardDialog>;
 }

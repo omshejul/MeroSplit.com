@@ -1,3 +1,4 @@
+import { withSharedUI } from './componentHarness.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -8,7 +9,7 @@ import { migrate, enqueue, pendingCommands } from '../src/storage.ts';
 import { addPerson } from '../src/members.ts';
 const file = ts.createSourceFile('App.tsx', readFileSync(new URL('../App.tsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
 function declarations(name: string): ts.FunctionDeclaration[] { const result: ts.FunctionDeclaration[]=[]; function visit(node: ts.Node) { if(ts.isFunctionDeclaration(node) && node.name?.text===name) result.push(node); ts.forEachChild(node,visit); } visit(file); return result; }
-function production(name: string, env: object) { const node=declarations(name)[0]; assert.ok(node); return new Function('env', `with(env) { ${ts.transpile(node.getText(file),{target:ts.ScriptTarget.ES2022})}; return ${name}; }`)(env); }
+function production(name: string, env: object) { const node=declarations(name)[0]; assert.ok(node); return new Function('env', `with(env) { ${ts.transpile(node.getText(file),{target:ts.ScriptTarget.ES2022})}; return ${name}; }`)(withSharedUI(env)); }
 
 test('actual App portal siblings have stable distinct account-scoped identities', () => {
  const keys:string[]=[];
@@ -85,7 +86,7 @@ test('actual App history invalidation clears Synced for its current generation o
  function visit(n:ts.Node){if(ts.isJsxSelfClosingElement(n)&&n.tagName.getText(file)==='ExpenseVersionHistory'){const a=n.attributes.properties.find(a=>ts.isJsxAttribute(a)&&a.name.getText(file)==='onInvalidated')as ts.JsxAttribute;assert.ok(a?.initializer&&ts.isJsxExpression(a.initializer));callback=(a.initializer as ts.JsxExpression).expression;}ts.forEachChild(n,visit);}visit(file);assert.ok(callback);
  let confirmed:unknown='old',problem=false;const ownerRef={current:'server|1'},activeSessionRef:{current:{token:string}|null}={current:{token:'generation'}};
  const env={owner:'server|1',session:{token:'generation'},ownerRef,activeSessionRef,setLastConfirmed:(v:unknown)=>{confirmed=v;},setSyncProblem:(v:boolean)=>{problem=v;}};
- const invalidate=new Function('env',`with(env){return (${callback!.getText(file)});}`)(env);invalidate();assert.equal(confirmed,null);assert.equal(problem,true);
+ const invalidate=new Function('env',`with(env){return (${callback!.getText(file)});}`)(withSharedUI(env));invalidate();assert.equal(confirmed,null);assert.equal(problem,true);
  confirmed='newer';problem=false;activeSessionRef.current={token:'new-generation'};invalidate();assert.equal(confirmed,'newer');assert.equal(problem,false);
  activeSessionRef.current={token:'generation'};ownerRef.current='server|2';invalidate();assert.equal(confirmed,'newer');assert.equal(problem,false);
 });

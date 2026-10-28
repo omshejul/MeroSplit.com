@@ -1,3 +1,6 @@
+import BillSummary from './BillSummary';
+import { PersonAmountRow } from './PersonRow';
+import { NoticeBanner } from './UIStates';
 import React, { useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { formatMoney, validateExpense } from './accounting';
@@ -12,26 +15,18 @@ type Props = {
   onDiscard: () => void; onEditSaved: (expense: Expense) => void;
 };
 
-function PersonAmount({ name, amount }: { name: string; amount: string }) {
-  const { palette } = useUI();
-  const s = useMemo(() => makeStyles(palette), [palette]);
-  return <View style={s.person}><Text style={s.name}>{name}</Text><Text style={s.amount}>{formatMoney(amount)}</Text></View>;
-}
-
 function SavedBillSummary({ expense, participants }: { expense: Expense; participants: Group['participants'] }) {
   const { palette, ui } = useUI();
   const s = useMemo(() => makeStyles(palette), [palette]);
-  return <View style={s.bill}>
-    <Text style={ui.rowTitle}>{expense.description}</Text>
-    <Text style={ui.numeric}>{formatMoney(expense.total)}</Text>
+  return <BillSummary title={expense.description} heading={<Text style={ui.rowTitle}>{expense.description}</Text>} amount={expense.total} style={s.bill}>
     <Text style={ui.caption}>{new Date(`${expense.date}T12:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</Text>
-    {expense.deleted && <Text style={[ui.notice, ui.warning]}>Deleted. This bill is not included in balances.</Text>}
+    {expense.deleted && <NoticeBanner tone="warning">Deleted. This bill is not included in balances.</NoticeBanner>}
     <Text style={ui.label}>Who paid?</Text>
-    {participants.filter(person => (expense.paid[person.id] ?? '0') !== '0').map(person => <PersonAmount key={person.id} name={person.name} amount={expense.paid[person.id]} />)}
+    {participants.filter(person => (expense.paid[person.id] ?? '0') !== '0').map(person => <PersonAmountRow avatar={false} style={s.person} titleStyle={s.name} amountStyle={s.amount} key={person.id} name={person.name} amount={expense.paid[person.id]} />)}
     <Text style={ui.label}>Split between</Text>
-    {participants.filter(person => Object.hasOwn(expense.split.values, person.id)).map(person => <PersonAmount key={person.id} name={person.name} amount={expense.shares[person.id] ?? '0'} />)}
+    {participants.filter(person => Object.hasOwn(expense.split.values, person.id)).map(person => <PersonAmountRow avatar={false} style={s.person} titleStyle={s.name} amountStyle={s.amount} key={person.id} name={person.name} amount={expense.shares[person.id] ?? '0'} />)}
     {!!expense.notes && <Text style={ui.caption}>{expense.notes}</Text>}
-  </View>;
+  </BillSummary>;
 }
 
 export default function SavedChangeScreen({ command, group, busy, onDiscard, onEditSaved }: Props) {
@@ -73,7 +68,7 @@ export default function SavedChangeScreen({ command, group, busy, onDiscard, onE
 
   return <View style={s.content}>
     <Text style={ui.caption}>{group.name}</Text>
-    {!expenseCommand && <Text style={[ui.notice, ui.warning]}>This change has not synced.</Text>}
+    {!expenseCommand && <NoticeBanner tone="warning">This change has not synced.</NoticeBanner>}
     <View style={s.section}>
       <SectionHeading>Your change</SectionHeading>
       {saved ? <SavedBillSummary expense={saved} participants={group.participants} /> : <Text accessibilityRole="alert" style={ui.body}>{issue}</Text>}
@@ -83,9 +78,9 @@ export default function SavedChangeScreen({ command, group, busy, onDiscard, onE
         <SectionHeading>Latest</SectionHeading>
         {current ? <SavedBillSummary expense={current} participants={group.participants} /> : <Text style={ui.body}>This bill is not in the group's latest records.</Text>}
       </View>
-      {creating && current && <Text style={[ui.notice, ui.warning]}>This bill already exists. Your saved change will not overwrite it.</Text>}
-      {updating && current?.deleted && <Text style={[ui.notice, ui.warning]}>Restore the latest bill before editing it.</Text>}
-      {updating && !current && <Text style={[ui.notice, ui.warning]}>This bill is unavailable. Your saved change will not recreate it.</Text>}
+      {creating && current && <NoticeBanner tone="warning">This bill already exists. Your saved change will not overwrite it.</NoticeBanner>}
+      {updating && current?.deleted && <NoticeBanner tone="warning">Restore the latest bill before editing it.</NoticeBanner>}
+      {updating && !current && <NoticeBanner tone="warning">This bill is unavailable. Your saved change will not recreate it.</NoticeBanner>}
     </>}
     <View style={s.section}>
       {canEdit && <Button title="Edit your change" kind="primary" disabled={busy} onPress={editSaved} />}
@@ -98,7 +93,7 @@ const makeStyles = (colors: Palette) => StyleSheet.create({
   content: { gap: 14 },
   section: { gap: 12 },
   bill: { backgroundColor: colors.surface, borderRadius: radii.surface, padding: 12, gap: 10 },
-  person: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  person: { minHeight: 0, paddingVertical: 0, borderBottomWidth: 0, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
   name: { fontSize: 16, lineHeight: 23, color: colors.text, flex: 1, minWidth: 0 },
   amount: { fontSize: 16, lineHeight: 23, color: colors.text, fontWeight: '500', textAlign: 'right', flexShrink: 0, fontVariant: ['tabular-nums'] },
 });

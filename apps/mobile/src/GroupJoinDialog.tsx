@@ -1,3 +1,7 @@
+import PersonRow from './PersonRow';
+import { ErrorState } from './UIStates';
+import { LoadingState } from './UIStates';
+import { ErrorText } from './ui';
 import React, { useEffect, useRef, useState } from 'react';
 import { Modal, ScrollView, View } from 'react-native';
 import { Text } from 'react-native-paper';
@@ -57,19 +61,15 @@ export default function GroupJoinDialog({ session, token, onJoined, onCancel }: 
       <ScreenHeader title={preview ? `Join ${preview.name}` : 'Join group'} busy={working} onBack={uncertain ? onCancel : back} />
       <ScrollView role="main" contentInsetAdjustmentBehavior="automatic" contentContainerStyle={pageContentStyle} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
         <Text style={ui.caption}>Signed in as {session.email}</Text>
-        {!preview && !error && <Text style={ui.caption}>Checking invitation…</Text>}
-        {!!error && <Text style={ui.error} accessibilityRole="alert">{error}</Text>}
-        {!preview && !!error && <Button title="Refresh invitation" disabled={working} onPress={() => setRetry(value => value + 1)} contentStyle={{ minHeight: 48 }} />}
+        {!preview && !error && <LoadingState label="Checking invitation…" />}
+        {!!error && <ErrorState error={error} retryLabel="Refresh invitation" disabled={working} onRetry={!preview ? () => setRetry(value => value + 1) : undefined} />}
         {preview?.already_member ? <>
           <Text style={ui.body}>You already belong to {preview.name}.</Text>
           <Button title="Open group" kind="primary" disabled={working} onPress={() => void join()} contentStyle={{ minHeight: 48 }} />
         </> : preview && (step === 'choose' ? <>
           <Text style={ui.body}>If someone already added you, find your name.</Text>
           <View>
-            {preview.people.map(person => <View key={person.id} style={ui.row}>
-              <Avatar name={person.name} photo={person.profile_photo} /><Text style={[ui.rowTitle, { flex: 1, minWidth: 0 }]}>{person.name}</Text>
-              <Button title="This is me" accessibilityLabel={`This is me: ${person.name}`} disabled={working} onPress={() => choose(person)} contentStyle={{ minHeight: 48 }} />
-            </View>)}
+            {preview.people.map(person => <PersonRow key={person.id} name={person.name} photo={person.profile_photo} trailing={<Button title="This is me" accessibilityLabel={`This is me: ${person.name}`} disabled={working} onPress={() => choose(person)} contentStyle={{ minHeight: 48 }} />} />)}
             <View style={ui.row}><Text style={[ui.rowTitle, { flex: 1, minWidth: 0 }]}>I'm not listed</Text>
               <Button title="Join as new" disabled={working} onPress={() => choose(null)} contentStyle={{ minHeight: 48 }} /></View>
           </View>
@@ -80,7 +80,7 @@ export default function GroupJoinDialog({ session, token, onJoined, onCancel }: 
           <Button title="Review join" kind="primary" disabled={working || !name.trim() || name.trim().length > 120} onPress={() => { if (name.trim() && name.trim().length <= 120) setStep('confirm'); }} contentStyle={{ minHeight: 48 }} />
         </> : <>
           <Text style={ui.section}>Join as {name.trim()}?</Text>
-          <View style={ui.row}><Avatar name={name} photo={profile?.avatar ?? profile?.profile_photo} /><Text style={[ui.rowTitle, { flex: 1 }]}>{name.trim()}</Text></View>
+          <PersonRow name={name} title={name.trim()} photo={profile?.avatar ?? profile?.profile_photo} />
           <Text style={ui.body}>{choice ? `${choice.name}'s existing bills and payments will be linked to you in this group.` : 'You will join as a new person. Existing bills and payments will stay unchanged.'}</Text>
           <Button title={working ? 'Joining…' : uncertain ? 'Try again' : `Join as ${name.trim()}`} kind="primary" disabled={working} onPress={() => void join()} contentStyle={{ minHeight: 48 }} />
           {!uncertain && <Button title="Choose again" kind="text" disabled={working} onPress={() => setStep('choose')} contentStyle={{ minHeight: 48 }} />}

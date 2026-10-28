@@ -11,7 +11,7 @@ export default function SwitchAccountDialog({ currentEmail, targetEmail, invitat
 }) {
   const { ui } = useUI();
   return <KeyboardDialog visible onDismiss={onCancel} dismissable={!busy}>
-    <DialogFocus busy={busy} onEscape={onCancel}>
+
     <Dialog.Title aria-level={2}>Switch account?</Dialog.Title>
     <DialogScrollBody maxHeight={320} gap={8}>
       <Text style={ui.body}>You're signed in as {currentEmail}. This {invitation ? 'invitation' : 'link'} is for {targetEmail}. Switching will sign you out of {currentEmail} on this device.</Text>
@@ -19,6 +19,6 @@ export default function SwitchAccountDialog({ currentEmail, targetEmail, invitat
     <CancelDialogActions disabled={busy} onCancel={onCancel}>
       <Button title="Switch" kind="primary" disabled={busy} onPress={onSwitch} />
     </CancelDialogActions>
-    </DialogFocus>
+
   </KeyboardDialog>;
 }

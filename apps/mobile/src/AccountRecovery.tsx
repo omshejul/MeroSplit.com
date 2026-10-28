@@ -1,3 +1,4 @@
+import { PersonSelectionList } from './PersonChoice';
 import DetailDialog from './DetailDialog';
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
@@ -47,8 +48,7 @@ export function LegacyGroupRecovery({ group, selected, busy, onSelect, onRecover
   const { ui } = useUI();
   return <DetailDialog busy={busy} icon="groups" title={group.name}>
     <Text style={ui.caption}>{group.expenses.length} bills · Who are you?</Text>
-    {group.participants.map(person => <RadioChoice key={person.id} value={person.id} label={person.name}
-      selected={selected === person.id} onPress={() => onSelect(person.id)} />)}
+    <PersonSelectionList people={group.participants} selected={selected} disabled={busy} onSelect={onSelect} />
     <Button title="Recover these records" disabled={busy || !selected} onPress={onRecover} />
   </DetailDialog>;
 }

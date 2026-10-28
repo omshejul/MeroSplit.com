@@ -1,3 +1,5 @@
+import { ErrorState } from './UIStates';
+import { CloseDialogActions } from './DialogParts';
 import { Dialog } from './DialogParts';
 import { DialogScrollBody } from './DialogParts';
 import KeyboardDialog from './KeyboardDialog';
@@ -75,7 +77,7 @@ export default function AccountNotifications({ session, push, busy, onBusyChange
             {open && enabled && <BalanceStatements session={session} visible={open} emailEnabled={preferences.email_reminders} busy={!!disabled} onBusyChange={onBusyChange} />}
             </>}
         </>}
-        {!!error && <><ErrorText>{error}</ErrorText>{!preferences && <Button title="Retry" disabled={busy || working} onPress={() => void load()} />}</>}
-      </DialogScrollBody><Dialog.Actions><Button title="Close notifications" kind="text" disabled={busy} onPress={close} /></Dialog.Actions></KeyboardDialog>
+        {!!error && <ErrorState error={error} disabled={busy || working} onRetry={!preferences ? () => void load() : undefined} />}
+      </DialogScrollBody><CloseDialogActions title="Close notifications" kind="text" disabled={busy} onClose={close} /></KeyboardDialog>
   </>;
 }

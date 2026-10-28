@@ -1,3 +1,6 @@
+import { ErrorState } from './UIStates';
+import { LoadingState } from './UIStates';
+import ChoiceGroup from './ChoiceGroup';
 import React, { useEffect, useRef, useState } from 'react';
 import { AppState, Platform, View } from 'react-native';
 import { Text } from 'react-native-paper';
@@ -66,16 +69,13 @@ export default function BalanceStatements({ session, visible, emailEnabled, busy
     {preferences && <>
       <NotificationSwitch icon="mail" label="Balance statements" checked={preferences.enabled} disabled={disabled} onChange={enabled => void run(() => update(enabled, preferences.frequency))} />
       {preferences.enabled && <>
-        <View accessibilityRole="radiogroup" accessibilityLabel="Statement frequency">
-          {(['monthly', 'weekly'] as const).map(frequency => <RadioChoice key={frequency} group="statement-frequency" label={frequency === 'monthly' ? 'Monthly' : 'Weekly'} value={frequency} selected={preferences.frequency === frequency} disabled={disabled} onPress={() => void run(() => update(true, frequency))} />)}
-        </View>
+        <ChoiceGroup label="Statement frequency" group="statement-frequency" options={[{value: 'monthly', label: 'Monthly'}, {value: 'weekly', label: 'Weekly'}]} selected={preferences.frequency} disabled={disabled} onChoose={frequency => void run(() => update(true, frequency))} />
         <Text style={ui.caption}>{!emailEnabled ? 'Turn on email notifications for scheduled statements.' : preferences.next_at ? `Next statement: ${new Date(preferences.next_at).toLocaleDateString('en-IN')}` : 'Scheduled statements are paused.'}</Text>
       </>}
       <Button title="Email statement now" icon="mail" disabled={disabled || ["pending", "sending"].includes(preferences.delivery?.state ?? "")} onPress={() => void run(send)} />
       <StatementDelivery delivery={preferences.delivery} />
     </>}
-    {!!error && <ErrorText>{error}</ErrorText>}
-    {!preferences && !error && <Text accessibilityLiveRegion="polite" style={ui.caption}>Loading balance statements…</Text>}
-    {!preferences && !!error && <Button title="Retry balance statements" kind="text" disabled={busy || working} onPress={() => void load()} />}
+    {!!error && <ErrorState error={error} retryLabel="Retry balance statements" disabled={busy || working} onRetry={!preferences ? () => void load() : undefined} />}
+    {!preferences && !error && <LoadingState label="Loading balance statements…" />}
   </View>;
 }

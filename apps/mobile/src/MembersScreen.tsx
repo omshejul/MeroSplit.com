@@ -1,3 +1,8 @@
+import { NoticeBanner } from './UIStates';
+import { CloseDialogActions } from './DialogParts';
+import FieldDialog from './FieldDialog';
+import { PersonDetailsFields } from './FormFields';
+import PersonRow, { PersonAmountRow } from './PersonRow';
 import PersonInviteDialog from './PersonInviteDialog';
 import { useToast } from './Toast';
 import DetailDialog from './DetailDialog';
@@ -62,16 +67,11 @@ function MemberRow({ group, person, selfId, organizer, disabled, onInvite }: {
   const self = person.id === selfId, joined = person.user_id != null;
   const status = person.user_id === group.owner_id ? 'Organizer' : joined ? 'Joined' : request ? 'Join request' : 'Not joined';
   const title = `${person.name}${self && person.name.toLowerCase() !== 'you' ? ' (you)' : ''}`;
-  return <View style={ui.row}>
-    <Avatar name={person.name} photo={person.profile_photo} />
-    <View style={ui.rowBody}>
-      <Text numberOfLines={1} accessibilityLabel={title} style={ui.rowTitle}>{title}</Text>
+  return <PersonRow name={person.name} title={title} photo={person.profile_photo} trailing={organizer && !self && (joined ? <IconAction name="more" label={`Manage ${person.name}`} disabled={disabled} onPress={onInvite} />
+      : <Button title={request ? 'Review' : 'Invite'} icon={request ? 'privacy' : 'mail'} compact accessibilityLabel={`${request ? 'Review invite for' : 'Invite'} ${person.name}`} disabled={disabled || !!group.archived} onPress={onInvite} />)}>
       {!!person.account_email && joined && !person.removed && <Text accessibilityLabel={person.account_email} style={ui.rowSub}>{person.account_email}</Text>}
       <Text style={ui.rowSub}>{status}</Text>
-    </View>
-    {organizer && !self && (joined ? <IconAction name="more" label={`Manage ${person.name}`} disabled={disabled} onPress={onInvite} />
-      : <Button title={request ? 'Review' : 'Invite'} icon={request ? 'privacy' : 'mail'} compact accessibilityLabel={`${request ? 'Review invite for' : 'Invite'} ${person.name}`} disabled={disabled || !!group.archived} onPress={onInvite} />)}
-  </View>;
+  </PersonRow>;
 }
 
 function PreviousMembersDialog({ people, onClose }: { people: Participant[]; onClose: () => void }) {
@@ -79,10 +79,7 @@ function PreviousMembersDialog({ people, onClose }: { people: Participant[]; onC
   return <KeyboardDialog visible onDismiss={onClose} maxHeight={480}>
     <Dialog.Title aria-level={2}>Previous members</Dialog.Title>
     <DialogScrollBody maxHeight={300} gap={0}>
-      {people.filter(person => person.removed).map(person => <View key={person.id} style={ui.row}>
-        <Avatar name={person.name} photo={person.profile_photo} />
-        <View style={ui.rowBody}><Text style={ui.rowTitle}>{person.name}</Text></View>
-      </View>)}
+      {people.filter(person => person.removed).map(person => <PersonRow key={person.id} name={person.name} photo={person.profile_photo} />)}
     </DialogScrollBody>
     <CancelDialogActions cancelTitle="Close previous members" disabled={false} onCancel={onClose} />
   </KeyboardDialog>;
@@ -95,8 +92,7 @@ function AddPersonDialog({ visible, disabled, working, archived, name, email, on
   return <KeyboardDialog visible={visible} onDismiss={() => { if (!disabled) onClose(); }}>
     <Dialog.Title aria-level={2}>Add person</Dialog.Title>
     <DialogScrollBody maxHeight={280} gap={8}>
-      <Field label="Name" value={name} onChange={onName} disabled={disabled} autoFocus autoCapitalize="words" />
-      <Field label="Email (optional)" value={email} onChange={onEmail} disabled={disabled} keyboardType="email-address" maxLength={254} />
+      <PersonDetailsFields name={{ label: 'Name', value: name, onChangeText: onName, editable: !disabled, autoFocus: true, maxLength: 120 }} email={{ label: 'Email (optional)', value: email, onChangeText: onEmail, editable: !disabled, maxLength: 254 }} />
       <Button title={feedback?.section === 'group-link' && !feedback.error ? 'Copied' : 'Copy link'} icon={feedback?.section === 'group-link' && !feedback.error ? 'check' : 'copy'} kind="text" disabled={disabled || archived} onPress={onLink} />
       <FeedbackNote section="add-person" feedback={feedback} />
     </DialogScrollBody>
@@ -106,34 +102,22 @@ function AddPersonDialog({ visible, disabled, working, archived, name, email, on
 }
 
 function EditNameDialog({ person, name, disabled, working, unavailable, onName, onClose, onSave, feedback }: { person?: Participant; name: string; disabled: boolean; working: boolean; unavailable: boolean; onName: (value: string) => void; onClose: () => void; onSave: () => void; feedback: Feedback }) {
-  return <KeyboardDialog visible={!!person} dismissable={!disabled} onDismiss={() => { if (!disabled) onClose(); }}>
-    <Dialog.Title aria-level={2}>Edit name</Dialog.Title>
-    <DialogScrollBody maxHeight={200} gap={8}>
-      <Field label="Name" value={name} onChange={onName} disabled={disabled || unavailable} autoFocus autoCapitalize="words" />
-      <FeedbackNote section="person-name" feedback={feedback} />
-    </DialogScrollBody>
-    <CancelDialogActions disabled={disabled} onCancel={onClose}><Button title={working ? 'Saving name…' : 'Save name'} style={{ minWidth: 112 }} kind="primary" disabled={disabled || unavailable || !name.trim() || name.trim() === person?.name} onPress={onSave} /></CancelDialogActions>
-  </KeyboardDialog>;
+  return <FieldDialog visible={!!person} title="Edit name" disabled={disabled} canSave={!unavailable && !!name.trim() && name.trim() !== person?.name} saveLabel={working ? 'Saving name…' : 'Save name'} onClose={onClose} onSave={onSave} maxHeight={200}>
+    <Field label="Name" value={name} onChange={onName} disabled={disabled || unavailable} autoFocus autoCapitalize="words" /><FeedbackNote section="person-name" feedback={feedback} />
+  </FieldDialog>;
 }
 
 function PersonEmailDialog({ person, email, disabled, working, unavailable, onEmail, onClose, onSave, feedback }: { person?: Participant; email: string; disabled: boolean; working: boolean; unavailable: boolean; onEmail: (value: string) => void; onClose: () => void; onSave: () => void; feedback: Feedback }) {
-  return <KeyboardDialog visible={!!person} dismissable={!disabled} onDismiss={() => { if (!disabled) onClose(); }}>
-    <Dialog.Title aria-level={2}>Add email for {person?.name}</Dialog.Title>
-    <DialogScrollBody maxHeight={280} gap={8}>
-      <EmailField label="Email" value={email} onChangeText={onEmail} editable={!disabled && !unavailable} maxLength={254} autoFocus />
-      <FeedbackNote section={`email-invite:${person?.id}`} feedback={feedback} />
-    </DialogScrollBody>
-    <CancelDialogActions disabled={disabled} onCancel={onClose}><Button title={working ? 'Saving email…' : 'Save email'} kind="primary" icon="check" disabled={disabled || unavailable || !email.trim()} onPress={onSave} /></CancelDialogActions>
-  </KeyboardDialog>;
+  return <FieldDialog visible={!!person} title={`Add email for ${person?.name}`} disabled={disabled} canSave={!unavailable && !!email.trim()} saveLabel={working ? 'Saving email…' : 'Save email'} onClose={onClose} onSave={onSave}>
+    <EmailField label="Email" value={email} onChangeText={onEmail} editable={!disabled && !unavailable} maxLength={254} autoFocus /><FeedbackNote section={`email-invite:${person?.id}`} feedback={feedback} />
+  </FieldDialog>;
 }
 
 function PreviousBalanceRow({ person, selfId, balance, agreed }: { person: Participant; selfId: string; balance: string; agreed: boolean }) {
   const { palette: colors, ui } = useUI();
-  return <View style={ui.row}>
-    <View style={ui.rowBody}><Text style={ui.rowTitle}>{person.name}{person.id === selfId && person.name.toLowerCase() !== 'you' ? ' (you)' : ''}</Text>
-      {agreed && <Text style={ui.rowSub}>Agreed</Text>}</View>
-    <Text style={[s.amount, { color: colors.text }]}>{balanceDescription(balance)}</Text>
-  </View>;
+  return <PersonAmountRow name={person.name} title={`${person.name}${person.id === selfId && person.name.toLowerCase() !== 'you' ? ' (you)' : ''}`} avatar={false} amountLabel={balanceDescription(balance)} amountStyle={[s.amount, { color: colors.text }]}>
+    {agreed && <Text style={ui.rowSub}>Agreed</Text>}
+  </PersonAmountRow>;
 }
 
 export default function MembersScreen(props: Props) {
@@ -396,7 +380,7 @@ function MemberSettings({ group, selfId, busy, addPersonRequest = 0, onAction, o
       <FeedbackNote section="contact" feedback={feedback} />
       <Text style={ui.caption}>{emailChanged ? 'Save before sending an invitation.' : savedEmail ? 'Only this email can accept the invitation.' : 'Add an email to invite them later.'}</Text>
       {!!group.archived && <Text style={ui.caption}>Reopen this group to change the email or send an invitation.</Text>}
-    </DialogScrollBody><Dialog.Actions><Button title="Close contact" disabled={disabled} onPress={() => setContactOpen(false)} /></Dialog.Actions></KeyboardDialog>}
+    </DialogScrollBody><CloseDialogActions title="Close contact" disabled={disabled} onClose={() => setContactOpen(false)} /></KeyboardDialog>}
     <EditNameDialog person={namePerson} name={personName} disabled={disabled} working={working} unavailable={!organizer || !!group.archived || !!namePerson?.removed || namePerson?.user_id != null} onName={setPersonName} onClose={closeName} onSave={saveName} feedback={feedback} />
     <PersonEmailDialog person={emailPerson} email={personEmail} disabled={disabled} working={working} unavailable={!organizer || !!group.archived || !!emailPerson?.removed || emailPerson?.user_id != null} onEmail={setPersonEmail} onClose={closePersonEmail} onSave={savePersonEmail} feedback={feedback} />
     <AddPersonDialog visible={addingPerson} disabled={disabled} working={working} archived={!!group.archived} name={newName} email={newEmail}
@@ -407,7 +391,7 @@ function MemberSettings({ group, selfId, busy, addPersonRequest = 0, onAction, o
     <FeedbackNote section="members" feedback={feedback} />
 
     {opening && <DetailDialog busy={disabled} icon="payment" title="Previous balances" initialOpen={needsOpeningAgreement}>
-        <Text style={[ui.notice, opening.accepted ? ui.success : ui.warning]}>{opening.accepted ? 'Agreed and included in balances.' : 'Waiting for agreement. Not included in balances yet.'}</Text>
+        <NoticeBanner tone={opening.accepted ? 'success' : 'warning'}>{opening.accepted ? 'Agreed and included in balances.' : 'Waiting for agreement. Not included in balances yet.'}</NoticeBanner>
         <Text style={ui.body}>From {opening.source}</Text><Text style={ui.caption}>As of {opening.cutoff}</Text>
         {group.participants.map(person => <PreviousBalanceRow key={person.id} person={person} selfId={selfId} balance={opening.balances[person.id] ?? '0'} agreed={Object.hasOwn(opening.acknowledgments, person.id)} />)}
         {needsOpeningAgreement && <>

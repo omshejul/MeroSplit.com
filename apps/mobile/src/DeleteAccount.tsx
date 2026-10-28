@@ -1,3 +1,4 @@
+import { DialogScrollBody, CancelDialogActions } from './DialogParts';
 import { Dialog } from './DialogParts';
 import React, { useRef, useState } from 'react';
 import { ScrollView, useWindowDimensions } from 'react-native';
@@ -25,12 +26,12 @@ export default function DeleteAccount({ email: currentEmail, busy, onDelete }: {
     <SettingsRow label="Delete account" icon="remove" danger chevron={false} disabled={busy} onPress={() => { setConfirmation(''); setEmail(''); setError(''); setOpen(true); }} />
     <KeyboardDialog visible={open} onDismiss={() => { if (!disabled) setOpen(false); }} dismissable={!disabled} maxHeight={height}>
       <Dialog.Title aria-level={2}>Delete account?</Dialog.Title>
-      <Dialog.Content style={{ flexShrink: 1 }}><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: 12 }}>
+      <DialogScrollBody>
         <Text style={ui.body}>Export first. Your account, files and unsent work will be deleted. Other members keep anonymous amounts and payment history.</Text>
         <TextField label="Type delete" value={confirmation} onChangeText={setConfirmation} autoCorrect={false} autoCapitalize="none" editable={!disabled} />
         <EmailField label="Current email" value={email} onChangeText={setEmail} editable={!disabled} />
         {!!error && <ErrorText live>{error}</ErrorText>}
-      </ScrollView></Dialog.Content>
+      </DialogScrollBody>
       <Dialog.Actions style={{ flexDirection: 'column', alignItems: 'stretch', flexGrow: 0, flexShrink: 0, gap: 8 }}><Button title="Cancel" kind="text" disabled={disabled} onPress={() => setOpen(false)} /><Button title="Delete account" icon="remove" disabled={disabled || !valid} onPress={() => void remove()} /></Dialog.Actions>
     </KeyboardDialog>
   </>;

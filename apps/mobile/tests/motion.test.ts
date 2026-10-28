@@ -1,3 +1,4 @@
+import { withSharedUI } from './componentHarness.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -103,18 +104,18 @@ function component(file: string, name: string, env: Record<string, unknown>) {
   let code = '';
   function find(node: ts.Node) { if (ts.isFunctionDeclaration(node) && node.name?.text === name) code = node.getText(source).replace(/^export (?:default )?/, ''); ts.forEachChild(node, find); }
   find(source); assert.ok(code);
-  return new Function('env', `with(env) { ${ts.transpile(code, { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React })}; return ${name}; }`)(env);
+  return new Function('env', `with(env) { ${ts.transpile(code, { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React })}; return ${name}; }`)(withSharedUI(env));
 }
 const React = { createElement: (type: unknown, props: any, ...children: unknown[]) => ({ type, props, children }) };
 test('Details open a dialog without expanding or shifting the surrounding row', () => {
   const h = hooks();
   const DetailDialog = component('DetailDialog.tsx', 'DetailDialog', { React: { ...React, Fragment: 'Fragment' }, ...h.React, View: 'View', SettingsRow: 'SettingsRow', KeyboardDialog: 'KeyboardDialog', Dialog: { Title: 'Title', Actions: 'Actions' }, DialogScrollBody: 'Body', Button: 'Button' });
   const child = { retainedIdentity: true }, render = (busy = false) => h.render(() => DetailDialog({ title: 'Details', children: child, busy }));
-  let tree = render(); assert.equal(tree.children[1].props.visible, false); assert.equal(tree.children[0].props.accessibilityState, undefined);
-  tree.children[0].props.onPress(); tree = render(); assert.equal(tree.children[1].props.visible, true);
-  assert.equal(tree.children[1].children[1].children[0].children[0], child);
-  render(true).children[1].props.onDismiss(); assert.equal(render(true).children[1].props.visible, true);
-  render().children[1].props.onDismiss(); assert.equal(render().children[1].props.visible, false);
+  let tree = render().flat(Infinity); assert.equal(tree[1].props.visible, false); assert.equal(tree[0].props.accessibilityState, undefined);
+  tree[0].props.onPress(); tree = render().flat(Infinity); assert.equal(tree[1].props.visible, true);
+  assert.equal(tree[1].children[1].children[0].children[0], child);
+  render(true).flat(Infinity)[1].props.onDismiss(); assert.equal(render(true).flat(Infinity)[1].props.visible, true);
+  render().flat(Infinity)[1].props.onDismiss(); assert.equal(render().flat(Infinity)[1].props.visible, false);
 });
 test('tab actions and selected semantics remain immediate during loading and animation', () => {
   const calls: string[] = [];

@@ -1,3 +1,4 @@
+import AppLogo from './AppLogo';
 import React, { useEffect, useState } from 'react';
 import { Image, KeyboardAvoidingView, Platform, ScrollView, View } from 'react-native';
 import { Text } from 'react-native-paper';
@@ -22,7 +23,7 @@ export default function SignInLayout({ children, busy, onBack }: { children: Rea
       <View testID="signin-group" style={{ width: '100%', maxWidth: 380, alignSelf: 'center', gap: 24 }} onLayout={event => setContentHeight(event.nativeEvent.layout.height)}>
         {onBack && <View style={{ alignSelf: 'flex-start' }}><IconAction name="back" label="Back" disabled={busy} onPress={onBack} /></View>}
         <View style={{ alignItems: 'center', gap: 12 }}>
-          <Image source={require('../assets/brand/mark.png')} accessible={false} aria-hidden={true} style={{ width: 40, height: 40 }} />
+          <AppLogo size={40} />
           <View style={{ gap: 8, width: '100%' }}>
             <Text accessibilityRole="header" aria-level={1} style={[ui.section, { fontSize: 26, lineHeight: 32, textAlign: 'center' }]}>Sign in to MeroSplit</Text>
             <Text style={[ui.body, { color: palette.muted, textAlign: 'center', lineHeight: 22 }]}>Split costs with friends, trips and households.</Text>

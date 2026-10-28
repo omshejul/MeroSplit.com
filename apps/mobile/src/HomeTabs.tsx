@@ -1,3 +1,4 @@
+import FallbackTabLayout from './FallbackTabLayout';
 import React from 'react';
 import { Animated, View } from 'react-native';
 import { AppTabs } from './AppNavigation';
@@ -13,6 +14,5 @@ export type HomeTabsProps = {
 export const usesNativeHomeTabs = false;
 
 export default function HomeTabs({ selected, busy, onSelect, render }: HomeTabsProps) {
-  const swipe = useHomeTabSwipe(selected, busy, onSelect);
-  return <><View style={{ flex: 1, overflow: 'hidden' }}><Animated.View {...swipe}>{render(selected)}</Animated.View></View><AppTabs selected={selected} busy={busy} onSelect={onSelect} /></>;
+  return <FallbackTabLayout selected={selected} busy={busy} onSelect={onSelect} render={render} />;
 }

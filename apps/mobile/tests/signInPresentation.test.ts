@@ -1,3 +1,4 @@
+import { withSharedUI } from './componentHarness.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -16,7 +17,7 @@ function form(name: string, props: object, state: any[] = []): Node {
   let cursor = 0;
   const source = ts.createSourceFile('form.tsx', readFileSync(new URL('../src/SignInForms.tsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   const decl = source.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === name)!;
-  const deps = { React, useState: (initial: unknown) => { const id = cursor++; if (!(id in state)) state[id] = initial; return [state[id], (value: unknown) => state[id] = value]; }, useEffect(effect: () => void) { effect(); }, Form: 'form', Text: 'text', View: 'view', EmailField: 'email', TextField: 'input', Button: 'button', useUI: () => ({ palette: { line: '#ddd' }, ui: { caption: {}, body: {} } }) };
+  const deps = withSharedUI({ React, useState: (initial: unknown) => { const id = cursor++; if (!(id in state)) state[id] = initial; return [state[id], (value: unknown) => state[id] = value]; }, useEffect(effect: () => void) { effect(); }, Form: 'form', Text: 'text', View: 'view', EmailField: 'email', TextField: 'input', Button: 'button', useUI: () => ({ palette: { line: '#ddd' }, ui: { caption: {}, body: {} } }) });
   return new Function(...Object.keys(deps), `${ts.transpile(decl.getText(source).replace(/^export /, ''), { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React })};return ${name};`)(...Object.values(deps))(props);
 }
 function find(root: Node, type: string): Node[] { return [root, ...root.children.flatMap(child => child && typeof child === 'object' ? find(child, type) : [])].filter(node => node.type === type); }

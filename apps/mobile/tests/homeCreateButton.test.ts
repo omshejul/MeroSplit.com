@@ -1,3 +1,4 @@
+import { withSharedUI } from './componentHarness.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -17,12 +18,12 @@ test('Create capsule anchors above custom/native navigation and keeps margins tr
     let loaded = 0, clicked = 0;
     const env = { React, View: 'View', Button: 'Button', Icon: 'Icon', GlassSurface: 'GlassSurface', useUI: () => ({ palette: { accent: 'accent', muted: 'muted' } }), Platform: { OS, Version }, pageWidthStyle: OS === 'web' ? { maxWidth: 760, alignSelf: 'center' } : {},
       require: (name: string) => { assert.equal(name, 'react-native-screens/experimental'); loaded++; return { SafeAreaView: 'NativeSafeAreaView' }; } };
-    const render = new Function('env', `with(env){${actionCode};${code};return HomeCreateButton;}`)(env);
+    const render = new Function('env', `with(env){${actionCode};${code};return HomeCreateButton;}`)(withSharedUI(env));
     const tree = render({ direct, disabled: false, onPress: () => clicked++ });
     const native = OS === 'ios' && Version >= 26;
     assert.equal(tree.type, native ? 'NativeSafeAreaView' : 'View');
     assert.equal(loaded, native ? 1 : 0, 'Only native iOS tabs need the experimental inset component');
-    const inset = new Function('env', `with(env){${insetCode};return HomeCreateInset;}`)(env)();
+    const inset = new Function('env', `with(env){${insetCode};return HomeCreateInset;}`)(withSharedUI(env))();
     if (native) { assert.equal(inset.type, 'NativeSafeAreaView'); assert.deepEqual(inset.props.edges, { bottom: true }); assert.equal(inset.props.pointerEvents, 'none'); } else assert.equal(inset, null);
     assert.deepEqual(tree.props.edges, native ? { bottom: true } : undefined);
     assert.deepEqual(tree.props.style, { position: 'absolute', left: 0, right: 0, bottom: 0, flex: 0, zIndex: 1 });
