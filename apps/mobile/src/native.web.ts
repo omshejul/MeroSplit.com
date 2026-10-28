@@ -68,3 +68,5 @@ export async function claimFirstSplitUPIPrompt(owner: string): Promise<boolean> 
   writePreference(key, 'shown');
   return true;
 }
+
+export async function claimPushInvitation(_owner: string): Promise<boolean> { return false; }

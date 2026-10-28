@@ -43,6 +43,6 @@ test('edge-to-edge frame paints the window and protects all content edges once',
 test('Me update safety evaluates without retired refresh state and waits for background reads',()=>{
  let expression='';function visit(n:ts.Node){if(!expression&&ts.isBinaryExpression(n)&&n.left.getText(app)==='updateSafe.current')expression=n.right.getText(app);ts.forEachChild(n,visit);}visit(content);assert.ok(expression);
  const check=new Function('env',`with(env){return ${expression};}`);
- const env={ready:true,session:{},expired:false,authHeld:false,foreground:true,screen:'home',tab:'Account',busy:false,reading:0,pulling:false,syncing:false,storageError:'',appLink:null,emailEntry:null,feedbackOpen:false,alertOpen:false,upiSetup:false,returnAttemptId:null,returns:[],reviewCommand:null,newPersonInvite:null,pushTarget:null};
- assert.equal(check(env),true);assert.equal(check({...env,reading:1}),false);assert.equal(check({...env,pulling:true}),false);
+ const env={ready:true,session:{},expired:false,authHeld:false,foreground:true,screen:'home',tab:'Account',busy:false,reading:0,pulling:false,syncing:false,storageError:'',appLink:null,emailEntry:null,feedbackOpen:false,alertOpen:false,upiSetup:false,pushInvitationOpen:false,returnAttemptId:null,returns:[],reviewCommand:null,newPersonInvite:null,pushTarget:null};
+ assert.equal(check(env),true);assert.equal(check({...env,reading:1}),false);assert.equal(check({...env,pulling:true}),false);assert.equal(check({...env,pushInvitationOpen:true}),false);
 });

@@ -5,6 +5,8 @@ import { subscribeConnection } from './src/connectivity';
 import SyncStatus from './src/SyncStatus';
 import { usePullToRefresh } from './src/usePullToRefresh';
 import SceneTransition from './src/SceneTransition';
+import PushInvitation from './src/PushInvitation';
+import { pushOpportunityReady, type PushOpportunity } from './src/pushInvitationRules';
 import AppStack, { NavigationContainer, useAppNavigation, webLinking } from './src/AppStack';
 import type { AppRoute, RouteParams, Screen } from './src/routes';
 import MotionReveal from './src/MotionReveal';
@@ -174,6 +176,8 @@ function AppContent() {
   const owner = session ? accountOwner(session) : '', ownerRef = useRef(owner); ownerRef.current = owner;
   const deferredSync = useRef(false);
   const lock = useRef(false), draftWrites = useRef(Promise.resolve()), activeSessionRef = useRef(session); activeSessionRef.current = authPending ? null : session;
+  const [pushOpportunity, setPushOpportunity] = useState<PushOpportunity | null>(null);
+  const [pushInvitationOpen, setPushInvitationOpen] = useState(false);
   const [pushTarget, setPushTarget] = useState<{ token: string; target: PushTarget | null } | null>(null);
   const push = usePushNotifications(authPending ? null : session, {
     onOpen: async target => { if (session) setPushTarget({ token: session.token, target }); },
@@ -230,7 +234,7 @@ function AppContent() {
   profilePromptSafe.current = screen === 'home' && tab === 'Groups' && !feedbackOpen && !alertOpen && !appLink && !newPersonInvite && !upiSetup;
   updateSafe.current = ready && !!session && !expired && !authHeld && foreground && screen === 'home' && tab === 'Account'
     && !busy && !reading && !pulling && !storageError && !appLink && !emailEntry && !feedbackOpen && !alertOpen && !upiSetup
-    && !returnAttemptId && !returns.length && !reviewCommand && !newPersonInvite && !pushTarget;
+    && !pushInvitationOpen && !returnAttemptId && !returns.length && !reviewCommand && !newPersonInvite && !pushTarget;
   async function restartUpdate(reload: () => Promise<void>) {
     const active = activeSessionRef.current, epoch = authEpoch.current;
     await restartForUpdate({ lock, reload,
@@ -742,6 +746,7 @@ function AppContent() {
         if (!current() || !await saveReadGroup(active, group, current) || !current()) return;
         const bill = target.expenseId && (group.expenses.find(value => value.id === target.expenseId) ?? (group.focused_expense?.id === target.expenseId ? group.focused_expense : undefined));
         navigate(bill ? target.chat ? 'billChat' : target.versions ? 'expenseVersions' : 'expenseDetail' : 'group', { groupId: group.id, expenseId: bill ? bill.id : null, tab: group.is_direct ? 'Friends' : 'Groups' });
+        if ('inviteToken' in target) setPushOpportunity({ owner: accountOwner(active), token: active.token, groupId: group.id });
       } catch (error) {
         if (!current()) return;
         if (error instanceof ApiError && error.status === 404) { navigate('home'); setNotice('This link is unavailable, or your request is waiting for approval.', 'warning'); }
@@ -912,6 +917,9 @@ function AppContent() {
       if (first && ownerRef.current === owner && activeSessionRef.current?.token === active.token) {
         setUpiAfterSplit(true); setUpiSetup(true);
       }
+    }
+    if (active && !expenseId && !value.deleted && selected?.kind === 'shared' && activeSessionRef.current?.token === active.token) {
+      setPushOpportunity({ owner, token: active.token, groupId: selected.group.id, expenseId: value.id });
     }
   }
   async function reverseExpense(value: Expense) {
@@ -1298,7 +1306,7 @@ function AppContent() {
     if (preview && pending.length) { try { preview = previewPending(preview, pending); } catch (error) { previewError = error instanceof Error ? error.message : 'Sync to review saved changes.'; } }
     const expense = preview?.expenses.find(value => value.id === expenseId) ?? (preview?.focused_expense?.id === expenseId ? preview.focused_expense : undefined);
     const settlement = preview?.settlements.find(value => value.id === settlementId) ?? (preview?.focused_settlement?.id === settlementId ? preview.focused_settlement : undefined);
-    const noticeVisibility = { notices: notices.notices, enabled: focused && !authHeld && foreground && !expired && !alertOpen && !pending.length, viewport, scrollEpoch, onVisible: notices.acknowledgeVisible };
+    const noticeVisibility = { notices: notices.notices, enabled: focused && !authHeld && foreground && !expired && !alertOpen && !pushInvitationOpen && !pending.length, viewport, scrollEpoch, onVisible: notices.acknowledgeVisible };
     const browseScope = `${owner}|${session?.token}|${screen}|${tab}|${groupId}|${foreground}|${expired}|${authHeld}|${online}|${groupVersions.current}|${selected?.group.version}|${selected?.group.history?.transactions?.query ?? selected?.group.history?.bills?.query ?? ''}`;
     if (!ready) return null;
     if (storageError) return <SafeAreaView role="main" style={[s.screen, pageContentStyle]}><Text accessibilityRole="header" aria-level={1} style={ui.section}>Could not open saved records</Text><Text accessibilityRole="alert" style={ui.error}>{storageError}</Text><Button title="Retry" disabled={busy} onPress={() => launch(restore)} /></SafeAreaView>;
@@ -1420,7 +1428,10 @@ function AppContent() {
       await saveGroup(await getDatabase(), accountOwner(active), group, 'shared');
       if (activeSessionRef.current?.token !== active.token) return;
       forgetGroupInvite(); void saveGroupInvite(null).catch(() => {}); setAppLink(null); navigate('group', { groupId: group.id, tab: 'Groups' }); await load(accountOwner(active));
+      if (activeSessionRef.current?.token === active.token) setPushOpportunity({ owner: accountOwner(active), token: active.token, groupId: group.id });
     }} />}
+    {session && <PushInvitation key={`push-invitation|${owner}|${session.token}`} owner={owner} session={session} push={push} onVisibility={setPushInvitationOpen}
+      eligible={ready && foreground && online && !expired && !authHeld && !busy && !reading && !syncing && !storageError && !appLink && !emailEntry && !feedbackOpen && !alertOpen && !upiSetup && !newPersonInvite && !reviewCommand && !returnAttemptId && screen === 'group' && pushOpportunityReady(pushOpportunity, owner, session.token, selected, commands)} />}
     {newPersonInvite && <SendInviteDialog visible={showNewPersonInvite && !authHeld} email={newPersonInvite.email} busy={busy} error={newPersonInviteError} onSend={() => void sendNewPersonInvite()} onCancel={() => { if (!busy) { setNewPersonInvite(null); setNewPersonInviteError(''); } }} />}
     {authHeld && !!emailEntry && (emailEntry.phase === 'switch' ? emailContent : <EmailLinkDialog title={emailEntry.phase === 'name' ? 'Name' : 'Sign in'}>{emailContent}</EmailLinkDialog>)}
     {session && !authHeld && !expired && Platform.OS === 'web' && <OAuthContinuation key={`oauth-continuation|${owner}|${session.token}`} session={session} busy={busy} onSaveName={value => saveName(value, true)} beforeContinue={async () => { await draftWrites.current; }} />}
