@@ -3,7 +3,7 @@ import { Modal, ScrollView, View } from 'react-native';
 import { Text } from 'react-native-paper';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as Crypto from 'expo-crypto';
-import { ApiError, request } from './api';
+import { ApiError, cachedRead, request } from './api';
 import type { Session } from './types';
 import DialogFocus from './DialogFocus';
 import { AppFrame, ScreenHeader, pageContentStyle } from './AppNavigation';
@@ -16,6 +16,7 @@ type JoinRequest = { token: string; command_id: string; participant_id?: string;
 
 export default function GroupJoinDialog({ session, token, onJoined, onCancel }: { session: Session; token: string; onJoined: (id: string) => Promise<void>; onCancel: () => void }) {
   const { ui } = useUI();
+  const profile = cachedRead<{ avatar?: import('./types').ProfilePhoto; profile_photo?: import('./types').ProfilePhoto }>(session, '/me');
   const [preview, setPreview] = useState<Preview | null>(null), [error, setError] = useState(''), [working, setWorking] = useState(false), [retry, setRetry] = useState(0);
   const [step, setStep] = useState<'choose' | 'name' | 'confirm'>('choose'), [choice, setChoice] = useState<Person | null>(null), [name, setName] = useState(''), [uncertain, setUncertain] = useState(false);
   const attempt = useRef<JoinRequest | null>(null), flight = useRef(false), live = useRef(true), scope = useRef('');
@@ -76,10 +77,10 @@ export default function GroupJoinDialog({ session, token, onJoined, onCancel }: 
         </> : step === 'name' ? <>
           <TextField label="Your name in this group" value={name} onChangeText={setName} editable={!working} maxLength={120} autoCapitalize="words" autoCorrect={false} />
           <Text style={ui.caption}>This does not change your account name.</Text>
-          <Button title="Continue" kind="primary" disabled={working || !name.trim() || name.trim().length > 120} onPress={() => { if (name.trim() && name.trim().length <= 120) setStep('confirm'); }} contentStyle={{ minHeight: 48 }} />
+          <Button title="Review join" kind="primary" disabled={working || !name.trim() || name.trim().length > 120} onPress={() => { if (name.trim() && name.trim().length <= 120) setStep('confirm'); }} contentStyle={{ minHeight: 48 }} />
         </> : <>
           <Text style={ui.section}>Join as {name.trim()}?</Text>
-          <View style={ui.row}><Avatar name={name} /><Text style={[ui.rowTitle, { flex: 1 }]}>{name.trim()}</Text></View>
+          <View style={ui.row}><Avatar name={name} photo={profile?.avatar ?? profile?.profile_photo} /><Text style={[ui.rowTitle, { flex: 1 }]}>{name.trim()}</Text></View>
           <Text style={ui.body}>{choice ? `${choice.name}'s existing bills and payments will be linked to you in this group.` : 'You will join as a new person. Existing bills and payments will stay unchanged.'}</Text>
           <Button title={working ? 'Joining…' : uncertain ? 'Try again' : `Join as ${name.trim()}`} kind="primary" disabled={working} onPress={() => void join()} contentStyle={{ minHeight: 48 }} />
           {!uncertain && <Button title="Choose again" kind="text" disabled={working} onPress={() => setStep('choose')} contentStyle={{ minHeight: 48 }} />}

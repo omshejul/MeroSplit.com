@@ -94,7 +94,7 @@ function nativeCache() {
   const clear = platform.statements.find(n => ts.isFunctionDeclaration(n) && n.name?.text === 'clearMediaPreviews')!;
   evaluate(`${clear.getText(platform)}; exports.clear = clearMediaPreviews;`, { clearProfilePhotoCache: () => exports.clearProfilePhotoCache?.(), previewFilename: /^merosplit-[0-9a-f-]{36}\.(jpg|png|webp|pdf|bin)$/i });
   const clearMediaPreviews = () => (exports as any).clear(async () => [...disk.keys()].map(uri => ({ name: uri.split('/').pop()!, delete: () => disk.delete(uri) })));
-  return { disk, downloads, started, load: exports.cachedProfilePhoto!, clearMediaPreviews };
+  return { disk, downloads, started, load: exports.cachedProfilePhoto!, peek: (exports as any).peekProfilePhoto, invalidate: (exports as any).invalidateProfilePhoto, clearMediaPreviews };
 }
 
 function signOut(clearMediaPreviews: () => Promise<void>) {
@@ -163,4 +163,13 @@ test('Old completion cannot remove a newer in-flight entry from native download 
   const duplicate = cache.load(nativeSession, nativePhoto); await new Promise(setImmediate);
   assert.equal(cache.downloads.length, 2, 'Old finally must preserve the current generation pending entry');
   cache.downloads[1].done.resolve(); assert.equal(await current, await duplicate); assert.equal(cache.disk.size, 1);
+});
+
+test('corrupt native avatar bytes are evicted and refetched once without clearing other photos',async()=>{
+ const cache=nativeCache();const first=cache.load(nativeSession,nativePhoto);await cache.started.promise;cache.downloads[0].done.resolve();const uri=await first;
+ assert.equal(cache.peek(nativeSession,nativePhoto),uri);
+ cache.disk.set('file:///unrelated-photo','other bytes');await cache.invalidate(nativeSession,nativePhoto);
+ assert.equal(cache.peek(nativeSession,nativePhoto),undefined);assert.equal(cache.disk.has(uri),false);assert.equal(cache.disk.get('file:///unrelated-photo'),'other bytes');
+ const next=cache.load(nativeSession,nativePhoto);for(let i=0;i<30&&cache.downloads.length<2;i++)await Promise.resolve();
+ assert.equal(cache.downloads.length,2);cache.downloads[1].done.resolve();assert.equal(await next,uri);
 });

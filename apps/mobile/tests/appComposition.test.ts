@@ -84,9 +84,9 @@ test('Activity discovers unread chats before a bill is opened and resolves the a
   entry.props.onOpen('g', 'b'); assert.deepEqual(selected, [[{ kind: 'bill', groupId: 'g', expenseId: 'b' }, true]]);
   const declaration = app.body!.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === 'openActivityTarget')!;
   const calls: string[] = [], active = { token: 'current' };
-  const scope = { browse: async (_key: string, fn: any) => fn(() => true), saveReadGroup: async () => true, session: active, activeSessionRef: { current: active }, perform: async (fn: () => Promise<void>) => fn(), fetchGroup: async () => { calls.push('group-read'); return { id: 'g' }; }, withBill: async (_session: any, group: any, id: string) => { calls.push('bill-read-' + id); return group; }, getDatabase: async () => ({}), accountOwner: () => 'one', saveGroup: async () => {}, navigate: (screen: string) => calls.push(screen) };
+  const scope = { showReadGroup: () => calls.push('publish-group'), browse: async (_key: string, fn: any) => fn(() => true), saveReadGroup: async () => true, session: active, activeSessionRef: { current: active }, perform: async (fn: () => Promise<void>) => fn(), fetchGroup: async () => { calls.push('group-read'); return { id: 'g' }; }, withBill: async (_session: any, group: any, id: string) => { calls.push('bill-read-' + id); return group; }, getDatabase: async () => ({}), accountOwner: () => 'one', saveGroup: async () => {}, navigate: (screen: string) => calls.push(screen) };
   const open = new Function('env', `with(env){${ts.transpile(declaration.getText(source), { target: ts.ScriptTarget.ES2022 })};return openActivityTarget;}`)(scope);
-  await open(selected[0][0], true); assert.deepEqual(calls, ['group-read', 'bill-read-b', 'billChat']);
+  await open(selected[0][0], true); assert.deepEqual(calls, ['group-read', 'bill-read-b', 'publish-group', 'billChat']);
 });
 
 test('Leaving chat keeps the existing account-wide temporary-tab guard honest about all saved work', async () => {

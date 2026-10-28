@@ -60,6 +60,6 @@ test('email progress belongs only to the pressed email action',()=>{
 test('code verification and resend show progress on their own buttons',()=>{
  for(const action of ['confirm','resend']){const state:any[]=[];let calls=0;const props={email:'fixture@example.invalid',code:'1234',busy:false,resendSeconds:0,onCode(){},onConfirm(){calls++;},onResend(){calls++;},onChangeEmail(){}};
   const index=action==='confirm'?0:1;find(form('CodeSignIn',props,state),'button')[index].props.onPress();
-  const buttons=find(form('CodeSignIn',{...props,busy:true},state),'button');assert.equal(buttons[index].props.title,action==='confirm'?'Signing in…':'Sending…');assert.equal(buttons[1-index].props.title,action==='confirm'?'Resend code':'Continue');buttons[index].props.onPress();assert.equal(calls,1);
+  const buttons=find(form('CodeSignIn',{...props,busy:true},state),'button');assert.equal(buttons[index].props.title,action==='confirm'?'Signing in…':'Sending…');assert.equal(buttons[1-index].props.title,action==='confirm'?'Resend code':'Sign in');buttons[index].props.onPress();assert.equal(calls,1);
  }
 });

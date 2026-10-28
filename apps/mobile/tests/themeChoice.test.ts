@@ -87,7 +87,7 @@ test('native and browser keep color separate from the saved System, Light or Dar
   await web.saveColorFamily('orchid');
 });
 
-test('Appearance dialog offers four colors and three modes, applies each at once and stays open until Done', async () => {
+test('Appearance dialog offers four colors and three modes, applies each at once and stays open until Close appearance', async () => {
   const calls: string[] = [], focus: string[] = [];
   let states: any[] = [], cursor = 0;
   const env: Record<string, any> = { React, View: 'View', ScrollView: 'ScrollView', TextInput: 'TextInput', KeyboardDialog: 'KeyboardDialog', Dialog: { Title: 'Title', Content: 'Content', Actions: 'Actions' }, Text: 'Text', RadioChoice: 'RadioChoice', Button: 'Button', ErrorText: 'ErrorText', SettingsRow: 'SettingsRow', CancelDialogActions: 'CancelDialogActions', DialogScrollBody: 'DialogScrollBody',
@@ -108,7 +108,7 @@ test('Appearance dialog offers four colors and three modes, applies each at once
   assert.equal(dialog.props.maxHeight, 400, 'the card is bounded to the window, so the choices scroll on small or large-text screens');
   assert.equal(body.props.maxHeight, 440); assert.equal(nodes(body).filter(node => node.type === 'RadioChoice').length, 8);
   const actions = nodes(tree).find(node => node.type === 'Actions')!;
-  assert.ok(!nodes(body).includes(actions) && nodes(actions).some(node => node.type === 'Button' && node.props.title === 'Done'), 'Done stays pinned outside the scroll body');
+  assert.ok(!nodes(body).includes(actions) && nodes(actions).some(node => node.type === 'Button' && node.props.title === 'Close appearance'), 'Close appearance stays pinned outside the scroll body');
   const groups = nodes(tree).filter(node => node.props.role === 'radiogroup');
   assert.deepEqual(groups.map(node => node.props['aria-label']), ['Color', 'Mode']);
   const radios = nodes(tree).filter(node => node.type === 'RadioChoice');
@@ -121,7 +121,7 @@ test('Appearance dialog offers four colors and three modes, applies each at once
   assert.deepEqual(calls, ['color rose', 'mode dark']);
   tree = render(); assert.equal(nodes(tree).find(node => node.type === 'KeyboardDialog')!.props.visible, true, 'choices do not close the dialog');
   assert.ok(!nodes(tree).some(node => node.type === 'CancelDialogActions'), 'nothing to cancel once applied');
-  const done = nodes(tree).find(node => node.type === 'Button' && node.props.title === 'Done')!; done.props.onPress();
+  const done = nodes(tree).find(node => node.type === 'Button' && node.props.title === 'Close appearance')!; done.props.onPress();
   tree = render(); assert.equal(nodes(tree).find(node => node.type === 'KeyboardDialog')!.props.visible, false); assert.deepEqual(focus, ['row']);
   env.useUI = () => ({ ui: {}, inputColors: {}, appearance: 'light', colorFamily: 'basic' });
   assert.equal(nodes(render()).find(node => node.type === 'SettingsRow' && node.props.label === 'Appearance')!.props.value, 'Light', 'Basic keeps the released row text');
@@ -140,7 +140,7 @@ test('Appearance dialog offers four colors and three modes, applies each at once
   assert.deepEqual(calls, ['color basic'], 'leaving Obsidian writes only the color; the appearance key is untouched');
 });
 
-test('web Appearance starts on the selected color, keeps Tab inside Color, Mode and Done, and Escape restores the row', async () => {
+test('web Appearance starts on the selected color, keeps Tab inside Color, Mode and Close appearance, and Escape restores the row', async () => {
   let states: any[] = [], cursor = 0, effects: (() => any)[] = [], deps: Record<number, any[]> = {}, active: any = null;
   const listeners: Record<string, ((event: any) => void)[]> = {};
   const element = (name: string, group?: any) => ({ name, disabled: false, focus() { active = this; }, getAttribute: () => null, closest: () => group ?? null });
@@ -162,7 +162,7 @@ test('web Appearance starts on the selected color, keeps Tab inside Color, Mode 
   appearance.props.rowRef.current = row; appearance.props.onPress();
   tree = render();
   const refs = nodes(tree).filter(node => node.type === 'View' && node.props.ref).map(node => node.props.ref);
-  refs[0].current = { querySelector: (selector: string) => selector.includes('color') ? color : mode };
+  refs[0].current = { querySelector: (selector: string) => selector.includes('color') ? color : selector.includes('mode') ? mode : null };
   refs[1].current = { querySelector: () => done };
   commit();
   assert.equal(active, color, 'focus starts on the selected color');

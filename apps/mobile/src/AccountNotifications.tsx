@@ -76,6 +76,6 @@ export default function AccountNotifications({ session, push, busy, onBusyChange
             </>}
         </>}
         {!!error && <><ErrorText>{error}</ErrorText>{!preferences && <Button title="Retry" disabled={busy || working} onPress={() => void load()} />}</>}
-      </DialogScrollBody><Dialog.Actions><Button title="Done" kind="text" disabled={busy} onPress={close} /></Dialog.Actions></KeyboardDialog>
+      </DialogScrollBody><Dialog.Actions><Button title="Close notifications" kind="text" disabled={busy} onPress={close} /></Dialog.Actions></KeyboardDialog>
   </>;
 }

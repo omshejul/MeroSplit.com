@@ -50,7 +50,7 @@ function production(file: string, extra: Record<string, any> = {}) {
 function prepareJoin(app: ReturnType<typeof production>, props: any, title = 'Join as new', name = 'Friend') {
   button(app.render('GroupJoinDialog', props), title).props.onPress();
   component(app.render('GroupJoinDialog', props), 'TextField').props.onChangeText(name);
-  button(app.render('GroupJoinDialog', props), 'Continue').props.onPress();
+  button(app.render('GroupJoinDialog', props), 'Review join').props.onPress();
   return app.render('GroupJoinDialog', props);
 }
 
@@ -610,7 +610,7 @@ test('full-screen join keeps its header inside a modal-local safe area through c
   states.push(['loaded', app.render('GroupJoinDialog', props)]);
   button(states.at(-1)![1], 'This is me').props.onPress();
   states.push(['name', app.render('GroupJoinDialog', props)]);
-  button(states.at(-1)![1], 'Continue').props.onPress();
+  button(states.at(-1)![1], 'Review join').props.onPress();
   states.push(['confirmation', app.render('GroupJoinDialog', props)]);
   button(states.at(-1)![1], 'Join as John').props.onPress(); await tick();
   states.push(['rejected409', app.render('GroupJoinDialog', props)]);

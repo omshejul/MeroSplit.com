@@ -58,7 +58,7 @@ function harness(os = 'ios') {
   };
 }
 
-test('Me has one settings row, opens a persistent scrolling dialog and keeps Done outside the body', async () => {
+test('Me has one settings row, opens a persistent scrolling dialog and keeps Close connections outside the body', async () => {
   const app = harness(); let tree = app.render(); await app.flush(); tree = app.render();
   assert.equal(one(tree, 'SettingsRow').props.label, 'Connect MCP');
   assert.equal(one(tree, 'KeyboardDialog').props.visible, false);
@@ -66,9 +66,9 @@ test('Me has one settings row, opens a persistent scrolling dialog and keeps Don
   one(tree, 'SettingsRow').props.onPress(); tree = app.render();
   assert.equal(one(tree, 'KeyboardDialog').props.visible, true);
   assert.ok(elements(one(tree, 'ScrollBody')).some(node => node.type === 'Text' && node.children.includes('Loading connections…')));
-  assert.equal(button(tree, 'Done').props.disabled, false, 'loading cannot trap someone in the dialog');
-  assert.equal(elements(one(tree, 'ScrollBody')).includes(button(tree, 'Done')), false);
-  assert.equal(one(tree, 'Actions').children[0], button(tree, 'Done'));
+  assert.equal(button(tree, 'Close connections').props.disabled, false, 'loading cannot trap someone in the dialog');
+  assert.equal(elements(one(tree, 'ScrollBody')).includes(button(tree, 'Close connections')), false);
+  assert.equal(one(tree, 'Actions').children[0], button(tree, 'Close connections'));
   await turn(); tree = app.render();
   assert.deepEqual(app.calls, [{ session, path: '/me/mcp', method: 'GET' }]);
   const text = elements(tree).filter(node => node.type === 'Text').flatMap(node => node.children).join(' ');
@@ -76,7 +76,7 @@ test('Me has one settings row, opens a persistent scrolling dialog and keeps Don
   button(tree, 'Setup instructions').props.onPress(); button(tree, 'Share setup prompt').props.onPress(); await turn();
   assert.deepEqual(app.urls, ['https://merosplit.com/mcp/setup']);
   assert.deepEqual(app.shares, [{ message: 'Connect MeroSplit to this client using the instructions at https://merosplit.com/mcp/setup, then verify with get_account_context.' }]);
-  button(tree, 'Done').props.onPress(); assert.equal(one(app.render(), 'KeyboardDialog').props.visible, false);
+  button(tree, 'Close connections').props.onPress(); assert.equal(one(app.render(), 'KeyboardDialog').props.visible, false);
   assert.equal(app.focusCount(), 1); app.unmount();
 });
 
@@ -84,18 +84,18 @@ test('Disconnect keeps shared busy guards, exact selected ID, one request and a 
   const app = harness(); let finish!: () => void;
   app.respond(async (_active, _path, method) => method === 'DELETE' ? new Promise<void>(resolve => { finish = resolve; }) : { connections: [{ id: 'client/one', client_name: 'Assistant One' }] });
   let tree = app.render(); await app.flush(); one(tree, 'SettingsRow').props.onPress(); await turn(); tree = app.render();
-  const disconnect = button(tree, 'Disconnect'), done = button(tree, 'Done');
+  const disconnect = button(tree, 'Disconnect'), done = button(tree, 'Close connections');
   assert.equal(disconnect.props.accessibilityLabel, 'Disconnect Assistant One');
   disconnect.props.onPress(); disconnect.props.onPress(); done.props.onPress(); tree = app.render();
   assert.equal(one(tree, 'KeyboardDialog').props.visible, true);
   assert.equal(one(tree, 'KeyboardDialog').props.dismissable, false);
   one(tree, 'KeyboardDialog').props.onDismiss(); assert.equal(app.focusCount(), 0);
-  for (const title of ['Done', 'Disconnect', 'Refresh', 'Share setup prompt', 'Setup instructions']) assert.equal(button(tree, title).props.disabled, true);
+  for (const title of ['Close connections', 'Disconnect', 'Refresh', 'Share setup prompt', 'Setup instructions']) assert.equal(button(tree, title).props.disabled, true);
   assert.deepEqual(app.busy, [true]);
   assert.equal(app.calls.filter(call => call.method === 'DELETE').length, 1);
   assert.equal(app.calls[1].path, '/me/mcp/client%2Fone');
   finish(); await turn(); assert.deepEqual(app.busy, [true, false]);
-  tree = app.render(); assert.equal(button(tree, 'Done').props.disabled, false);
+  tree = app.render(); assert.equal(button(tree, 'Close connections').props.disabled, false);
   assert.equal(app.calls.at(-1).method, 'GET'); app.unmount();
 });
 

@@ -34,6 +34,6 @@ export default function ChatControls({ report, blocked, policyUrl, busy, error, 
       </>}
       {!!error && <Text accessibilityRole="alert" style={ui.error}>{error}</Text>}
     </ScrollView>
-    <Dialog.Actions>{report && <Button title="Cancel" kind="text" disabled={busy} onPress={onClose} />}<Button title={report ? 'Send report' : 'Done'} icon={report ? 'feedback' : 'check'} kind={report ? 'primary' : 'secondary'} disabled={busy || !!report && !reason.trim()} onPress={() => report ? onReport(reason) : onClose()} /></Dialog.Actions>
+    <Dialog.Actions>{report && <Button title="Cancel" kind="text" disabled={busy} onPress={onClose} />}<Button title={report ? 'Send report' : 'Close chat settings'} icon={report ? 'feedback' : 'check'} kind={report ? 'primary' : 'secondary'} disabled={busy || !!report && !reason.trim()} onPress={() => report ? onReport(reason) : onClose()} /></Dialog.Actions>
   </KeyboardDialog>;
 }

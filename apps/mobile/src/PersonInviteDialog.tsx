@@ -34,13 +34,13 @@ export default function PersonInviteDialog({ person, invites, busy, canInvite, c
       </View>)}
       {!requests.length && invites.filter(invite => !invite.approved).map(invite => <View key={invite.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
         <Text style={[ui.caption, { flex: 1 }]}>{invite.intended_email ? 'Email invite created' : 'Invite link active'}</Text>
-        <Button title="Revoke" icon="close" kind="text" compact disabled={busy} onPress={() => onRevoke(invite)} />
+        <Button title="Revoke invitation" icon="close" kind="text" compact disabled={busy} onPress={() => onRevoke(invite)} />
       </View>)}
       {!joined && <Text style={ui.caption}>Email invites can only be accepted by the invited email. You review requests made with a shared link.</Text>}
       {canRemove && <SettingsRow icon="remove" label="Remove person" danger chevron={false} disabled={busy || !!removeReason} onPress={onRemove} />}
       {!!removeReason && <Text style={ui.caption}>{removeReason}</Text>}
       {!!error && <ErrorText live>{error}</ErrorText>}
     </DialogScrollBody>
-    <Dialog.Actions><Button title="Done" icon="check" disabled={busy} onPress={onClose} /></Dialog.Actions>
+    <Dialog.Actions><Button title={joined ? 'Close person details' : 'Close invitation'} icon="check" disabled={busy} onPress={onClose} /></Dialog.Actions>
   </KeyboardDialog>;
 }

@@ -49,6 +49,6 @@ export function NameOnlyForm({ busy, onSave, autoFocus = true }: { autoFocus?: b
   return <View style={{ gap: 12 }}>
     <TextField label="Name" autoFocus={autoFocus} value={name} maxLength={120} autoCapitalize="words" autoComplete="name" autoCorrect={false} editable={!busy} onChangeText={setName} returnKeyType="done" onSubmitEditing={() => { if (!busy && name.trim()) void save(); }} />
     {!!error && <ErrorText>{error}</ErrorText>}
-    <Button title={busy ? 'Saving…' : 'Continue'} kind="primary" disabled={busy || !name.trim()} onPress={() => void save()} />
+    <Button title={busy ? 'Saving name…' : 'Save name'} kind="primary" disabled={busy || !name.trim()} onPress={() => void save()} />
   </View>;
 }

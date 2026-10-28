@@ -31,7 +31,7 @@ export function CodeSignIn({ email, code, resendSeconds, busy, onCode, onConfirm
   return <Form style={{ gap: 12 }} label="Sign-in code" onSubmit={() => { if (!busy && /^[0-9]{4}$/.test(code)) confirm(); }}>
     <Text style={ui.body}>Enter your four-digit sign-in code for {email.trim()}.</Text>
     <TextField label="4-digit code" value={code} onChangeText={value => onCode(value.replace(/\D/g, '').slice(0, 4))} maxLength={4} autoCorrect={false} autoCapitalize="none" autoComplete="one-time-code" keyboardType="number-pad" />
-    <Button title={busy && action === 'confirm' ? 'Signing in…' : 'Continue'} accessibilityLabel="Continue" kind="primary" style={{ borderRadius: 12 }} contentStyle={{ minHeight: 48 }} disabled={busy || !/^[0-9]{4}$/.test(code)} onPress={confirm} />
+    <Button title={busy && action === 'confirm' ? 'Signing in…' : 'Sign in'} accessibilityLabel="Sign in" kind="primary" style={{ borderRadius: 12 }} contentStyle={{ minHeight: 48 }} disabled={busy || !/^[0-9]{4}$/.test(code)} onPress={confirm} />
     <Button title={busy && action === 'resend' ? 'Sending…' : resendSeconds > 0 ? `Resend in ${resendSeconds}s` : 'Resend code'} kind="text" contentStyle={{ minHeight: 48 }} disabled={busy || resendSeconds > 0} onPress={resend} />
     <Button title="Use another email" kind="text" contentStyle={{ minHeight: 48 }} disabled={busy} onPress={onChangeEmail} />
   </Form>;

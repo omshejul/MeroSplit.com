@@ -83,7 +83,7 @@ export function PaymentHelpDialog({ kind = 'failed', visible, name, vpa, onClose
         {kind === 'failed' && <Text style={ui.body}>If the payment failed and no money was debited, copy this UPI ID and try paying inside your UPI app. If it is pending or money was debited, check that payment before trying again.</Text>}
         <PaymentAddress name={name} vpa={vpa} />
       </DialogScrollBody>
-      <Dialog.Actions><Button title="Done" kind="text" onPress={onClose} /></Dialog.Actions>
+      <Dialog.Actions><Button title="Close payment help" kind="text" onPress={onClose} /></Dialog.Actions>
     </DialogFocus>
   </KeyboardDialog>;
 }

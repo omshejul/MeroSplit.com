@@ -7,9 +7,9 @@ import * as accounting from '../src/accounting.ts';
 
 const source = ts.createSourceFile('ExpenseForm.tsx', readFileSync(new URL('../src/ExpenseForm.tsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
 const body = source.statements.filter(n => !ts.isImportDeclaration(n)).map(n => n.getText(source).replace(/^export (?:default )?/, '')).join('\n');
-const env: any = { currencySymbol, ...accounting, React: { createElement: (type: any, props: any, ...children: any[]) => ({ type, props: props ?? {}, children }) },
-  StyleSheet: { create: (value: any) => value, hairlineWidth: 1 }, View: 'View', Text: 'Text', Button: 'Button', Avatar: 'Avatar', TextField: 'TextField',
-  useUI: () => ({ ui: {}, palette: { line: '#ddd', accent: '#639', outline: '#888' }, dark: false }) };
+const env: any = { animateLayout() {}, currencySymbol, ...accounting, React: { createElement: (type: any, props: any, ...children: any[]) => ({ type, props: props ?? {}, children }) },
+  StyleSheet: { create: (value: any) => value, hairlineWidth: 1 }, View: 'View', Text: 'Text', Button: 'Button', Avatar: 'Avatar', Icon: 'Icon', TextField: 'TextField',
+  useUI: () => ({ ui: {}, motion: { enabled: false }, palette: { line: '#ddd', accent: '#639', outline: '#888' }, dark: false }) };
 const { PersonChoice, SplitFields, PayerFields } = new Function('env', `with(env){${ts.transpile(body, { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React })};return {PersonChoice, SplitFields, PayerFields};}`)(env);
 function nodes(tree: any, type: any): any[] {
   if (Array.isArray(tree)) return tree.flatMap(n => nodes(n, type));
