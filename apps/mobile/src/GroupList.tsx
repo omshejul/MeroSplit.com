@@ -1,4 +1,3 @@
-import StaggerItem from './StaggerItem';
 import React from 'react';
 import Mascot from './Mascot';
 import { StyleSheet, View } from 'react-native';
@@ -28,7 +27,7 @@ export default function GroupList({ groups, commands, userId, busy, direct, empt
     const caption = <Text style={ui.caption}>{emptyLabel ?? (direct ? 'No people yet' : 'No groups yet')}</Text>;
     return decorated && !direct ? <Mascot size="empty" visible={emptyVerified && !busy && !commands.length}>{caption}</Mascot> : caption;
   }
-  return <View role="list" accessibilityLabel={direct ? 'People' : 'Groups'} style={[styles.list, { backgroundColor: palette.surface }]}>{groups.map((row, index) => <StaggerItem key={row.group.id} index={index}><View role="listitem"><GroupListRow row={row} waiting={commands.filter(value => value.group_id === row.group.id)} userId={userId} busy={busy} onOpen={() => onOpen(row)} /></View></StaggerItem>)}</View>;
+  return <View role="list" accessibilityLabel={direct ? 'People' : 'Groups'} style={[styles.list, { backgroundColor: palette.surface }]}>{groups.map(row => <View key={row.group.id} role="listitem"><GroupListRow row={row} waiting={commands.filter(value => value.group_id === row.group.id)} userId={userId} busy={busy} onOpen={() => onOpen(row)} /></View>)}</View>;
 }
 const styles = StyleSheet.create({
   list: { borderRadius: radii.surface, paddingHorizontal: 12 },

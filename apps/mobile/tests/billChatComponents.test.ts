@@ -26,7 +26,7 @@ function component(db: any, send: typeof request, extra: Record<string, any> = {
   let starts = 0, stops = 0;
   const env: Record<string, any> = { APP_ORIGIN, ...chat, React: { createElement: (type: any, props: any, ...children: any[]) => ({ type, props: props ?? {}, children }) },
     Platform: { OS: 'native' }, KeyboardAvoidingView: 'KeyboardAvoidingView', useSafeAreaInsets: () => ({ top: 24, bottom: 24 }), storageIsDurable: () => true, View: 'View', BottomSafeArea: 'BottomSafeArea', Text: 'Text', FlatList: 'FlatList', ScrollView: 'ScrollView', Button: 'Button', TextField: 'TextField', TextInput: 'TextInput', Icon: 'Icon', ChatComposerSurface: 'ChatComposerSurface', IconAction: 'IconAction', SettingsRow: 'SettingsRow', ChatControls: 'ChatControls', ChatMenu: 'ChatMenu', KeyboardDialog: 'KeyboardDialog', Dialog: Object.assign(() => {}, { Title: 'Title', Content: 'Content', Actions: 'Actions' }),
-    Crypto: { randomUUID: () => 'synthetic-client-uuid' }, ApiError, accountOwner, request: send, getDatabase: async () => db, useUI: () => ({ ui: {}, palette: {} }), useWindowDimensions: () => ({ height: 720 }), Linking: { openURL: async () => {} },
+    Crypto: { randomUUID: () => 'synthetic-client-uuid' }, ApiError, accountOwner, request: send, getDatabase: async () => db, useUI: () => ({ ui: {}, palette: {}, motion: { enabled: true } }), useWindowDimensions: () => ({ height: 720 }), Linking: { openURL: async () => {} },
     sendChatMessage: (...args: any[]) => chat.sendChatMessage(args[0], args[1], args[2], args[3], send),
     startChatReads: (_session: any, _path: string, _known: any, onPage: any, onError: any) => { starts++; receive = onPage; fail = onError; return { stop: () => stops++, refresh: () => {}, older: async () => {}, hasOlder: () => true }; },
     useState: (initial: any) => { const id = cursor++; if (!(id in states)) states[id] = typeof initial === 'function' ? initial() : initial; return [states[id], (value: any) => { states[id] = typeof value === 'function' ? value(states[id]) : value; }]; },
@@ -252,9 +252,17 @@ test('Quiet receipt keeps the same bubble key across server confirmation and exc
   try {
     await migrate(db); app.render(); await app.commit(); app.page(page([]));
     let tree = app.render(); await app.commit();
+    const scrolls: any[] = [];
+    let initial = find(tree, 'FlatList'); initial.props.ref.current = { scrollToOffset: (value: any) => scrolls.push(value) };
+    initial.props.onContentSizeChange(320, 80);
+    initial.props.onScrollBeginDrag(); initial.props.onScroll({ nativeEvent: { contentOffset: { y: 200 } } });
     composer(tree).props.onChange('Yes, ₹200 each.'); tree = app.render(); await app.commit();
     composer(tree).props.onSend(); await tick(); tree = app.render(); await app.commit();
     let flat = find(tree, 'FlatList'), row = flat.props.data[0];
+    flat.props.onContentSizeChange(320, 160);
+    assert.deepEqual(scrolls.at(-1), { offset: 0, animated: false }, 'first local message positions the empty history immediately');
+    flat.props.onContentSizeChange(320, 180);
+    assert.deepEqual(scrolls.at(-1), { offset: 0, animated: true }, 'sending follows the pending bubble without waiting for confirmation');
     assert.equal(row.pending.text, 'Yes, ₹200 each.');
     assert.equal(flat.props.inverted, true);
     const key = flat.props.keyExtractor(row);
@@ -318,4 +326,26 @@ test('Quiet receipt labels offline and rejected messages without claiming they w
     assert.ok(button(rejected, 'Edit message'));
     assert.ok(nodes(rejected).some(node => node.props.accessibilityLabel === 'Not sent'));
   } finally { app.unmount(); raw.close(); }
+});
+
+for (const motion of [true, false]) test(`Chat follows new messages smoothly only when appropriate, motion=${motion}`, async () => {
+  const raw = new DatabaseSync(':memory:'), db = sqliteAdapter(raw), scrolls: any[] = [];
+  const app = component(db, async <T>() => ({ seen: 1 }) as T, { useUI: () => ({ ui: {}, palette: {}, motion: { enabled: motion } }) });
+  try {
+    await migrate(db); let tree = app.render(); await app.commit();
+    let flat = find(tree, 'FlatList'); flat.props.ref.current = { scrollToOffset: (v: any) => scrolls.push(v) };
+    flat.props.onContentSizeChange(320, 0);
+    app.page(page([message('1')])); tree = app.render(); await app.commit(); flat = find(tree, 'FlatList'); flat.props.onContentSizeChange(320, 100);
+    assert.equal(scrolls.at(-1).animated, false, 'initial history is positioned immediately');
+    app.page(page([message('2')])); tree = app.render(); await app.commit(); flat = find(tree, 'FlatList'); flat.props.onContentSizeChange(320, 200);
+    assert.equal(scrolls.at(-1).animated, motion, 'new incoming message follows smoothly');
+    flat.props.onScroll({ nativeEvent: { contentOffset: { y: 180 } } }); const following = scrolls.length;
+    app.page(page([message('25')])); tree = app.render(); await app.commit(); flat = find(tree, 'FlatList'); flat.props.onContentSizeChange(320, 240);
+    assert.equal(scrolls.length, following + 1, 'messages arriving during programmatic scrolling keep following');
+    flat.props.onScrollBeginDrag(); flat.props.onScroll({ nativeEvent: { contentOffset: { y: 300 } } }); const before = scrolls.length;
+    app.page(page([message('3')])); tree = app.render(); await app.commit(); flat = find(tree, 'FlatList'); flat.props.onContentSizeChange(320, 200);
+    assert.equal(scrolls.length, before, 'incoming message cannot pull the reader away');
+    assert.ok(button(tree, 'New messages')); button(tree, 'New messages').props.onPress();
+    assert.deepEqual(scrolls.at(-1), { offset: 0, animated: motion });
+  } finally { app.unmount(); await chat.flushChatWrites(); raw.close(); }
 });
