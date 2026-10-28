@@ -8,6 +8,8 @@ import pytest
 from .category_gateway import (
     CATEGORIES,
     ENDPOINT,
+    ICONS,
+    INSTRUCTIONS,
     MODEL,
     CategoryUnavailable,
     decision_category,
@@ -16,11 +18,11 @@ from .category_gateway import (
 
 
 def decision(category="food", probability=0.95):
-    weights = {key: (1 - probability) / (len(CATEGORIES) - 1) for key in CATEGORIES}
-    weights[category] = probability
+    weights = {key: (1 - probability) / (len(ICONS) - 1) for key in ICONS}
+    weights[CATEGORIES[category]] = probability
     return {
         "model": MODEL,
-        "answers": {"category": {"type": "choice", "choice": category, "probabilities": weights}},
+        "answers": {"icon": {"type": "choice", "choice": CATEGORIES[category], "probabilities": weights}},
     }
 
 
@@ -40,19 +42,19 @@ def test_unknown_response_is_not_a_category(bad):
 )
 def test_malformed_probabilities_never_invent_an_icon(change):
     data = deepcopy(decision())
-    answer = data["answers"]["category"]
+    answer = data["answers"]["icon"]
     if change == "unknown":
         answer["probabilities"]["invented"] = 0
     elif change == "missing":
-        answer["probabilities"].pop("general")
+        answer["probabilities"].pop("Invoice01Icon")
     elif change == "nan":
-        answer["probabilities"]["food"] = float("nan")
+        answer["probabilities"]["Restaurant01Icon"] = float("nan")
     elif change == "boolean":
-        answer["probabilities"]["food"] = True
+        answer["probabilities"]["Restaurant01Icon"] = True
     elif change == "wrong_type":
         answer["type"] = "score"
     else:
-        answer["probabilities"]["food"] = 0.5
+        answer["probabilities"]["Restaurant01Icon"] = 0.5
     assert decision_category(data) is None
 
 
@@ -69,7 +71,12 @@ def test_outbound_request_contains_only_title_and_fixed_definitions_without_fall
     payload = json.loads(request.data)
     assert set(payload) == {"model", "state", "questions"}
     assert payload["model"] == MODEL and payload["state"] == "Synthetic dinner"
-    assert payload["questions"]["category"]["criteria"] == CATEGORIES
+    assert payload["questions"] == {"icon": {
+        "type": "choice", "instructions": INSTRUCTIONS, "criteria": ICONS,
+    }}
+    assert INSTRUCTIONS == "Pick the icon from Hugeicons Core Free (@hugeicons/core-free-icons) that best represents this title."
+    assert len(ICONS) == len(CATEGORIES) == 75
+    assert all(key == value for key, value in ICONS.items())
     assert request.headers["Authorization"] == "Bearer synthetic-key"
 
 
@@ -95,13 +102,19 @@ def test_provider_failure_does_not_echo_a_title_key_or_provider_error_body():
 
 def test_highest_probability_wins_even_if_the_reported_choice_disagrees():
     data = decision("cycling", 0.3)
-    data["answers"]["category"]["choice"] = "general"
+    data["answers"]["icon"]["choice"] = "Invoice01Icon"
     assert decision_category(data) == "cycling"
 
 
 def test_exact_ties_use_the_fixed_category_order():
     data = decision()
-    answer = data["answers"]["category"]
-    answer["probabilities"] = {key: 0 for key in reversed(CATEGORIES)}
-    answer["probabilities"].update(food=0.5, rent=0.5)
+    answer = data["answers"]["icon"]
+    answer["probabilities"] = {key: 0 for key in reversed(ICONS)}
+    answer["probabilities"].update(Restaurant01Icon=0.5, Home01Icon=0.5)
     assert decision_category(data) == "food"
+
+
+def test_old_category_response_cannot_populate_the_new_icon_cache():
+    data = decision()
+    data["answers"]["category"] = data["answers"].pop("icon")
+    assert decision_category(data) is None

@@ -6,8 +6,7 @@ from django.contrib.auth import get_user_model
 from django.db import connection
 
 from . import expense_categories as categories
-from .category_gateway import PREVIOUS_DEFINITION_REVISION
-from .models import Change, Expense, ExpenseCategoryCache, ExpenseNotice
+from .models import Change, Expense, ExpenseCategoryCache, ExpenseCategoryDecision, ExpenseNotice
 from .test_api import authenticated_client, uid
 from .test_api import client as client
 from .test_api import group as group
@@ -19,10 +18,10 @@ pytestmark = pytest.mark.django_db(transaction=True)
 
 
 def run():
-    migration = importlib.import_module("ledger.migrations.0035_top_category_icons")
+    migration = importlib.import_module("ledger.migrations.0036_icon_name_choices")
     assert migration.REVISION == categories.cache_revision()
     with connection.schema_editor() as editor:
-        migration.backfill_top_choice(apps, editor)
+        migration.backfill_icon_names(apps, editor)
 
 
 def test_backfill_queues_once_across_unrelated_accounts_without_changing_bills(client, group, monkeypatch):
@@ -53,14 +52,38 @@ def test_backfill_queues_once_across_unrelated_accounts_without_changing_bills(c
     assert before == (list(Expense.objects.values()), list(Change.objects.values()), list(ExpenseNotice.objects.values()))
 
 
-def test_shared_cache_carries_forward_a_valid_previous_result_and_survives_its_owner(client, group):
+@pytest.mark.parametrize("read_first", [False, True])
+def test_new_prompt_rechecks_previous_ready_results_in_backfill_and_on_read(client, group, read_first):
     body = bill(client, group, description="Coffee")
     previous_owner = get_user_model().objects.create_user(username=uid())
+    previous = importlib.import_module("ledger.migrations.0035_top_category_icons")
     ExpenseCategoryCache.objects.create(owner=previous_owner, title_digest=categories.normalized_digest("coffee"),
-        definition_revision=categories.cache_revision(PREVIOUS_DEFINITION_REVISION), state="ready", category="coffee")
+        definition_revision=previous.REVISION, state="ready", category="coffee")
+    if read_first:
+        assert icons(client, body).json()["items"][0]["state"] == "pending"
     run()
-    assert icons(client, body).json()["items"][0]["category"] == "coffee"
+    assert icons(client, body).json()["items"][0]["category"] is None
     shared = ExpenseCategoryCache.objects.get(owner=None)
     previous_owner.delete()
-    assert ExpenseCategoryCache.objects.filter(pk=shared.pk, state="ready", category="coffee").exists()
-    assert categories.process_category_decisions(evaluate=lambda *args: pytest.fail("Must reuse existing successful result")) == 0
+    assert ExpenseCategoryCache.objects.filter(pk=shared.pk, state="pending", category="").exists()
+    assert categories.process_category_decisions(evaluate=lambda *args: "tea") == 1
+    assert icons(client, body).json()["items"][0]["category"] == "tea"
+
+
+@pytest.mark.parametrize("old_state", ["pending", "claimed", "uncertain", "failed", "ready"])
+def test_policy_refresh_is_separate_from_old_jobs_and_does_not_repeat_new_calls(client, group, old_state):
+    body = bill(client, group, description="Garbage man")
+    previous = importlib.import_module("ledger.migrations.0035_top_category_icons")
+    old_cache = ExpenseCategoryCache.objects.create(owner=None, title_digest=categories.normalized_digest(body["description"]),
+        definition_revision=previous.REVISION, state=old_state, category="utilities" if old_state == "ready" else "")
+    old_binding = ExpenseCategoryDecision.objects.create(expense_id=body["id"], requested_by=client.actor, cache=old_cache,
+        title_digest=categories.title_digest(body["description"]), definition_revision=previous.REVISION, state=old_state)
+    run()
+    old_cache.refresh_from_db()
+    old_binding.refresh_from_db()
+    assert old_cache.state == ("uncertain" if old_state == "pending" else old_state)
+    assert old_binding.state == ("stale" if old_state == "pending" else old_state)
+    assert categories.process_category_decisions(evaluate=lambda *args: "wastecollection") == 1
+    assert icons(client, body).json()["items"][0]["category"] == "wastecollection"
+    run()
+    assert categories.process_category_decisions(evaluate=lambda *args: pytest.fail("Already checked with new prompt")) == 0

@@ -16,8 +16,6 @@ from ninja.errors import HttpError
 from .category_gateway import (
     CATEGORIES,
     DEFINITION_REVISION,
-    LEGACY_DEFINITION_REVISION,
-    PREVIOUS_DEFINITION_REVISION,
     CategoryUnavailable,
     evaluate_title,
 )
@@ -57,19 +55,10 @@ def _binding(actor, expense):
     error = legacy.last_error if legacy else ""
     if legacy and legacy.state == "claimed":
         state, error = "uncertain", "legacy_dispatch"
-    cache, created = ExpenseCategoryCache.objects.select_for_update().get_or_create(
+    cache, _ = ExpenseCategoryCache.objects.select_for_update().get_or_create(
         owner=None, title_digest=normalized_digest(expense.description), definition_revision=revision,
         defaults={"state": state, "last_error": error, "category": legacy.category if legacy and state == "ready" else ""},
     )
-    if created and cache.state == "pending":
-        # Existing successful results were already the highest choice. Keep the
-        # first one for everyone; unresolved old results get the new policy.
-        previous = ExpenseCategoryCache.objects.filter(
-            title_digest=cache.title_digest, definition_revision__in=[cache_revision(PREVIOUS_DEFINITION_REVISION), cache_revision(LEGACY_DEFINITION_REVISION)],
-            state="ready", category__in=CATEGORIES,
-        ).exclude(category="general").order_by("pk").first()
-        if previous:
-            cache.state, cache.category = "ready", previous.category
     row, _ = ExpenseCategoryDecision.objects.get_or_create(
         expense=expense, requested_by=actor, title_digest=raw, definition_revision=revision,
         defaults={"cache": cache},
