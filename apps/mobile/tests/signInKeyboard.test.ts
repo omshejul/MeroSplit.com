@@ -12,6 +12,42 @@ const babel = nativeRequire('@babel/core');
 const presetRequire = createRequire(nativeRequire.resolve('babel-preset-expo'));
 type Node = { type: any; props: any; children: any[] };
 const React = { createElement: (type: any, props: any, ...children: any[]): Node => ({ type, props: props ?? {}, children }) };
+
+function chatViewport(os: string, top: number) {
+  const host = keyboardBoundary(os);
+  const source = ts.createSourceFile('BillChatScreen.tsx', readFileSync(new URL('../src/BillChatScreen.tsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const screen = source.statements.find(n => ts.isFunctionDeclaration(n) && n.name?.text === 'BillChatScreen') as ts.FunctionDeclaration;
+  const returned = screen.body!.statements.find(ts.isReturnStatement)!.expression as ts.JsxElement;
+  const root = ts.factory.createJsxSelfClosingElement(returned.openingElement.tagName, undefined, returned.openingElement.attributes);
+  const viewport = screen.body!.statements.find(n => ts.isVariableStatement(n) && n.declarationList.declarations.some(d => d.name.getText(source) === 'Viewport'));
+  const code = `${viewport?.getText(source) ?? ''}\nconst tree=${ts.createPrinter().printNode(ts.EmitHint.Unspecified, root, source)};return tree;`;
+  const tree = new Function('env', `with(env){${ts.transpile(code, {target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.React})}}`)({ React, Platform: {OS:os}, KeyboardAvoidingView:host.KAV, View:'View', insets:{top} });
+  return {...host,tree};
+}
+
+test('chat composer stays above Android IME, restores on hide and avoids double shrink', async () => {
+  const top=35, bottom=24, header=56, window=800, keyboardTop=470, original=window-top-bottom-header;
+  const host=chatViewport('android',top), node=host.tree;
+  let instance:any, available=original;
+  if(node.type===host.KAV){
+    instance=new host.KAV({...node.props,children:'chat list and composer'});instance.componentDidMount();
+    await instance._onLayout({persist(){},nativeEvent:{layout:{x:0,y:header,width:390,height:original}}});
+    instance._onKeyboardChange({duration:0,endCoordinates:{screenY:keyboardTop}});await instance._updateBottomIfNecessary();
+    const style=flat(instance.render().props.style);available=(style.height??original)-(style.paddingBottom??0);
+  }
+  const composerBottom=top+header+available;
+  assert.ok(composerBottom<=keyboardTop,`Chat composer bottom ${composerBottom} is hidden behind keyboard starting at ${keyboardTop}`);
+  assert.equal(composerBottom,keyboardTop,'No extra bottom gap');
+  const resized=keyboardTop-top-header;
+  await instance._onLayout({persist(){},nativeEvent:{layout:{x:0,y:header,width:390,height:resized}}});await instance._updateBottomIfNecessary();
+  const resizedStyle=flat(instance.render().props.style);assert.equal((resizedStyle.height??resized)-(resizedStyle.paddingBottom??0),resized,'OS-resized windows must not shrink twice');
+  instance._onKeyboardChange(null);await instance._updateBottomIfNecessary();assert.equal(flat(instance.render().props.style).height,undefined);assert.equal(flat(instance.render().props.style).paddingBottom??0,0);
+  instance.componentWillUnmount();assert.equal(host.listeners.size,0);
+});
+
+test('chat keeps the existing iOS/web viewport without a second keyboard boundary',()=>{
+  for(const os of ['ios','web']){const {tree}=chatViewport(os,35);assert.equal(tree.type,'View');assert.equal(tree.props.behavior,undefined);assert.equal(tree.props.style.flex,1);}
+});
 const nodes = (value: any): Node[] => Array.isArray(value) ? value.flatMap(nodes) : value && typeof value === 'object' && 'children' in value ? [value, ...nodes(value.children)] : [];
 const one = (tree: Node, id: string) => { const found = nodes(tree).filter(n => n.props.testID === id); assert.equal(found.length, 1); return found[0]; };
 
