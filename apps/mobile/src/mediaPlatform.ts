@@ -21,7 +21,7 @@ export async function pickMedia(photo: boolean, avatar = false): Promise<PickedM
   let selected: { uri: string; name?: string | null; mimeType?: string | null; size?: number };
   if (photo) {
     const picker = await import('expo-image-picker');
-    const result = await picker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsMultipleSelection: false, quality: 0.85,
+    const result = await picker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsMultipleSelection: false, allowsEditing: avatar, ...(avatar ? { aspect: [1, 1] as [number, number] } : {}), quality: 0.85,
       preferredAssetRepresentationMode: picker.UIImagePickerPreferredAssetRepresentationMode.Compatible });
     if (result.canceled) return null;
     const asset = result.assets[0]; selected = { uri: asset.uri, name: asset.fileName, mimeType: asset.mimeType, size: asset.fileSize };

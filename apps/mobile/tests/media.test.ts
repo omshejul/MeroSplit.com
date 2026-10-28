@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
+import { readPrefetch, readScope } from '../src/prefetch.ts';
 import { ApiError, request } from '../src/api.ts';
 import { freshMediaUrl, mediaThumbnail, readPrivateMedia, uploadMedia, validateMedia } from '../src/media.ts';
 import type { PickedMedia } from '../src/media.ts';
@@ -134,4 +135,14 @@ test('PDF thumbnails use an authorized in-memory image; photos retain fresh priv
     await assert.rejects(mediaThumbnail(session, pdf, async <T>() => ({ data_url }) as T), /preview is unavailable/);
   }
   await assert.rejects(mediaThumbnail(session, pdf, async () => { throw new ApiError(404, 'File not found'); }), error => error instanceof ApiError && error.status === 404);
+});
+
+test('avatar upload invalidates the old profile before and after its multipart write', async () => {
+ const previousFormData=globalThis.FormData, scope=readScope(session);globalThis.FormData=NativeFormData as unknown as typeof FormData;readPrefetch.configure(scope,true);
+ try {
+  await readPrefetch.read(scope,'/me',async()=>({avatar:{id:'old'}}));assert.ok(readPrefetch.peek(scope,'/me'));
+  const send:typeof fetch=async()=>{assert.equal(readPrefetch.peek(scope,'/me'),undefined);await readPrefetch.read(scope,'/me',async()=>({avatar:{id:'old'}}));return new Response(JSON.stringify({avatar:{id:'new'}}),{headers:{'content-type':'application/json'}})};
+  await uploadMedia(session,'/me/avatar',file,'new',send);assert.equal(readPrefetch.peek(scope,'/me'),undefined);
+  const fresh=await readPrefetch.read(scope,'/me',async()=>({avatar:{id:'new'}}));assert.deepEqual(fresh,{avatar:{id:'new'}});
+ }finally{globalThis.FormData=previousFormData;readPrefetch.configure('',false)}
 });
