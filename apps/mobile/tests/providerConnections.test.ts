@@ -109,7 +109,7 @@ test('actual App callback adoption opens methods but only the authenticated hook
 });
 
 test('actual methods screen hides actions for linked/unknown accounts and keeps supported actions disabled when busy', () => {
-  const React = { createElement: (type: any, props: any, ...children: any[]) => ({ type, props: { ...props, children } }), Fragment: 'Fragment' };
+  const React = { createElement: (type: any, props: any, ...children: any[]): any => typeof type === 'function' ? type({ ...props, children }) : ({ type, props: { ...props, children } }), Fragment: 'Fragment' };
   const screen = load('src/SignInMethods.tsx', { react: React, 'react-native': { View: 'View', Image: 'Image', Platform: { OS: 'web' }, StyleSheet: { hairlineWidth: 1 } },
     'react-native-paper': { Text: 'Text' }, './ui': { Button: 'Button', Icon: 'Icon', useUI: () => ({ palette: {}, ui: {}, dark: false }) },
     './AppleSignInButton': { __esModule: true, default: 'Apple' }, './GoogleSignInButton': { __esModule: true, default: 'Google' },

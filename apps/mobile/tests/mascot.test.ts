@@ -1,3 +1,4 @@
+import { withSharedUI } from './componentHarness.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -9,7 +10,7 @@ const React = { Fragment: 'Fragment', createElement: (type: unknown, props: Reco
 const Mascot = () => null;
 function read(file: string) { return ts.createSourceFile(file, readFileSync(new URL(`../${file}`, import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX); }
 function execute(code: string, env: Record<string, any>) {
-  return new Function('env', `with(env) { const StaggerItem = 'StaggerItem'; ${ts.transpile(code, { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React })} }`)(env);
+  return new Function('env', `with(env) { const StaggerItem = 'StaggerItem'; ${ts.transpile(code, { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React })} }`)(withSharedUI(env));
 }
 function productionFunction(file: string, name: string, env: Record<string, any>) {
   const source = read(file); let found = '';

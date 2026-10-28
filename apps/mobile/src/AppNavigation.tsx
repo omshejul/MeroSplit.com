@@ -1,7 +1,10 @@
+import { pageWidthStyle } from './pageLayout';
+import AppLogo from './AppLogo';
+import FloatingActionContainer from './FloatingActionContainer';
 import BottomSafeArea from './BottomSafeArea';
 import AddActionButton from './AddActionButton';
 import React from 'react';
-import { Animated, Image, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
+import { Animated, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { Text } from 'react-native-paper';
@@ -21,13 +24,13 @@ export function AppFrame({ children, onTouchStart }: { children: React.ReactNode
   </View>;
 }
 
-export const pageWidthStyle = Platform.OS === 'web' ? { width: '100%' as const, maxWidth: 760, alignSelf: 'center' as const } : {};
+export { pageWidthStyle } from './pageLayout';
 export const pageContentStyle = { padding: 16, gap: 12, paddingBottom: 24, ...pageWidthStyle };
 
 export function ScreenHeader({ title, busy, onBack, onFeedback, brand = false, children, status }: { brand?: boolean; title: string; busy: boolean; onFeedback?: () => void; onBack?: () => void; children?: React.ReactNode; status?: React.ReactNode }) {
   const { palette } = useUI();
   return <View role="banner" style={styles.header}>
-    {brand && <Image source={require('../assets/brand/mark.png')} accessible={false} accessibilityIgnoresInvertColors style={{ width: 32, height: 32 }} />}
+    {brand && <AppLogo />}
     {onBack && <IconAction name="back" label="Back" onPress={onBack} />}
     <View style={styles.titleArea}>
       <Text style={[styles.title, { color: palette.text }]} accessibilityRole="header" aria-level={1} numberOfLines={1} ellipsizeMode="tail" accessibilityLabel={title}>{title}</Text>
@@ -57,11 +60,7 @@ export function AppTabs({ selected, busy, onSelect }: { selected: string; busy: 
   </TabBarSurface></BottomSafeArea>;
 }
 export function AddExpenseButton({ disabled, onPress }: { disabled: boolean; onPress: () => void }) {
-  return <BottomSafeArea pointerEvents="box-none" style={styles.floating}>
-    <View pointerEvents="box-none" style={[pageWidthStyle, styles.floatingContent]}>
-      <AddActionButton title="Add expense" disabled={disabled} onPress={onPress} />
-    </View>
-  </BottomSafeArea>;
+  return <FloatingActionContainer><AddActionButton title="Add expense" disabled={disabled} onPress={onPress} /></FloatingActionContainer>;
 }
 const styles = StyleSheet.create({
   floating: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingBottom: 16 },

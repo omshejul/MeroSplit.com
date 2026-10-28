@@ -1,3 +1,4 @@
+import { CloseDialogActions } from './DialogParts';
 import React from 'react';
 import { Text, View } from 'react-native';
 import type { Group, Participant } from './types';
@@ -41,6 +42,6 @@ export default function PersonInviteDialog({ person, invites, busy, canInvite, c
       {!!removeReason && <Text style={ui.caption}>{removeReason}</Text>}
       {!!error && <ErrorText live>{error}</ErrorText>}
     </DialogScrollBody>
-    <Dialog.Actions><Button title={joined ? 'Close person details' : 'Close invitation'} icon="check" disabled={busy} onPress={onClose} /></Dialog.Actions>
+    <CloseDialogActions title={joined ? 'Close person details' : 'Close invitation'} icon="check" disabled={busy} onClose={onClose} />
   </KeyboardDialog>;
 }

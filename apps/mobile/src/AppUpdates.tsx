@@ -1,3 +1,4 @@
+import { ErrorText } from './ui';
 import { Dialog } from './DialogParts';
 import React, { useEffect, useRef, useState } from 'react';
 import { Platform, View } from 'react-native';
@@ -6,7 +7,7 @@ import * as Updates from 'expo-updates';
 import Constants from 'expo-constants';
 import { requireOptionalNativeModule } from 'expo';
 import KeyboardDialog from './KeyboardDialog';
-import DialogFocus from './DialogFocus';
+
 import { DialogScrollBody } from './DialogParts';
 import LoadingSpinner from './LoadingSpinner';
 import { Button, useUI } from './ui';
@@ -75,18 +76,18 @@ export default function AppUpdates({ busy, online, onRestart }: { busy: boolean;
       {Platform.OS !== 'web' && !supported && <Text style={[ui.caption, { textAlign: 'center' }]}>Updates aren't available in this build.</Text>}
     </View>
     <KeyboardDialog visible={open} dismissable={!working} onDismiss={close}>
-      <DialogFocus active={open} busy={working} onEscape={close}>
+
         <Dialog.Title aria-level={2}>App updates</Dialog.Title>
         <DialogScrollBody maxHeight={240} gap={12}>
           <Text style={ui.body} accessibilityLiveRegion="polite">{status}</Text>
           {supported && (ready || available) && <Text style={ui.caption}>Downloaded updates may also apply the next time you open the app.</Text>}
-          {!!error && <Text style={ui.error} accessibilityRole="alert">{error}</Text>}
+          {!!error && <ErrorText live>{error}</ErrorText>}
         </DialogScrollBody>
         <Dialog.Actions><Button title="Close" kind="text" disabled={working} onPress={close} />
           {supported && <Button title={label} kind="primary" style={{ width: 132 }} disabled={busy || working}
             icon={({ color }) => <View style={{ width: 20, height: 20 }}><LoadingSpinner visible={working} color={color} label={status} /></View>} onPress={() => void act()} />}
         </Dialog.Actions>
-      </DialogFocus>
+
     </KeyboardDialog>
   </>;
 }

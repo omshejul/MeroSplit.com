@@ -1,3 +1,5 @@
+import { NoticeBanner } from './UIStates';
+import { PersonSelectionList } from './PersonChoice';
 import { currencySymbol } from './currency';
 import { useToast } from './Toast';
 import DetailDialog from './DetailDialog';
@@ -9,9 +11,9 @@ import { Alert } from './alerts';
 import { isPersonalPayment } from './personalBalances';
 import { addSettlement, formatMoney, integer, rupeesToPaise } from './accounting';
 import type { Group } from './types';
-import { Button, ErrorText, Icon, useUI } from './ui';
+import { Button, ErrorText, useUI } from './ui';
 import type { Palette } from './ui';
-import { AmountField, RadioChoice } from './FormFields';
+import { AmountField } from './FormFields';
 import { PaymentAddress, PaymentHelpDialog, UPIAppChooser, WebPaymentQuote } from './PaymentPanels';
 import { copyText } from './clipboard';
 import { availableUPIApps, buildUPIUrl, openUPIPayment, validateUPIPayment } from './upi';
@@ -34,8 +36,7 @@ function PaymentPersonChoices({ people, selected, label, direction, disabled, on
   const { ui } = useUI();
   return <>
     <Text style={ui.label}>{direction}</Text>
-    {people.map(person => <RadioChoice key={person.id} value={person.id} label={label(person.id)} accessibilityLabel={`${direction} ${label(person.id)}`}
-      selected={selected === person.id} disabled={disabled} onPress={() => onSelect(person.id)} />)}
+    <PersonSelectionList people={people} selected={selected} label={person => label(person.id)} disabled={disabled} onSelect={onSelect} />
   </>;
 }
 
@@ -249,7 +250,7 @@ export default function SettleForm({ group, initial, busy, selfId, onSave, onRev
   return <View style={styles.form}>
     <Text style={ui.caption}>{group.name}</Text>
     {!webQuote && <View style={styles.field}><Text style={ui.rowTitle}>From {label(sender)}</Text><Text style={ui.rowTitle}>To {label(recipient)}</Text></View>}
-    {group.archived && <Text style={ui.notice}>Reopen this group in settings before recording a payment.</Text>}
+    {group.archived && <NoticeBanner>Reopen this group in settings before recording a payment.</NoticeBanner>}
     {!webQuote && <><AmountField label={`Amount (${currencySymbol()})`} value={amount}
       onChangeText={value => { setAmount(value); setError(''); setWebQuote(null); }} editable={!disabled && !webQuote} placeholder="0" />
     <DetailDialog busy={disabled} title="Change people" icon="people">

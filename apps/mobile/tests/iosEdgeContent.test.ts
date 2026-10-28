@@ -1,3 +1,4 @@
+import { withSharedUI } from './componentHarness.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -8,7 +9,7 @@ function component(name:string,os:string){
  const fn=source.statements.find(n=>ts.isFunctionDeclaration(n)&&n.name?.text===name)!;
  const React={createElement:(type:any,props:any,...children:any[])=>({type,props:props??{},children})};
  const styles:any={floating:{position:'absolute',bottom:0,paddingBottom:16},floatingContent:{},tabs:{},title:{}};
- return new Function('env',`with(env){${ts.transpile(fn.getText(source),{target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.React}).replace('export ','')};return ${name};}`)({React,Platform:{OS:os},View:'View',SafeAreaView:'SafeAreaView',BottomSafeArea:'BottomSafeArea',Button:'Button',AddActionButton:'AddActionButton',TabBarSurface:'TabBarSurface',TabButton:'TabButton',tabs:[],styles,pageWidthStyle:{}});
+ return new Function('env',`with(env){${ts.transpile(fn.getText(source),{target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.React}).replace('export ','')};return ${name};}`)(withSharedUI({React,Platform:{OS:os},View:'View',SafeAreaView:'SafeAreaView',BottomSafeArea:'BottomSafeArea',Button:'Button',AddActionButton:'AddActionButton',TabBarSurface:'TabBarSurface',TabButton:'TabButton',tabs:[],styles,pageWidthStyle:{}}));
 }
 test('only sticky controls consume the iOS bottom inset, with unchanged Android/web placement',()=>{
  for(const os of ['ios','android','web']){
@@ -29,7 +30,7 @@ test('bottom controls drop the home-indicator inset with the iOS keyboard, then 
  const React={createElement:(type:any,props:any)=>({type,props})};
  for(const os of ['ios','android','web']){
   let visible=false;const listeners:any={};let cleanup:any;
-  const render=new Function('env',`with(env){${ts.transpile(source,{target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.React})};return BottomSafeArea;}`)({React,SafeAreaView:'SafeAreaView',Platform:{OS:os},Keyboard:{isVisible:()=>false,scheduleLayoutAnimation(){},addListener:(name:string,fn:any)=>{listeners[name]=fn;return{remove(){delete listeners[name];}};}},useState:()=>[visible,(v:boolean)=>visible=v],useEffect:(fn:any)=>{cleanup=fn();}});
+  const render=new Function('env',`with(env){${ts.transpile(source,{target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.React})};return BottomSafeArea;}`)(withSharedUI({React,SafeAreaView:'SafeAreaView',Platform:{OS:os},Keyboard:{isVisible:()=>false,scheduleLayoutAnimation(){},addListener:(name:string,fn:any)=>{listeners[name]=fn;return{remove(){delete listeners[name];}};}},useState:()=>[visible,(v:boolean)=>visible=v],useEffect:(fn:any)=>{cleanup=fn();}}));
   assert.deepEqual(render({}).props.edges,os==='ios'?['bottom']:[]);
   if(os==='ios'){listeners.keyboardWillShow({endCoordinates:{height:328}});assert.deepEqual(render({}).props.edges,[]);listeners.keyboardWillHide({endCoordinates:{height:0}});assert.deepEqual(render({}).props.edges,['bottom']);cleanup();assert.deepEqual(Object.keys(listeners),[]);}
   else assert.deepEqual(Object.keys(listeners),[]);

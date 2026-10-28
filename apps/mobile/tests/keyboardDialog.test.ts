@@ -1,3 +1,4 @@
+import { withSharedUI } from './componentHarness.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -16,7 +17,7 @@ function production(file: string, name: string) {
   let cursor = 0; const states: any[] = [];
   const scope = { ...env, useSafeAreaInsets: () => ({ top: 20, bottom: 0 }),
     useState: (initial: any) => { const i = cursor++; if (!(i in states)) states[i] = initial; return [states[i], (value: any) => { states[i] = value; }]; } };
-  const render = new Function('env', `with(env) { ${ts.transpile(code, { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React })}; return ${name}; }`)(scope);
+  const render = new Function('env', `with(env) { ${ts.transpile(code, { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React })}; return ${name}; }`)(withSharedUI(scope));
   return (props: any) => { cursor = 0; return render(props); };
 }
 env.DialogScrollBody = production('DialogParts.tsx', 'DialogScrollBody');
@@ -99,7 +100,7 @@ function paperModal() {
     Easing: { out: (value: unknown) => value, cubic: 'cubic' }, StyleSheet: { absoluteFill: {} }, AnimatedPressable: 'AnimatedPressable', View: 'View', Surface: 'Surface', styles: {}, BackHandler: {},
     addEventListener(_target: unknown, _event: string, fn: () => boolean) { back.push(fn); return { remove() { back.splice(back.indexOf(fn), 1); } }; },
   };
-  const modal = new Function('env', `with(env) { ${ts.transpile(declaration.getText(source), { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React })}; return Modal; }`)(scope);
+  const modal = new Function('env', `with(env) { ${ts.transpile(declaration.getText(source), { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React })}; return Modal; }`)(withSharedUI(scope));
   return {
     animations, back,
     render(props: any) {
@@ -164,9 +165,9 @@ test('Add person preserves drafts and action guards across hidden/open renders w
     const scroll = one(tree, 'ScrollView'), actions = one(tree, Dialog.Actions);
     assert.equal(scroll.props.keyboardShouldPersistTaps, 'handled');
     assert.equal(elements(scroll).includes(actions), false, 'actions must remain outside the scrolling input body');
-    const field = elements(tree).find(node => node.type === 'Field' && node.props.label === 'Email (optional)')!;
-    assert.equal(elements(tree).find(node => node.type === 'Field' && node.props.label === 'Name')!.props.autoFocus, true);
-    assert.equal(field.props.value, base.email); assert.equal(field.props.onChange, onEmail); field.props.onChange('edited@example.invalid');
+    const field = elements(tree).find(node => node.type === 'EmailField' && node.props.label === 'Email (optional)')!;
+    assert.equal(elements(tree).find(node => node.type === 'TextField' && node.props.label === 'Name')!.props.autoFocus, true);
+    assert.equal(field.props.value, base.email); assert.equal(field.props.onChangeText, onEmail); field.props.onChangeText('edited@example.invalid');
     const buttons = elements(actions).filter(node => node.type === 'Button');
     assert.equal(buttons[0].props.onPress, onClose); assert.equal(buttons[1].props.onPress, onSave);
   }

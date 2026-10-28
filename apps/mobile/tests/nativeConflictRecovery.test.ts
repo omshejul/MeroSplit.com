@@ -1,3 +1,4 @@
+import { withSharedUI } from './componentHarness.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -18,7 +19,7 @@ function find(predicate: (node: ts.Node) => boolean) {
   visit(app); assert.ok(result); return result;
 }
 function evaluate(code: string, env: object) {
-  return new Function('env', `with(env){${ts.transpile(code, { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React })}}`)({ React, Text: 'Text', ...env });
+  return new Function('env', `with(env){${ts.transpile(code, { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React })}}`)(withSharedUI({ React, Text: 'Text', ...env }));
 }
 function production(name: string, env: object) {
   const declaration = find(node => ts.isFunctionDeclaration(node) && node.name?.text === name);

@@ -1,3 +1,5 @@
+import { ErrorState } from './UIStates';
+
 import React, { useEffect, useRef, useState } from 'react';
 import { AppState, Linking, Platform, Text, View } from 'react-native';
 import NotificationSwitch from './NotificationSwitch';
@@ -140,6 +142,6 @@ export default function PushSettings({ push, busy, onBusyChange, onChanged }: { 
     <NotificationSwitch icon="phone" label="Push notifications" checked={state.enabled} disabled={disabled} onChange={value => void act(async () => { if (value) { if (await push.enable()) await onChanged?.(true); } else { await push.disable(); await onChanged?.(false); } })} />
     {(state.working || state.permission === 'denied' || state.pendingOff) && <Text style={ui.caption}>{state.working ? 'Updating…' : state.permission === 'denied' ? 'Blocked in phone settings.' : 'Waiting to turn off. Retry when connected.'}</Text>}
     {state.permission === 'denied' && <Button title="Open phone settings" kind="text" disabled={busy || state.working} onPress={() => void Linking.openSettings().catch(() => {})} />}
-    {!!state.error && <><Text accessibilityRole="alert" style={ui.error}>{state.error}</Text><Button title="Retry notifications" disabled={busy || state.working} onPress={() => void act(push.refresh)} /></>}
+    {!!state.error && <ErrorState error={state.error} retryLabel="Retry notifications" disabled={busy || state.working} onRetry={() => void act(push.refresh)} />}
   </View>;
 }

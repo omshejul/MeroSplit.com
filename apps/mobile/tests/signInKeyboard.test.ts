@@ -1,3 +1,4 @@
+import { withSharedUI } from './componentHarness.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -21,7 +22,7 @@ function chatViewport(os: string, top: number) {
   const root = ts.factory.createJsxSelfClosingElement(returned.openingElement.tagName, undefined, returned.openingElement.attributes);
   const viewport = screen.body!.statements.find(n => ts.isVariableStatement(n) && n.declarationList.declarations.some(d => d.name.getText(source) === 'Viewport'));
   const code = `${viewport?.getText(source) ?? ''}\nconst tree=${ts.createPrinter().printNode(ts.EmitHint.Unspecified, root, source)};return tree;`;
-  const tree = new Function('env', `with(env){${ts.transpile(code, {target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.React})}}`)({ React, Platform: {OS:os}, KeyboardAvoidingView:host.KAV, View:'View', insets:{top} });
+  const tree = new Function('env', `with(env){${ts.transpile(code, {target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.React})}}`)(withSharedUI({ React, Platform: {OS:os}, KeyboardAvoidingView:host.KAV, View:'View', insets:{top} }));
   return {...host,tree};
 }
 
@@ -89,7 +90,7 @@ function layout(os: string, top: number, visualViewport?: any) {
     require: () => 'mark', window: { visualViewport }, signInTopPadding, useUI: () => ({ palette: {}, ui: {} }), useSafeAreaInsets: () => ({ top, bottom: 24 }),
     useState: (initial: any) => { const i = cursor++; if (!(i in state)) state[i] = initial; return [state[i], (value: any) => { state[i] = value; }]; },
     useEffect: (effect: Function) => { if (!mounted) { const stop = effect(); if (stop) cleanup.push(stop); } } };
-  const render = new Function('env', `with(env){${ts.transpileModule(decl.getText(source).replace(/^export default /, ''), { compilerOptions: { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React } }).outputText};return SignInLayout;}`)(scope);
+  const render = new Function('env', `with(env){${ts.transpileModule(decl.getText(source).replace(/^export default /, ''), { compilerOptions: { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React } }).outputText};return SignInLayout;}`)(withSharedUI(scope));
   return { KAV, listeners, render: (props: any) => { cursor = 0; const tree = render(props); mounted = true; return tree; }, cleanup: () => cleanup.forEach(stop => stop()) };
 }
 
@@ -177,7 +178,7 @@ function nativeScrollHandlers(props: any) {
   const generate = presetRequire('@babel/generator').default;
   let dismissed = 0, focused = true;
   const env = { Platform: { OS: 'android' }, FrameRateLogger: { beginScroll() {} }, dismissKeyboard: () => { dismissed++; focused = false; }, TextInputState: { isTextInput: () => false } };
-  const Handlers = new Function('env', `with(env){return class { constructor(props){this.props=props;} _isAnimating=()=>false; _softKeyboardIsDetached=()=>false; _keyboardIsDismissible=()=>true; ${selected.map(node => generate(node).code).join('\n')} };}`)(env);
+  const Handlers = new Function('env', `with(env){return class { constructor(props){this.props=props;} _isAnimating=()=>false; _softKeyboardIsDetached=()=>false; _keyboardIsDismissible=()=>true; ${selected.map(node => generate(node).code).join('\n')} };}`)(withSharedUI(env));
   return { handler: new Handlers(props), dismissCount: () => dismissed, isFocused: () => focused };
 }
 
@@ -214,7 +215,7 @@ test('actual AppFrame owns safe-area top and only Android sign-in adds keyboard 
   for (const os of ['android', 'ios', 'web']) {
     const host = layout(os, top), child = host.render({ children: 'form', busy: false });
     const env = { React, View: 'View', SafeAreaView: 'SafeAreaView', StatusBar: 'StatusBar', KeyboardAvoidingView: host.KAV, Platform: { OS: os }, useUI: () => ({ palette: {}, dark: false }) };
-    const render = new Function('env', `with(env){${ts.transpileModule(frame.getText(source).replace(/^export /, ''), { compilerOptions: { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React } }).outputText};return AppFrame;}`)(env);
+    const render = new Function('env', `with(env){${ts.transpileModule(frame.getText(source).replace(/^export /, ''), { compilerOptions: { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React } }).outputText};return AppFrame;}`)(withSharedUI(env));
     const tree = render({ children: child });
     assert.ok(nodes(tree).find(n => n.type === 'SafeAreaView')!.props.edges.includes('top'));
     const active = nodes(tree).filter(n => n.type === host.KAV && n.props.behavior);

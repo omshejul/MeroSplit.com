@@ -1,3 +1,4 @@
+import { withSharedUI } from './componentHarness.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -34,10 +35,10 @@ function production(file: string, extra: Record<string, any> = {}) {
     ...extra,
   };
   const source = ts.createSourceFile(file, readFileSync(new URL(`../src/${file}`, import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
-  const body = source.statements.filter(node => !ts.isImportDeclaration(node)).map(node => node.getText(source).replace(/^export (?:default )?/, '')).join('\n');
+  const body = source.statements.filter(node => !ts.isImportDeclaration(node) && !ts.isExportDeclaration(node)).map(node => node.getText(source).replace(/^export (?:default )?/, '')).join('\n');
   const names = source.statements.filter(ts.isFunctionDeclaration).map(node => node.name?.text).filter(Boolean);
   const code = ts.transpile(body, { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React });
-  const functions = new Function('env', `with(env){ const StaggerItem = 'StaggerItem';${code}; return {${names.join(',')}};}`)(env);
+  const functions = new Function('env', `with(env){ const StaggerItem = 'StaggerItem';${code}; return {${names.join(',')}};}`)(withSharedUI(env));
   return {
     invoke(name: string, argument: any): any { return functions[name](argument); },
     render(name: string, props: any): Element { cursor = 0; return functions[name](props); },
@@ -466,7 +467,7 @@ test('the actual App restart guard blocks editing and waits for pending draft an
   const session={token:'current-account'},calls:string[]=[];
   const env:any={ready:true,session,expired:false,authHeld:false,foreground:true,screen:'home',tab:'Account',busy:false,reading:0,pulling:false,storageError:null,appLink:null,emailEntry:null,feedbackOpen:false,alertOpen:false,upiSetup:false,pushInvitationOpen:false,returnAttemptId:null,returns:[],reviewCommand:null,newPersonInvite:null,pushTarget:null,
    updateSafe:{current:false},activeSessionRef:{current:session},authEpoch:{current:1},lock:{current:false},AppState:{currentState:'active'},authHeldRef:{current:false},draftWrites:{current:Promise.resolve()},flushChatWrites:async()=>{calls.push('chat-flush');},accountOwner:()=> 'current-owner',restartForUpdate,...extra};
-  return {env,calls,restart:new Function('env',`with(env){ const StaggerItem = 'StaggerItem';${code};return restartUpdate;}`)(env)};
+  return {env,calls,restart:new Function('env',`with(env){ const StaggerItem = 'StaggerItem';${code};return restartUpdate;}`)(withSharedUI(env))};
  };
  for(const state of [{screen:'expense'},{screen:'settle'},{busy:true},{reading:1},{pushInvitationOpen:true},{authHeld:true},{returnAttemptId:'payment'},{reviewCommand:{}}]) {
   const app=make(state);
@@ -657,7 +658,7 @@ test('actual App join callback adopts only the active account and ignores late a
       getDatabase:async()=>({}),saveGroup:async(_db:any,owner:any)=>{assert.equal(owner,'a');calls.push('save');if(changeAt==='save')active.current.token='B';},
       forgetGroupInvite:()=>calls.push('forget'),saveGroupInvite:async()=>{},setAppLink(){},navigate(){calls.push('open');},load:async()=>{calls.push('load');if(changeAt==='load')active.current.token='B';},setPushOpportunity:(value:any)=>{assert.equal(value.token,'A');assert.equal(value.groupId,'g');calls.push('push-opportunity');}};
     const code=ts.transpile('const done='+callback!.getText(source),{target:ts.ScriptTarget.ES2022});
-    const run=new Function('env',`with(env){${code};return done;}`)(env);await run('g');
+    const run=new Function('env',`with(env){${code};return done;}`)(withSharedUI(env));await run('g');
     assert.deepEqual(calls,changeAt==='none'?['fetch','save','forget','open','load','push-opportunity']:changeAt==='load'?['fetch','save','forget','open','load']:changeAt==='before'?[]:changeAt==='fetch'?['fetch']:['fetch','save']);
   }
 });

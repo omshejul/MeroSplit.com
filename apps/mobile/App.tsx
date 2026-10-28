@@ -1,3 +1,5 @@
+import { NoticeBanner } from './src/UIStates';
+import { ErrorText } from './src/ui';
 import { PhotoSession } from './src/Avatar';
 import { readPrefetch, readScope } from './src/prefetch';
 import { personalTransfers } from './src/personalBalances';
@@ -24,7 +26,7 @@ import { validateUPIPayment, type UPILaunchQuote } from './src/upi';
 import { formatMoney } from './src/accounting';
 import { emptyGroup, previewPending } from './src/ledger';
 import { getDatabase, savedSession, saveSession, retireSyncPause, shareJson, storageIsDurable, isOnline, claimFirstSplitUPIPrompt } from './src/native';
-import { storageRevision, discardCommand, discardUnsentGroup, enqueue, enqueueBill, confirmedSync, confirmSync, readGroup, listGroups, pendingCommands, createPendingGroup, listLegacyGroups, listLegacyRecoveries, listUnavailableGroups, replaceCommand, saveGroup, readVisibleGroup, wipeAccount } from './src/storage';
+import { storageRevision, discardCommand, enqueue, enqueueBill, confirmedSync, confirmSync, readGroup, listGroups, pendingCommands, createPendingGroup, listLegacyGroups, listLegacyRecoveries, listUnavailableGroups, replaceCommand, saveGroup, readVisibleGroup, wipeAccount } from './src/storage';
 import GroupScreen, { ExpenseDetail, PaymentDetail } from './src/GroupScreen';
 import ExpenseForm from './src/ExpenseForm';
 import ExpenseVersionHistory from './src/ExpenseVersionHistory';
@@ -48,7 +50,7 @@ import SplitwiseImportScreen from './src/SplitwiseImportScreen';
 import AccountHeader from './src/AccountHeader';
 import GroupList from './src/GroupList';
 import { groupListRows } from './src/groupListRows';
-import Mascot from './src/Mascot';
+
 import { AddExpenseButton, AppFrame, pageContentStyle, ScreenHeader } from './src/AppNavigation';
 import HomeTabs from './src/HomeTabs';
 import HomeCreateButton, { HomeCreateInset } from './src/HomeCreateButton';
@@ -1340,7 +1342,7 @@ function AppContent() {
     const noticeVisibility = { notices: notices.notices, enabled: focused && !authHeld && foreground && !expired && !alertOpen && !pushInvitationOpen && !pending.length, viewport, scrollEpoch, onVisible: notices.acknowledgeVisible };
     const browseScope = `${owner}|${session?.token}|${screen}|${tab}|${groupId}|${foreground}|${expired}|${authHeld}|${online}|${groupVersions.current}|${selected?.group.version}|${selected?.group.history?.transactions?.query ?? selected?.group.history?.bills?.query ?? ''}`;
     if (!ready) return null;
-    if (storageError) return <SafeAreaView role="main" style={[s.screen, pageContentStyle]}><Text accessibilityRole="header" aria-level={1} style={ui.section}>Could not open saved records</Text><Text accessibilityRole="alert" style={ui.error}>{storageError}</Text><Button title="Retry" disabled={busy} onPress={() => launch(restore)} /></SafeAreaView>;
+    if (storageError) return <SafeAreaView role="main" style={[s.screen, pageContentStyle]}><Text accessibilityRole="header" aria-level={1} style={ui.section}>Could not open saved records</Text><ErrorText live>{storageError}</ErrorText><Button title="Retry" disabled={busy} onPress={() => launch(restore)} /></SafeAreaView>;
   if (authHeld && !session) return <EmailLinkScreen title={emailEntry?.phase === 'name' ? 'Name' : 'Sign in'} busy={busy}>{emailContent}</EmailLinkScreen>;
   if (screen === 'home' && session && !insideHomeTabs) return <HomeTabs selected={tab} busy={authHeld} onSelect={value => { setShowArchived(false); setShowHidden(false); if (value === 'Activity') { if (!readPrefetch.fresh(readScope(session), '/activity?limit=50')) activityOwner.current = ''; setActivityError(''); } navigate('home', { tab: value }); }}
     render={value => renderScreen({ ...route, params: { ...route.params, tab: value } }, focused && value === tab, billQueued, true)} />;
@@ -1354,10 +1356,10 @@ function AppContent() {
   const showAddExpense = screen === 'group' && !!selected && !selected.group.archived;
   const showCreate = screen === 'home' && (direct || tab === 'Groups' && !showArchived && !showHidden);
   const title = screen === 'savedChanges' ? 'Saved changes' : screen === 'home' ? (tab === 'Friends' ? 'People' : tab === 'Account' ? 'Me' : tab === 'Groups' && showHidden ? 'Removed from my list' : tab === 'Groups' && showArchived ? 'Archived groups' : tab) : screen === 'signInMethods' ? 'Sign-in methods' : screen === 'login' ? 'Sign in' : screen === 'create' ? (direct ? 'Add a person' : 'New group') : screen === 'expense' ? (expenseId ? 'Edit bill' : 'Add expense') : screen === 'expenseVersions' ? 'Version history' : screen === 'billChat' ? 'Bill chat' : screen === 'expenseDetail' ? expense?.description ?? 'Bill' : screen === 'settle' ? 'Payment' : screen === 'members' ? 'Group settings' : screen === 'review' ? 'Review your bill' : screen === 'paymentDetail' ? 'Payment record' : screen === 'import' ? 'Import from Splitwise' : selected ? groupDisplayName(selected.group, session?.userId) : 'Group';
-  const listNotice = <>{!!notice && <MotionReveal><Text accessibilityLiveRegion="polite" accessibilityRole={feedback.tone === 'error' ? 'alert' : undefined} style={[ui.notice, feedback.tone === 'success' ? ui.success : feedback.tone === 'warning' ? ui.warning : feedback.tone === 'error' ? ui.error : undefined]}>{notice}</Text></MotionReveal>}
+  const listNotice = <>{!!notice && <MotionReveal><NoticeBanner tone={feedback.tone === 'info' ? undefined : feedback.tone}>{notice}</NoticeBanner></MotionReveal>}
       {expired && screen !== 'login' && <Button title="Sign in again" kind="primary" onPress={() => { setChallenge(null); setCode(''); navigate('login'); }} />}</>;
   const savedChangesView = <SavedChanges expanded={screen === 'savedChanges'} commands={commands} groups={groups} busy={busy} expired={expired} onOpen={row => open(() => openGroup(row))} onReview={value => open(() => reviewChange(value))} onDiscard={value => confirm('Discard saved change?', 'Export first if needed. This removes only your unsent change. A request already accepted by the server is kept there.', async () => { await discardCommand(await getDatabase(), owner, value.command_id); }, 'Discard change')} onRetry={syncQuietly} />;
-  const homeContext = <>{screen === 'home' && needsInvitation && <Text style={ui.notice}>A new bill includes your email. Ask its organizer to send you an invitation to see the bill.</Text>}</>;
+  const homeContext = <>{screen === 'home' && needsInvitation && <NoticeBanner>A new bill includes your email. Ask its organizer to send you an invitation to see the bill.</NoticeBanner>}</>;
   const paymentReturns = <>{screen === 'home' && session && returns.filter(value => value.launch === 'opened' || value.decision !== null || value.launch === 'opening').slice(0, 1).map(value => <Button key={value.attemptId} title="Review payment" disabled={busy} onPress={() => open(() => browse(`return:${value.attemptId}`, async current => { const group = await fetchGroup(session, value.groupId); if (!current() || !await saveReadGroup(session, group, current) || !current()) return; setReturnAttemptId(value.attemptId); setTransfer({ sender: value.sender, recipient: value.recipient, amount: value.amount }); navigate('settle', { groupId: group.id }); }))} />)}</>;
   const groupView = screen === 'group' && selected && preview ? <GroupScreen categoryIcons={categoryIcons} header={listNotice} previewError={previewError} noticeVisibility={noticeVisibility} key={`${owner}|${groupId}`} group={preview} accepted={selected.group} revision={ledgerRevision} onUpdatesAvailable={setLedgerUpdates} pending={pending} busy={busy} selfId={selfId} onLoadBalanceGroup={loadBalanceGroup} pagingScope={browseScope} active={focused && foreground && !expired && !authHeld} online={online} onRefresh={pullToRefresh} refreshing={false} onPrefetchPayment={payment => { if (session && selected && !pending.length && !selected.group.settlements.some(value => value.id === payment.id)) void prefetchRead(session, `/groups/${selected.group.id}/settlements/${encodeURIComponent(payment.id)}?version=${selected.group.version}`); }} onPrefetchBill={bill => { if (session && selected && !pending.length && !selected.group.expenses.some(value => value.id === bill.id)) void prefetchRead(session, `/groups/${selected.group.id}/expenses/${encodeURIComponent(bill.id)}?version=${selected.group.version}`); }} onVisibleBills={ids => { if (ownerRef.current === owner && activeGroupRef.current === groupId) setVisibleBills({ scope: `${owner}|${groupId}`, ids }); }} onHistoryPage={(resource, direction, query, signal, target) => historyPage(resource, direction, query, target, signal)} onExpense={value => { void openBill(value).catch(() => {}); }} onPayment={value => { void openPayment(value.id).catch(() => {}); }} onSettle={value => { setReturnAttemptId(null); setTransfer(value ? personalTransfers(preview, selfId).find(row => row.sender === value.sender && row.recipient === value.recipient) : undefined); navigate('settle'); }} onRemind={remindPayment} onReverse={value => confirm('Reverse payment record?', 'This removes the payment from the group’s balances.', () => reversePayment(value), 'Reverse payment')} /> : null;
 
@@ -1385,7 +1387,6 @@ function AppContent() {
       {listNotice}
       {homeContext}
       {screen === 'signInMethods' && session && <SignInMethods key={owner} session={session} busy={lock.current || expired} connections={providerConnections} onGoogle={authenticate => launch(() => finishGoogleSignIn('connect', authenticate))} onApple={authenticate => launch(() => finishGoogleSignIn('connect', authenticate, 'Apple'))} />}
-
 
       {screen === 'home' && (tab === 'Groups' || tab === 'Friends') && <>
         <GroupList emptyLabel={!direct && showHidden ? 'No removed groups' : !direct && showArchived ? 'No archived groups' : !direct && archivedGroups.length ? 'No active groups' : undefined} emptyVerified={!showArchived && !showHidden && !archivedGroups.length && !hiddenGroups.length && mascotEligible && !!owner && verifiedEmptyOwner === owner} decorated={!showArchived && !showHidden && !archivedGroups.length && !hiddenGroups.length} groups={visibleGroups} commands={commands} userId={session?.userId} busy={busy} direct={direct} onOpen={row => open(() => openGroup(row))} />
@@ -1417,7 +1418,7 @@ function AppContent() {
           <MCPSettings key={`mcp-settings|${owner}`} session={session} busy={busy} onBusyChange={value => setSubmission(value, `${route.key}|mcp`)} />
         <View><SettingsRow label="Import from Splitwise" icon="import" disabled={busy} onPress={() => navigate('import')} />
           <ExportData key={`export-data|${owner}`} busy={busy} onExport={exportData} /></View>
-        {!!unavailable.length && <Text style={[ui.notice, ui.warning]}>Access to {unavailable.length === 1 ? 'a group has' : 'some groups have'} ended. Saved work is kept for export.</Text>}
+        {!!unavailable.length && <NoticeBanner tone="warning">Access to {unavailable.length === 1 ? 'a group has' : 'some groups have'} ended. Saved work is kept for export.</NoticeBanner>}
         {savedChangesView}
         <LegacyRecords groups={legacy} email={session.email} selected={legacySelf} busy={busy} onSelect={(id, person) => setLegacySelf(value => ({ ...value, [id]: person }))}
           onRecover={group => confirm('Recover to this account?', `${group.name} will be linked to ${session.email}. Original history is kept in recovery records.`, async () => {
@@ -1427,7 +1428,7 @@ function AppContent() {
             await syncAccount(session); navigate('group', { groupId: group.id }); setNotice('Records recovered.', 'success');
           }, 'Recover records')}
           />
-        {recoveries.some(value => value.status === 'conflict') && <Text style={[ui.notice, ui.warning]}>Some earlier records could not be safely combined. Use Export data to review their saved originals.</Text>}
+        {recoveries.some(value => value.status === 'conflict') && <NoticeBanner tone="warning">Some earlier records could not be safely combined. Use Export data to review their saved originals.</NoticeBanner>}
         <View><SettingsRow label="Feedback" icon="feedback" disabled={busy || expired} onPress={() => setFeedbackOpen(true)} /><SettingsRow external label="Privacy" icon="privacy" disabled={busy} onPress={() => launch(() => Linking.openURL(`${APP_ORIGIN}/privacy`))} /><SettingsRow external label="Help and support" icon="help" disabled={busy} onPress={() => launch(() => Linking.openURL(`${APP_ORIGIN}/support`))} /></View>
         <View>
 

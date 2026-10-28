@@ -1,7 +1,8 @@
+import { CloseDialogActions } from './DialogParts';
 import { Dialog } from './DialogParts';
 import { DialogScrollBody, CancelDialogActions } from './DialogParts';
 import KeyboardDialog from './KeyboardDialog';
-import DialogFocus from './DialogFocus';
+
 import React, { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { Text } from 'react-native-paper';
@@ -76,14 +77,14 @@ export function UPIAppChooser({ apps, recipient, disabled, onChoose, onDismiss }
 export function PaymentHelpDialog({ kind = 'failed', visible, name, vpa, onClose }: { kind?: 'failed' | 'google-pay'; visible: boolean; name: string; vpa: string; onClose: () => void }) {
   const { ui } = useUI();
   return <KeyboardDialog visible={visible} onDismiss={onClose}>
-    <DialogFocus active={visible} onEscape={onClose}>
+
       <Dialog.Title aria-level={2}>{kind === 'failed' ? 'Payment failed' : 'Google Pay might fail'}</Dialog.Title>
       <DialogScrollBody maxHeight={380} gap={12}>
         <Text style={ui.body}>{kind === 'google-pay' ? 'Google Pay may reject payment links to personal UPI IDs. If that happens, copy the UPI ID and pay inside Google Pay.' : 'Bank or network issues, payment limits, or the recipient’s UPI ID can stop a payment. Some app-to-app payments may also be rejected.'}</Text>
         {kind === 'failed' && <Text style={ui.body}>If the payment failed and no money was debited, copy this UPI ID and try paying inside your UPI app. If it is pending or money was debited, check that payment before trying again.</Text>}
         <PaymentAddress name={name} vpa={vpa} />
       </DialogScrollBody>
-      <Dialog.Actions><Button title="Close payment help" kind="text" onPress={onClose} /></Dialog.Actions>
-    </DialogFocus>
+      <CloseDialogActions title="Close payment help" kind="text" onClose={onClose} />
+
   </KeyboardDialog>;
 }

@@ -1,10 +1,11 @@
+import { withSharedUI } from './componentHarness.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import ts from 'typescript';
 import {ApiError} from '../src/api.ts';
 const source=ts.createSourceFile('App.tsx',readFileSync(new URL('../App.tsx',import.meta.url),'utf8'),ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
-function production(name:string,env:any){let code='';function visit(node:ts.Node){if(ts.isFunctionDeclaration(node)&&node.name?.text===name)code=node.getText(source);ts.forEachChild(node,visit);}visit(source);assert.ok(code);return new Function('env',`with(env){${ts.transpile(code,{target:ts.ScriptTarget.ES2022})};return ${name};}`)(env);}
+function production(name:string,env:any){let code='';function visit(node:ts.Node){if(ts.isFunctionDeclaration(node)&&node.name?.text===name)code=node.getText(source);ts.forEachChild(node,visit);}visit(source);assert.ok(code);return new Function('env',`with(env){${ts.transpile(code,{target:ts.ScriptTarget.ES2022})};return ${name};}`)(withSharedUI(env));}
 const session={baseUrl:'https://synthetic.invalid',userId:'1',token:'synthetic'},row=(id:string)=>({id});
 function environment(){const state:any={activity:null,groups:[{group:{id:'g'}}],screen:'group',expired:false,saved:[],loads:0,activityError:''};const group:any={id:'g',version:5,expenses:[row('a')],settlements:[],activity:[],transactions:[{kind:'bill',bill:row('a')}],history:{transactions:{next_cursor:'next'},bills:{next_cursor:'next'}}};const env:any={session,saveReadGroup:async(_active:any,value:any)=>{state.saved.push(value);return true;},activeGroupRef:{current:'g'},setLedgerRevision:()=>{},activity:{items:[row('a')],next_cursor:'next',revision:'r',firstPage:true},selected:{group},browseCurrent:{current:'scope'},activeSessionRef:{current:session},activityOwner:{current:'owner'},selfId:'me',ApiError,accountOwner:()=> 'owner',getDatabase:async()=>({runAsync:async()=>{}}),perform:async(fn:any)=>fn(),setExpired:(value:any)=>state.expired=value,setActivity:(value:any)=>state.activity=value,setActivityError:(value:any)=>state.activityError=value,saveGroup:async(_db:any,_owner:any,value:any)=>state.saved.push(value),load:async()=>state.loads++,setGroups:(fn:any)=>state.groups=fn(state.groups),navigate:(screen:string)=>state.screen=screen,refreshGroups:async()=>{},fetchGroup:async()=>group};return {env,state,group};}
 

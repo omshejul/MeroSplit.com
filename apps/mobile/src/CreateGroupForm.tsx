@@ -1,3 +1,4 @@
+import { PersonDetailsFields } from './FormFields';
 import Form from './Form';
 import React, { useState } from 'react';
 import { View } from 'react-native';
@@ -15,8 +16,10 @@ export default function CreateGroupForm({ direct, busy, onCreate }: { direct: bo
   return <Form label={direct ? 'Add person' : 'New group'} onSubmit={submit}>
     {!direct && <><TextField label="Group name" value={name} onChangeText={setName} editable={!busy} autoCorrect={false} autoCapitalize="words" /><Text style={ui.caption}>Start with just you, then share a link. Adding people now is optional.</Text></>}
     {people.map((person, index) => <View key={index} style={{ gap: 6 }}>
-      <TextField label={direct ? 'Their name' : `Person ${index + 1}`} value={person} onChangeText={value => setPeople(rows => rows.map((row, at) => at === index ? value : row))} editable={!busy} autoCorrect={false} autoCapitalize="words" />
-      {!direct && <><EmailField label={`Person ${index + 1} email (optional)`} value={emails[index] ?? ''} editable={!busy} onChangeText={value => setEmails(rows => rows.map((row, at) => at === index ? value : row))} /><Button title={`Remove person ${index + 1}`} kind="text" disabled={busy} onPress={() => { setPeople(rows => rows.filter((_, at) => at !== index)); setEmails(rows => rows.filter((_, at) => at !== index)); }} /></>}
+      {direct ? <TextField label="Their name" value={person} onChangeText={value => setPeople(rows => rows.map((row, at) => at === index ? value : row))} editable={!busy} autoCorrect={false} autoCapitalize="words" /> : <>
+        <PersonDetailsFields name={{ label: `Person ${index + 1}`, value: person, onChangeText: value => setPeople(rows => rows.map((row, at) => at === index ? value : row)), editable: !busy }} email={{ label: `Person ${index + 1} email (optional)`, value: emails[index] ?? '', onChangeText: value => setEmails(rows => rows.map((row, at) => at === index ? value : row)), editable: !busy }} />
+        <Button title={`Remove person ${index + 1}`} kind="text" disabled={busy} onPress={() => { setPeople(rows => rows.filter((_, at) => at !== index)); setEmails(rows => rows.filter((_, at) => at !== index)); }} />
+      </>}
     </View>)}
     {!direct && <><Button title={people.length ? 'Add another person' : 'Add person (optional)'} kind="text" icon="add" disabled={busy} onPress={() => { setPeople(rows => [...rows, '']); setEmails(rows => [...rows, '']); }} />{!!people.length && <Text style={ui.caption}>Existing accounts are added to the group. For other emails, send an invite from group settings.</Text>}</>}
     {direct && <EmailField label="Email (optional)" value={email} onChangeText={setEmail} editable={!busy} />}

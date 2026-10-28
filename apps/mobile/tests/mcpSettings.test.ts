@@ -1,3 +1,4 @@
+import { withSharedUI } from './componentHarness.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -32,8 +33,10 @@ function harness(os = 'ios') {
       }
     },
   };
+  const shared = withSharedUI({ React, Dialog: { Title: 'Title', Actions: 'Actions' }, View: 'View', Text: 'Text', Button: 'Button', ErrorText: 'ErrorText', useUI: () => ({ ui: {} }) });
   const modules: Record<string, unknown> = {
-    react: { ...React, default: React },
+    './UIStates': { LoadingState: shared.LoadingState, EmptyState: shared.EmptyState, ErrorState: shared.ErrorState },
+    react: { __esModule: true, ...React, default: shared.React },
     'react-native-safe-area-context': { useSafeAreaInsets: () => insets },
     'react-native': { useWindowDimensions: () => viewport, View: 'View', Platform: { OS: os },  },
     'react-native-paper': { Text: 'Text', Dialog: { Title: 'Title', Actions: 'Actions' } },
@@ -161,7 +164,7 @@ test('the changing safe viewport bounds Paper iOS content, not just its outer sh
   const declaration = shared.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === 'KeyboardDialog')!;
   let measuredHeight: number | undefined;
   const renderDialog = new Function('env', `with(env) { ${ts.transpile(declaration.getText(shared).replace('export default ', ''), { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React })}; return KeyboardDialog; }`)(
-    { React: { createElement }, DialogContext: { Provider: 'DialogProvider' }, DialogFocus: 'DialogFocus', useUI: () => ({ palette: {}, motion: { enabled: false } }), Platform: { OS: 'ios' }, useWindowDimensions: () => ({ width: 375, height: 1000 }), Dialog: 'PaperDialog', Portal: 'Portal', KeyboardAvoidingView: 'KeyboardBoundary', useSafeAreaInsets: () => ({ top: 20, bottom: 34 }), useState: () => [measuredHeight, (value: number) => { measuredHeight = value; }] });
+    withSharedUI({ React: { createElement }, DialogContext: { Provider: 'DialogProvider' }, DialogFocus: 'DialogFocus', useUI: () => ({ palette: {}, motion: { enabled: false } }), Platform: { OS: 'ios' }, useWindowDimensions: () => ({ width: 375, height: 1000 }), Dialog: 'PaperDialog', Portal: 'Portal', KeyboardAvoidingView: 'KeyboardBoundary', useSafeAreaInsets: () => ({ top: 20, bottom: 34 }), useState: () => [measuredHeight, (value: number) => { measuredHeight = value; }] }));
   // Execute the INSTALLED iOS Surface style partition. Its container has two
   // layers: flexShrink goes outside; maxHeight constrains the content inside.
   // This checks the actual forwarding boundary, not native text/Yoga layout.
@@ -172,9 +175,9 @@ test('the changing safe viewport bounds Paper iOS content, not just its outer sh
   const splitModule: any = {};
   new Function('exports', ts.transpile(readFileSync(new URL('../node_modules/react-native-paper/src/utils/splitStyles.ts', import.meta.url), 'utf8'), { module: ts.ModuleKind.CommonJS }))(splitModule);
   const renderSurface = new Function('env', `with(env) { ${ts.transpile(`const ${fields.getText(surface)}; const ${ios.getText(surface)};`, { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React })}; return SurfaceIOS; }`)(
-    { React: { createElement, useMemo: (fn: () => unknown) => fn() }, Animated: { View: 'IOSLayer' },
+    withSharedUI({ React: { createElement, useMemo: (fn: () => unknown) => fn() }, Animated: { View: 'IOSLayer' },
       StyleSheet: { flatten: (value: unknown) => Object.assign({}, ...[value].flat(Infinity)) },
-      splitStyles: splitModule.splitStyles, forwardRef: (fn: Function) => fn, getStyleForShadowLayer: () => ({}) });
+      splitStyles: splitModule.splitStyles, forwardRef: (fn: Function) => fn, getStyleForShadowLayer: () => ({}) }));
   function contentStyle(props: Record<string, any>) {
     const dialog = one(renderDialog({ ...props, visible: true, children: [] }), 'PaperDialog');
     const outer = renderSurface({ container: true, elevation: 0, style: dialog.props.style }, null) as Element;

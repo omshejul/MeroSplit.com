@@ -1,3 +1,4 @@
+import { withSharedUI } from './componentHarness.ts';
 import { currencySymbol } from '../src/currency.ts';
 import { explainTransfer, balanceKey } from '../src/balanceExplanation.ts';
 import test from 'node:test';
@@ -34,9 +35,9 @@ function harness(file: string, name: string, extra: Record<string, any> = {}) {
     useEffect: (fn: () => any, values: any[]) => { const id = cursor++; if (!deps[id] || values.some((value, i) => value !== deps[id][i])) { effects.push(() => { cleanups[id]?.(); cleanups[id] = fn(); }); deps[id] = values; } },
   };
   const source = ts.createSourceFile(file, readFileSync(new URL(`../${file}`, import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
-  const body = source.statements.filter(node => !ts.isImportDeclaration(node)).map(node => node.getText(source).replace(/^export (?:default )?/, '')).join('\n');
+  const body = source.statements.filter(node => !ts.isImportDeclaration(node) && !ts.isExportDeclaration(node)).map(node => node.getText(source).replace(/^export (?:default )?/, '')).join('\n');
   const code = ts.transpile(body, { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React });
-  const render = new Function('env', `with(env){ const StaggerItem = 'StaggerItem';${code}; return ${name};}`)(env);
+  const render = new Function('env', `with(env){ const StaggerItem = 'StaggerItem';${code}; return ${name};}`)(withSharedUI(env));
   return { render: (props: any) => {
     cursor = 0; let tree = render(props);
     // Arithmetic/render tests hydrate an empty draft immediately. Real SQLite recovery is covered in expenseDraft.test.ts.
@@ -64,7 +65,7 @@ function appAction(name: string, env: Record<string, any>) {
   const source = ts.createSourceFile('App.tsx', readFileSync(new URL('../App.tsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   const app = source.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === 'AppContent') as ts.FunctionDeclaration;
   const fn = app.body!.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === name)!;
-  return new Function('env', `with(env){ const StaggerItem = 'StaggerItem';${ts.transpile(fn.getText(source), { target: ts.ScriptTarget.ES2022 })};return ${name};}`)(env);
+  return new Function('env', `with(env){ const StaggerItem = 'StaggerItem';${ts.transpile(fn.getText(source), { target: ts.ScriptTarget.ES2022 })};return ${name};}`)(withSharedUI(env));
 }
 
 test('combined export flushes saved work and never shares a stale account result', async () => {
@@ -245,7 +246,7 @@ test('accepted attachment action reuses one load/picker path and preserves permi
       Platform: { OS: 'web' }, accountOwner: () => 'owner-a', getDatabase: async () => ({}), pendingMediaUpload: async () => pending,
       request: async () => { reads++; return { attachments: items, can_modify: canModify }; },
       pickMedia: async (photo: boolean) => { assert.equal(photo, false); picks++; return null; },
-      stageMediaUpload: async () => { uploads++; throw Error('Upload boundary blocked'); }, PrivateMediaImage: 'PrivateMediaImage', RemoveMediaMenu: 'RemoveMediaMenu',
+      stageMediaUpload: async () => { uploads++; throw Error('Upload boundary blocked'); }, PrivateMediaImage: 'PrivateMediaImage', RemoveMediaMenu: 'RemoveMediaMenu', mediaSize: () => '1 KB',
     });
     app.render(props); app.commit(); await tick(); return app;
   };
@@ -265,7 +266,7 @@ test('PDF and photo attachment rows reuse the same private thumbnail component a
   for (const content_type of ['application/pdf', 'image/jpeg']) {
     const app = harness('src/BillAttachments.tsx', 'AttachmentRow', { PrivateMediaImage: 'PrivateMediaImage', mediaSize: () => '1 KB', useUI: () => ({ ui: {}, palette: {} }) });
     const item = { id: 'file', name: 'Synthetic attachment', content_type, size: 1000 };
-    const tree = app.render({ session: {}, item, disabled: false, onOpen: () => opens++, options: null });
+    const tree = app.render({ title: item.name, label: `Open ${item.name}`, subtitle: '1 KB', thumbnail: React.createElement('PrivateMediaImage', { session: {}, media: item }), disabled: false, onOpen: () => opens++, options: null });
     assert.equal(nodes(tree).filter(node => node.type === 'PrivateMediaImage').length, 1);
     assert.equal(nodes(tree).find(node => node.type === 'PrivateMediaImage')!.props.media, item);
     find(tree, 'accessibilityLabel', 'Open Synthetic attachment').props.onPress();
@@ -327,7 +328,7 @@ test('removed payer controls stay locked and changing historical amounts is stil
   const props = { group: editedGroup, expense: existing, selfId: 'self', busy: false, onSave: async () => saved++ };
   let tree = app.render(props); const fields = find(tree, 'title', 'Who paid?').children[0];
   const controls = fields.type(fields.props);
-  assert.equal(find(controls, 'title', 'Jordan (removed)').props.disabled, true);
+  assert.equal(find(controls, 'accessibilityLabel', 'Jordan (removed)').props.disabled, true);
   fields.props.onChange({ payerAmounts: { self: '6.00', other: '4.00' } });
   tree = app.render(props); find(tree, 'title', 'Save bill').props.onPress(); await tick(); assert.equal(saved, 0);
   const error = nodes(app.render(props)).find(node => node.type === 'ErrorText')!;
@@ -1007,7 +1008,7 @@ test('Shared Button forwards Paper dialog spacing without changing disabled or p
   const declaration = source.statements.find(node => ts.isVariableStatement(node) && node.declarationList.declarations.some(value => value.name.getText(source) === 'Button'))!;
   const code = ts.transpile(declaration.getText(source).replace(/^export /, ''), { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React });
   const env = { animateLayout() {}, React: { ...React, forwardRef: (render: any) => render }, useState: () => [false, () => {}], View: 'View', Text: 'Text', Pressable: 'Pressable', useUI: () => ({ palette: {}, ui: {} }), usePressFeedback: () => ({ pressedStyle: {} }), PaperButton: 'PaperButton', Icon: 'Icon', radii: { button: 8 }, Platform: { OS: 'ios' } };
-  const Button = new Function('env', `with(env){ const StaggerItem = 'StaggerItem';${code};return Button;}`)(env);
+  const Button = new Function('env', `with(env){ const StaggerItem = 'StaggerItem';${code};return Button;}`)(withSharedUI(env));
   const injected = [{ marginRight: 8 }], onPress = () => {};
   for (const disabled of [false, true]) {
     const element = Button({ title: 'Cancel', kind: 'text', compact: true, style: injected, disabled, onPress });
@@ -1104,7 +1105,7 @@ function billDiscardDialog(env: Record<string, any>) {
   function visit(node: ts.Node) { if (ts.isJsxElement(node) && node.openingElement.tagName.getText(source) === 'KeyboardDialog') expression = node; ts.forEachChild(node, visit); }
   visit(source); assert.ok(expression);
   const code = ts.transpile(`const dialog = ${expression!.getText(source)}`, { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React });
-  return new Function('env', `with(env){ const StaggerItem = 'StaggerItem';${code};return dialog;}`)({ React, Dialog, PersonInviteDialog: 'PersonInviteDialog', useToast: () => () => {}, DetailDialog: 'DetailDialog', setDiscarding() {}, draftDiscard: { current: null }, discarding: false, discardLock: { current: false }, blocked: false, localBlocked: false, pending: env.discardBill ? { type: 'GO_BACK' } : null, setPending: (value: unknown) => env.setDiscardBill(!!value), KeyboardDialog: 'KeyboardDialog', DialogFocus: 'DialogFocus', CancelDialogActions: 'CancelDialogActions', Button: 'Button', ...env, navigation: { isFocused: () => true, dispatch: () => env.navigate('group') } });
+  return new Function('env', `with(env){ const StaggerItem = 'StaggerItem';${code};return dialog;}`)(withSharedUI({ React, Dialog, PersonInviteDialog: 'PersonInviteDialog', useToast: () => () => {}, DetailDialog: 'DetailDialog', setDiscarding() {}, draftDiscard: { current: null }, discarding: false, discardLock: { current: false }, blocked: false, localBlocked: false, pending: env.discardBill ? { type: 'GO_BACK' } : null, setPending: (value: unknown) => env.setDiscardBill(!!value), KeyboardDialog: 'KeyboardDialog', DialogFocus: 'DialogFocus', CancelDialogActions: 'CancelDialogActions', Button: 'Button', ...env, navigation: { isFocused: () => true, dispatch: () => env.navigate('group') } }));
 }
 
 test('Back asks to discard the bill, Cancel retains the form and Discard leaves with the trash action', async () => {

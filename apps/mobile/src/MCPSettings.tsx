@@ -1,3 +1,4 @@
+import { EmptyState, LoadingState } from './UIStates';
 import { Dialog } from './DialogParts';
 import { APP_ORIGIN } from './appLinks';
 import React, { useEffect, useRef, useState } from 'react';
@@ -59,13 +60,13 @@ export default function MCPSettings({ session, busy, onBusyChange }: { session: 
         <Text style={ui.caption}>Paste the prompt into your assistant to connect MeroSplit.</Text>
         <View accessibilityLiveRegion="polite"><Button title={copied ? 'Copied' : 'Copy prompt'} icon={copied ? 'check' : 'copy'} kind="primary" disabled={disabled} onPress={() => void copyPrompt()} contentStyle={{ minHeight: 48 }} /></View>
         <Text accessibilityRole="header" aria-level={3} style={ui.label}>Connected devices</Text>
-        {loading && <Text accessibilityLiveRegion="polite" style={ui.caption}>Loading connections…</Text>}
+        {loading && <LoadingState label="Loading connections…" />}
         {connections?.map(value => <View key={value.id} style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 12, padding: 12, borderRadius: 12, backgroundColor: palette.soft }}>
           <Icon name="software" />
           <View style={{ flex: 1, minWidth: 100, gap: 2 }}><Text style={ui.rowTitle}>{value.client_name}</Text><Text style={ui.caption}>Connected</Text></View>
           <Button title="Disconnect" accessibilityLabel={`Disconnect ${value.client_name}`} kind="text" small disabled={disabled || loading} onPress={() => void disconnect(value.id)} contentStyle={{ minHeight: 44 }} />
         </View>)}
-        {connections?.length === 0 && !loading && <Text style={ui.caption}>No connected devices</Text>}
+        {connections?.length === 0 && !loading && <EmptyState message="No connected devices" />}
         {!!error && <ErrorText live>{error}</ErrorText>}
       </DialogScrollBody>
     </KeyboardDialog>

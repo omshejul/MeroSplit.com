@@ -1,3 +1,7 @@
+import { ErrorState } from './UIStates';
+import { EmptyState } from './UIStates';
+import PaginationFooter from './PaginationFooter';
+import ListRow from './ListRow';
 import { categoryIcon, categoryMeaning, expenseCategory } from './categoryIcons';
 import type { ExpenseIcons, ExpenseIconRef } from './categoryIcons';
 import React, { useRef } from 'react';
@@ -9,7 +13,7 @@ import { Text } from 'react-native-paper';
 import { formatMoney } from './accounting';
 import { activityDay, activityPresentation, activityTime } from './activityPresentation';
 import type { ActivityItem, ActivityTarget } from './types';
-import { AmountText, balanceColor, Button, ErrorText, Icon, IconBadge, useUI } from './ui';
+import { AmountText, balanceColor, Icon, IconBadge, useUI } from './ui';
 
 type Props = {
   categoryIcons?: ExpenseIcons; onVisibleExpenses?: (refs: ExpenseIconRef[]) => void; header?: React.ReactNode; footer?: React.ReactNode; items: ActivityItem[]; busy: boolean; emptyVerified?: boolean; showEmpty?: boolean; error?: string | null; hasMore?: boolean;
@@ -28,10 +32,10 @@ export default function ActivityScreen({ categoryIcons = {}, onVisibleExpenses, 
   return <FlatList onViewableItemsChanged={viewable.current} ref={list} data={items} keyExtractor={item => item.id} scrollEventThrottle={100} onEndReachedThreshold={0.3}
     contentInsetAdjustmentBehavior="automatic"
     contentContainerStyle={[pageContentStyle, { gap: 0 }]} onRefresh={onRefresh} refreshing={false}
-    ListHeaderComponent={<>{header}{error ? <View style={s.message}><ErrorText live>{error}</ErrorText><Button title="Try again" disabled={busy} onPress={onRefresh} /></View> : null}</>}
-    ListEmptyComponent={showEmpty && !hasMore && !error ? <View style={s.empty}><Mascot size="empty" visible={emptyVerified && !busy} /><Text accessibilityLiveRegion="polite" style={ui.caption}>No activity yet</Text></View> : undefined}
+    ListHeaderComponent={<>{header}{error ? <ErrorState error={error} retryLabel="Try again" disabled={busy} onRetry={onRefresh} style={s.message} /> : null}</>}
+    ListEmptyComponent={showEmpty && !hasMore && !error ? <EmptyState message="No activity yet" illustration={<Mascot size="empty" visible={emptyVerified && !busy} />} style={s.empty} /> : undefined}
     renderItem={({ item, index }) => <ActivityRow categoryIcons={categoryIcons} item={item} busy={busy} onOpen={onOpen} showDay={index === 0 || activityDay(items[index - 1].created_at) !== activityDay(item.created_at)} />}
-    ListFooterComponent={<>{footer}<View style={s.message}>{paging.canLoadMore && !paging.failed && <Button title="Load older" kind="text" disabled={paging.loading} onPress={paging.loadMore} />}{paging.failed && <><ErrorText live>Could not load earlier activity.</ErrorText><Button title="Retry" kind="text" onPress={paging.retry} /></>}</View></>} />;
+    ListFooterComponent={<>{footer}<PaginationFooter paging={paging} error="Could not load earlier activity." style={s.message} /></>} />;
 }
 
 function ActivityRow({ categoryIcons = {}, item, busy, showDay, onOpen }: {
@@ -43,15 +47,13 @@ function ActivityRow({ categoryIcons = {}, item, busy, showDay, onOpen }: {
   const row = activityPresentation(item), day = activityDay(item.created_at);
   return <>
     {showDay && <Text accessibilityRole="header" aria-level={2} style={[ui.caption, s.day]}>{day}</Text>}
-    <Button kind="plain" accessibilityRole="button" accessibilityLabel={`${row.title}${meaning ? ', ' + meaning : ''}${row.amount ? `, ${formatMoney(row.amount)}` : ''}, ${item.group.name}, ${day}, ${activityTime(item.created_at)}`} disabled={busy} onPress={() => onOpen(row.target)} style={({ pressed }) => [ui.row, s.row, pressed && s.pressed]}>
-      <IconBadge name={item.bill && !item.bill.deleted && !['bill_reversed', 'bill_deleted'].includes(item.kind) ? categoryIcon(category) : row.icon} size={21} />
-      <View style={ui.rowBody}>
+    <ListRow accessibilityRole="button" accessibilityLabel={`${row.title}${meaning ? ', ' + meaning : ''}${row.amount ? `, ${formatMoney(row.amount)}` : ''}, ${item.group.name}, ${day}, ${activityTime(item.created_at)}`} disabled={busy} onPress={() => onOpen(row.target)} style={({ pressed }) => [s.row, pressed && s.pressed]}
+      leading={<IconBadge name={item.bill && !item.bill.deleted && !['bill_reversed', 'bill_deleted'].includes(item.kind) ? categoryIcon(category) : row.icon} size={21} />}
+      trailing={<View style={s.trailing}>{row.amount && <AmountText amount={row.amount} style={[s.amount, { color: row.cashflow === '0' ? palette.text : balanceColor(row.cashflow, palette) }]} />}<Icon name="next" size={16} color={palette.muted} /></View>}>
         <Text numberOfLines={1} ellipsizeMode="tail" style={ui.rowTitle}>{row.title}</Text>
         <Text numberOfLines={1} ellipsizeMode="tail" style={ui.rowSub}>{item.group.name} · {activityTime(item.created_at)}</Text>
         {item.kind === 'payment_recorded' && item.payment?.reversed && <Text style={ui.rowSub}>Record later reversed</Text>}
-      </View>
-      <View style={s.trailing}>{row.amount && <AmountText amount={row.amount} style={[s.amount, { color: row.cashflow === '0' ? palette.text : balanceColor(row.cashflow, palette) }]} />}<Icon name="next" size={16} color={palette.muted} /></View>
-    </Button>
+    </ListRow>
   </>;
 }
 

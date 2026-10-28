@@ -1,3 +1,4 @@
+import RowGroup from './RowGroup';
 import React, { useContext } from 'react';
 import { Platform, ScrollView, StyleSheet, View } from 'react-native';
 import { Dialog as PaperDialog, Text } from 'react-native-paper';
@@ -36,12 +37,12 @@ function Actions({ style, ...props }: React.ComponentProps<typeof PaperDialog.Ac
 export const Dialog = { Title, Content, Actions, ScrollArea: PaperDialog.ScrollArea };
 
 // Inputs/choices scroll while the separate action footer remains reachable.
-export function DialogScrollBody({ maxHeight, gap, paddingVertical = 12, paddingHorizontal, children }: {
-  maxHeight: number; gap: number; paddingVertical?: number; paddingHorizontal?: number; children: React.ReactNode;
+export function DialogScrollBody({ maxHeight = 520, gap = 12, paddingVertical = 12, paddingHorizontal, children }: {
+  maxHeight?: number; gap?: number; paddingVertical?: number; paddingHorizontal?: number; children: React.ReactNode;
 }) {
   const { bodyHeight } = useContext(DialogContext);
   return <Dialog.ScrollArea style={{ flexShrink: 1, maxHeight: Math.min(maxHeight, bodyHeight), paddingHorizontal: paddingHorizontal ?? 20, borderTopWidth: 0, borderBottomWidth: 0 }}>
-    <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingVertical, gap, paddingRight: Platform.OS === 'web' ? 16 : 0 }}>{children}</ScrollView>
+    <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingVertical, gap, paddingRight: Platform.OS === 'web' ? 16 : 0 }}><RowGroup style={{ gap }}>{children}</RowGroup></ScrollView>
   </Dialog.ScrollArea>;
 }
 
@@ -52,4 +53,8 @@ export function CancelDialogActions({ disabled, onCancel, children, cancelTitle 
     <Button title={cancelTitle} kind="text" icon="close" disabled={disabled} onPress={onCancel} />
     {children}
   </Dialog.Actions>;
+}
+
+export function CloseDialogActions({ onClose, title = 'Done', ...button }: Omit<React.ComponentProps<typeof Button>, 'onPress'> & { onClose: () => void }) {
+  return <Dialog.Actions><Button title={title} {...button} onPress={onClose} /></Dialog.Actions>;
 }

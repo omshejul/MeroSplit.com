@@ -1,3 +1,6 @@
+import RowGroup from './RowGroup';
+import PersonChoice from './PersonChoice';
+import { NoticeBanner } from './UIStates';
 import { animateLayout } from './layoutTransition';
 import { currencySymbol } from './currency';
 import Form from './Form';
@@ -9,7 +12,7 @@ import * as Crypto from 'expo-crypto';
 import { formatMoney, integer, rupeesToPaise, validateExpense } from './accounting';
 import type { Split } from './accounting';
 import type { Expense, Group } from './types';
-import { Avatar, Button, DateField, ErrorText, Icon, useUI } from './ui';
+import { Button, DateField, ErrorText, Icon, useUI } from './ui';
 import { AmountField, TextField } from './FormFields';
 import DraftAttachment from './DraftAttachment';
 import type { PendingMediaUpload } from './media';
@@ -55,22 +58,6 @@ function startingDraft(group: Group, expense: Expense | undefined, selfId: strin
   };
 }
 
-function PersonChoice({ person, title, selected, disabled, amount, onPress }: {
-  person: Group['participants'][number]; title: string; selected: boolean; disabled: boolean; amount?: string; onPress: () => void;
-}) {
-  const { ui, palette, dark } = useUI();
-  return <Button kind="plain" accessibilityRole="checkbox" accessibilityLabel={`${title}${amount ? `, ${amount}` : ''}`}
-    accessibilityState={{ checked: selected, disabled }} disabled={disabled} onPress={onPress}
-    style={[styles.personRow, { borderBottomColor: palette.line }]}>
-    <Avatar name={person.name} photo={person.profile_photo} />
-    <Text style={[ui.body, { flex: 1, minWidth: 0 }]}>{title}</Text>
-    {!!amount && <Text style={[ui.caption, { flexShrink: 1, textAlign: 'right', fontVariant: ['tabular-nums'] }]}>{amount}</Text>}
-    <View accessible={false} aria-hidden style={[styles.selectionMark, { borderColor: selected ? palette.accent : palette.outline, backgroundColor: selected ? palette.accent : 'transparent' }]}>
-      {selected && <Icon name="tick" size={18} color={dark ? '#161616' : '#FFFFFF'} />}
-    </View>
-  </Button>;
-}
-
 type ExpenseSelectionProps = {
   participants: Group['participants']; draft: ExpenseFormDraft; disabled: boolean; preserveRemoved: boolean;
   label: (id: string) => string; onChange: (patch: Partial<ExpenseFormDraft>) => void; status: string;
@@ -89,7 +76,7 @@ function PayerAdjustment({ difference, name, onPress }: { difference: bigint; na
 function PayerFields({ participants, draft, disabled, preserveRemoved, label, onChange, status, onToggle, onAdjust }: ExpenseSelectionProps & { onToggle: (id: string) => void; onAdjust: (id: string) => void }) {
   const { ui, motion } = useUI();
   const difference = payerDifference(draft);
-  return <View style={styles.reveal}>
+  return <RowGroup style={styles.reveal}>
     {participants.filter(person => !person.removed || draft.payerIds.includes(person.id)).map(person => <View key={`payer-${person.id}`} style={styles.field}>
       <PersonChoice person={person} title={label(person.id)} amount={draft.payerIds.length === 1 && draft.payerIds.includes(person.id) ? (() => { try { return formatMoney(rupeesToPaise(draft.amount)); } catch { return undefined; } })() : undefined} selected={draft.payerIds.includes(person.id)} disabled={disabled || (preserveRemoved && !!person.removed)} onPress={() => { animateLayout(!!motion?.enabled); onToggle(person.id); }} />
       {draft.payerIds.length > 1 && draft.payerIds.includes(person.id) && <TextField autoCorrect={false} label={`Paid by ${label(person.id)} (${currencySymbol()})`} value={draft.payerAmounts[person.id] ?? ''}
@@ -98,7 +85,7 @@ function PayerFields({ participants, draft, disabled, preserveRemoved, label, on
           ? <PayerAdjustment difference={difference} name={label(person.id)} onPress={() => onAdjust(person.id)} /> : null} />}
     </View>)}
     {!!status && <Text accessibilityLiveRegion="polite" style={ui.caption}>{status}</Text>}
-  </View>;
+  </RowGroup>;
 }
 
 function SplitFields({ participants, draft, disabled, preserveRemoved, label, onChange, status }: ExpenseSelectionProps) {
@@ -109,7 +96,7 @@ function SplitFields({ participants, draft, disabled, preserveRemoved, label, on
     const values = Object.fromEntries(draft.participantIds.map(id => [id, draft.mode === 'equal' ? '1' : draft.mode === 'exact' ? paise(draft.splitValues[id] ?? '') : draft.splitValues[id] ?? '']));
     shares = validateExpense(total, { [draft.participantIds[0]]: total }, { mode: draft.mode, values }, participants.map(person => person.id)).shares;
   } catch { /* Incomplete amounts stay editable without a misleading preview. */ }
-  return <View style={styles.reveal}>
+  return <RowGroup style={styles.reveal}>
     <View accessibilityRole="radiogroup" accessibilityLabel="Split method" style={[styles.methods, { borderColor: palette.line }]}>
       {Object.entries(splitModes).map(([mode, title]) => <Button key={mode} title={title} kind="plain" accessibilityRole="radio" accessibilityState={{ checked: draft.mode === mode, disabled }} disabled={disabled}
         onPress={() => { if (draft.mode !== mode) { animateLayout(!!motion?.enabled); onChange({ mode: mode as Split['mode'], splitValues: Object.fromEntries(draft.participantIds.map(id => [id, mode === 'shares' ? '1' : ''])) }); } }}
@@ -128,7 +115,7 @@ function SplitFields({ participants, draft, disabled, preserveRemoved, label, on
         onChangeText={value => onChange({ splitValues: { ...draft.splitValues, [person.id]: value } })} keyboardType="decimal-pad" editable={!disabled && !person.removed} />}
     </View>)}
     {draft.mode !== 'equal' && !!status && <Text accessibilityLiveRegion="polite" style={ui.caption}>{status}</Text>}
-  </View>;
+  </RowGroup>;
 }
 
 export default function ExpenseForm({ group, expense, selfId, busy, onSave, owner, writes }: Props) {
@@ -240,8 +227,8 @@ export default function ExpenseForm({ group, expense, selfId, busy, onSave, owne
   try { formattedTotal = formatMoney(rupeesToPaise(draft.amount)); } catch { /* Keep incomplete input editable. */ }
   return <Form label="Bill" style={styles.form} onSubmit={() => { if (!disabled && !group.archived) void save(); }}>
     <Text style={ui.caption}>{group.name}</Text>
-    {group.archived && <Text style={ui.notice}>Reopen this group in settings before saving a bill.</Text>}
-    {expense && expense.version !== draft.expenseVersion && <Text style={ui.notice}>A newer edit exists. Review it before saving this older draft.</Text>}
+    {group.archived && <NoticeBanner>Reopen this group in settings before saving a bill.</NoticeBanner>}
+    {expense && expense.version !== draft.expenseVersion && <NoticeBanner>A newer edit exists. Review it before saving this older draft.</NoticeBanner>}
     <AmountField autoCorrect={false} label={`Amount (${currencySymbol()})`} value={draft.amount} onChangeText={amount => change({ amount })} placeholder="0" editable={!disabled} />
     <TextField autoCorrect={false} label="Description" value={draft.description} onChangeText={description => change({ description })} placeholder="What was it for?" maxLength={200} editable={!disabled} />
     <BillPeople total={formattedTotal} count={draft.payerIds.length} icon="pay" title="Who paid?" summary={draft.payerIds.length === 1 ? label(draft.payerIds[0]) : draft.payerIds.length ? `${draft.payerIds.length} people` : 'Choose who paid'}
@@ -263,10 +250,8 @@ export default function ExpenseForm({ group, expense, selfId, busy, onSave, owne
 
 const styles = StyleSheet.create({
   form: { gap: 12 }, field: { gap: 7 },
-  personRow: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 56, paddingVertical: 8, borderBottomWidth: StyleSheet.hairlineWidth },
   methods: { flexDirection: 'row', borderWidth: 1, borderRadius: 12, overflow: 'hidden' },
   method: { flex: 1, minWidth: 0, minHeight: 64, paddingVertical: 8, paddingHorizontal: 2, alignItems: 'center', justifyContent: 'center', gap: 4 },
-  selectionMark: { width: 24, height: 24, borderRadius: 12, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
   notes: { minHeight: 100, textAlignVertical: 'top' }, reveal: { gap: 8, paddingBottom: 4 },
   adjustTouch: { minWidth: 44, minHeight: 44, justifyContent: 'center', borderRadius: 8, flexShrink: 1 },
   adjustChip: { borderRadius: 8, paddingHorizontal: 12, paddingVertical: 5 },

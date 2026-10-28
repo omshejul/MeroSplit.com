@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { Image, Platform, StyleSheet, View } from 'react-native';
 import { Text } from 'react-native-paper';
@@ -8,6 +9,10 @@ import type { Session } from './types';
 import type { ProviderConnections } from './useLinkedProviders';
 import { Button, Icon, useUI } from './ui';
 
+function ConnectedProviderRow({ name, leading }: { name: string; leading: React.ReactNode }) {
+  const { ui, palette } = useUI();
+  return <View style={{ minHeight: 56, paddingVertical: 14, flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: palette.line }}>{leading}<Text style={[ui.body, { flexGrow: 1 }]}>{name}</Text><Text style={ui.caption}>Connected</Text><Icon name="check" size={20} /></View>;
+}
 export default function SignInMethods({ session, busy, connections, onGoogle, onApple }: {
   session: Session; busy: boolean; connections: ProviderConnections;
   onGoogle: (authenticate: GoogleAuthenticate) => void; onApple: (authenticate: GoogleAuthenticate) => void;
@@ -27,16 +32,11 @@ export default function SignInMethods({ session, busy, connections, onGoogle, on
       </Text>
       {connections.status !== 'loading' && <Button title="Try again" kind="text" disabled={busy} onPress={connections.refresh} />}
     </View> : <>
-      {linked.google ? <View style={row}>
-        <Image accessible={false} importantForAccessibility="no" source={dark ? require('../assets/oauth/google-g-dark.png') : require('../assets/oauth/google-g-light.png')} resizeMode="contain" style={{ width: 22, height: 22 }} />
-        <Text style={[ui.body, { flexGrow: 1 }]}>Google</Text><Text style={ui.caption}>Connected</Text><Icon name="check" size={20} />
-      </View> : <View style={{ gap: 12 }}>
+      {linked.google ? <ConnectedProviderRow name="Google" leading={<Image accessible={false} importantForAccessibility="no" source={dark ? require('../assets/oauth/google-g-dark.png') : require('../assets/oauth/google-g-light.png')} resizeMode="contain" style={{ width: 22, height: 22 }} />} /> : <View style={{ gap: 12 }}>
         <Text style={ui.caption}>Add Google as another way to sign in.</Text>
         <GoogleSignInButton baseUrl={session.baseUrl} process="connect" current={session} busy={busy} onAuthenticate={onGoogle} />
       </View>}
-      {linked.apple ? <View style={row}>
-        <Icon name="key" /><Text style={[ui.body, { flexGrow: 1 }]}>Apple</Text><Text style={ui.caption}>Connected</Text><Icon name="check" size={20} />
-      </View> : Platform.OS === 'ios' && <AppleSignInButton baseUrl={session.baseUrl} process="connect" current={session} busy={busy} onAuthenticate={onApple} />}
+      {linked.apple ? <ConnectedProviderRow name="Apple" leading={<Icon name="key" />} /> : Platform.OS === 'ios' && <AppleSignInButton baseUrl={session.baseUrl} process="connect" current={session} busy={busy} onAuthenticate={onApple} />}
     </>}
   </View>;
 }
