@@ -102,7 +102,7 @@ export default function BillAttachments({ session, groupId, expenseId, revision,
   }
   function remove(item: MediaMetadata) {
     if (readOnly || !canModify || pending) return;
-    Alert.alert('Remove this attachment?', item.name, [{ text: 'Cancel', style: 'cancel' }, { text: 'Remove', onPress: () => void run(async () => {
+    Alert.alert('Remove this attachment?', item.name, [{ text: 'Cancel', style: 'cancel' }, { text: 'Remove attachment', onPress: () => void run(async () => {
       if (readOnly || !canModify || pending) return;
       await request(session!, `${path}/${encodeURIComponent(item.id)}`, 'DELETE');
       if (current()) setItems(previous => previous.filter(value => value.id !== item.id));

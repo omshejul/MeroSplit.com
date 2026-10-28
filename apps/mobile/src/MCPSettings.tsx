@@ -60,7 +60,7 @@ export default function MCPSettings({ session, busy, onBusyChange }: { session: 
         {!!error && <ErrorText live>{error}</ErrorText>}
         <Button title="Refresh" icon="refresh" kind="text" disabled={disabled || loading} onPress={() => { if (!disabled && !loading) void load(); }} />
       </DialogScrollBody>
-      <Dialog.Actions><Button title="Done" icon="check" disabled={disabled} onPress={close} /></Dialog.Actions>
+      <Dialog.Actions><Button title="Close connections" icon="check" disabled={disabled} onPress={close} /></Dialog.Actions>
     </KeyboardDialog>
   </>;
 }

@@ -79,7 +79,7 @@ export default function ProfilePhoto({ session, busy, onChanged, compact = false
   }
   function finishCrop(file: PickedMedia | null) { const resolve = cropResult.current; cropResult.current = null; setCropFile(null); resolve?.(file); }
   function remove() {
-    Alert.alert('Remove your photo?', 'Your account and bills will stay.', [{ text: 'Cancel', style: 'cancel' }, { text: 'Remove', onPress: () => void run(async () => {
+    Alert.alert('Remove your photo?', 'Your account and bills will stay.', [{ text: 'Cancel', style: 'cancel' }, { text: 'Remove photo', onPress: () => void run(async () => {
       await request(session!, '/me/avatar', 'DELETE'); await load(); if (current()) { setPreview(null); setPhase('idle'); void Promise.resolve().then(() => onChanged?.()).catch(() => {}); }
     }) }]);
   }

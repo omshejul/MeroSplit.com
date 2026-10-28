@@ -4,11 +4,11 @@ import { readFileSync } from 'node:fs';
 import ts from 'typescript';
 const source=ts.createSourceFile('Avatar.tsx',readFileSync(new URL('../src/Avatar.tsx',import.meta.url),'utf8'),ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
 const body=source.statements.filter(n=>!ts.isImportDeclaration(n)).map(n=>n.getText(source).replace(/^export (?:default )?/,'')).join('\n');
-function fixture(){let cursor=0;const states:any[]=[],effects:(()=>void)[]=[];let session:any=null;
+function fixture(){let cursor=0;const states:any[]=[],effects:(()=>void)[]=[];let session:any=null;let ready:string|undefined;
  const React={createElement:(type:any,props:any,...children:any[])=>({type,props:props??{},children})};
- const env={React,View:'View',Image:'Image',createContext:()=>({}),useContext:()=>session,useState:(initial:any)=>{const i=cursor++;if(!(i in states))states[i]=initial;return[states[i],(v:any)=>states[i]=v];},useEffect:(fn:()=>void)=>effects.push(fn),cachedProfilePhoto:async()=> 'file:///synthetic-photo'};
+ const env={React,View:'View',Image:'Image',createContext:()=>({}),useContext:()=>session,useRef:(initial:any)=>{const i=cursor++;return states[i]??={current:initial};},useState:(initial:any)=>{const i=cursor++;if(!(i in states))states[i]=initial;return[states[i],(v:any)=>states[i]=typeof v==='function'?v(states[i]):v];},useEffect:(fn:()=>void)=>effects.push(fn),peekProfilePhoto:()=>ready,invalidateProfilePhoto:async()=>{},cachedProfilePhoto:async()=> 'file:///synthetic-photo'};
  const render=new Function('env',`with(env){${ts.transpile(body,{target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.React})};return Avatar;}`)(env);
- return {render:(props:any)=>{cursor=0;return render(props);},setSession:(value:any)=>session=value,effects};
+ return {render:(props:any)=>{cursor=0;return render(props);},setSession:(value:any)=>session=value,setCached:(value:string|undefined)=>ready=value,effects};
 }
 test('photo, initials and icon placeholders use the same rounded square at every size',()=>{
  for(const size of [24,36,64,96]){
@@ -28,4 +28,10 @@ test('rows, profile editor and legacy media previews all use the shared avatar',
  for(const name of ['ui.tsx','ProfilePhoto.tsx','PrivateMediaThumbnail.tsx','PrivateMediaImage.web.tsx']){
   const text=read(name);assert.match(text,/from '\.\/Avatar'/);assert.doesNotMatch(text,/borderRadius: (?:size \/ 2|32)/);
  }
+});
+
+test('a remounted user avatar uses cached bytes immediately rather than flashing initials',()=>{
+ const app=fixture();app.setSession({baseUrl:'https://api.test',userId:'1',token:'session'});app.setCached('file:///already-cached-photo');
+ const image=app.render({photo:{id:'photo-one'},children:'OS'}).children[0];
+ assert.equal(image.type,'Image');assert.equal(image.props.source.uri,'file:///already-cached-photo');
 });

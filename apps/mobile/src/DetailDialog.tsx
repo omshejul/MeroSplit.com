@@ -14,7 +14,7 @@ export default function DetailDialog({ title, children, initialOpen = false, ico
     <KeyboardDialog visible={open} dismissable={!busy} onDismiss={() => { if (!busy) setOpen(false); }}>
       <Dialog.Title icon={icon}>{title}</Dialog.Title>
       <DialogScrollBody maxHeight={520} gap={12}><View style={{ gap: 12 }}>{children}</View></DialogScrollBody>
-      <Dialog.Actions><Button title="Done" icon="check" disabled={busy} onPress={() => setOpen(false)} /></Dialog.Actions>
+      <Dialog.Actions><Button title="Close details" icon="check" disabled={busy} onPress={() => setOpen(false)} /></Dialog.Actions>
     </KeyboardDialog>
   </>;
 }

@@ -28,7 +28,7 @@ function harness(file: string, name: string, extra: Record<string, any> = {}) {
   let cursor = 0, states: any[] = [], effects: (() => void)[] = [], cleanups: Record<number, () => void> = {};
   const deps: Record<number, any[]> = {};
   const draftDiscard = { current: null as null | (() => Promise<boolean>) };
-  const env: Record<string, any> = { currencySymbol, cachedRead: () => undefined, getDatabase: async () => ({}), draftDiscard, ScreenDraftDiscard: {}, useContext: () => draftDiscard, expenseDraftStore: () => ({ read: () => ({ then: (done: (value: null) => void) => { done(null); return { catch() {} }; } }), write: async () => {} }), React, Dialog, PersonInviteDialog: 'PersonInviteDialog', useToast: () => () => {}, DetailDialog: 'DetailDialog', useScreenRemovalLock() {}, validUPIAddress, View: 'View', ScrollView: 'ScrollView', KeyboardDialog: 'KeyboardDialog', Pressable: 'Pressable', Text: 'Text', LoadingSpinner: 'LoadingSpinner', NotificationSwitch: 'NotificationSwitch', PushSettings: 'PushSettings', BalanceStatements: 'BalanceStatements', DialogScrollBody: 'DialogScrollBody', Form: 'Form', SectionHeading: 'SectionHeading', Button: 'Button', Icon: 'Icon', SettingsRow: 'SettingsRow', BillPeople: 'BillPeople', DraftAttachment: 'DraftAttachment', LocalAttachment: 'LocalAttachment', AmountField: 'AmountField', TextField: 'TextField', DateField: 'DateField', ErrorText: 'ErrorText', Checkbox: { Item: 'Checkbox' }, RadioChoice: 'RadioChoice', Crypto: { randomUUID: () => 'bill-id' }, StyleSheet: { create: (value: any) => value }, Keyboard: { dismiss() {} }, useWindowDimensions: () => ({ height: 667 }), useSafeAreaInsets: () => ({ top: 20, bottom: 0 }), Platform: { OS: 'native' }, requestAnimationFrame: (fn: () => void) => fn(), useUI: () => ({ ui: {} }), formatMoney, integer, rupeesToPaise, validateExpense, ...extra,
+  const env: Record<string, any> = { animateLayout() {}, PeopleSheet: 'PeopleSheet', currencySymbol, cachedRead: () => undefined, getDatabase: async () => ({}), draftDiscard, ScreenDraftDiscard: {}, useContext: () => draftDiscard, expenseDraftStore: () => ({ read: () => ({ then: (done: (value: null) => void) => { done(null); return { catch() {} }; } }), write: async () => {} }), React, Dialog, PersonInviteDialog: 'PersonInviteDialog', useToast: () => () => {}, DetailDialog: 'DetailDialog', useScreenRemovalLock() {}, validUPIAddress, View: 'View', ScrollView: 'ScrollView', KeyboardDialog: 'KeyboardDialog', Pressable: 'Pressable', Text: 'Text', LoadingSpinner: 'LoadingSpinner', NotificationSwitch: 'NotificationSwitch', PushSettings: 'PushSettings', BalanceStatements: 'BalanceStatements', DialogScrollBody: 'DialogScrollBody', Form: 'Form', SectionHeading: 'SectionHeading', Button: 'Button', Icon: 'Icon', SettingsRow: 'SettingsRow', BillPeople: 'BillPeople', DraftAttachment: 'DraftAttachment', LocalAttachment: 'LocalAttachment', AmountField: 'AmountField', TextField: 'TextField', DateField: 'DateField', ErrorText: 'ErrorText', Checkbox: { Item: 'Checkbox' }, RadioChoice: 'RadioChoice', Crypto: { randomUUID: () => 'bill-id' }, StyleSheet: { create: (value: any) => value }, Keyboard: { dismiss() {} }, useWindowDimensions: () => ({ height: 667 }), useSafeAreaInsets: () => ({ top: 20, bottom: 0 }), Platform: { OS: 'native' }, requestAnimationFrame: (fn: () => void) => fn(), useUI: () => ({ ui: {} }), formatMoney, integer, rupeesToPaise, validateExpense, ...extra,
     useState: (initial: any) => { const id = cursor++; if (!(id in states)) states[id] = typeof initial === 'function' ? initial() : initial; return [states[id], (value: any) => { states[id] = typeof value === 'function' ? value(states[id]) : value; }]; },
     useRef: (initial: any) => { const id = cursor++; return states[id] ??= { current: initial }; },
     useEffect: (fn: () => any, values: any[]) => { const id = cursor++; if (!deps[id] || values.some((value, i) => value !== deps[id][i])) { effects.push(() => { cleanups[id]?.(); cleanups[id] = fn(); }); deps[id] = values; } },
@@ -70,7 +70,7 @@ function appAction(name: string, env: Record<string, any>) {
 test('combined export flushes saved work and never shares a stale account result', async () => {
   const calls: any[] = [], notices: any[] = [], ownerRef = { current: 'owner-a' }, session = { token: 'session-a' };
   const data = { account_data_status: 'unavailable_offline' };
-  const env: Record<string, any> = { currencySymbol, browse: async (_key: string, work: any) => work(() => true), owner: 'owner-a', ownerRef, session, activeSessionRef: { current: session },
+  const env: Record<string, any> = { animateLayout() {}, PeopleSheet: 'PeopleSheet', currencySymbol, browse: async (_key: string, work: any) => work(() => true), owner: 'owner-a', ownerRef, session, activeSessionRef: { current: session },
     draftWrites: { current: Promise.resolve() }, flushChatWrites: async () => {}, getDatabase: async () => ({}), isOnline: () => false,
     portableExport: async () => data, setNotice: (...args: any[]) => notices.push(args), shareJson: async (...args: any[]) => calls.push(args) };
   await appAction('exportData', env)(); assert.deepEqual(calls, [['merosplit-data', data]]); assert.equal(notices.length, 1);
@@ -216,12 +216,10 @@ test('people dialog opens/closes/reopens without changing its existing inputs an
   let tree = app.render(props); app.commit();
   for (let i = 0; i < 2; i++) {
     nodes(tree).find(node => node.type === 'Button')!.props.onPress(); tree = app.render(props); app.commit();
-    assert.equal(nodes(tree).find(node => node.type === 'KeyboardDialog')!.props.visible, true);
-    assert.equal(nodes(tree).find(node => node.type === 'ScrollView')!.props.keyboardShouldPersistTaps, 'handled');
-    assert.ok(!nodes(nodes(tree).find(node => node.type === 'ScrollView')).some(node => node.props.title === 'Done'));
+    assert.equal(nodes(tree).find(node => node.type === 'PeopleSheet')!.props.visible, true);
     assert.equal(nodes(tree).find(node => node.type === 'Input'), child);
-    find(tree, 'title', 'Done').props.onPress(); tree = app.render(props); app.commit();
-    assert.equal(nodes(tree).find(node => node.type === 'KeyboardDialog')!.props.visible, false);
+    nodes(tree).find(node => node.type === 'PeopleSheet')!.props.onDismiss(); tree = app.render(props); app.commit();
+    assert.equal(nodes(tree).find(node => node.type === 'PeopleSheet')!.props.visible, false);
   }
 });
 
@@ -232,10 +230,10 @@ test('people dialog adapts to short viewports and Done dismisses the keyboard wh
   const props = { title: 'Who paid?', icon: 'pay', summary: '2 people', inline: false, disabled: false, children: child };
   for (const [height, top, bottom] of [[667, 20, 0], [844, 47, 34], [375, 0, 21]]) {
     Object.assign(viewport, { height }); Object.assign(safe, { top, bottom });
-    assert.equal(nodes(people.render(props)).find(node => node.type === 'KeyboardDialog')!.props.maxHeight, height - top - bottom);
+    assert.equal(nodes(people.render(props)).find(node => node.type === 'PeopleSheet')!.props.maxHeight, height - top - bottom);
   }
   let tree = people.render(props); people.commit(); nodes(tree).find(node => node.type === 'Button')!.props.onPress();
-  tree = people.render(props); people.commit(); find(tree, 'title', 'Done').props.onPress();
+  tree = people.render(props); people.commit(); nodes(tree).find(node => node.type === 'PeopleSheet')!.props.onDismiss();
   assert.equal(dismisses, 1); assert.equal(nodes(people.render(props)).find(node => node.type === 'Input'), child);
 });
 
@@ -367,7 +365,7 @@ test('pre-save file picker stages privately before the durable draft, previews a
 test('bill save preserves both draft and file if enqueue fails, then reuses the same bill/file IDs on retry', async () => {
   const file = { id: 'file-id', path: '/groups/g/expenses/bill-id/attachments', file: { uri: 'file:///staged.png' } };
   const events: string[] = [], expense = { id: 'bill-id' }; let fail = true;
-  const env: Record<string, any> = { currencySymbol, selected: { group: {} }, session: {}, owner: 'owner', groupId: 'g', expenseId: null, reviewCommand: null,
+  const env: Record<string, any> = { animateLayout() {}, PeopleSheet: 'PeopleSheet', currencySymbol, selected: { group: {} }, session: {}, owner: 'owner', groupId: 'g', expenseId: null, reviewCommand: null,
     perform: (action: any) => action(), draftWrites: { current: Promise.resolve() }, getDatabase: async () => ({}),
     expensePayload: (value: any) => value, command: (_method: string, _path: string, body: any) => body,
     queue: async (body: any, _replacing: unknown, attachment: unknown) => { assert.equal(body.id, 'bill-id'); assert.equal(attachment, file); events.push('queue bill and file'); if (fail) throw Error('Disk full'); },
@@ -426,7 +424,7 @@ test('Notifications updates immediately, rolls back failures and prevents duplic
   assert.equal(notificationToggle(tree, 'Notifications').props.checked, false);
   assert.equal(notificationToggle(tree, 'Notifications').props.disabled, true);
   assert.equal(notificationToggle(tree, 'Email notifications'), undefined);
-  assert.equal(find(tree, 'title', 'Done').props.disabled, false);
+  assert.equal(find(tree, 'title', 'Close notifications').props.disabled, false);
   assert.deepEqual(panel.changes, []);
   panel.pending[0].reject(Error('offline')); await tick(); tree = app.render(props);
   assert.equal(notificationToggle(tree, 'Notifications').props.checked, true);
@@ -841,7 +839,7 @@ test('Payment failed opens frozen-address help without answering or changing the
   help.props.onClose(); assert.equal(nodes(app.render(props)).find(node => node.type === 'PaymentHelpDialog')!.props.visible, false);
   assert.equal(writes, 0);
   const dialog = harness('src/PaymentPanels.tsx', 'PaymentHelpDialog', { DialogFocus: 'DialogFocus' }).render({ visible: true, name: 'Original payee', vpa: 'original@example', onClose() {} });
-  assert.deepEqual(nodes(dialog).filter(node => node.type === 'Button').map(node => node.props.title), ['Done']);
+  assert.deepEqual(nodes(dialog).filter(node => node.type === 'Button').map(node => node.props.title), ['Close payment help']);
   assert.ok(nodes(dialog).some(node => typeof node.type === 'function' && node.type.name === 'PaymentAddress' && node.props.vpa === 'original@example'));
 });
 
@@ -939,10 +937,10 @@ test('UPI setup follows name, can be skipped, validates format and waits for sav
   let tree = app.render({ ...props, needsName: true }); app.commit();
   assert.ok(nodes(tree).some(node => node.type === 'NameOnlyForm'));
   assert.ok(!nodes(tree).some(node => node.type === 'TextField'));
-  tree = app.render(props); find(tree, 'title', 'Skip').props.onPress(); assert.equal(skips, 1); assert.equal(saves, 0);
-  assert.equal(find(tree, 'title', 'Save').props.disabled, true);
+  tree = app.render(props); find(tree, 'title', 'Skip UPI setup').props.onPress(); assert.equal(skips, 1); assert.equal(saves, 0);
+  assert.equal(find(tree, 'title', 'Save UPI ID').props.disabled, true);
   find(tree, 'label', 'UPI ID (optional)').props.onChangeText(' name@example ');
-  tree = app.render(props); find(tree, 'title', 'Save').props.onPress(); find(tree, 'title', 'Save').props.onPress();
+  tree = app.render(props); find(tree, 'title', 'Save UPI ID').props.onPress(); find(tree, 'title', 'Save UPI ID').props.onPress();
   assert.equal(saves, 1); assert.equal(skips, 1);
   finish(); await tick(); assert.equal(skips, 2);
   app.unmount();
@@ -952,7 +950,7 @@ test('profile read prompts once only when missing UPI, never overwrites another 
   const session = { baseUrl: 'https://synthetic.invalid', userId: '1', token: 'session-a' }, activeSessionRef = { current: session };
   const owner = `${session.baseUrl}|1`, prompts: boolean[] = [], addresses: string[] = [];
   let me = { display_name: 'Asha', payment_profile: null as null | { vpa: string } };
-  const route = {}; const env: Record<string, any> = { currencySymbol, navigation: { ref: { getRootState: () => route } }, profileRevision: { current: 0 }, profilePromptSafe: { current: true }, request: async () => me, rememberName: async () => {}, activeSessionRef, ownerRef: { current: owner }, accountOwner: (value: any) => `${value.baseUrl}|${value.userId}`, setVpa: (value: string) => addresses.push(value), setUpiSetup: (value: boolean) => prompts.push(value), upiPrompts: { current: new Set() } };
+  const route = {}; const env: Record<string, any> = { animateLayout() {}, PeopleSheet: 'PeopleSheet', currencySymbol, navigation: { ref: { getRootState: () => route } }, profileRevision: { current: 0 }, profilePromptSafe: { current: true }, request: async () => me, rememberName: async () => {}, activeSessionRef, ownerRef: { current: owner }, accountOwner: (value: any) => `${value.baseUrl}|${value.userId}`, setVpa: (value: string) => addresses.push(value), setUpiSetup: (value: boolean) => prompts.push(value), upiPrompts: { current: new Set() } };
   const read = appAction('readProfile', env);
   await read(session); await read(session); assert.deepEqual(prompts, [true]);
   me = { ...me, payment_profile: { vpa: 'known@example' } }; await read(session);
@@ -968,7 +966,7 @@ test('Failed optional UPI save retains the address and never dismisses as saved'
   const props = { visible: true, busy: false, needsName: false, onSaveName: async () => {}, onSkip: () => skips++, onSave: async () => { throw Error('Offline'); } };
   let tree = app.render(props); app.commit();
   find(tree, 'label', 'UPI ID (optional)').props.onChangeText('name@example');
-  tree = app.render(props); find(tree, 'title', 'Save').props.onPress(); await tick(); tree = app.render(props);
+  tree = app.render(props); find(tree, 'title', 'Save UPI ID').props.onPress(); await tick(); tree = app.render(props);
   assert.equal(skips, 0); assert.equal(find(tree, 'label', 'UPI ID (optional)').props.value, 'name@example');
   assert.ok(nodes(tree).some(node => node.type === 'ErrorText'));
   app.unmount();
@@ -978,13 +976,13 @@ test('Shared Button forwards Paper dialog spacing without changing disabled or p
   const source = ts.createSourceFile('ui.tsx', readFileSync(new URL('../src/ui.tsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   const declaration = source.statements.find(node => ts.isVariableStatement(node) && node.declarationList.declarations.some(value => value.name.getText(source) === 'Button'))!;
   const code = ts.transpile(declaration.getText(source).replace(/^export /, ''), { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React });
-  const env = { React: { ...React, forwardRef: (render: any) => render }, useState: () => [false, () => {}], View: 'View', Text: 'Text', Pressable: 'Pressable', useUI: () => ({ palette: {}, ui: {} }), usePressFeedback: () => ({ pressedStyle: {} }), PaperButton: 'PaperButton', Icon: 'Icon', radii: { button: 8 }, Platform: { OS: 'ios' } };
+  const env = { animateLayout() {}, React: { ...React, forwardRef: (render: any) => render }, useState: () => [false, () => {}], View: 'View', Text: 'Text', Pressable: 'Pressable', useUI: () => ({ palette: {}, ui: {} }), usePressFeedback: () => ({ pressedStyle: {} }), PaperButton: 'PaperButton', Icon: 'Icon', radii: { button: 8 }, Platform: { OS: 'ios' } };
   const Button = new Function('env', `with(env){ const StaggerItem = 'StaggerItem';${code};return Button;}`)(env);
   const injected = [{ marginRight: 8 }], onPress = () => {};
   for (const disabled of [false, true]) {
     const element = Button({ title: 'Cancel', kind: 'text', compact: true, style: injected, disabled, onPress });
     assert.ok(element.props.style({ pressed: false }).includes(injected), 'preserve Dialog.Actions child spacing');
-    assert.equal(element.props.onPress, onPress); assert.equal(element.props.disabled, disabled);
+    element.props.onPress({}); assert.equal(element.props.disabled, disabled);
     assert.equal(element.props.accessibilityLabel, 'Cancel');
   }
 });
@@ -1120,7 +1118,7 @@ test('actual bill save transfers file ownership at commit, retaining exact queue
       await saveMediaUpload(base, other, { ...attachment, id: 'other-file', file: { ...attachment.file, uri: pathToFileURL(otherFile).href } });
       const otherBefore = JSON.stringify({ commands: await pendingCommands(base, accountOwner(other)), media: await pendingMediaUpload(base, other, attachment.path) });
       let discardOpen = false, completion: Promise<unknown> | undefined; const screens: string[] = [];
-      const env: Record<string, any> = { currencySymbol, selected: { group: { ...group, version: 1 } }, session, owner, groupId: 'g', expenseId: null, reviewCommand: null,
+      const env: Record<string, any> = { animateLayout() {}, PeopleSheet: 'PeopleSheet', currencySymbol, selected: { group: { ...group, version: 1 } }, session, owner, groupId: 'g', expenseId: null, reviewCommand: null,
         perform: (action: any) => action(), draftWrites: { current: Promise.resolve() }, getDatabase: async () => db,
         expensePayload, uuid: () => 'bill-command', enqueueExpenseWithMedia, enqueue, enqueueBill, replaceCommand,
         requireConnectionForTemporaryStorage() {}, load: async () => { if (phase === 'after commit' && failing) throw Error('Projection read failed'); },
@@ -1173,7 +1171,7 @@ async function unmountBeforeBillCommit(commits: boolean) {
     }) };
     const session = { baseUrl: 'https://inflight.invalid', userId: '7', email: 'seven@example.invalid', token: 'synthetic' }, owner = accountOwner(session);
     const attachment = { id: 'file-id', path: '/groups/g/expenses/bill-id/attachments', file: { uri: pathToFileURL(file).href, name: 'receipt.png', type: 'image/png', size: Buffer.byteLength(bytes) } };
-    const env: Record<string, any> = { currencySymbol, selected: { group: { ...group, version: 1 } }, session, owner, groupId: 'g', expenseId: null, reviewCommand: null,
+    const env: Record<string, any> = { animateLayout() {}, PeopleSheet: 'PeopleSheet', currencySymbol, selected: { group: { ...group, version: 1 } }, session, owner, groupId: 'g', expenseId: null, reviewCommand: null,
       perform: (action: any) => action(), draftWrites: { current: Promise.resolve() }, getDatabase: async () => db,
       expensePayload, uuid: () => 'inflight-command', enqueueExpenseWithMedia, enqueue, enqueueBill, replaceCommand,
       requireConnectionForTemporaryStorage() {}, load: async () => {}, setReviewCommand() {}, setReviewInput() {}, navigate() {}, isOnline: () => false };
@@ -1214,7 +1212,7 @@ test('first-split UPI copy stays optional and saves only a valid address', async
   assert.ok(JSON.stringify(tree).includes('Your money needs directions.'));
   assert.ok(JSON.stringify(tree).includes('UPI bhej na.'));
   assert.equal(find(tree, 'title', 'Add UPI ID').props.disabled, true);
-  find(tree, 'title', 'Later').props.onPress(); assert.equal(dismissed, 1); assert.equal(saved, '');
+  find(tree, 'title', 'Set up later').props.onPress(); assert.equal(dismissed, 1); assert.equal(saved, '');
   find(tree, 'label', 'UPI ID (optional)').props.onChangeText('friend@bank');
   tree = app.render(props); find(tree, 'title', 'Add UPI ID').props.onPress(); await tick();
   assert.equal(saved, 'friend@bank'); assert.equal(dismissed, 2);

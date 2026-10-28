@@ -50,6 +50,7 @@ function appHarness() {
     setAppLink:(next:AppLink|null|((current:AppLink|null)=>AppLink|null))=>{state.appLink=typeof next==='function'?next(state.appLink):next;},
     setNotice:(notice:string)=>{state.notice=notice;},setCheckingCookie:(value:boolean)=>{state.checkingCookie=value;},pauseAccountRequests:()=>Promise.resolve()};
   // Exercise the actual read/submission/persistence fences, keeping only native storage IO stubbed.
+  env.showReadGroup = appFunction('showReadGroup', {setGroups: () => {}, setLedgerRevision: () => {}});
   for(const name of ['setSubmission','perform','background','browse','saveReadGroup']) env[name]=appFunction(name,env);
   const view=()=>({...env,...state,authHeld:state.checkingCookie});
   return {state,activeSessionRef,claiming,open:()=>{actual(openLink,view())();return pending;},

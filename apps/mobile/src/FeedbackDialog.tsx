@@ -39,7 +39,7 @@ export default function FeedbackDialog({ visible, onClose, onSubmit }: {
           {!!error && <ErrorText live>{error}</ErrorText>}
         </>
       </DialogScrollBody>
-      <CancelDialogActions cancelTitle={sent ? 'Close' : 'Cancel'} disabled={busy} onCancel={close}>
+      <CancelDialogActions cancelTitle={sent ? 'Close feedback' : 'Cancel'} disabled={busy} onCancel={close}>
         <Button title={sent ? 'Sent' : busy ? 'Sending' : 'Send feedback'} icon={sent ? 'check' : 'feedback'} kind="primary" disabled={sent || busy || !text.trim()} onPress={() => void submit()} />
       </CancelDialogActions>
     </DialogFocus>

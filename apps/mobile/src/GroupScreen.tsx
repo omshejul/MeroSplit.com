@@ -178,10 +178,12 @@ export default function GroupScreen({ categoryIcons, header, noticeVisibility, g
   const { group, accepted, previewError } = shown;
   const commandBodies = new Map(pending.map(command => [command.command_id, JSON.stringify(command.body)]));
   const ownChanges = pending.map(command => `${command.command_id}:${command.state}:${commandBodies.get(command.command_id)}`).join('|');
+  const wasActive = useRef(active);
   const adoptedRevision = useRef(revision), savedCommands = useRef(commandBodies);
   const [opacity] = useState(() => new Animated.Value(1));
   useLayoutEffect(() => {
-    const deliberate = revision !== adoptedRevision.current;
+    const returning = active && !wasActive.current; wasActive.current = active;
+    const deliberate = revision !== adoptedRevision.current || returning && (incoming !== group || incomingPreviewError !== previewError);
     const ownSave = pending.some(command => !savedCommands.current.has(command.command_id) || savedCommands.current.get(command.command_id) !== commandBodies.get(command.command_id));
     adoptedRevision.current = revision; savedCommands.current = commandBodies;
     if (!deliberate && !ownSave) return;
@@ -194,7 +196,7 @@ export default function GroupScreen({ categoryIcons, header, noticeVisibility, g
       } else opacity.setValue(1);
     }
     setShown({ group: incoming, accepted: incomingAccepted, previewError: incomingPreviewError });
-  }, [revision, ownChanges]);
+  }, [revision, ownChanges, active]);
   useEffect(() => { onUpdatesAvailable?.(incoming.version !== group.version || incomingPreviewError !== previewError); }, [incoming.version, group.version, incomingPreviewError, previewError, onUpdatesAvailable]);
   useEffect(() => () => opacity.stopAnimation(), [opacity]);
   const [explanation, setExplanation] = useState<BalanceSelection | null>(null);

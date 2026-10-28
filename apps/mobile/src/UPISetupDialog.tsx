@@ -34,7 +34,7 @@ export default function UPISetupDialog({ visible, busy, needsName, afterFirstSpl
         {needsName ? <NameOnlyForm busy={disabled} onSave={onSaveName} /> : <TextField label="UPI ID (optional)" placeholder="name@bank" value={vpa} onChangeText={setVpa} autoCapitalize="none" autoCorrect={false} keyboardType="email-address" maxLength={254} editable={!disabled} />}
         {!!error && <ErrorText live>{error}</ErrorText>}
       </DialogScrollBody>
-      {!needsName && <Dialog.Actions><Button title={afterFirstSplit ? 'Later' : 'Skip'} kind="text" disabled={disabled} onPress={skip} /><Button title={saving ? 'Saving' : afterFirstSplit ? 'Add UPI ID' : 'Save'} kind="primary" disabled={disabled || !validUPIAddress(vpa.trim())} onPress={() => void save()} /></Dialog.Actions>}
+      {!needsName && <Dialog.Actions><Button title={afterFirstSplit ? 'Set up later' : 'Skip UPI setup'} kind="text" disabled={disabled} onPress={skip} /><Button title={saving ? 'Saving UPI ID…' : afterFirstSplit ? 'Add UPI ID' : 'Save UPI ID'} kind="primary" disabled={disabled || !validUPIAddress(vpa.trim())} onPress={() => void save()} /></Dialog.Actions>}
     </DialogFocus>
   </KeyboardDialog>;
 }

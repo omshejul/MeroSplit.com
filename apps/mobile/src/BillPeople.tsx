@@ -1,13 +1,12 @@
-import { Dialog } from './DialogParts';
-import React, { useEffect, useRef, useState } from 'react';
-import { Keyboard, Platform, ScrollView, useWindowDimensions, View } from 'react-native';
+import React, { useRef, useState } from 'react';
+import { Keyboard, useWindowDimensions, View } from 'react-native';
 import { Text } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import KeyboardDialog from './KeyboardDialog';
+import PeopleSheet from './PeopleSheet';
 import { SectionHeading, Button, Icon, useUI, type IconName } from './ui';
 
-export default function BillPeople({ title, icon, summary, inline, disabled, children }: {
-  title: string; icon: IconName; summary: string; inline: boolean; disabled: boolean; children: React.ReactNode;
+export default function BillPeople({ title, icon, summary, inline, disabled, total, count, children }: {
+  title: string; icon: IconName; summary: string; inline: boolean; disabled: boolean; total?: string; count?: number; children: React.ReactNode;
 }) {
   const { ui } = useUI(), [open, setOpen] = useState(false);
   const { height } = useWindowDimensions(), { top, bottom } = useSafeAreaInsets();
@@ -18,10 +17,6 @@ export default function BillPeople({ title, icon, summary, inline, disabled, chi
     <Button kind="plain" ref={trigger} accessibilityRole="button" accessibilityLabel={`${title}. ${summary}`} disabled={disabled} accessibilityState={{ disabled }} onPress={() => { if (!disabled) setOpen(true); }} style={ui.row}>
       <Icon name={icon} /><View style={ui.rowBody}><Text style={ui.label}>{title}</Text><Text style={ui.body}>{summary}</Text></View><Icon name="next" size={18} />
     </Button>
-    <KeyboardDialog visible={open} onDismiss={close} maxHeight={Math.max(0, height - top - bottom)}>
-      <Dialog.Title aria-level={2}><Icon name={icon} /> {title}</Dialog.Title>
-      <Dialog.Content style={{ flexShrink: 1 }}><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: 12 }}>{children}</ScrollView></Dialog.Content>
-      <Dialog.Actions><Button title="Done" icon="check" kind="text" onPress={close} /></Dialog.Actions>
-    </KeyboardDialog>
+    <PeopleSheet visible={open} onDismiss={close} title={icon === 'people' ? 'Split expense' : title} icon={icon} total={total} count={count} disabled={disabled} maxHeight={Math.max(0, height - top - bottom)}>{children}</PeopleSheet>
   </>;
 }

@@ -11,10 +11,10 @@ import { colorFamilies, isDarkOnly } from './theme';
 import { Button, ErrorText, SettingsRow, useUI, type AppearancePreference, type ColorFamily } from './ui';
 
 const modes = [{ value: 'system', label: 'System' }, { value: 'light', label: 'Light' }, { value: 'dark', label: 'Dark' }] as const;
-function ChoiceGroup<T extends string>({ label, group, options, selected, disabled, note, onChoose }: { label: string; group: string; options: readonly { value: T; label: string }[]; selected: T; disabled: boolean; note?: string; onChoose: (value: T) => void }) {
+function ChoiceGroup<T extends string>({ label, group, options, selected, disabled, note, onChoose }: { label?: string; group: string; options: readonly { value: T; label: string }[]; selected: T; disabled: boolean; note?: string; onChoose: (value: T) => void }) {
   const { ui } = useUI();
-  return <View role="radiogroup" aria-label={label} aria-disabled={disabled || undefined}>
-    <Text style={[ui.label, { paddingHorizontal: 16, paddingTop: 8 }]}>{label}</Text>
+  return <View role="radiogroup" aria-label={label ?? 'Default currency'} aria-disabled={disabled || undefined}>
+    {!!label && <Text style={[ui.label, { paddingHorizontal: 16, paddingTop: 8 }]}>{label}</Text>}
     {!!note && <Text style={[ui.caption, { paddingHorizontal: 16 }]}>{note}</Text>}
     {options.map(option => <RadioChoice key={option.value} group={group} value={option.value} label={option.label} selected={selected === option.value} disabled={disabled} onPress={() => onChoose(option.value)} />)}
   </View>;
@@ -42,7 +42,7 @@ export default function ProfileSettings({ name, vpa, busy, onSaveName, onSaveUPI
   // return to a group's selected radio after its save re-enables the choices.
   const webNode = (ref: React.RefObject<React.ComponentRef<typeof View> | null>) => ref.current as unknown as HTMLElement | null;
   function choiceStops() {
-    const stops = [webNode(choices)?.querySelector<HTMLInputElement>('input[name="color"]:checked'), webNode(choices)?.querySelector<HTMLInputElement>('input[name="mode"]:checked'), webNode(doneArea)?.querySelector<HTMLElement>('button, [role="button"]')];
+    const stops = [webNode(choices)?.querySelector<HTMLInputElement>('input[name="currency"]:checked'), webNode(choices)?.querySelector<HTMLInputElement>('input[name="color"]:checked'), webNode(choices)?.querySelector<HTMLInputElement>('input[name="mode"]:checked'), webNode(doneArea)?.querySelector<HTMLElement>('button, [role="button"]')];
     return stops.filter((stop): stop is HTMLElement => !!stop && !(stop as HTMLInputElement).disabled && stop.getAttribute('aria-disabled') !== 'true');
   }
   function focusInitialChoice() {
@@ -83,22 +83,21 @@ export default function ProfileSettings({ name, vpa, busy, onSaveName, onSaveUPI
       <Dialog.Title aria-level={2}>{isCurrency ? 'Default currency' : isAppearance ? 'Appearance' : isName ? 'Name' : 'UPI ID'}</Dialog.Title>
       {isChoice ? <>
         <DialogScrollBody maxHeight={Platform.OS === 'web' ? Math.min(560, Math.max(0, height - 224)) : 440} gap={0} paddingVertical={0}><View ref={choices} onLayout={focusInitialChoice}>
-          {isCurrency ? <ChoiceGroup label="Display currency" group="currency" options={currencies.map(option => ({ value: option.value, label: `${option.symbol} ${option.name} (${option.value})` }))} selected={currency} disabled={disabled}
-            note="Changes symbols only. Amounts are not converted. UPI payments remain in INR."
+          {isCurrency ? <ChoiceGroup group="currency" options={currencies.map(option => ({ value: option.value, label: `${option.symbol} ${option.name} (${option.value})` }))} selected={currency} disabled={disabled}
             onChoose={value => void save(() => onCurrency(value)).then(() => focusChoice('currency'))} /> : <>
           <ChoiceGroup label="Color" group="color" options={colorFamilies} selected={colorFamily} disabled={disabled} onChoose={value => void save(() => onColorFamily(value)).then(() => focusChoice('color'))} />
           <ChoiceGroup label="Mode" group="mode" options={modes} selected={appearance} disabled={disabled || darkOnly} note={darkOnly ? 'Obsidian is always dark. Other colors use this mode.' : undefined} onChoose={value => void save(() => onAppearance(value)).then(() => focusChoice('mode'))} />
           </>}
           {!!error && <ErrorText live>{error}</ErrorText>}
         </View></DialogScrollBody>
-        <Dialog.Actions><View ref={doneArea}><Button title="Done" kind="text" disabled={disabled} onPress={close} /></View></Dialog.Actions>
+        <Dialog.Actions><View ref={doneArea}><Button title={editing === 'currency' ? 'Close currency settings' : 'Close appearance'} kind="text" disabled={disabled} onPress={close} /></View></Dialog.Actions>
       </> : <><Dialog.Content style={{ flexShrink: 1 }}><ScrollView keyboardShouldPersistTaps="handled">
           <View style={{ gap: 8 }}><TextInput ref={input} {...inputColors} autoFocus accessibilityLabel={isName ? 'Name' : 'UPI ID'} value={draft} maxLength={isName ? 120 : 254} autoCorrect={false} autoCapitalize={isName ? 'words' : 'none'} autoComplete={isName ? 'name' : 'off'} keyboardType={isName ? 'default' : 'email-address'} returnKeyType="done" editable={!disabled} style={ui.input}
             onChangeText={text => { setDraft(text); setError(''); }} onSubmitEditing={() => void save()} onKeyPress={event => { if (event.nativeEvent.key === 'Escape' && !disabled) close(); }} />
           </View>
           {!!error && <ErrorText live>{error}</ErrorText>}
         </ScrollView></Dialog.Content>
-        <CancelDialogActions disabled={disabled} onCancel={close}><Button title={saving ? 'Saving…' : 'Save'} disabled={disabled || !valid || draft.trim() === (isName ? name : vpa)} onPress={() => void save()} /></CancelDialogActions></>}
+        <CancelDialogActions disabled={disabled} onCancel={close}><Button title={saving ? 'Saving…' : isName ? 'Save name' : 'Save UPI ID'} disabled={disabled || !valid || draft.trim() === (isName ? name : vpa)} onPress={() => void save()} /></CancelDialogActions></>}
     </KeyboardDialog>
   </>;
 }

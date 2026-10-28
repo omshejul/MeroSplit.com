@@ -18,7 +18,7 @@ function form(db: any, options: any = {}) {
   let cursor=0; const state:any[]=[], deps:any[][]=[], cleanup:any[]=[], effects:(()=>void)[]=[];
   const writes={current:Promise.resolve()}, discard={current:null as null|(()=>Promise<boolean>)};
   const media:any[]=[], saves:any[]=[];
-  const env:any={currencySymbol,...accounting,...persistence, React:{createElement:(type:any,props:any,...children:any[])=>({type,props:props||{},children})},
+  const env:any={animateLayout() {}, currencySymbol,...accounting,...persistence, React:{createElement:(type:any,props:any,...children:any[])=>({type,props:props||{},children})},
     useState:(initial:any)=>{const id=cursor++;if(!(id in state))state[id]=typeof initial==='function'?initial():initial;return[state[id],(v:any)=>{state[id]=typeof v==='function'?v(state[id]):v}]},
     useRef:(initial:any)=>{const id=cursor++;return state[id]??={current:initial}},
     useContext:()=>discard, ScreenDraftDiscard:{},
