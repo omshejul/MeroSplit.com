@@ -104,7 +104,7 @@ const uuid = () => Crypto.randomUUID();
 type Transfer = { sender: string; recipient: string; amount: string };
 type EmailEntry = { id: string | null; phase: 'opening' | 'switch' | 'target' | 'name' | 'error'; error: string; sent: boolean; target?: EmailTarget; inspection?: EmailLinkInspection; switchFromUserId?: number };
 function AppContent() {
-  const { palette: colors, ui, changeAppearance, changeColorFamily } = useUI();
+  const { palette: colors, ui, changeAppearance, changeColorFamily, changeCurrency } = useUI();
   const s = makeStyles(colors);
   const [session, setSession] = useState<Session | null>(null), [ready, setReady] = useState(false), [expired, setExpired] = useState(false);
   useEffect(() => {
@@ -1388,7 +1388,7 @@ function AppContent() {
         onImported={(group, alreadyImported) => { if (ownerRef.current !== accountOwner(session)) return; setGroups(rows => [...rows.filter(row => row.group.id !== group.id), { kind: 'shared', group }]); if (navigation.ref.getCurrentRoute()?.key !== route.key) return; navigate('group', { groupId: group.id, expenseId: null, tab: 'Groups' }); setNotice(alreadyImported ? 'Already imported.' : 'Imported.', 'success'); }} />}
       {screen === 'home' && tab === 'Account' && session && <>
         <AccountHeader onPhotoChanged={() => refreshProfilePhotos(session)} key={owner} session={session} name={myName} busy={busy} onBusyChange={value => setSubmission(value, `${route.key}|profile-photo`)} />
-        <View><ProfileSettings key={`profile-settings|${owner}`} name={myName} vpa={vpa} busy={busy} onSaveName={saveName} onSaveUPI={saveUPI} onAppearance={value => perform(() => changeAppearance(value), false, 'appearance')} onColorFamily={value => perform(() => changeColorFamily(value), false, 'appearance')} />
+        <View><ProfileSettings key={`profile-settings|${owner}`} name={myName} vpa={vpa} busy={busy} onSaveName={saveName} onSaveUPI={saveUPI} onAppearance={value => perform(() => changeAppearance(value), false, 'appearance')} onColorFamily={value => perform(() => changeColorFamily(value), false, 'appearance')} onCurrency={value => perform(() => changeCurrency(value), false, 'currency')} />
           <SettingsRow rowRef={methodsRow} label="Sign-in methods" icon="key" disabled={busy || expired} onPress={() => navigate('signInMethods')} />
           <AccountNotifications key={`account-notifications|${owner}`} session={session} push={push} busy={busy} onBusyChange={value => setSubmission(value, `${route.key}|notifications`)} />
           <MCPSettings key={`mcp-settings|${owner}`} session={session} busy={busy} onBusyChange={value => setSubmission(value, `${route.key}|mcp`)} />

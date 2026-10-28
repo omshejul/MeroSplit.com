@@ -12,7 +12,7 @@ test('browser startup uses the deployed WASM URL for persistent storage and its 
  for(const failPersistent of [false,true]){
   const raw=new DatabaseSync(':memory:'),db=sqliteAdapter(raw),configs:any[]=[],opened:string[]=[];
   const sqlite={configureWeb:(value:any)=>configs.push(value),openDatabaseAsync:async(name:string)=>{opened.push(name);if(failPersistent&&name!==':memory:')throw Error('OPFS unavailable');return db;}};
-  const mocks:any={'./connectivity':{serverReachable:()=>true},'expo-sqlite':sqlite,'./storage':{migrate},'./webDatabase':{serializedDatabase},'./browserStorage':{openBrowserStorage},'./browserAuth.ts':{},'./theme':{}};
+  const mocks:any={'./connectivity':{serverReachable:()=>true},'expo-sqlite':sqlite,'./storage':{migrate},'./webDatabase':{serializedDatabase},'./browserStorage':{openBrowserStorage},'./browserAuth.ts':{},'./theme':{},'./currency':{}};
   const code=ts.transpile(readFileSync(new URL('../src/native.web.ts',import.meta.url),'utf8'),{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS});
   const module={exports:{} as any};
   try{

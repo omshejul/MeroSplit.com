@@ -1,3 +1,4 @@
+import { DEFAULT_CURRENCY, isCurrency, type Currency } from './currency';
 import { serverReachable } from './connectivity';
 import * as SQLite from 'expo-sqlite';
 import { migrate } from './storage';
@@ -70,3 +71,10 @@ export async function claimFirstSplitUPIPrompt(owner: string): Promise<boolean> 
 }
 
 export async function claimPushInvitation(_owner: string): Promise<boolean> { return false; }
+
+const CURRENCY_KEY = 'merosplit.web.currency';
+export async function savedCurrency(): Promise<Currency> { const value = readPreference(CURRENCY_KEY); return isCurrency(value) ? value : DEFAULT_CURRENCY; }
+export async function saveCurrency(value: Currency): Promise<void> {
+  if (!isCurrency(value)) throw new Error('Choose a currency.');
+  try { localStorage.setItem(CURRENCY_KEY, value); } catch { throw new Error('Could not save the currency. Allow site storage and try again.'); }
+}

@@ -1,3 +1,4 @@
+import { currencies, type Currency } from './currency';
 import { Dialog } from './DialogParts';
 import { CancelDialogActions, DialogScrollBody } from './DialogParts';
 import KeyboardDialog from './KeyboardDialog';
@@ -18,19 +19,19 @@ function ChoiceGroup<T extends string>({ label, group, options, selected, disabl
     {options.map(option => <RadioChoice key={option.value} group={group} value={option.value} label={option.label} selected={selected === option.value} disabled={disabled} onPress={() => onChoose(option.value)} />)}
   </View>;
 }
-export default function ProfileSettings({ name, vpa, busy, onSaveName, onSaveUPI, onAppearance, onColorFamily }: {
-  name: string; vpa: string; busy: boolean; onSaveName: (name: string) => Promise<void>; onSaveUPI: (vpa: string) => Promise<void>; onAppearance: (value: AppearancePreference) => Promise<void>; onColorFamily: (value: ColorFamily) => Promise<void>;
+export default function ProfileSettings({ name, vpa, busy, onSaveName, onSaveUPI, onAppearance, onColorFamily, onCurrency }: {
+  name: string; vpa: string; busy: boolean; onSaveName: (name: string) => Promise<void>; onSaveUPI: (vpa: string) => Promise<void>; onAppearance: (value: AppearancePreference) => Promise<void>; onColorFamily: (value: ColorFamily) => Promise<void>; onCurrency: (value: Currency) => Promise<void>;
 }) {
-  const { ui, inputColors, appearance, colorFamily } = useUI();
+  const { ui, inputColors, appearance, colorFamily, currency } = useUI();
   const mode = modes.find(value => value.value === appearance)!.label, family = colorFamilies.find(value => value.value === colorFamily)!.label, darkOnly = isDarkOnly(colorFamily);
-  const [editing, setEditing] = useState<'name' | 'upi' | 'appearance' | null>(null), [draft, setDraft] = useState(''), [error, setError] = useState(''), [saving, setSaving] = useState(false);
-  const nameRow = useRef<React.ComponentRef<typeof View>>(null), upiRow = useRef<React.ComponentRef<typeof View>>(null), appearanceRow = useRef<React.ComponentRef<typeof View>>(null), input = useRef<React.ComponentRef<typeof TextInput>>(null), inFlight = useRef(false);
+  const [editing, setEditing] = useState<'name' | 'upi' | 'appearance' | 'currency' | null>(null), [draft, setDraft] = useState(''), [error, setError] = useState(''), [saving, setSaving] = useState(false);
+  const nameRow = useRef<React.ComponentRef<typeof View>>(null), upiRow = useRef<React.ComponentRef<typeof View>>(null), appearanceRow = useRef<React.ComponentRef<typeof View>>(null), currencyRow = useRef<React.ComponentRef<typeof View>>(null), input = useRef<React.ComponentRef<typeof TextInput>>(null), inFlight = useRef(false);
   const initialChoiceFocused = useRef(false);
   const choices = useRef<React.ComponentRef<typeof View>>(null), doneArea = useRef<React.ComponentRef<typeof View>>(null), { height } = useWindowDimensions();
-  const disabled = busy || saving, isName = editing === 'name', isAppearance = editing === 'appearance';
+  const disabled = busy || saving, isName = editing === 'name', isAppearance = editing === 'appearance', isCurrency = editing === 'currency', isChoice = isAppearance || isCurrency;
   const valid = isName ? !!draft.trim() : validUPIAddress(draft.trim());
   function open(field: NonNullable<typeof editing>) { initialChoiceFocused.current = false; setDraft(field === 'name' ? name : vpa); setError(''); setEditing(field); }
-  function close() { const row = isName ? nameRow : isAppearance ? appearanceRow : upiRow; Keyboard.dismiss(); setEditing(null); setError(''); requestAnimationFrame(() => row.current?.focus()); }
+  function close() { const row = isName ? nameRow : isAppearance ? appearanceRow : isCurrency ? currencyRow : upiRow; Keyboard.dismiss(); setEditing(null); setError(''); requestAnimationFrame(() => row.current?.focus()); }
   useEffect(() => {
     if (Platform.OS !== 'web' || !editing) return;
     const escape = (event: KeyboardEvent) => { if (event.key === 'Escape' && !disabled) { event.preventDefault(); event.stopPropagation(); close(); } };
@@ -49,9 +50,9 @@ export default function ProfileSettings({ name, vpa, busy, onSaveName, onSaveUPI
     const target = choiceStops()[0];
     if (target) { target.focus(); initialChoiceFocused.current = true; }
   }
-  function focusChoice(group: 'color' | 'mode') { if (Platform.OS === 'web') requestAnimationFrame(() => webNode(choices)?.querySelector<HTMLInputElement>(`input[name="${group}"]:checked`)?.focus()); }
+  function focusChoice(group: 'color' | 'mode' | 'currency') { if (Platform.OS === 'web') requestAnimationFrame(() => webNode(choices)?.querySelector<HTMLInputElement>(`input[name="${group}"]:checked`)?.focus()); }
   useEffect(() => {
-    if (Platform.OS !== 'web' || !isAppearance) return;
+    if (Platform.OS !== 'web' || !isChoice) return;
     const frame = requestAnimationFrame(focusInitialChoice);
     const tab = (event: KeyboardEvent) => {
       if (event.key !== 'Tab') return;
@@ -63,11 +64,11 @@ export default function ProfileSettings({ name, vpa, busy, onSaveName, onSaveUPI
     };
     document.addEventListener('keydown', tab, true);
     return () => { cancelAnimationFrame(frame); document.removeEventListener('keydown', tab, true); };
-  }, [isAppearance]);
+  }, [isChoice]);
   // Appearance choices apply at once and keep the dialog open for the other choice.
   async function save(choice?: () => Promise<void>) {
     if (disabled || inFlight.current) return;
-    if (!isAppearance && !valid) { setError(isName ? 'Enter a name.' : 'Enter a valid UPI ID.'); return; }
+    if (!isChoice && !valid) { setError(isName ? 'Enter a name.' : 'Enter a valid UPI ID.'); return; }
     inFlight.current = true; setSaving(true); setError('');
     try { if (choice) await choice(); else { if (isName) await onSaveName(draft.trim()); else await onSaveUPI(draft.trim()); close(); } }
     catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not save. Try again.'); requestAnimationFrame(() => input.current?.focus()); }
@@ -76,13 +77,18 @@ export default function ProfileSettings({ name, vpa, busy, onSaveName, onSaveUPI
   return <>
     <SettingsRow rowRef={nameRow} icon="edit" label="Name" value={name} disabled={busy} onPress={() => open('name')} />
     <SettingsRow rowRef={upiRow} icon="pay" label="UPI ID" value={vpa || 'Not set'} disabled={busy} onPress={() => open('upi')} />
+    <SettingsRow rowRef={currencyRow} icon="pay" label="Default currency" value={currency} disabled={busy} onPress={() => open('currency')} />
     <SettingsRow rowRef={appearanceRow} icon="appearance" label="Appearance" value={darkOnly ? family : colorFamily === 'basic' ? mode : `${family} · ${mode}`} disabled={busy} onPress={() => open('appearance')} />
-    <KeyboardDialog visible={!!editing} onDismiss={() => { if (!disabled) close(); }} dismissable={!disabled} maxHeight={isAppearance ? height : undefined}>
-      <Dialog.Title aria-level={2}>{isAppearance ? 'Appearance' : isName ? 'Name' : 'UPI ID'}</Dialog.Title>
-      {isAppearance ? <>
+    <KeyboardDialog visible={!!editing} onDismiss={() => { if (!disabled) close(); }} dismissable={!disabled} maxHeight={isChoice ? height : undefined}>
+      <Dialog.Title aria-level={2}>{isCurrency ? 'Default currency' : isAppearance ? 'Appearance' : isName ? 'Name' : 'UPI ID'}</Dialog.Title>
+      {isChoice ? <>
         <DialogScrollBody maxHeight={Platform.OS === 'web' ? Math.min(560, Math.max(0, height - 224)) : 440} gap={0} paddingVertical={0}><View ref={choices} onLayout={focusInitialChoice}>
+          {isCurrency ? <ChoiceGroup label="Display currency" group="currency" options={currencies.map(option => ({ value: option.value, label: `${option.symbol} ${option.name} (${option.value})` }))} selected={currency} disabled={disabled}
+            note="Changes symbols only. Amounts are not converted. UPI payments remain in INR."
+            onChoose={value => void save(() => onCurrency(value)).then(() => focusChoice('currency'))} /> : <>
           <ChoiceGroup label="Color" group="color" options={colorFamilies} selected={colorFamily} disabled={disabled} onChoose={value => void save(() => onColorFamily(value)).then(() => focusChoice('color'))} />
           <ChoiceGroup label="Mode" group="mode" options={modes} selected={appearance} disabled={disabled || darkOnly} note={darkOnly ? 'Obsidian is always dark. Other colors use this mode.' : undefined} onChoose={value => void save(() => onAppearance(value)).then(() => focusChoice('mode'))} />
+          </>}
           {!!error && <ErrorText live>{error}</ErrorText>}
         </View></DialogScrollBody>
         <Dialog.Actions><View ref={doneArea}><Button title="Done" kind="text" disabled={disabled} onPress={close} /></View></Dialog.Actions>

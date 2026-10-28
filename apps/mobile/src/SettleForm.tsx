@@ -1,3 +1,4 @@
+import { currencySymbol } from './currency';
 import { useToast } from './Toast';
 import DetailDialog from './DetailDialog';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
@@ -233,7 +234,7 @@ export default function SettleForm({ group, initial, busy, selfId, onSave, onRev
     const needsAnswer = paymentReturnNeedsConfirmation(pendingReturn);
     return <View style={styles.form}>
       <Text style={ui.caption}>{group.name}</Text>
-      <Text style={[ui.section, styles.returnTitle]}>{needsAnswer ? `Did you pay ${pendingReturn.payeeName} ${formatMoney(pendingReturn.amount)}?` : `${formatMoney(pendingReturn.amount)} to ${pendingReturn.payeeName}`}</Text>
+      <Text style={[ui.section, styles.returnTitle]}>{needsAnswer ? `Did you pay ${pendingReturn.payeeName} ${formatMoney(pendingReturn.amount, 'INR')}?` : `${formatMoney(pendingReturn.amount, 'INR')} to ${pendingReturn.payeeName}`}</Text>
       <PaymentAddress name={pendingReturn.payeeName} vpa={pendingReturn.vpa} />
       {!!returnError && <ErrorText>{returnError}</ErrorText>}
       {returnReview ? <Button title="Review balance" kind="primary" onPress={onCancel} disabled={disabled} /> : pendingReturn.decision !== null ?
@@ -249,7 +250,7 @@ export default function SettleForm({ group, initial, busy, selfId, onSave, onRev
     <Text style={ui.caption}>{group.name}</Text>
     {!webQuote && <View style={styles.field}><Text style={ui.rowTitle}>From {label(sender)}</Text><Text style={ui.rowTitle}>To {label(recipient)}</Text></View>}
     {group.archived && <Text style={ui.notice}>Reopen this group in settings before recording a payment.</Text>}
-    {!webQuote && <><AmountField label="Amount (₹)" value={amount}
+    {!webQuote && <><AmountField label={`Amount (${currencySymbol()})`} value={amount}
       onChangeText={value => { setAmount(value); setError(''); setWebQuote(null); }} editable={!disabled && !webQuote} placeholder="0" />
     <DetailDialog busy={disabled} title="Change people" icon="people">
         <PaymentPersonChoices direction="From" people={group.participants.filter(person => !person.removed)} selected={sender} label={label} disabled={disabled}
@@ -260,7 +261,7 @@ export default function SettleForm({ group, initial, busy, selfId, onSave, onRev
     </>}
     {otherPerson?.payment_profile && !webQuote && <PaymentAddress name={label(otherPerson.id)} vpa={otherPerson.payment_profile.vpa} />}
     {sender === selfId && debt && !profile && <Text style={ui.caption}>Ask {label(recipient)} to {group.participants.find(person => person.id === recipient)?.user_id != null ? 'add a UPI address' : 'join and add a UPI address'}.</Text>}
-    {canPay && !webQuote && <><Text style={ui.caption}>Pay up to {formatMoney(debt!.amount)}.</Text><Button title={savingAction === 'pay' ? 'Preparing…' : amountLabel ? `Pay ${amountLabel} with UPI` : 'Pay with UPI'} kind="primary" icon="pay" disabled={disabled || !amountLabel} onPress={() => void pay()} /></>}
+    {canPay && !webQuote && <><Text style={ui.caption}>Pay up to {formatMoney(debt!.amount, 'INR')}.</Text><Button title={savingAction === 'pay' ? 'Preparing…' : amountLabel ? `Pay ${formatMoney(rupeesToPaise(amount), 'INR')} with UPI` : 'Pay with UPI'} kind="primary" icon="pay" disabled={disabled || !amountLabel} onPress={() => void pay()} /></>}
     {webQuote && <WebPaymentQuote quote={webQuote.quote} url={webQuote.url} disabled={disabled}
       onCopy={text => void copy(text)} onOpen={openWebPayment} onReview={() => void reviewWebPayment()} />}
     {activeAttempt?.state === 'reported' && sender === selfId && <Text style={ui.caption}>This payment is already reported. Check it before paying again.</Text>}
