@@ -408,6 +408,13 @@ function AppContent() {
       ++profileRevision.current; setVpa(result.vpa);
     }, false, 'profile-upi');
   }
+  async function refreshProfilePhotos(active: Session) {
+    const scope = accountOwner(active), generation = scopeGeneration.current;
+    const current = () => scopeGeneration.current === generation && ownerRef.current === scope && activeSessionRef.current?.token === active.token;
+    const db = await getDatabase(); if (!current()) return;
+    await refreshGroups(db, active, 'summary', undefined, { groupIds: [], current });
+    if (current()) await load(scope);
+  }
   const accountRefresh = useRef<{ scope: string; token: string; generation: number; groups?: string[]; promise: Promise<void> } | null>(null);
   function syncAccount(active: Session, groupIds?: string[]): Promise<void> {
     const scope = accountOwner(active), existing = accountRefresh.current, generation = scopeGeneration.current;
@@ -1378,7 +1385,7 @@ function AppContent() {
         onBusyChange={value => setSubmission(value, `${route.key}|import`)} onCancel={back}
         onImported={(group, alreadyImported) => { if (ownerRef.current !== accountOwner(session)) return; setGroups(rows => [...rows.filter(row => row.group.id !== group.id), { kind: 'shared', group }]); if (navigation.ref.getCurrentRoute()?.key !== route.key) return; navigate('group', { groupId: group.id, expenseId: null, tab: 'Groups' }); setNotice(alreadyImported ? 'Already imported.' : 'Imported.', 'success'); }} />}
       {screen === 'home' && tab === 'Account' && session && <>
-        <AccountHeader key={owner} session={session} name={myName} busy={busy} onBusyChange={value => setSubmission(value, `${route.key}|profile-photo`)} />
+        <AccountHeader onPhotoChanged={() => refreshProfilePhotos(session)} key={owner} session={session} name={myName} busy={busy} onBusyChange={value => setSubmission(value, `${route.key}|profile-photo`)} />
         <View><ProfileSettings key={`profile-settings|${owner}`} name={myName} vpa={vpa} busy={busy} onSaveName={saveName} onSaveUPI={saveUPI} onAppearance={value => perform(() => changeAppearance(value), false, 'appearance')} onColorFamily={value => perform(() => changeColorFamily(value), false, 'appearance')} />
           <SettingsRow rowRef={methodsRow} label="Sign-in methods" icon="key" disabled={busy || expired} onPress={() => navigate('signInMethods')} />
           <AccountNotifications key={`account-notifications|${owner}`} session={session} push={push} busy={busy} onBusyChange={value => setSubmission(value, `${route.key}|notifications`)} />
