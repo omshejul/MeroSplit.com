@@ -1,8 +1,10 @@
 # Expense categories
 
-MeroSplit has 71 specific bill categories. `general` is the separate default for unclear or unmatched titles.
+MeroSplit has 74 specific bill categories. `general` is the separate default for unclear or unmatched titles.
 
-Automatic icons use the highest-probability category, with no confidence cutoff or required lead. If `general` ranks highest, the bill keeps the receipt icon as a valid cached result. Results are shared across users for the same normalized title.
+Automatic icons send only the raw title to Jev. The instruction names Hugeicons Core Free (`@hugeicons/core-free-icons`) and asks for the best icon for that title. Each choice uses the actual icon identifier as both its key and description, such as `CleaningBucketIcon: CleaningBucketIcon`. The winning icon maps back to the fixed category ID used by clients. The descriptions below document manual categories and are not sent to Jev.
+
+Automatic icons use the highest-probability icon, with no confidence cutoff or required lead. If `general` ranks highest, the bill keeps the receipt icon as a valid cached result. Results are shared across users for the same normalized title.
 
 | Category | ID | Used for |
 | --- | --- | --- |
@@ -77,3 +79,6 @@ Automatic icons use the highest-probability category, with no confidence cutoff 
 | Photography | `photography` | Photography services, camera equipment and photo printing. |
 | Subscriptions | `subscriptions` | A general recurring subscription not specifically music, gaming, internet or software. |
 | Software | `software` | Software licenses, apps, cloud storage and software subscriptions. |
+| Garbage | `garbage` | Rubbish and waste. |
+| Waste collection | `wastecollection` | Garbage trucks and waste collection. |
+| Recycling | `recycling` | Recycling and recyclable materials. |
