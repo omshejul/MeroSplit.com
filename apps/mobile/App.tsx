@@ -51,6 +51,7 @@ import { groupListRows } from './src/groupListRows';
 import Mascot from './src/Mascot';
 import { AddExpenseButton, AppFrame, pageContentStyle, ScreenHeader } from './src/AppNavigation';
 import HomeTabs from './src/HomeTabs';
+import HomeCreateButton, { HomeCreateInset } from './src/HomeCreateButton';
 import { EmailSignIn, CodeSignIn } from './src/SignInForms';
 import SignInLayout from './src/SignInLayout';
 import GoogleSignInButton from './src/GoogleSignInButton';
@@ -117,6 +118,7 @@ function AppContent() {
   const [lastConfirmed, setLastConfirmed] = useState<string | null>(null), [syncProblem, setSyncProblem] = useState(false), [syncing, setSyncing] = useState(false), [pendingFiles, setPendingFiles] = useState(0), [downloadingOwner, setDownloadingOwner] = useState('');
   const offlineDownload = useRef<Promise<void> | null>(null);
   const [groups, setGroups] = useState<CachedGroup[]>([]), [commands, setCommands] = useState<Command[]>([]);
+  const [createClearance, setCreateClearance] = useState(104);
   const [showArchived, setShowArchived] = useState(false), [showHidden, setShowHidden] = useState(false);
   const [needsInvitation, setNeedsInvitation] = useState(false);
   const navigation = useAppNavigation(), { name: screen, params: routeParams = {} } = navigation.route;
@@ -1328,6 +1330,7 @@ function AppContent() {
   const archivedGroups = groupListRows(listedGroups, true);
   const visibleGroups = !direct && showHidden ? hiddenGroups : direct ? listedGroups.filter(row => !!session && visiblePeopleSummary(row.group, session.userId, commands.some(command => command.group_id === row.group.id))) : groupListRows(listedGroups, showArchived);
   const showAddExpense = screen === 'group' && !!selected && !selected.group.archived;
+  const showCreate = screen === 'home' && (direct || tab === 'Groups' && !showArchived && !showHidden);
   const title = screen === 'savedChanges' ? 'Saved changes' : screen === 'home' ? (tab === 'Friends' ? 'People' : tab === 'Account' ? 'Me' : tab === 'Groups' && showHidden ? 'Removed from my list' : tab === 'Groups' && showArchived ? 'Archived groups' : tab) : screen === 'signInMethods' ? 'Sign-in methods' : screen === 'login' ? 'Sign in' : screen === 'create' ? (direct ? 'Add a person' : 'New group') : screen === 'expense' ? (expenseId ? 'Edit bill' : 'Add expense') : screen === 'expenseVersions' ? 'Version history' : screen === 'billChat' ? 'Bill chat' : screen === 'expenseDetail' ? expense?.description ?? 'Bill' : screen === 'settle' ? 'Payment' : screen === 'members' ? 'Group settings' : screen === 'review' ? 'Review your bill' : screen === 'paymentDetail' ? 'Payment record' : screen === 'import' ? 'Import from Splitwise' : selected ? groupDisplayName(selected.group, session?.userId) : 'Group';
   const listNotice = <>{!!notice && <MotionReveal><Text accessibilityLiveRegion="polite" accessibilityRole={feedback.tone === 'error' ? 'alert' : undefined} style={[ui.notice, feedback.tone === 'success' ? ui.success : feedback.tone === 'warning' ? ui.warning : feedback.tone === 'error' ? ui.error : undefined]}>{notice}</Text></MotionReveal>}
       {expired && screen !== 'login' && <Button title="Sign in again" kind="primary" onPress={() => { setChallenge(null); setCode(''); navigate('login'); }} />}</>;
@@ -1353,7 +1356,7 @@ function AppContent() {
       {screen === 'members' && selected && !selected.group.is_direct && !selected.group.archived && selected.group.participants.some(person => person.id === selfId && !person.removed && person.user_id === selected.group.owner_id) && <IconAction name="personAdd" label="Add person" disabled={busy} onPress={() => setAddPersonRequest(value => value + 1)} />}
     </ScreenHeader>}
     <SceneTransition changeKey={`${screen}|${tab}|${groupId ?? ''}|${expenseId ?? ''}|${settlementId ?? ''}|${screen === 'login' && challenge ? 'code' : 'entry'}`} active={focused}>
-    {screen === 'login' ? loginContent : groupView ? groupView : activityView ? activityView : screen === 'billChat' && session && selected && expense ? <BillChatScreen key={`${owner}|${groupId}|${expense.id}`} session={session} groupId={selected.group.id} expenseId={expense.id} billTitle={expense.description} billAmount={formatMoney(expense.total)} onOpenBill={() => navigate('expenseDetail')} active={focused && foreground && !authHeld && !expired} online={online} onRead={() => void push.clearReadPrompts().catch(() => {})} onUnsentChange={unsent => { if (ownerRef.current !== owner) return; if (unsent) { setHasDrafts(true); return; } void flushChatWrites().then(() => getDatabase()).then(db => db.getFirstAsync<{ n: number }>('SELECT count(*) AS n FROM drafts WHERE owner=? AND body<>?', owner, 'null')).then(value => { if (ownerRef.current === owner) setHasDrafts(!!value?.n); }).catch(() => {}); }} /> : screen === 'expenseVersions' && session && selected && expense ? <ExpenseVersionHistory key={`${owner}|${session.token}|${expense.id}`} session={session} groupId={selected.group.id} expenseId={expense.id} groupVersion={selected.group.version} title={expense.description} onInvalidated={() => { if (ownerRef.current === owner && activeSessionRef.current?.token === session.token) { setLastConfirmed(null); setSyncProblem(true); } }} active={focused && foreground && !authHeld && !expired} online={online} /> : <ScrollView role="main" ref={focused ? scroll : undefined} onLayout={focused ? measureViewport : undefined} onScroll={() => setScrollEpoch(value => value + 1)} scrollEventThrottle={100} key={`${owner}|${screen}|${groupId ?? ''}`} contentContainerStyle={[pageContentStyle, showAddExpense && { paddingBottom: 104 }]} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag"
+    {screen === 'login' ? loginContent : groupView ? groupView : activityView ? activityView : screen === 'billChat' && session && selected && expense ? <BillChatScreen key={`${owner}|${groupId}|${expense.id}`} session={session} groupId={selected.group.id} expenseId={expense.id} billTitle={expense.description} billAmount={formatMoney(expense.total)} onOpenBill={() => navigate('expenseDetail')} active={focused && foreground && !authHeld && !expired} online={online} onRead={() => void push.clearReadPrompts().catch(() => {})} onUnsentChange={unsent => { if (ownerRef.current !== owner) return; if (unsent) { setHasDrafts(true); return; } void flushChatWrites().then(() => getDatabase()).then(db => db.getFirstAsync<{ n: number }>('SELECT count(*) AS n FROM drafts WHERE owner=? AND body<>?', owner, 'null')).then(value => { if (ownerRef.current === owner) setHasDrafts(!!value?.n); }).catch(() => {}); }} /> : screen === 'expenseVersions' && session && selected && expense ? <ExpenseVersionHistory key={`${owner}|${session.token}|${expense.id}`} session={session} groupId={selected.group.id} expenseId={expense.id} groupVersion={selected.group.version} title={expense.description} onInvalidated={() => { if (ownerRef.current === owner && activeSessionRef.current?.token === session.token) { setLastConfirmed(null); setSyncProblem(true); } }} active={focused && foreground && !authHeld && !expired} online={online} /> : <ScrollView role="main" ref={focused ? scroll : undefined} onLayout={focused ? measureViewport : undefined} onScroll={() => setScrollEpoch(value => value + 1)} scrollEventThrottle={100} key={`${owner}|${screen}|${groupId ?? ''}`} contentContainerStyle={[pageContentStyle, (showAddExpense || showCreate) && { paddingBottom: showCreate ? createClearance : 104 }]} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag"
       contentInsetAdjustmentBehavior={Platform.OS === 'ios' ? 'automatic' : undefined}
       refreshControl={session && !expired && (screen === 'home' || screen === 'group') ? <RefreshControl refreshing={false} tintColor={colors.accent} colors={[colors.accent]} onRefresh={pullToRefresh} /> : undefined}>
       {listNotice}
@@ -1363,7 +1366,6 @@ function AppContent() {
 
       {screen === 'home' && (tab === 'Groups' || tab === 'Friends') && <>
         <GroupList emptyLabel={!direct && showHidden ? 'No removed groups' : !direct && showArchived ? 'No archived groups' : !direct && archivedGroups.length ? 'No active groups' : undefined} emptyVerified={!showArchived && !showHidden && !archivedGroups.length && !hiddenGroups.length && mascotEligible && !!owner && verifiedEmptyOwner === owner} decorated={!showArchived && !showHidden && !archivedGroups.length && !hiddenGroups.length} groups={visibleGroups} commands={commands} userId={session?.userId} busy={busy} direct={direct} onOpen={row => open(() => openGroup(row))} />
-        {(direct || !showArchived && !showHidden) && <Button title={direct ? 'Add person' : 'New group'} icon="add" kind={!visibleGroups.length ? 'primary' : 'secondary'} disabled={busy} onPress={() => navigate('create')} />}
         {!direct && !showArchived && !showHidden && archivedGroups.length > 0 && <Button title="Archived groups" kind="text" disabled={busy} onPress={() => { setShowArchived(true); scroll.current?.scrollTo({ y: 0, animated: false }); }} />}
         {!direct && !showArchived && !showHidden && hiddenGroups.length > 0 && <Button title="Removed from my list" kind="text" disabled={busy} onPress={() => { setShowHidden(true); scroll.current?.scrollTo({ y: 0, animated: false }); }} />}
         {!!(legacy.length || unavailable.length) && <Button title="Review saved work" kind="text" onPress={openMe} />}
@@ -1411,8 +1413,10 @@ function AppContent() {
         </View></View>
         <AppUpdates key={`app-updates|${owner}`} busy={busy} online={online} onRestart={restartUpdate} />
       </>}
+    {showCreate && <HomeCreateInset />}
     </ScrollView>}
     </SceneTransition>
+    {showCreate && <HomeCreateButton direct={direct} disabled={busy} onHeight={height => setCreateClearance(Math.max(104, Math.ceil(height) + 16))} onPress={() => navigate('create')} />}
     {showAddExpense && <AddExpenseButton disabled={busy} onPress={() => open(() => openExpense())} />}
 
     </>;

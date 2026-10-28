@@ -20,7 +20,7 @@ export function AppFrame({ children, onTouchStart }: { children: React.ReactNode
   </View>;
 }
 
-const pageWidthStyle = Platform.OS === 'web' ? { width: '100%' as const, maxWidth: 760, alignSelf: 'center' as const } : {};
+export const pageWidthStyle = Platform.OS === 'web' ? { width: '100%' as const, maxWidth: 760, alignSelf: 'center' as const } : {};
 export const pageContentStyle = { padding: 16, gap: 12, paddingBottom: 24, ...pageWidthStyle };
 
 export function ScreenHeader({ title, busy, onBack, onFeedback, brand = false, children, status }: { brand?: boolean; title: string; busy: boolean; onFeedback?: () => void; onBack?: () => void; children?: React.ReactNode; status?: React.ReactNode }) {

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import ts from 'typescript';
 
-function surface(options: { version?: string; module?: boolean; supported?: boolean; throws?: boolean; dark?: boolean } = {}) {
+function surface(options: { version?: string; module?: boolean; supported?: boolean; throws?: boolean; dark?: boolean } = {}, component = 'TabBarSurface') {
   let reduced = true, effect: (() => void | (() => void)) | undefined, cleanup: (() => void) | undefined, listener = (_value: boolean) => {};
   let resolve!: (value: boolean) => void, reject!: () => void, loads = 0, removed = 0;
   const preference = new Promise<boolean>((yes, no) => { resolve = yes; reject = () => no(Error('Unavailable')); });
@@ -18,9 +18,9 @@ function surface(options: { version?: string; module?: boolean; supported?: bool
     useEffect: (fn: () => void | (() => void)) => { effect = fn; },
     AccessibilityInfo: { isReduceTransparencyEnabled: () => preference, addEventListener: (_name: string, fn: (value: boolean) => void) => { listener = fn; return { remove() { removed++; } }; } },
   };
-  const file = ts.createSourceFile('TabBarSurface.ios.tsx', readFileSync(new URL('../src/TabBarSurface.ios.tsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const file = ts.createSourceFile(`${component}.ios.tsx`, readFileSync(new URL(`../src/${component}.ios.tsx`, import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   const body = file.statements.filter(node => !ts.isImportDeclaration(node)).map(node => node.getText(file).replace(/^export (?:default )?/, '')).join('\n');
-  const render = new Function('env', `with(env){${ts.transpile(body, { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React })};return TabBarSurface;}`)(env);
+  const render = new Function('env', `with(env){${ts.transpile(body, { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React })};return ${component};}`)(env);
   return { render, motion, loads: () => loads, removed: () => removed, commit: () => { cleanup = effect?.() || undefined; }, unmount: () => cleanup?.(), resolve, reject, change: (value: boolean) => listener(value) };
 }
 const tick = async () => { for (let i = 0; i < 5; i++) await Promise.resolve(); };
@@ -56,4 +56,21 @@ test('late preference reads cannot override a newer reduce-transparency event or
   assert.equal(app.render(props).type, 'View'); app.unmount();
   const failed = surface(); failed.render(props); failed.commit(); failed.reject(); await tick(); assert.equal(failed.render(props).type, 'View'); failed.unmount();
   const left = surface(); left.render(props); left.commit(); left.unmount(); left.resolve(false); await tick(); assert.equal(left.render(props).type, 'View');
+});
+
+
+test('Create capsule uses interactive native glass while inputs and accessibility fallbacks stay safe', async () => {
+  const app = surface({}, 'ChatComposerSurface');
+  assert.equal(app.render({ ...props, interactive: true }).type, 'View');
+  app.commit(); app.resolve(false); await tick();
+  assert.equal(app.render({ ...props, interactive: true }).props.isInteractive, true);
+  assert.equal(app.render({ ...props, tintColor: '#6B3FA0' }).props.tintColor, '#6B3FA0');
+  assert.equal(app.render({ ...props, interactive: false }).props.isInteractive, false);
+  assert.equal(app.render(props).props.isInteractive, false, 'Existing composers remain noninteractive by default');
+  app.change(true); const tintedFallback = app.render({ ...props, interactive: true, tintColor: '#6B3FA0' });
+  assert.equal(tintedFallback.type, 'View'); assert.equal(tintedFallback.props.style[1].backgroundColor, '#6B3FA0'); app.unmount();
+  for (const options of [{ version: '18.7' }, { module: false }, { supported: false }]) {
+    const fallback = surface(options, 'ChatComposerSurface');
+    assert.equal(fallback.render({ ...props, interactive: true }).type, 'View');
+  }
 });

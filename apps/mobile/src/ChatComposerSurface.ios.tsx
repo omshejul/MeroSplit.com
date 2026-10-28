@@ -13,7 +13,7 @@ try {
   }
 } catch { /* Keep the opaque composer when the runtime cannot provide native glass. */ }
 
-export default function ChatComposerSurface({ children, style }: ChatComposerSurfaceProps) {
+export default function ChatComposerSurface({ children, style, interactive = false, tintColor }: ChatComposerSurfaceProps) {
   const { palette, dark, motion } = useUI();
   const [reduced, setReduced] = useState(true);
   useEffect(() => {
@@ -26,6 +26,6 @@ export default function ChatComposerSurface({ children, style }: ChatComposerSur
     return () => { mounted = false; subscription.remove(); };
   }, [motion.active]);
   return GlassView && !reduced && motion.enabled
-    ? <GlassView style={style} glassEffectStyle="regular" colorScheme={dark ? 'dark' : 'light'}>{children}</GlassView>
-    : <View style={[style, { backgroundColor: palette.surface }]}>{children}</View>;
+    ? <GlassView style={style} isInteractive={interactive} tintColor={tintColor} glassEffectStyle="regular" colorScheme={dark ? 'dark' : 'light'}>{children}</GlassView>
+    : <View style={[style, { backgroundColor: tintColor ?? palette.surface }]}>{children}</View>;
 }
