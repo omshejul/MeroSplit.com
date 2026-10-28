@@ -25,9 +25,10 @@ def decision(category="food", probability=0.95):
 
 
 @pytest.mark.parametrize("category", CATEGORIES)
-def test_choice_uses_fixed_categories_and_conservative_confidence(category):
+def test_choice_uses_fixed_categories_and_fifty_percent_confidence(category):
     assert decision_category(decision(category)) == (None if category == "general" else category)
-    assert decision_category(decision(category, 0.7)) is None
+    assert decision_category(decision(category, 0.49)) is None
+    assert decision_category(decision(category, 0.5)) == (None if category == "general" else category)
 
 
 @pytest.mark.parametrize("bad", [None, [], {}, {"model": "another/model"}, {"model": MODEL, "answers": None}])
@@ -93,3 +94,12 @@ def test_provider_failure_does_not_echo_a_title_key_or_provider_error_body():
     with pytest.raises(CategoryUnavailable) as error:
         evaluate_title("Private synthetic title", "synthetic-key", send=failed)
     assert str(error.value) == "gateway_http_503"
+
+
+@pytest.mark.parametrize("chosen", ["food", "rent"])
+def test_fifty_percent_tie_needs_no_lead(chosen):
+    data = decision(chosen, 0.5)
+    answer = data["answers"]["category"]
+    answer["probabilities"] = {key: 0 for key in CATEGORIES}
+    answer["probabilities"].update(food=0.5, rent=0.5)
+    assert decision_category(data) == chosen

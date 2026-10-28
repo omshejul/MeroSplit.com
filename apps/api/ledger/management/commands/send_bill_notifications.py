@@ -1,19 +1,21 @@
+import json
 import time
 
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 from django.db import close_old_connections
+from django.db.models import Count
 from django.utils import timezone
 
 from ledger.activity_notifications import send_activity_notifications
 from ledger.balance_statements import send_balance_statements
 from ledger.bill_email import send_pending_bill_emails
 from ledger.chat_notifications import send_chat_notifications
-from ledger.expense_categories import process_category_decisions
+from ledger.expense_categories import cache_revision, process_category_decisions
 from ledger.expense_notifications import send_pending_digests
 from ledger.feedback import send_feedback_notifications
 from ledger.membership_notifications import send_membership_notifications
-from ledger.models import ExpensePushDelivery
+from ledger.models import ExpenseCategoryCache, ExpensePushDelivery
 from ledger.push import check_pending_bill_receipts, send_pending_bill_notifications
 
 
@@ -60,7 +62,10 @@ class Command(BaseCommand):
                 if count or receipts or digests or mailbox_notices or chat or statements or memberships or not options["loop"]:
                     self.stdout.write(f"Processed {count} bill notifications, {receipts} receipts and {digests} unread digests and {mailbox_notices} mailbox notices and {chat} chat deliveries and {statements} balance statements and {memberships} membership deliveries")
                 # One short cosmetic request AFTER delivery work, never a catch-up drain.
-                process_category_decisions()
+                if process_category_decisions():
+                    states = dict(ExpenseCategoryCache.objects.filter(owner=None, definition_revision=cache_revision())
+                        .values('state').annotate(total=Count('pk')).values_list('state', 'total'))
+                    self.stdout.write('Shared expense icons: ' + json.dumps(states))
                 if not options["loop"]:
                     return
                 time.sleep(options["interval"])
