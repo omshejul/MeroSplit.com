@@ -19,10 +19,10 @@ pytestmark = pytest.mark.django_db(transaction=True)
 
 
 def run():
-    migration = importlib.import_module("ledger.migrations.0034_shared_expense_icons")
+    migration = importlib.import_module("ledger.migrations.0035_top_category_icons")
     assert migration.REVISION == categories.cache_revision()
     with connection.schema_editor() as editor:
-        migration.seed_shared_icons(apps, editor)
+        migration.backfill_top_choice(apps, editor)
 
 
 def test_backfill_queues_once_across_unrelated_accounts_without_changing_bills(client, group, monkeypatch):
@@ -35,7 +35,7 @@ def test_backfill_queues_once_across_unrelated_accounts_without_changing_bills(c
     bill(client, group, description="Known category", category="travel")
     before = list(Expense.objects.values()), list(Change.objects.values()), list(ExpenseNotice.objects.values())
     calls = []
-    monkeypatch.setattr(categories, "evaluate_title", lambda title, key: calls.append(title) or ("food" if title.strip().casefold() == "lunch" else None))
+    monkeypatch.setattr(categories, "evaluate_title", lambda title, key: calls.append(title) or ("food" if title.strip().casefold() == "lunch" else "general"))
     run()
     assert len(calls) == 0, "Migration must never call a provider inside its transaction"
     assert ExpenseCategoryCache.objects.count() == 2
@@ -45,6 +45,7 @@ def test_backfill_queues_once_across_unrelated_accounts_without_changing_bills(c
     assert categories.process_category_decisions() == 1
     assert categories.process_category_decisions() == 0
     assert len(calls) == 2
+    assert ExpenseCategoryCache.objects.filter(owner=None, definition_revision=categories.cache_revision(), state="ready", category="general").exists()
     assert icons(client, first).json()["items"][0]["category"] == icons(other, second).json()["items"][0]["category"] == "food"
     run()
     assert categories.process_category_decisions() == 0

@@ -13,7 +13,7 @@ REVISION = 'df64e59b015abf3b5971c36555217c8b44157c0e3b341218a3a13543c195f5e4'
 PREVIOUS_REVISION = 'a7a20b929b9aeeb61f2974c469ee0d95625cc6e39c5af962ab04f42cb6e9f7ab'
 
 
-def seed_shared_icons(apps, schema_editor):
+def seed_shared_icons(apps, schema_editor, *, revision=REVISION, previous_revisions=(PREVIOUS_REVISION,)):
     Expense, Cache, Decision, Participant = (apps.get_model('ledger', name) for name in (
         'Expense', 'ExpenseCategoryCache', 'ExpenseCategoryDecision', 'Participant'))
     caches, eligible, unavailable = {}, 0, 0
@@ -35,16 +35,16 @@ def seed_shared_icons(apps, schema_editor):
         normalized = ' '.join(unicodedata.normalize('NFC', unicodedata.normalize('NFC', bill.description).casefold()).split())
         key = digest(normalized)
         if key not in caches:
-            previous = Cache.objects.filter(title_digest=key, definition_revision=PREVIOUS_REVISION,
+            previous = Cache.objects.filter(title_digest=key, definition_revision__in=previous_revisions,
                 state='ready').exclude(category__in=['', 'general']).order_by('pk').first()
-            cache, _ = Cache.objects.get_or_create(owner=None, title_digest=key, definition_revision=REVISION,
+            cache, _ = Cache.objects.get_or_create(owner=None, title_digest=key, definition_revision=revision,
                 defaults={'state': 'ready' if previous else 'pending', 'category': previous.category if previous else ''})
             caches[key] = cache
         cache = caches[key]
         Decision.objects.get_or_create(expense_id=bill.pk, requested_by_id=actor,
-            title_digest=digest(bill.description), definition_revision=REVISION,
+            title_digest=digest(bill.description), definition_revision=revision,
             defaults={'cache': cache, 'state': cache.state, 'category': cache.category})
-    states = dict(Cache.objects.filter(owner=None, definition_revision=REVISION).values('state').annotate(
+    states = dict(Cache.objects.filter(owner=None, definition_revision=revision).values('state').annotate(
         total=models.Count('pk')).values_list('state', 'total'))
     print('Shared icon backfill: ' + json.dumps({'eligible_bills': eligible, 'unique_titles': len(caches),
         'unavailable_bills': unavailable, 'states': states}))

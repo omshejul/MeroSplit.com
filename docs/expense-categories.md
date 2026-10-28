@@ -2,7 +2,7 @@
 
 MeroSplit has 71 specific bill categories. `general` is the separate default for unclear or unmatched titles.
 
-Automatic categories use at least 50% confidence, with no required lead over the next choice. Results are shared across users for the same normalized title.
+Automatic icons use the highest-probability category, with no confidence cutoff or required lead. If `general` ranks highest, the bill keeps the receipt icon as a valid cached result. Results are shared across users for the same normalized title.
 
 | Category | ID | Used for |
 | --- | --- | --- |

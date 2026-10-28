@@ -25,10 +25,9 @@ def decision(category="food", probability=0.95):
 
 
 @pytest.mark.parametrize("category", CATEGORIES)
-def test_choice_uses_fixed_categories_and_fifty_percent_confidence(category):
-    assert decision_category(decision(category)) == (None if category == "general" else category)
-    assert decision_category(decision(category, 0.49)) is None
-    assert decision_category(decision(category, 0.5)) == (None if category == "general" else category)
+def test_choice_uses_the_top_category_without_a_confidence_cutoff(category):
+    assert decision_category(decision(category)) == category
+    assert decision_category(decision(category, 0.02)) == category
 
 
 @pytest.mark.parametrize("bad", [None, [], {}, {"model": "another/model"}, {"model": MODEL, "answers": None}])
@@ -37,7 +36,7 @@ def test_unknown_response_is_not_a_category(bad):
 
 
 @pytest.mark.parametrize(
-    "change", ["unknown", "missing", "nan", "boolean", "wrong_choice", "wrong_type", "invalid_sum"]
+    "change", ["unknown", "missing", "nan", "boolean", "wrong_type", "invalid_sum"]
 )
 def test_malformed_probabilities_never_invent_an_icon(change):
     data = deepcopy(decision())
@@ -50,8 +49,6 @@ def test_malformed_probabilities_never_invent_an_icon(change):
         answer["probabilities"]["food"] = float("nan")
     elif change == "boolean":
         answer["probabilities"]["food"] = True
-    elif change == "wrong_choice":
-        answer["choice"] = "rent"
     elif change == "wrong_type":
         answer["type"] = "score"
     else:
@@ -96,10 +93,15 @@ def test_provider_failure_does_not_echo_a_title_key_or_provider_error_body():
     assert str(error.value) == "gateway_http_503"
 
 
-@pytest.mark.parametrize("chosen", ["food", "rent"])
-def test_fifty_percent_tie_needs_no_lead(chosen):
-    data = decision(chosen, 0.5)
+def test_highest_probability_wins_even_if_the_reported_choice_disagrees():
+    data = decision("cycling", 0.3)
+    data["answers"]["category"]["choice"] = "general"
+    assert decision_category(data) == "cycling"
+
+
+def test_exact_ties_use_the_fixed_category_order():
+    data = decision()
     answer = data["answers"]["category"]
-    answer["probabilities"] = {key: 0 for key in CATEGORIES}
+    answer["probabilities"] = {key: 0 for key in reversed(CATEGORIES)}
     answer["probabilities"].update(food=0.5, rent=0.5)
-    assert decision_category(data) == chosen
+    assert decision_category(data) == "food"
