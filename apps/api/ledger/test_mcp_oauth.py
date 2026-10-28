@@ -609,3 +609,7 @@ def test_public_setup_verifies_without_financial_reads_or_manual_keys():
     assert 'VS Code and Copilot' in text and 'MCP: List Servers' in text
     assert 'complete browser OAuth if needed' in text
     assert 'Report success only after the account check succeeds' in text
+    assert 'Settings → MCP servers → merosplit → Restart' in text
+    assert 'Return here and reply <strong>done</strong>' in text
+    assert 'after their reply, rediscover the tools' in text
+    assert 'A status message alone is not a complete handoff.' in text
