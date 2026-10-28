@@ -56,7 +56,7 @@ export function ChatComposer({ text, disabled, sendDisabled, onChange, onSend }:
     <TextInput {...inputColors} accessibilityLabel="Message" placeholder="Message…" placeholderTextColor={palette.muted}
       multiline onLayout={event => setExpanded(event.nativeEvent.layout.height > (ui.body?.lineHeight ?? 23) * fontScale + 25)} maxLength={2000} value={text} onChangeText={onChange} editable={!disabled} underlineColorAndroid="transparent"
       style={[ui.body, { flex: 1, minWidth: 0, minHeight: 44, maxHeight: 144, paddingHorizontal: 14, paddingTop: 11, paddingBottom: 11, backgroundColor: 'transparent', textAlignVertical: 'top' }]} />
-    <Button iconOnly icon={({ color }) => <Icon name="send" size={22} color={color} />}
+    <Button iconOnly icon={({ color }) => <View style={{ transform: [{ rotate: '45deg' }] }}><Icon name="send" size={22} color={color} /></View>}
       accessibilityLabel="Send message" kind="primary" disabled={disabled || sendDisabled || !text.trim()} onPress={onSend}
       hitSlop={0} style={{ width: 44, height: 44, borderRadius: 22 }} />
   </ChatComposerSurface>;
