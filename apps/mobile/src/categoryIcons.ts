@@ -19,3 +19,5 @@ export function expenseCategory(ref: ExpenseIconRef, icons: ExpenseIcons) {
   if (ref.category_auto === false || !isGenericCategory(ref.category)) return manualCategory(ref.category);
   return icons[categoryKey(ref.groupId, ref.id, ref.title)];
 }
+
+export const expenseIconChoices = [{ category: 'general', icon: 'bill' as IconName, label: 'Receipt' }, ...Object.keys(categoryIcons).map(category => ({ category, icon: categoryIcon(category), label: labels[category] }))];

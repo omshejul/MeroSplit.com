@@ -15,6 +15,7 @@ test('header keeps actionable status without global progress or an empty slot',(
  const nodes=(n:any):any[]=>Array.isArray(n)?n.flatMap(nodes):n&&typeof n==='object'?[n,...nodes(n.children)]:[];
  const status=React.createElement('Spinner',{});
  for(const busy of [false,true]){const tree=render({title:'Group settings',busy,status});assert.equal(nodes(tree).filter(n=>n.type==='Spinner').length,1);}
+ const bill=render({title:'Lunch',showTitle:false,busy:false,onBack(){},status});assert.equal(nodes(bill).filter(n=>n.type==='Text').length,0);assert.equal(nodes(bill).filter(n=>n.type==='IconAction').length,1);assert.equal(nodes(bill).filter(n=>n.type==='Spinner').length,1);
  const idle=render({title:'Group settings',busy:false}),loading=render({title:'Group settings',busy:true});
  assert.equal(nodes(idle).filter(n=>n.props.style===env.styles.working).length,0,'idle header reserves no blank status slot');
  assert.equal(nodes(loading).filter(n=>n.type==='Spinner').length,0);

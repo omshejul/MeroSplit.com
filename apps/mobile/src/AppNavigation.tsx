@@ -27,13 +27,13 @@ export function AppFrame({ children, onTouchStart }: { children: React.ReactNode
 export { pageWidthStyle } from './pageLayout';
 export const pageContentStyle = { padding: 16, gap: 12, paddingBottom: 24, ...pageWidthStyle };
 
-export function ScreenHeader({ title, busy, onBack, onFeedback, brand = false, children, status }: { brand?: boolean; title: string; busy: boolean; onFeedback?: () => void; onBack?: () => void; children?: React.ReactNode; status?: React.ReactNode }) {
+export function ScreenHeader({ title, busy, onBack, onFeedback, brand = false, children, status, showTitle = true }: { showTitle?: boolean; brand?: boolean; title: string; busy: boolean; onFeedback?: () => void; onBack?: () => void; children?: React.ReactNode; status?: React.ReactNode }) {
   const { palette } = useUI();
   return <View role="banner" style={styles.header}>
     {brand && <AppLogo />}
     {onBack && <IconAction name="back" label="Back" onPress={onBack} />}
     <View style={styles.titleArea}>
-      <Text style={[styles.title, { color: palette.text }]} accessibilityRole="header" aria-level={1} numberOfLines={1} ellipsizeMode="tail" accessibilityLabel={title}>{title}</Text>
+      {showTitle && <Text style={[styles.title, { color: palette.text }]} accessibilityRole="header" aria-level={1} numberOfLines={1} ellipsizeMode="tail" accessibilityLabel={title}>{title}</Text>}
     </View>
     {status}
     {children}
