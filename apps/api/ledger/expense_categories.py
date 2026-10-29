@@ -19,6 +19,7 @@ from .category_gateway import (
     CategoryUnavailable,
     evaluate_title,
 )
+from .expense_icon_catalog import canonical_icon
 from .models import Expense, ExpenseCategoryCache, ExpenseCategoryDecision
 from .services import visible_group
 
@@ -94,14 +95,7 @@ def automatic(expense):
 
 
 def manual_category(value):
-    key = "".join(c for c in value.casefold() if c.isalpha())
-    aliases = {
-        "foodanddrink": "food",
-        "diningout": "food",
-        "transportation": "transport",
-        "medical": "health",
-    }
-    return aliases.get(key, key if key in CATEGORIES else "general")
+    return canonical_icon(value)
 
 
 @transaction.atomic

@@ -589,9 +589,27 @@ def test_mcp_new_generic_bill_defaults_to_auto_unless_explicitly_manual(ledger, 
         return
     assert expense_categories.expense_icons(ledger[0], body["id"])["items"][0]["state"] == "pending"
     changes = Change.objects.count()
-    assert expense_categories.process_category_decisions(evaluate=lambda title, key: "coffee") == 1
+    assert expense_categories.process_category_decisions(evaluate=lambda title, key: "drinks") == 1
     hint = expense_categories.expense_icons(ledger[0], body["id"])["items"][0]
-    assert hint["state"] == "ready" and hint["category"] == "coffee"
+    assert hint["state"] == "ready" and hint["category"] == "drinks"
     record.refresh_from_db()
     assert record.version == 1 and record.total == 13500 and record.category == category
     assert Change.objects.count() == changes
+
+
+def test_icon_option_schema_and_explicit_selection_through_authenticated_mcp(ledger, bearer):
+    from .expense_icon_catalog import OPTIONS
+    person = str(ledger[3].participants.first().id)
+    body = {"id": str(uuid4()), "command_id": str(uuid4()), "description": "Coffee", "date": "2026-10-29", "total": "13500", "paid": {person: "13500"}, "split": {"mode": "equal", "values": {person: "1"}}}
+    async def check():
+        async with running_app(MeroSplitApplication(), bearer[0]) as http:
+            async with sdk(http) as client:
+                tool = next(t for t in (await client.list_tools()).tools if t.name == "save_expense")
+                choices = tool.input_schema["properties"]["icon"]["anyOf"][0]["enum"]
+                assert set(choices) == {"auto", *OPTIONS}
+                assert "icon" not in tool.input_schema["required"]
+                result = await client.call_tool("save_expense", {"group_id": str(ledger[3].pk), "payload": body, "icon": "drinks"})
+                assert not result.is_error
+    asyncio.run(check())
+    record = Expense.objects.get(pk=body["id"])
+    assert record.category == "drinks" and record.category_auto is False

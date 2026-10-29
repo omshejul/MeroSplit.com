@@ -8,6 +8,7 @@ from django.db.models import F
 from ninja.errors import HttpError
 
 from . import services
+from .expense_icon_catalog import OPTIONS
 from .history_reads import expense_detail, history_page, settlement_detail
 from .mcp_oauth import issuer_url
 from .models import Group, OpeningBalance
@@ -46,7 +47,9 @@ def get_account_context(actor):
     origin = issuer_url()
     return {"account": {"id": actor.pk, "display_name": display_name(actor)}, "currency": "INR",
             "minor_unit": "paise", "minor_units_per_unit": 100, "amount_format": "integer string",
-            "app_url": f"{origin}/app/", "setup_url": f"{origin}/mcp/setup"}
+            "app_url": f"{origin}/app/", "setup_url": f"{origin}/mcp/setup",
+            "icon_options": [{"value": "auto", "label": "Automatic", "description": "Choose from the bill title"},
+                *[{"value": key, "label": option[0], "description": option[2]} for key, option in OPTIONS.items()]]}
 
 
 def list_groups(actor, *, limit=50, cursor=None):
@@ -133,7 +136,7 @@ def create_group(actor, payload):
     return services.create_group(actor, body.model_dump(mode="json"))
 
 
-def save_expense(actor, group_id, payload, *, expense_id=None):
+def save_expense(actor, group_id, payload, *, expense_id=None, icon=None):
     """Save once through the ordinary transaction, requiring an exact edit revision."""
     body = ExpenseIn.model_validate(payload)
     if expense_id is not None:
@@ -145,7 +148,13 @@ def save_expense(actor, group_id, payload, *, expense_id=None):
     category_supplied = "category" in body.model_fields_set and (
         body.category_auto is not None or body.category.strip().casefold() not in {"", "general", "other"}
     )
-    return services.save_expense(actor, _uuid(group_id), body.model_dump(mode="json"), expense_id, category_supplied=category_supplied)
+    data = body.model_dump(mode="json")
+    if icon is not None:
+        if not isinstance(icon, str) or icon not in ("auto", *OPTIONS):
+            raise HttpError(422, "Choose an icon from get_account_context.icon_options")
+        data["category"], data["category_auto"] = ("general", True) if icon == "auto" else (icon, False)
+        category_supplied = True
+    return services.save_expense(actor, _uuid(group_id), data, expense_id, category_supplied=category_supplied)
 
 
 def reverse_expense(actor, group_id, bill_id, payload):

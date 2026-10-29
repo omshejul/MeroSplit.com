@@ -5,7 +5,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import ts from 'typescript';
-import { categoryIcon, expenseCategory, expenseIconChoices } from '../src/categoryIcons.ts';
+import { categoryIcon, expenseCategory, expenseIconChoices, manualCategory } from '../src/categoryIcons.ts';
 import { previewPending } from '../src/ledger.ts';
 import { expensePayload } from '../src/api.ts';
 import { migrate, saveGroup, enqueueBill, pendingCommands, readVisibleGroup } from '../src/storage.ts';
@@ -17,7 +17,7 @@ function picker(props: Record<string, any>, name = 'BillIconPicker') {
  const source=readFileSync(new URL('../src/BillIconPicker.tsx',import.meta.url),'utf8').replace(/^import .*;\n/gm,'').replace(/^export (?:default )?/gm,'');
  const slots:any[]=[];let cursor=0,blocked=false;const cleanups:(()=>void)[]=[];
  const React={createElement:(type:string,props:any,...children:any[]):Element=>({type,props:props??{},children})};
- const env={React,Platform:{OS:'ios'},View:'View',FlatList:'FlatList',Pressable:'Pressable',Icon:'Icon',Button:'Button',ErrorText:'ErrorText',DialogFocus:'DialogFocus',StyleSheet:{absoluteFill:{}},requestAnimationFrame:(call:()=>void)=>call(),categoryIcon,expenseIconChoices,useWindowDimensions:()=>({width:393,height:852}),useSafeAreaInsets:()=>({top:44,bottom:34}),useScreenRemovalLock:(value:boolean)=>{blocked=value;},useUI:()=>({palette:{text:'white',muted:'gray',accent:'purple',soft:'soft',surface:'surface',outline:'line'},motion:{enabled:false}}),useEffect(effect:()=>void|(()=>void)){const index=cursor++;if(!(index in slots)){slots[index]=true;const cleanup=effect();if(cleanup)cleanups.push(cleanup);}},useState(initial:any){const index=cursor++;if(!(index in slots))slots[index]=initial;return [slots[index],(value:any)=>{slots[index]=typeof value==='function'?value(slots[index]):value;}];},useRef(initial:any){const index=cursor++;if(!(index in slots))slots[index]={current:initial};return slots[index];}};
+ const env={React,Platform:{OS:'ios'},View:'View',FlatList:'FlatList',Pressable:'Pressable',Icon:'Icon',Text:'Text',Button:'Button',ErrorText:'ErrorText',DialogFocus:'DialogFocus',StyleSheet:{absoluteFill:{}},requestAnimationFrame:(call:()=>void)=>call(),categoryIcon,expenseIconChoices,manualCategory,useWindowDimensions:()=>({width:393,height:852}),useSafeAreaInsets:()=>({top:44,bottom:34}),useScreenRemovalLock:(value:boolean)=>{blocked=value;},useUI:()=>({ui:{caption:{}},palette:{text:'white',muted:'gray',accent:'purple',soft:'soft',surface:'surface',outline:'line'},motion:{enabled:false}}),useEffect(effect:()=>void|(()=>void)){const index=cursor++;if(!(index in slots)){slots[index]=true;const cleanup=effect();if(cleanup)cleanups.push(cleanup);}},useState(initial:any){const index=cursor++;if(!(index in slots))slots[index]=initial;return [slots[index],(value:any)=>{slots[index]=typeof value==='function'?value(slots[index]):value;}];},useRef(initial:any){const index=cursor++;if(!(index in slots))slots[index]={current:initial};return slots[index];}};
  const component=new Function('env',`with(env){${ts.transpile(source,{target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.React})};return ${name};}`)(env);
  const render=()=>{cursor=0;return component(props);};return Object.assign(render,{unmount:()=>cleanups.forEach(fn=>fn()),blocked:()=>blocked});
 }
@@ -25,12 +25,13 @@ function nodes(tree:any):Element[]{return Array.isArray(tree)?tree.flatMap(nodes
 const find=(tree:any,type:string)=>nodes(tree).find(node=>node.type===type)!;
 const settle=()=>new Promise(resolve=>setImmediate(resolve));
 
-test('native picker has all 75 icon-only radio cells, and waits for durable acceptance before dismissing',async()=>{
+test('native picker has 20 labeled radio cells, and waits for durable acceptance before dismissing',async()=>{
  let queued:()=>void=()=>{},release:()=>void=()=>{},calls=0,closed=0;
  const render=picker({category:'wastecollection',onClose:()=>{closed++;},onSelect:async(category:string,onQueued:()=>void)=>{assert.equal(category,'food');calls++;queued=onQueued;await new Promise<void>(resolve=>{release=resolve;});}});
- const grid=find(render(),'FlatList');assert.equal(grid.props.numColumns,5);assert.equal(grid.props.data.length,75);assert.equal(grid.props.nestedScrollEnabled,true);
+ const grid=find(render(),'FlatList');assert.equal(grid.props.numColumns,4);assert.equal(grid.props.data.length,20);assert.equal(grid.props.nestedScrollEnabled,true);
  assert.equal(find(render(),'Modal'),undefined,'native stack owns the sheet');
- const all=grid.props.data.map((item:any)=>grid.props.renderItem({item}));assert.ok(all.every((item:any)=>item.props.accessibilityLabel&&item.props.accessibilityRole==='radio'&&item.children[0].type==='Icon'));
+ const all=grid.props.data.map((item:any)=>grid.props.renderItem({item}));assert.ok(all.every((item:any)=>item.props.accessibilityLabel&&item.props.accessibilityRole==='radio'&&item.children[0].type==='Icon'&&item.children[1].type==='Text'));
+ assert.equal(all.find((item:any)=>item.props.accessibilityLabel==='Waste').props.accessibilityState.checked,true,'legacy manual category selects its broad icon');
  const food=all.find((item:any)=>item.props.accessibilityLabel==='Food');food.props.onPress();food.props.onPress();assert.equal(calls,1);render();assert.equal(render.blocked(),true);assert.equal(closed,0);
  assert.ok(find(render(),'FlatList').props.renderItem({item:expenseIconChoices[0]}).props.disabled);
  queued();render();assert.equal(render.blocked(),false);assert.equal(closed,1);assert.equal(find(render(),'FlatList').props.renderItem({item:expenseIconChoices.find(item=>item.category==='food')}).props.accessibilityState.checked,true);
@@ -69,12 +70,12 @@ test('manual icon survives a real SQLite restart and changes no financial fields
  try{
   await migrate(db);await saveGroup(db,'owner',group,'shared');let accepted=false;
   const save=saveIcon({selected:{group},draftWrites:{current:Promise.resolve()},groupId:'g',expenseIconChoices,expensePayload,perform:async(action:()=>Promise<void>)=>action(),command:(method:Command['method'],path:string,body:any)=>({command_id:'icon-edit',group_id:'g',base_version:1,method,path,body,state:'pending',error:null}),queue:async(value:Command,_a:any,_b:any,onQueued:()=>void)=>{await enqueueBill(db,'owner',value);onQueued();}});
-  await save(expense,'cycling',()=>{accepted=true;});assert.ok(accepted);
+  await save(expense,'transport',()=>{accepted=true;});assert.ok(accepted);
   raw.close();raw=new DatabaseSync(path);db=sqliteAdapter(raw);await migrate(db);
-  const commands=await pendingCommands(db,'owner');assert.equal(commands.length,1);assert.deepEqual(commands[0].body,{...expensePayload(expense,true),category:'cycling',category_auto:false});
+  const commands=await pendingCommands(db,'owner');assert.equal(commands.length,1);assert.deepEqual(commands[0].body,{...expensePayload(expense,true),category:'transport',category_auto:false});
   assert.equal((await pendingCommands(db,'another-account')).length,0);
-  const saved=await readVisibleGroup(db,'owner','g');assert.ok(saved);const projected=previewPending(saved.group,commands),updated=projected.expenses[0];assert.equal(updated.category,'cycling');assert.equal(updated.category_auto,false);assert.deepEqual(projected.balances,group.balances);
-  assert.equal(expenseCategory({...updated,groupId:'g',title:'Lunch'},{[JSON.stringify(['g','bill','Lunch'])]:'food'}),'cycling');
+  const saved=await readVisibleGroup(db,'owner','g');assert.ok(saved);const projected=previewPending(saved.group,commands),updated=projected.expenses[0];assert.equal(updated.category,'transport');assert.equal(updated.category_auto,false);assert.deepEqual(projected.balances,group.balances);
+  assert.equal(expenseCategory({...updated,groupId:'g',title:'Lunch'},{[JSON.stringify(['g','bill','Lunch'])]:'food'}),'transport');
  }finally{raw.close();rmSync(folder,{recursive:true,force:true});}
 });
 

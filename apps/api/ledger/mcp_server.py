@@ -27,6 +27,7 @@ from starlette.responses import JSONResponse
 from . import mcp_tools
 from .accounting import AccountingError
 from .expense_history import verified_mcp_history
+from .expense_icon_catalog import IconChoice
 from .mcp_oauth import MCP_SCOPE, OAuthError, authenticate_access_token, issuer_url, rate_limit, resource_url
 from .otp import client_network
 from .schemas import Command, ExpenseIn, Revision
@@ -175,9 +176,9 @@ def create_server():
             "self_participant_id": str(self_participant_id), "participants": [p.model_dump(mode="json") for p in participants], "is_direct": is_direct})
 
     @server.tool(annotations=DESTRUCTIVE, structured_output=True)
-    async def save_expense(group_id: UUID, payload: ExpenseIn, expense_id: UUID | None = None) -> dict[str, Any]:
-        """Create or edit a bill with integer paise strings. Before creating, if the user has not provided a description, ask what the expense was for and wait for their answer. Never invent a description such as Shared expense. Use a description already supplied without asking again. For edits provide matching expense_id and payload.version."""
-        return await call_tool(mcp_tools.save_expense, group_id, payload, expense_id=expense_id)
+    async def save_expense(group_id: UUID, payload: ExpenseIn, expense_id: UUID | None = None, icon: IconChoice | None = None) -> dict[str, Any]:
+        """Create or edit a bill with integer paise strings. Before creating, if the user has not provided a description, ask what the expense was for and wait for their answer. Never invent a description such as Shared expense. Use a description already supplied without asking again. For edits provide matching expense_id and payload.version. Optional icon accepts one of the listed broad choices; labels and meanings are in get_account_context.icon_options. Pass a choice only when the user requests an icon. Omit icon for automatic title-based selection on a new bill, or to preserve the saved choice on an edit. Use icon=auto to restore automatic selection, or icon=general to explicitly choose the generic receipt. icon overrides legacy category fields."""
+        return await call_tool(mcp_tools.save_expense, group_id, payload, expense_id=expense_id, icon=icon)
 
     @server.tool(annotations=DESTRUCTIVE, structured_output=True)
     async def reverse_expense(group_id: UUID, bill_id: UUID, payload: Revision) -> dict[str, Any]:

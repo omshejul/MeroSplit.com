@@ -474,7 +474,7 @@ test('category slot announces accepted meaning once, honors manual General and p
   assert.equal(value.props.leading.props.name, 'food'); assert.equal(value.props.label.match(/Food category/g)?.length, 1);
   value = row(billRow({ category: 'general', category_auto: false }));
   assert.equal(value.props.leading.props.name, 'bill'); assert.ok(!value.props.label.includes('Food category'));
-  value = row(billRow({ category: 'water', category_auto: true })); assert.equal(value.props.leading.props.name, 'water');
+  value = row(billRow({ category: 'water', category_auto: true })); assert.equal(value.props.leading.props.name, 'utilities');
   value = row(billRow({ category: 'water', deleted: true })); assert.equal(value.props.leading.props.name, 'refresh'); assert.ok(!value.props.label.includes('category'));
   const summary = production('RecordSummary');
   const shown = elements(summary({ title: 'Lunch', amount: '100', category: 'food' })).find(node => node.type === 'SectionHeading')!;

@@ -86,7 +86,7 @@ def test_read_queues_once_and_cached_decision_never_changes_financial_or_notice_
         ("food", True, "food"),
         ("General", False, "general"),
         ("Other", False, "general"),
-        ("Electricity", False, "electricity"),
+        ("Electricity", False, "utilities"),
         ("A custom manual category", False, "general"),
     ],
 )
@@ -103,8 +103,8 @@ def test_approved_legacy_unknown_generic_can_infer_without_modifying_its_categor
     body = bill(client, group)
     Expense.objects.filter(pk=body["id"]).update(category="Other", category_auto=None)
     assert icons(client, body).json()["items"][0]["state"] == "pending"
-    categories.process_category_decisions(evaluate=lambda *args: "water")
-    assert icons(client, body).json()["items"][0]["category"] == "water"
+    categories.process_category_decisions(evaluate=lambda *args: "utilities")
+    assert icons(client, body).json()["items"][0]["category"] == "utilities"
     record = Expense.objects.get(pk=body["id"])
     assert record.category == "Other" and record.category_auto is None
 
