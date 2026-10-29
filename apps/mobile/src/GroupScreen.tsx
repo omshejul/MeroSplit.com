@@ -1,4 +1,4 @@
-import BillIconPicker from './BillIconPicker';
+import { BillIconButton } from './BillIconPicker';
 import { useRowDivider } from './rowDividers';
 import RowGroup from './RowGroup';
 import { EmptyState } from './UIStates';
@@ -140,10 +140,10 @@ function BillTimelineRow({ expense, group, selfId, busy, onExpense, onPrefetchBi
   </VisibleExpense>;
 }
 
-function RecordSummary({ title, amount, amountColor, children, category, categoryText = false, reversed, onIconSelect, iconDisabled }: { onIconSelect?: (category: string, onQueued: () => void) => Promise<void>; iconDisabled?: boolean; categoryText?: boolean; reversed?: boolean; category?: string | null; title: string; amount: string; amountColor?: string; children: React.ReactNode }) {
+function RecordSummary({ title, amount, amountColor, children, category, categoryText = false, reversed, onIconPress, iconDisabled }: { onIconPress?: () => void; iconDisabled?: boolean; categoryText?: boolean; reversed?: boolean; category?: string | null; title: string; amount: string; amountColor?: string; children: React.ReactNode }) {
   const { ui } = useUI();
   return <BillSummary title={title} amount={amount} amountColor={amountColor} prominent={category !== undefined}
-    leading={category !== undefined ? <BillIconPicker category={category} reversed={reversed} disabled={iconDisabled} onSelect={onIconSelect} /> : undefined}
+    leading={category !== undefined ? <BillIconButton category={category} reversed={reversed} disabled={iconDisabled} onPress={onIconPress} /> : undefined}
     heading={<SectionHeading level={category !== undefined ? 1 : 2} style={category !== undefined ? { fontSize: 22, lineHeight: 28, flexShrink: 1, paddingTop: 2 } : undefined} accessibilityLabel={!categoryText && categoryMeaning(category) ? `${title}, ${categoryMeaning(category)}` : title}>{title}</SectionHeading>}>
     {children}
   </BillSummary>;
@@ -288,14 +288,14 @@ export function PaymentDetail({ payment, group, selfId, busy, canReverse, onReve
   </View>;
 }
 
-export function ExpenseDetail({ categoryIcons = {}, noticeVisibility, expense, group, selfId, busy, canEdit, pending = false, onEdit, onReverse, onHistory, attachments, chat, onIconSelect }: { onIconSelect?: (category: string, onQueued: () => void) => Promise<void>; categoryIcons?: ExpenseIcons; noticeVisibility?: NoticeVisibility; header?: React.ReactNode; expense: Expense; group: Group; selfId: string; busy: boolean; canEdit: boolean; pending?: boolean; onEdit: () => void; onReverse: () => void; onHistory?: () => void; attachments?: React.ReactNode; chat?: React.ReactNode }) {
+export function ExpenseDetail({ categoryIcons = {}, noticeVisibility, expense, group, selfId, busy, canEdit, pending = false, onEdit, onReverse, onHistory, attachments, chat, onIconPress }: { onIconPress?: () => void; categoryIcons?: ExpenseIcons; noticeVisibility?: NoticeVisibility; header?: React.ReactNode; expense: Expense; group: Group; selfId: string; busy: boolean; canEdit: boolean; pending?: boolean; onEdit: () => void; onReverse: () => void; onHistory?: () => void; attachments?: React.ReactNode; chat?: React.ReactNode }) {
   const { palette: colors, ui } = useUI();
   const hasCategory = !!expense.category && !['general', 'other'].includes(expense.category);
   const change = expenseBalanceChange(expense, selfId);
   const payers = group.participants.filter(person => BigInt(expense.paid[person.id] ?? '0') > 0n);
   const sharing = group.participants.filter(person => Object.hasOwn(expense.split.values, person.id));
   return <View role="region" accessibilityLabel={group.name} style={s.content}>
-    <VisibleExpense groupId={group.id} expense={expense} visibility={(group.expenses.find(value => value.id === expense.id) ?? group.focused_expense) === expense ? noticeVisibility : undefined}><RecordSummary key={expense.id} onIconSelect={onIconSelect} iconDisabled={busy || !canEdit || !!expense.deleted} categoryText={hasCategory} category={expense.deleted ? null : expenseCategory({ ...expense, groupId: group.id, title: expense.description }, categoryIcons) ?? null} reversed={!!expense.deleted} title={expense.description} amount={expense.total}>
+    <VisibleExpense groupId={group.id} expense={expense} visibility={(group.expenses.find(value => value.id === expense.id) ?? group.focused_expense) === expense ? noticeVisibility : undefined}><RecordSummary key={expense.id} onIconPress={onIconPress} iconDisabled={busy || !canEdit || !!expense.deleted} categoryText={hasCategory} category={expense.deleted ? null : expenseCategory({ ...expense, groupId: group.id, title: expense.description }, categoryIcons) ?? null} reversed={!!expense.deleted} title={expense.description} amount={expense.total}>
       <Text style={[ui.body, { color: balanceColor(change, colors) }]}>{billImpact(change)}</Text>
       <Text style={ui.caption}>{group.name} · {displayDate(expense.date)}</Text>
       {pending ? <Text style={ui.caption}>Saved on device. Pending sync.</Text> : <RecordAttribution action="Added" name={expense.added_by} />}

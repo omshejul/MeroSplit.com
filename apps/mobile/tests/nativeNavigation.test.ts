@@ -285,3 +285,21 @@ test('one completed discard cannot navigate a scene that lost focus while storag
   nodes(tree).find(node => node.type === 'Button').props.onPress(); h.focus(false); h.render(); finish(true);
   await new Promise(resolve => setImmediate(resolve)); assert.equal(h.dispatched.length,0);
 });
+
+test('the native icon sheet pushes over the bill and dismissal keeps the same bill scene',()=>{
+ const h=navigationHarness();h.navigation().go('group',{groupId:'g'});h.navigation().go('expenseDetail',{expenseId:'bill'});
+ const billKey=h.state().routes.at(-1).key;h.navigation().go('expenseIcon' as routes.Screen);
+ assert.deepEqual(h.names(),['home','group','expenseDetail','expenseIcon']);assert.deepEqual(h.state().routes.at(-1).params,{tab:'Groups',groupId:'g',expenseId:'bill'});
+ h.navigation().back(true);assert.equal(h.state().routes.at(-1).key,billKey);assert.deepEqual(h.names(),['home','group','expenseDetail']);
+});
+
+test('only the icon route uses the existing native form sheet, while web retains a transparent overlay',()=>{
+ for(const OS of ['ios','android','web']){
+  const tree=module({Platform:{OS}}).AppStack({render(){},blocked:false,initialScreen:'home',scope:'one'});
+  const screens=nodes(tree).filter(node=>node.type==='Screen'),picker=screens.find(node=>node.props.name==='expenseIcon');assert.ok(picker);
+  assert.equal(picker.props.options.presentation,OS==='web'?'transparentModal':'formSheet');assert.deepEqual(picker.props.options.sheetAllowedDetents,[.65,.9]);assert.equal(picker.props.options.sheetGrabberVisible,true);
+  assert.ok(screens.filter(node=>node!==picker).every(node=>node.props.options===undefined));
+ }
+ const cold=module().webLinking.getStateFromPath('/app/groups/g/bills/b/icon',{screens:routes.routePaths});assert.deepEqual(cold.routes.map((route:any)=>route.name),['home','group','expenseDetail','expenseIcon']);
+ const h=navigationHarness();h.navigation().go('expenseDetail',{groupId:'g',expenseId:'b'});h.navigation().go('expenseIcon');h.navigation().complete('expenseDetail');assert.deepEqual(h.names(),['home','group','expenseDetail']);
+});

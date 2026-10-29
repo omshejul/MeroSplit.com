@@ -13,41 +13,47 @@ import { sqliteAdapter } from './sqlite.ts';
 import type { Command, Expense, Group } from '../src/types.ts';
 
 type Element = { type: string; props: Record<string, any>; children: any[] };
-function picker(props: Record<string, any>) {
- const source=readFileSync(new URL('../src/BillIconPicker.tsx',import.meta.url),'utf8').replace(/^import .*;\n/gm,'').replace('export default function','function');
- const slots:any[]=[];let cursor=0;
+function picker(props: Record<string, any>, name = 'BillIconPicker') {
+ const source=readFileSync(new URL('../src/BillIconPicker.tsx',import.meta.url),'utf8').replace(/^import .*;\n/gm,'').replace(/^export (?:default )?/gm,'');
+ const slots:any[]=[];let cursor=0,blocked=false;const cleanups:(()=>void)[]=[];
  const React={createElement:(type:string,props:any,...children:any[]):Element=>({type,props:props??{},children})};
- const env={React,View:'View',FlatList:'FlatList',Modal:'Modal',Pressable:'Pressable',Icon:'Icon',Button:'Button',ErrorText:'ErrorText',DialogFocus:'DialogFocus',StyleSheet:{absoluteFill:{}},requestAnimationFrame:(call:()=>void)=>call(),categoryIcon,expenseIconChoices,useWindowDimensions:()=>({width:393,height:852}),useSafeAreaInsets:()=>({top:44,bottom:34}),useUI:()=>({palette:{text:'white',muted:'gray',accent:'purple',soft:'soft',surface:'surface',outline:'line'},motion:{enabled:false}}),useEffect(){},useState(initial:any){const index=cursor++;if(!(index in slots))slots[index]=initial;return [slots[index],(value:any)=>{slots[index]=typeof value==='function'?value(slots[index]):value;}];},useRef(initial:any){const index=cursor++;if(!(index in slots))slots[index]={current:initial};return slots[index];}};
- const component=new Function('env',`with(env){${ts.transpile(source,{target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.React})};return BillIconPicker;}`)(env);
- return ()=>{cursor=0;return component(props);};
+ const env={React,Platform:{OS:'ios'},View:'View',FlatList:'FlatList',Pressable:'Pressable',Icon:'Icon',Button:'Button',ErrorText:'ErrorText',DialogFocus:'DialogFocus',StyleSheet:{absoluteFill:{}},requestAnimationFrame:(call:()=>void)=>call(),categoryIcon,expenseIconChoices,useWindowDimensions:()=>({width:393,height:852}),useSafeAreaInsets:()=>({top:44,bottom:34}),useScreenRemovalLock:(value:boolean)=>{blocked=value;},useUI:()=>({palette:{text:'white',muted:'gray',accent:'purple',soft:'soft',surface:'surface',outline:'line'},motion:{enabled:false}}),useEffect(effect:()=>void|(()=>void)){const index=cursor++;if(!(index in slots)){slots[index]=true;const cleanup=effect();if(cleanup)cleanups.push(cleanup);}},useState(initial:any){const index=cursor++;if(!(index in slots))slots[index]=initial;return [slots[index],(value:any)=>{slots[index]=typeof value==='function'?value(slots[index]):value;}];},useRef(initial:any){const index=cursor++;if(!(index in slots))slots[index]={current:initial};return slots[index];}};
+ const component=new Function('env',`with(env){${ts.transpile(source,{target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.React})};return ${name};}`)(env);
+ const render=()=>{cursor=0;return component(props);};return Object.assign(render,{unmount:()=>cleanups.forEach(fn=>fn()),blocked:()=>blocked});
 }
-function nodes(tree:any):Element[]{return Array.isArray(tree)?tree.flatMap(nodes):tree&&typeof tree==='object'?[tree,...nodes(tree.children)]:[];}
+function nodes(tree:any):Element[]{return Array.isArray(tree)?tree.flatMap(nodes):tree&&typeof tree==='object'?[tree,...nodes(tree.children),...nodes(tree.props?.ListHeaderComponent)]:[];}
 const find=(tree:any,type:string)=>nodes(tree).find(node=>node.type===type)!;
 const settle=()=>new Promise(resolve=>setImmediate(resolve));
 
-test('picker has all 75 options, icon-only radio cells, and waits for durable acceptance before closing',async()=>{
- let queued:()=>void=()=>{},release:()=>void=()=>{},calls=0;
- const render=picker({category:'wastecollection',onSelect:async(category:string,onQueued:()=>void)=>{assert.equal(category,'food');calls++;queued=onQueued;await new Promise<void>(resolve=>{release=resolve;});}});
- let tree=render();find(tree,'Button').props.onPress();tree=render();
- const grid=find(tree,'FlatList');assert.equal(grid.props.numColumns,5);assert.equal(grid.props.data.length,75);
+test('native picker has all 75 icon-only radio cells, and waits for durable acceptance before dismissing',async()=>{
+ let queued:()=>void=()=>{},release:()=>void=()=>{},calls=0,closed=0;
+ const render=picker({category:'wastecollection',onClose:()=>{closed++;},onSelect:async(category:string,onQueued:()=>void)=>{assert.equal(category,'food');calls++;queued=onQueued;await new Promise<void>(resolve=>{release=resolve;});}});
+ const grid=find(render(),'FlatList');assert.equal(grid.props.numColumns,5);assert.equal(grid.props.data.length,75);assert.equal(grid.props.nestedScrollEnabled,true);
+ assert.equal(find(render(),'Modal'),undefined,'native stack owns the sheet');
  const all=grid.props.data.map((item:any)=>grid.props.renderItem({item}));assert.ok(all.every((item:any)=>item.props.accessibilityLabel&&item.props.accessibilityRole==='radio'&&item.children[0].type==='Icon'));
- const food=all.find((item:any)=>item.props.accessibilityLabel==='Food');assert.ok(food);
- food.props.onPress();food.props.onPress();assert.equal(calls,1);assert.ok(find(render(),'Modal'),'sheet stays open before durable enqueue');
+ const food=all.find((item:any)=>item.props.accessibilityLabel==='Food');food.props.onPress();food.props.onPress();assert.equal(calls,1);render();assert.equal(render.blocked(),true);assert.equal(closed,0);
  assert.ok(find(render(),'FlatList').props.renderItem({item:expenseIconChoices[0]}).props.disabled);
- queued();assert.equal(find(render(),'Modal'),undefined);release();await settle();
- assert.equal(find(render(),'Icon').props.name,'food');
+ queued();render();assert.equal(render.blocked(),false);assert.equal(closed,1);assert.equal(find(render(),'FlatList').props.renderItem({item:expenseIconChoices.find(item=>item.category==='food')}).props.accessibilityState.checked,true);
+ release();await settle();render.unmount();
 });
 
-test('failed local save keeps the sheet open, shows an error, and permits a retry',async()=>{
- const render=picker({category:'general',onSelect:async()=>{throw new Error('Disk is full');}});
- find(render(),'Button').props.onPress();const grid=find(render(),'FlatList');grid.props.renderItem({item:expenseIconChoices[1]}).props.onPress();await settle();
- const tree=render();assert.ok(find(tree,'Modal'));assert.deepEqual(find(tree,'ErrorText').children,['Disk is full']);assert.equal(find(tree,'FlatList').props.renderItem({item:expenseIconChoices[1]}).props.disabled,false);
+test('failed local save retains picker content and error, releases removal lock and permits retry',async()=>{
+ let calls=0;const render=picker({category:'general',onClose(){assert.fail();},onSelect:async()=>{calls++;throw new Error('Disk is full');}});
+ find(render(),'FlatList').props.renderItem({item:expenseIconChoices[1]}).props.onPress();await settle();
+ const tree=render();assert.deepEqual(find(tree,'ErrorText').children,['Disk is full']);assert.equal(render.blocked(),false);assert.equal(find(tree,'FlatList').props.renderItem({item:expenseIconChoices[1]}).props.disabled,false);
+ find(tree,'FlatList').props.renderItem({item:expenseIconChoices[1]}).props.onPress();await settle();assert.equal(calls,2);render.unmount();
 });
 
-test('reversed and readonly bills cannot open a picker',()=>{
- const readonly=picker({category:'food'});assert.equal(find(readonly(),'Button'),undefined);
- const reversed=picker({category:'food',reversed:true,onSelect:async()=>{}});assert.equal(find(reversed(),'Button'),undefined);assert.equal(find(reversed(),'Icon').props.name,'refresh');
- const disabled=picker({category:'food',disabled:true,onSelect:async()=>{}});assert.equal(find(disabled(),'Button').props.disabled,true);
+test('reversed and readonly bill buttons do not open a picker, and disabled content rejects selection',async()=>{
+ const readonly=picker({category:'food'},'BillIconButton');assert.equal(find(readonly(),'Button'),undefined);
+ const reversed=picker({category:'food',reversed:true,onPress(){assert.fail();}},'BillIconButton');assert.equal(find(reversed(),'Button'),undefined);assert.equal(find(reversed(),'Icon').props.name,'refresh');
+ const disabled=picker({category:'food',disabled:true,onPress(){}},'BillIconButton');assert.equal(find(disabled(),'Button').props.disabled,true);
+ for(const options of [{disabled:true},{active:false}]){const render=picker({category:'food',...options,onClose(){},onSelect:async()=>{assert.fail();}});find(render(),'FlatList').props.renderItem({item:expenseIconChoices[0]}).props.onPress();await settle();render.unmount();}
+});
+
+test('a completion after sheet unmount cannot dismiss another route or account',async()=>{
+ let queued=()=>{},release=()=>{},closed=0;const render=picker({category:'general',onClose(){closed++;},onSelect:async(_category:string,onQueued:()=>void)=>{queued=onQueued;await new Promise<void>(resolve=>{release=resolve;});}});
+ find(render(),'FlatList').props.renderItem({item:expenseIconChoices[0]}).props.onPress();render.unmount();queued();release();await settle();assert.equal(closed,0);
 });
 
 function saveIcon(env:Record<string,any>){

@@ -24,6 +24,7 @@ import ResendControls from '../../src/ResendControls';
 import AppLogo from '../../src/AppLogo';
 import FloatingActionContainer from '../../src/FloatingActionContainer';
 import BillSummary from '../../src/BillSummary';
+import BillIconPicker from '../../src/BillIconPicker';
 import { PersonDetailsFields, UPIAddressField } from '../../src/FormFields';
 import GroupList from '../../src/GroupList';
 import GroupScreen, { ExpenseDetail, PaymentDetail } from '../../src/GroupScreen';
@@ -90,7 +91,7 @@ globalThis.fetch = (async (input: any, options?: RequestInit) => {
 
 function ProviderMethodsDemo() { const connections = useLinkedProviders(session, true); return <SignInMethods session={session} busy={false} connections={connections} onGoogle={async () => {}} onApple={async () => {}} />; }
 
-const pages = ['Rows', 'States', 'Selectors', 'Dialogs', 'Profile', 'Expense', 'Payment', 'Group', 'Members', 'Bill', 'Payment detail', 'Saved change', 'Recovery', 'Activity', 'Versions', 'Attachments', 'Photo', 'Create', 'Sign in', 'Providers', 'Notifications', 'MCP', 'Import', 'Tabs', 'Join'] as const;
+const pages = ['Rows', 'States', 'Selectors', 'Dialogs', 'Profile', 'Expense', 'Payment', 'Group', 'Members', 'Bill', 'Bill icons', 'Payment detail', 'Saved change', 'Recovery', 'Activity', 'Versions', 'Attachments', 'Photo', 'Create', 'Sign in', 'Providers', 'Notifications', 'MCP', 'Import', 'Tabs', 'Join'] as const;
 type Page = typeof pages[number] | 'Home';
 function Gallery() {
   const { ui, palette, changeAppearance, changeCurrency, changeColorFamily, dark } = useUI();
@@ -110,7 +111,8 @@ function Gallery() {
   if (page === 'Payment') content = <SettleForm group={group} selfId="a" busy={false} initial={group.transfers[0]} onSave={async payment => done(`Recorded ${payment.amount}`)} onCancel={() => setPage('Home')} onReviewAttempt={async () => {}} onPrepareUPI={async () => { throw Error('QA does not launch payments'); }} onCancelUPI={async () => {}} returnPayment={null} onArmReturn={async () => { throw Error('QA does not launch payments'); }} onReturnPaymentChange={async () => {}} onResolveReturn={async () => {}} />;
   if (page === 'Group') content = <GroupScreen group={group} accepted={group} pending={[]} selfId="a" busy={false} onExpense={() => setPage('Bill')} onPayment={() => setPage('Payment detail')} onSettle={() => setPage('Payment')} onReverse={() => done('Reversal callback')} onLoadBalanceGroup={async expected => ({ group: expected, saved: true })} />;
   if (page === 'Members') content = <MembersScreen group={members} selfId="a" busy={false} addPersonRequest={open ? 1 : 0} onMembership={() => done('Membership callback')} onAction={async (path, body) => { if (path === '/participants') setMembers(current => ({ ...current, participants: [...current.participants, { id: String(body.id), name: String(body.name) }] })); setResult(`Member action ${path}`); return { id: group.id, version: group.version, pending: true }; }} />;
-  if (page === 'Bill') content = <ExpenseDetail onIconSelect={async (category, onQueued) => { setMembers(current => ({ ...current, expenses: current.expenses.map((expense, i) => i === 0 ? { ...expense, category, category_auto: false } : expense) })); onQueued(); }} group={members} expense={members.expenses[0]} selfId="a" busy={false} canEdit onEdit={() => setPage('Expense')} onReverse={() => done('Reverse bill callback')} onHistory={() => setPage('Versions')} />;
+  if (page === 'Bill icons') content = <BillIconPicker category={members.expenses[0].category} onClose={() => setPage('Bill')} onSelect={async (category, onQueued) => { setMembers(current => ({ ...current, expenses: current.expenses.map((expense, i) => i === 0 ? { ...expense, category, category_auto: false } : expense) })); onQueued(); }} />;
+  if (page === 'Bill') content = <ExpenseDetail onIconPress={() => setPage('Bill icons')} group={members} expense={members.expenses[0]} selfId="a" busy={false} canEdit onEdit={() => setPage('Expense')} onReverse={() => done('Reverse bill callback')} onHistory={() => setPage('Versions')} />;
   if (page === 'Payment detail') content = <PaymentDetail group={group} payment={group.settlements[0]} selfId="a" busy={false} canReverse onReverse={() => done('Reverse payment callback')} />;
   if (page === 'Saved change') content = <SavedChangeScreen command={command} group={group} busy={false} onDiscard={() => done('Discarded saved change')} onEditSaved={() => setPage('Expense')} />;
   if (page === 'Recovery') content = <><SavedChanges expanded commands={[command]} groups={[{ kind: 'shared', group }]} busy={false} expired={false} onOpen={() => setPage('Group')} onReview={() => setPage('Saved change')} onDiscard={() => done('Discarded change')} onRetry={() => done('Retried sync')} /><LegacyRecovery groups={[group]} email={session.email} selected={{ [group.id]: chosen }} busy={false} onSelect={(_, id) => setChosen(id)} onRecover={() => done('Recovered QA records')} /></>;
@@ -126,7 +128,7 @@ function Gallery() {
   if (page === 'Import') content = <SplitwiseImportScreen session={session} busy={false} onBusyChange={() => {}} onCancel={() => setPage('Home')} onImported={() => done('Imported fixture')} />;
   if (page === 'Tabs') content = <HomeTabs selected={tab} busy={false} onSelect={setTab} render={selected => <Text style={ui.section}>{selected} content</Text>} />;
   if (page === 'Join') content = <GroupJoinDialog session={session} token={'a'.repeat(64)} onJoined={async () => { setPage('Group'); setResult('Joined fixture'); }} onCancel={() => setPage('Home')} />;
-  const virtualized = ['Group', 'Activity', 'Versions', 'Tabs'].includes(page);
+  const virtualized = ['Group', 'Activity', 'Versions', 'Tabs', 'Bill icons'].includes(page);
   return <AppFrame><ScreenHeader title={`QA ${page}`} showTitle={page !== 'Bill'} busy={false} onBack={page === 'Home' ? undefined : () => { setPage('Home'); setOpen(false); setDialog(''); }}><Button title={dark ? 'Light' : 'Dark'} onPress={() => void changeAppearance(dark ? 'light' : 'dark')} /></ScreenHeader><Text accessibilityLiveRegion="polite" style={[ui.caption, { paddingHorizontal: 16 }]}>{result}</Text>
     {page === 'Sign in' ? <SignInLayout busy={false}>{content}</SignInLayout> : virtualized ? content : <ScrollView key={page} keyboardShouldPersistTaps="handled" contentContainerStyle={pageContentStyle}>{page === 'Members' && <Button title="Add person" onPress={() => setOpen(true)} />}{content}</ScrollView>}
     {page === 'Rows' && <FloatingActionContainer><Button title="QA floating action" onPress={() => done('Floating action')} /></FloatingActionContainer>}
