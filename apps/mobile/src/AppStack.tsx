@@ -118,5 +118,5 @@ export default function AppStack({ render, blocked, initialScreen, scope }: { re
   const { palette, motion } = useUI();
   return <SceneContext.Provider value={{ render, blocked }}><Stack.Navigator screenOptions={{
     headerShown: false, contentStyle: { backgroundColor: palette.background }, animation: motion.enabled ? 'default' : 'none', gestureEnabled: !blocked,
-  }}><Stack.Group navigationKey={scope}>{[initialScreen, ...screenNames.filter(name => name !== initialScreen)].map(name => <Stack.Screen key={name} name={name} initialParams={{ tab: initialScreen === 'signInMethods' ? 'Account' : 'Groups' }} component={RouteScene} />)}</Stack.Group></Stack.Navigator></SceneContext.Provider>;
+  }}><Stack.Group navigationKey={scope}>{[initialScreen, ...screenNames.filter(name => name !== initialScreen)].map(name => <Stack.Screen key={name} name={name} initialParams={{ tab: initialScreen === 'signInMethods' ? 'Account' : 'Groups' }} component={RouteScene} options={name === 'expenseIcon' ? { presentation: Platform.OS === 'web' ? 'transparentModal' : 'formSheet', sheetAllowedDetents: [0.65, 0.9], sheetGrabberVisible: true, sheetCornerRadius: 24, contentStyle: { backgroundColor: Platform.OS === 'web' ? 'transparent' : palette.surface } } : undefined} />)}</Stack.Group></Stack.Navigator></SceneContext.Provider>;
 }

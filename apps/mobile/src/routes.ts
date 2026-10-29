@@ -1,15 +1,15 @@
-export type Screen = 'savedChanges' | 'signInMethods' | 'home' | 'create' | 'group' | 'expense' | 'expenseDetail' | 'expenseVersions' | 'billChat' | 'settle' | 'members' | 'login' | 'review' | 'paymentDetail' | 'import';
+export type Screen = 'savedChanges' | 'signInMethods' | 'home' | 'create' | 'group' | 'expense' | 'expenseDetail' | 'expenseIcon' | 'expenseVersions' | 'billChat' | 'settle' | 'members' | 'login' | 'review' | 'paymentDetail' | 'import';
 export type RouteParams = { tab?: string; groupId?: string | null; expenseId?: string | null; settlementId?: string | null };
 export type AppRoute = { key?: string; name: Screen; params?: RouteParams };
 export type Routes = { [Name in Screen]: RouteParams | undefined };
-export const screenNames: Screen[] = ['home', 'login', 'group', 'create', 'expense', 'expenseDetail', 'expenseVersions', 'billChat', 'settle', 'members', 'review', 'paymentDetail', 'savedChanges', 'signInMethods', 'import'];
-const grouped: Screen[] = ['group', 'expense', 'expenseDetail', 'expenseVersions', 'billChat', 'settle', 'members', 'review', 'paymentDetail'];
+export const screenNames: Screen[] = ['home', 'login', 'group', 'create', 'expense', 'expenseDetail', 'expenseIcon', 'expenseVersions', 'billChat', 'settle', 'members', 'review', 'paymentDetail', 'savedChanges', 'signInMethods', 'import'];
+const grouped: Screen[] = ['group', 'expense', 'expenseDetail', 'expenseIcon', 'expenseVersions', 'billChat', 'settle', 'members', 'review', 'paymentDetail'];
 
 export function destination(current: AppRoute, name: Screen, params: RouteParams = {}): AppRoute {
   const previous = current.params ?? {};
   return { name, params: { tab: params.tab ?? previous.tab ?? 'Groups', ...(grouped.includes(name) ? {
     groupId: params.groupId ?? previous.groupId,
-    ...(['expense', 'expenseDetail', 'expenseVersions', 'billChat'].includes(name) ? { expenseId: params.expenseId === undefined ? previous.expenseId : params.expenseId } : {}),
+    ...(['expense', 'expenseDetail', 'expenseIcon', 'expenseVersions', 'billChat'].includes(name) ? { expenseId: params.expenseId === undefined ? previous.expenseId : params.expenseId } : {}),
     ...(name === 'paymentDetail' ? { settlementId: params.settlementId ?? previous.settlementId } : {}),
   } : {}) } };
 }
@@ -26,13 +26,14 @@ export function routeParents(route: AppRoute): AppRoute[] {
   if (!grouped.includes(route.name) || !params.groupId) return [home];
   const group = destination(route, 'group');
   if (route.name === 'group') return [home];
-  if (['billChat', 'expenseVersions'].includes(route.name) && params.expenseId) return [home, group, destination(route, 'expenseDetail')];
+  if (['billChat', 'expenseVersions', 'expenseIcon'].includes(route.name) && params.expenseId) return [home, group, destination(route, 'expenseDetail')];
   return [home, group];
 }
 
 export const routePaths = {
   home: 'app', login: 'app/sign-in', group: 'app/groups/:groupId', create: 'app/new-group',
   expense: 'app/groups/:groupId/draft/:expenseId?', expenseDetail: 'app/groups/:groupId/bills/:expenseId',
+  expenseIcon: 'app/groups/:groupId/bills/:expenseId/icon',
   expenseVersions: 'app/groups/:groupId/bills/:expenseId/versions', billChat: { path: 'app/chat/:groupId/:expenseId', alias: ['app/groups/:groupId/bills/:expenseId/chat'] },
   settle: 'app/groups/:groupId/payment', members: 'app/groups/:groupId/settings', review: 'app/groups/:groupId/review',
   paymentDetail: 'app/groups/:groupId/payments/:settlementId', savedChanges: 'app/saved-changes', signInMethods: 'app/sign-in-methods', import: 'app/import',

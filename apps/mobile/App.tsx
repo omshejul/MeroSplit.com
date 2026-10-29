@@ -30,6 +30,7 @@ import { getDatabase, savedSession, saveSession, retireSyncPause, shareJson, sto
 import { storageRevision, discardCommand, enqueue, enqueueBill, confirmedSync, confirmSync, readGroup, listGroups, pendingCommands, createPendingGroup, listLegacyGroups, listLegacyRecoveries, listUnavailableGroups, replaceCommand, saveGroup, readVisibleGroup, wipeAccount } from './src/storage';
 import GroupScreen, { ExpenseDetail, PaymentDetail } from './src/GroupScreen';
 import ExpenseForm from './src/ExpenseForm';
+import BillIconPicker from './src/BillIconPicker';
 import ExpenseVersionHistory from './src/ExpenseVersionHistory';
 import SettleForm from './src/SettleForm';
 import ActivityScreen from './src/ActivityScreen';
@@ -95,7 +96,7 @@ import type { CachedGroup, Command, Expense, Group, LegacyRecovery, Session, Set
 import { Button, IconAction, SettingsRow, UIProvider, useUI, type Palette } from './src/ui';
 import { groupDisplayName, visiblePeopleSummary } from './src/personalBalances';
 import { useExpenseIcons } from './src/useExpenseIcons';
-import { expenseIconChoices, type ExpenseIconRef } from './src/categoryIcons';
+import { expenseCategory, expenseIconChoices, type ExpenseIconRef } from './src/categoryIcons';
 import { useExpenseNotices } from './src/useExpenseNotices';
 import type { WindowFrame } from './src/expenseNotices';
 import { Text } from 'react-native-paper';
@@ -213,7 +214,7 @@ function AppContent() {
       const value = accepted.expenses.find(value => value.id === id) ?? (bill?.kind === 'bill' ? bill.bill : undefined);
       if (value && !value.deleted) iconRefs.push({ ...value, groupId: accepted.id, title: value.description });
     }
-  } else if (screen === 'expenseDetail' && accepted && !accepted.hidden && !pending.length) {
+  } else if (['expenseDetail', 'expenseIcon'].includes(screen) && accepted && !accepted.hidden && !pending.length) {
     const value = accepted.expenses.find(value => value.id === expenseId) ?? (accepted.focused_expense?.id === expenseId ? accepted.focused_expense : undefined);
     if (value && !value.deleted) iconRefs.push({ ...value, groupId: accepted.id, title: value.description });
   } else if (screen === 'home' && tab === 'Activity' && activityOwner.current === owner && visibleActivity.scope === `${owner}|${session?.token}`) {
@@ -786,7 +787,7 @@ function AppContent() {
     if (resolvedRoute.current === scope) return;
     if (!selected || expenseId && !expense || settlementId && !settlement) {
       resolvedRoute.current = scope;
-      if (screen === 'group' || ['expenseDetail', 'expenseVersions', 'billChat'].includes(screen)) setAppLink({ groupId, ...(expenseId ? { expenseId, ...(screen === 'billChat' ? { chat: true as const } : screen === 'expenseVersions' ? { versions: true as const } : {}) } : {}) });
+      if (screen === 'group' || ['expenseDetail', 'expenseIcon', 'expenseVersions', 'billChat'].includes(screen)) setAppLink({ groupId, ...(expenseId ? { expenseId, ...(screen === 'billChat' ? { chat: true as const } : screen === 'expenseVersions' ? { versions: true as const } : {}) } : {}) });
     }
   }, [ready, session?.token, authHeld, expired, busy, navigation.route.key, screen, groupId, expenseId, !!selected, !!expense, appLink]);
   useEffect(() => {
@@ -1358,6 +1359,10 @@ function AppContent() {
   if (authHeld && !session) return <EmailLinkScreen title={emailEntry?.phase === 'name' ? 'Name' : 'Sign in'} busy={busy}>{emailContent}</EmailLinkScreen>;
   if (screen === 'home' && session && !insideHomeTabs) return <HomeTabs selected={tab} busy={authHeld} onSelect={value => { setShowArchived(false); setShowHidden(false); if (value === 'Activity') { if (!readPrefetch.fresh(readScope(session), '/activity?limit=50')) activityOwner.current = ''; setActivityError(''); } navigate('home', { tab: value }); }}
     render={value => renderScreen({ ...route, params: { ...route.params, tab: value } }, focused && value === tab, billQueued, true)} />;
+  if (screen === 'expenseIcon') return selected && expense ? <BillIconPicker key={`${owner}|${groupId}|${expense.id}`} active={focused} category={expenseCategory({ ...expense, groupId: selected.group.id, title: expense.description }, categoryIcons)}
+    disabled={busy || authHeld || expired || selected.group.archived || !!expense.deleted || pending.some(row => row.body.id === expense.id && (row.attempted || row.state !== 'pending'))}
+    onSelect={(category, onQueued) => changeExpenseIcon(expense, category, onQueued)} onClose={() => navigation.complete('expenseDetail', { groupId, expenseId })} />
+    : <View style={pageContentStyle}><ErrorText live>Bill unavailable. Close this picker and reopen the bill.</ErrorText><Button title="Close icon picker" onPress={() => navigation.complete('group', { groupId })} /></View>;
   const mascotEligible = online && isOnline() && !busy && !expired && !notice && !commands.length && !hasDrafts && !legacy.length && !recoveries.length && !unavailable.length && !returns.length;
   const activityEmptyVerified = mascotEligible && !activityError && activity?.firstPage === true && activityOwner.current === owner && emptyChatScope === `${owner}|${session?.token}`;
   const direct = tab === 'Friends';
@@ -1408,7 +1413,7 @@ function AppContent() {
       </>}
       {paymentReturns}
       {screen === 'create' && session && <CreateGroupForm direct={direct} busy={busy} onCreate={values => launch(() => createGroup(values))} />}
-      {screen === 'expenseDetail' && selected && expense && <><ExpenseDetail onIconSelect={(category, onQueued) => changeExpenseIcon(expense, category, onQueued)} categoryIcons={categoryIcons} onHistory={() => navigate('expenseVersions')} noticeVisibility={noticeVisibility} selfId={selfId} expense={expense} group={preview ?? selected.group} busy={busy} pending={pending.some(row => row.body.id === expense.id)} canEdit={!selected.group.archived && !pending.some(row => row.body.id === expense.id && (row.attempted || row.state !== 'pending'))} onEdit={() => open(() => openExpense(expense))} chat={session && (selected.group.expenses.some(value => value.id === expense.id) || selected.group.focused_expense?.id === expense.id) ? <BillChatEntry key={`${owner}|${expense.id}`} session={session} groupId={selected.group.id} expenseId={expense.id} active={focused && foreground && !expired && !authHeld} disabled={busy} onOpen={() => navigate('billChat')} /> : undefined} onReverse={() => confirm('Reverse bill record?', 'Creates a reversal record and updates balances. The original bill stays in history.', () => reverseExpense(expense), 'Reverse bill')} attachments={
+      {screen === 'expenseDetail' && selected && expense && <><ExpenseDetail onIconPress={() => navigate('expenseIcon', { groupId, expenseId: expense.id })} categoryIcons={categoryIcons} onHistory={() => navigate('expenseVersions')} noticeVisibility={noticeVisibility} selfId={selfId} expense={expense} group={preview ?? selected.group} busy={busy} pending={pending.some(row => row.body.id === expense.id)} canEdit={!selected.group.archived && !pending.some(row => row.body.id === expense.id && (row.attempted || row.state !== 'pending'))} onEdit={() => open(() => openExpense(expense))} chat={session && (selected.group.expenses.some(value => value.id === expense.id) || selected.group.focused_expense?.id === expense.id) ? <BillChatEntry key={`${owner}|${expense.id}`} session={session} groupId={selected.group.id} expenseId={expense.id} active={focused && foreground && !expired && !authHeld} disabled={busy} onOpen={() => navigate('billChat')} /> : undefined} onReverse={() => confirm('Reverse bill record?', 'Creates a reversal record and updates balances. The original bill stays in history.', () => reverseExpense(expense), 'Reverse bill')} attachments={
         !expense.deleted && (!(selected.group.expenses.some(value => value.id === expense.id) || selected.group.focused_expense?.id === expense.id) ? <Text style={ui.caption}>Pending sync</Text> : <BillAttachments key={`${owner}|${groupId}|${expense.id}`} session={session} groupId={selected.group.id} expenseId={expense.id} revision={selected.group.version} readOnly={selected.group.archived || !!pending.length} busy={busy}
           onBusyChange={value => setSubmission(value, `${route.key}|attachments`)} onChanged={async () => { if (!session) return; const scope = accountOwner(session); const updated = await fetchGroup(session, selected.group.id); if (await saveReadGroup(session, updated, () => ownerRef.current === scope, false)) await load(scope); }} />)} />
       </>}
