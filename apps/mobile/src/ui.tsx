@@ -161,9 +161,9 @@ export function AmountText({ amount, style, ...props }: Omit<React.ComponentProp
   const { ui } = useUI();
   return <Text {...props} style={[ui.amount, style]}>{formatMoney(amount)}</Text>;
 }
-export function SectionHeading({ style, ...props }: React.ComponentProps<typeof Text>) {
+export function SectionHeading({ style, level = 2, ...props }: React.ComponentProps<typeof Text> & { level?: number }) {
   const { ui } = useUI();
-  return <Text {...props} accessibilityRole="header" aria-level={2} style={[ui.section, style]} />;
+  return <Text {...props} accessibilityRole="header" aria-level={level} style={[ui.section, style]} />;
 }
 export function ErrorText({ children, live = false }: { children: string; live?: boolean }) {
   const { ui } = useUI();

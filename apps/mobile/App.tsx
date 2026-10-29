@@ -93,7 +93,7 @@ import type { CachedGroup, Command, Expense, Group, LegacyRecovery, Session, Set
 import { Button, IconAction, SettingsRow, UIProvider, useUI, type Palette } from './src/ui';
 import { groupDisplayName, visiblePeopleSummary } from './src/personalBalances';
 import { useExpenseIcons } from './src/useExpenseIcons';
-import type { ExpenseIconRef } from './src/categoryIcons';
+import { expenseIconChoices, type ExpenseIconRef } from './src/categoryIcons';
 import { useExpenseNotices } from './src/useExpenseNotices';
 import type { WindowFrame } from './src/expenseNotices';
 import { Text } from 'react-native-paper';
@@ -939,6 +939,15 @@ function AppContent() {
       setPushOpportunity({ owner, token: active.token, groupId: selected.group.id, expenseId: value.id });
     }
   }
+  async function changeExpenseIcon(value: Expense, category: string, onQueued: () => void) {
+    await perform(async () => {
+      if (!selected || selected.group.archived || value.deleted) throw new Error('This bill cannot be changed.');
+      if (!expenseIconChoices.some(item => item.category === category)) throw new Error('Choose an available icon.');
+      if (value.category === category && value.category_auto === false) { onQueued(); return; }
+      await draftWrites.current;
+      await queue(command('PUT', `/groups/${groupId}/expenses/${value.id}`, expensePayload({ ...value, category, category_auto: false }, true)), undefined, undefined, onQueued);
+    }, false);
+  }
   async function reverseExpense(value: Expense) {
     const route = navigation.ref.getRootState();
     if (!selected) return;
@@ -1375,7 +1384,7 @@ function AppContent() {
         <Button title="Need help signing in?" kind="text" contentStyle={{ minHeight: 48 }} onPress={() => launch(() => Linking.openURL(`${APP_ORIGIN}/support`))} />
   </SignInLayout>;
     return <>
-    {screen !== 'login' && <ScreenHeader title={title} brand={!session} busy={busyRoutes.length > 0 || reading > 0} onFeedback={session && !authHeld && !expired && screen === 'home' && ['Groups', 'Friends', 'Activity'].includes(tab) ? () => setFeedbackOpen(true) : undefined} onBack={screen === 'home' && tab === 'Groups' && (showArchived || showHidden) || screen !== 'home' ? back : undefined} status={session ? <SyncStatus key={owner} confirmedAt={lastConfirmed} commands={commands} pendingFiles={pendingFiles} drafts={hasDrafts} durable={storageIsDurable()} syncing={syncing} problem={syncProblem} online={online} reviewRequired={expired || authHeld || !!unavailable.length} updatesAvailable={screen === 'group' && ledgerUpdates} onShowUpdates={() => setLedgerRevision(value => value + 1)} onExport={() => open(exportData)} onRetry={syncQuietly} onPress={() => navigate('savedChanges')} /> : undefined}>
+    {screen !== 'login' && <ScreenHeader title={title} showTitle={screen !== 'expenseDetail'} brand={!session} busy={busyRoutes.length > 0 || reading > 0} onFeedback={session && !authHeld && !expired && screen === 'home' && ['Groups', 'Friends', 'Activity'].includes(tab) ? () => setFeedbackOpen(true) : undefined} onBack={screen === 'home' && tab === 'Groups' && (showArchived || showHidden) || screen !== 'home' ? back : undefined} status={session ? <SyncStatus key={owner} confirmedAt={lastConfirmed} commands={commands} pendingFiles={pendingFiles} drafts={hasDrafts} durable={storageIsDurable()} syncing={syncing} problem={syncProblem} online={online} reviewRequired={expired || authHeld || !!unavailable.length} updatesAvailable={screen === 'group' && ledgerUpdates} onShowUpdates={() => setLedgerRevision(value => value + 1)} onExport={() => open(exportData)} onRetry={syncQuietly} onPress={() => navigate('savedChanges')} /> : undefined}>
 
       {screen === 'group' && selected && <IconAction name="settings" label="Group settings" disabled={busy} onPress={() => navigate('members')} />}
       {screen === 'members' && selected && !selected.group.is_direct && !selected.group.archived && selected.group.participants.some(person => person.id === selfId && !person.removed && person.user_id === selected.group.owner_id) && <IconAction name="personAdd" label="Add person" disabled={busy} onPress={() => setAddPersonRequest(value => value + 1)} />}
@@ -1396,7 +1405,7 @@ function AppContent() {
       </>}
       {paymentReturns}
       {screen === 'create' && session && <CreateGroupForm direct={direct} busy={busy} onCreate={values => launch(() => createGroup(values))} />}
-      {screen === 'expenseDetail' && selected && expense && <><ExpenseDetail categoryIcons={categoryIcons} onHistory={() => navigate('expenseVersions')} noticeVisibility={noticeVisibility} selfId={selfId} expense={expense} group={preview ?? selected.group} busy={busy} pending={pending.some(row => row.body.id === expense.id)} canEdit={!selected.group.archived && !pending.some(row => row.body.id === expense.id && (row.attempted || row.state !== 'pending'))} onEdit={() => open(() => openExpense(expense))} chat={session && (selected.group.expenses.some(value => value.id === expense.id) || selected.group.focused_expense?.id === expense.id) ? <BillChatEntry key={`${owner}|${expense.id}`} session={session} groupId={selected.group.id} expenseId={expense.id} active={focused && foreground && !expired && !authHeld} disabled={busy} onOpen={() => navigate('billChat')} /> : undefined} onReverse={() => confirm('Reverse bill record?', 'Creates a reversal record and updates balances. The original bill stays in history.', () => reverseExpense(expense), 'Reverse bill')} attachments={
+      {screen === 'expenseDetail' && selected && expense && <><ExpenseDetail onIconSelect={(category, onQueued) => changeExpenseIcon(expense, category, onQueued)} categoryIcons={categoryIcons} onHistory={() => navigate('expenseVersions')} noticeVisibility={noticeVisibility} selfId={selfId} expense={expense} group={preview ?? selected.group} busy={busy} pending={pending.some(row => row.body.id === expense.id)} canEdit={!selected.group.archived && !pending.some(row => row.body.id === expense.id && (row.attempted || row.state !== 'pending'))} onEdit={() => open(() => openExpense(expense))} chat={session && (selected.group.expenses.some(value => value.id === expense.id) || selected.group.focused_expense?.id === expense.id) ? <BillChatEntry key={`${owner}|${expense.id}`} session={session} groupId={selected.group.id} expenseId={expense.id} active={focused && foreground && !expired && !authHeld} disabled={busy} onOpen={() => navigate('billChat')} /> : undefined} onReverse={() => confirm('Reverse bill record?', 'Creates a reversal record and updates balances. The original bill stays in history.', () => reverseExpense(expense), 'Reverse bill')} attachments={
         !expense.deleted && (!(selected.group.expenses.some(value => value.id === expense.id) || selected.group.focused_expense?.id === expense.id) ? <Text style={ui.caption}>Pending sync</Text> : <BillAttachments key={`${owner}|${groupId}|${expense.id}`} session={session} groupId={selected.group.id} expenseId={expense.id} revision={selected.group.version} readOnly={selected.group.archived || !!pending.length} busy={busy}
           onBusyChange={value => setSubmission(value, `${route.key}|attachments`)} onChanged={async () => { if (!session) return; const scope = accountOwner(session); const updated = await fetchGroup(session, selected.group.id); if (await saveReadGroup(session, updated, () => ownerRef.current === scope, false)) await load(scope); }} />)} />
       </>}
