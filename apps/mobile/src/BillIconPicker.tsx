@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { FlatList, Modal, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { FlatList, Modal, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import DialogFocus from './DialogFocus';
 import { categoryIcon, expenseIconChoices } from './categoryIcons';
@@ -31,7 +31,7 @@ export default function BillIconPicker({ category, reversed = false, disabled = 
       : <View accessible={false} style={{ width: 32, height: 32, justifyContent: 'center', alignItems: 'center' }}>{icon}</View>}
     {open && <Modal visible transparent animationType={motion.enabled ? 'fade' : 'none'} statusBarTranslucent onRequestClose={close}>
       <View style={{ flex: 1, justifyContent: 'flex-end', alignItems: 'center' }}>
-        <Pressable accessible={false} style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.45)' }]} onPress={close} />
+        <Button kind="plain" accessible={false} disabled={saving} style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.45)' }]} onPress={close} />
         <View style={{ width: sheetWidth, height: Math.max(0, Math.min(height * 0.65, height - insets.top - 12)), backgroundColor: palette.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 10 }}>
           <View accessible={false} style={{ width: 36, height: 4, backgroundColor: palette.outline, borderRadius: 2, alignSelf: 'center' }} />
           <DialogFocus active busy={saving} label="Choose bill icon" onEscape={close} style={{ flex: 1 }}>

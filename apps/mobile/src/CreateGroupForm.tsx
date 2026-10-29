@@ -23,7 +23,7 @@ export default function CreateGroupForm({ direct, busy, onCreate }: { direct: bo
     </View>)}
     {!direct && <><Button title={people.length ? 'Add another person' : 'Add person (optional)'} kind="text" icon="add" disabled={busy} onPress={() => { setPeople(rows => [...rows, '']); setEmails(rows => [...rows, '']); }} />{!!people.length && <Text style={ui.caption}>Existing accounts are added to the group. For other emails, send an invite from group settings.</Text>}</>}
     {direct && <EmailField label="Email (optional)" value={email} onChangeText={setEmail} editable={!busy} />}
-    <Button title={busy ? direct ? 'Adding…' : 'Creating…' : direct ? 'Add person' : 'Create group'} kind="primary" disabled={busy || !valid} onPress={submit} contentStyle={!direct ? { minHeight: 48 } : undefined} />
+    <Button title={busy ? direct ? 'Adding…' : 'Creating…' : direct ? 'Add person' : 'Create group'} kind="primary" disabled={busy || !valid} onPress={submit} style={!direct ? { minHeight: 48 } : undefined} />
     {!direct && <Text style={ui.caption}>You will be the organizer.</Text>}
   </Form>;
 }

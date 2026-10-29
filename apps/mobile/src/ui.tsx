@@ -76,7 +76,7 @@ import Wifi01Icon from '@hugeicons/core-free-icons/Wifi01Icon';
 import React, { useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import { Appearance, Platform, Pressable, StyleSheet, useColorScheme, View } from 'react-native';
 import { Tooltip, MD3DarkTheme, MD3LightTheme, PaperProvider, ThemeProvider, Text, useTheme, configureFonts } from 'react-native-paper';
-import type { PressableProps, StyleProp, ViewStyle, TextStyle } from 'react-native';
+import type { PressableProps, StyleProp, TextStyle } from 'react-native';
 import { ToastProvider } from './Toast';
 import type { MD3Theme } from 'react-native-paper';
 import { savedAppearance, saveAppearance, savedColorFamily, saveColorFamily, savedCurrency, saveCurrency } from './native';
@@ -229,12 +229,12 @@ type ButtonProps = Omit<PressableProps, 'children' | 'style'> & {
   title?: string; children?: React.ReactNode; kind?: 'primary' | 'secondary' | 'text' | 'danger' | 'outlined' | 'plain' | 'menu';
   icon?: IconName | ((props: { size: number; color: string }) => React.ReactNode); iconOnly?: boolean;
   compact?: boolean; small?: boolean; maxFontSizeMultiplier?: number;
-  style?: PressableProps['style']; contentStyle?: StyleProp<ViewStyle>; labelStyle?: StyleProp<TextStyle>;
+  style?: PressableProps['style']; labelStyle?: StyleProp<TextStyle>;
 };
 // All app actions use this control, including icon, menu and custom-content buttons.
 export const Button = React.forwardRef<React.ComponentRef<typeof View>, ButtonProps>(function Button({
   title, children, kind = 'secondary', icon, iconOnly = false, disabled = false, compact = false, small = false,
-  maxFontSizeMultiplier, style, contentStyle, labelStyle, accessibilityLabel, accessibilityRole = 'button',
+  maxFontSizeMultiplier, style, labelStyle, accessibilityLabel, accessibilityRole = 'button',
   accessibilityState, onFocus, onBlur, hitSlop, ...props
 }, ref) {
   const { palette, ui, dark, motion } = useUI();
@@ -261,7 +261,6 @@ export const Button = React.forwardRef<React.ComponentRef<typeof View>, ButtonPr
       flexDirection: 'row', alignItems: 'center', justifyContent: menu ? 'flex-start' : 'center', gap: 8,
       borderRadius: 6, borderWidth: kind === 'secondary' || kind === 'outlined' ? 1 : 0,
       borderColor: palette.line, backgroundColor: kind === 'danger' ? palette.error : kind === 'primary' ? palette.accent : kind === 'secondary' ? palette.soft : 'transparent' },
-      contentStyle,
       !plain && { opacity: disabled ? 0.4 : state.pressed ? 0.7 : 1 },
       Platform.OS === 'web' && focused && { outlineWidth: 2, outlineStyle: 'solid', outlineColor: palette.accent, outlineOffset: 2 },
       typeof style === 'function' ? style(state) : style]}>
