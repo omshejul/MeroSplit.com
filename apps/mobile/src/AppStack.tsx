@@ -9,7 +9,8 @@ import KeyboardDialog from './KeyboardDialog';
 import { CancelDialogActions } from './DialogParts';
 import { Button, useUI } from './ui';
 import { ScreenDraftDiscard, ScreenRemovalLock } from './screenRemoval';
-import { destination, routeParents, routePaths, sameRoute, screenNames, type AppRoute, type RouteParams, type Routes, type Screen } from './routes';
+import { contentRoute, destination, routeParents, routePaths, sameRoute, screenNames, type AppRoute, type RouteParams, type Routes, type Screen } from './routes';
+import { NativeSheetProvider, NativeSheetScreen } from './NativeSheet';
 
 export { NavigationContainer };
 const Stack = createNativeStackNavigator<Routes>();
@@ -32,11 +33,23 @@ export function useAppNavigation() {
   const ref = useNavigationContainerRef<Routes>();
   const subscribe = useCallback((listener: () => void) => ref.addListener('state', listener), [ref]);
   const state = useSyncExternalStore(subscribe, () => ref.current?.getRootState(), () => undefined);
-  const route: AppRoute = state?.routes[state.index] as AppRoute ?? initial;
+  const route: AppRoute = state ? contentRoute(state) : initial;
+  const afterSheet = useRef<{ name: Screen; params?: RouteParams; ownerKey?: string } | null>(null);
+  useEffect(() => {
+    if (!afterSheet.current || !state || state.routes[state.index].name === 'sheet') return;
+    const target = afterSheet.current; afterSheet.current = null;
+    // A replaced account/navigation scope must never replay a previous sheet's action.
+    if (contentRoute(state).key === target.ownerKey) go(target.name, target.params);
+  }, [state]);
   function go(name: Screen, params?: RouteParams) {
     if (!ref.isReady()) return;
     const current = ref.getRootState();
     if (!current) return;
+    if (current.routes[current.index].name === 'sheet') {
+      afterSheet.current = { name, params, ownerKey: contentRoute(current).key };
+      ref.dispatch({ ...StackActions.pop(1), appNavigation: true } as AppAction);
+      return;
+    }
     const target = destination(current.routes[current.index] as AppRoute, name, params);
     const index = current.routes.findLastIndex(value => sameRoute(value as AppRoute, target));
     if (index >= 0) {
@@ -61,7 +74,8 @@ export function useAppNavigation() {
     }
   }
   function complete(name: Screen, params?: RouteParams) {
-    if (ref.getCurrentRoute()?.key === route.key) go(name, params);
+    const current = ref.getRootState();
+    if (current && contentRoute(current).key === route.key) go(name, params);
   }
   return { ref, route, go, back, complete };
 }
@@ -116,7 +130,12 @@ function RouteScene({ route, navigation }: NativeStackScreenProps<Routes, Screen
 
 export default function AppStack({ render, blocked, initialScreen, scope }: { render: RenderScreen; blocked: boolean; initialScreen: Screen; scope: string }) {
   const { palette, motion } = useUI();
-  return <SceneContext.Provider value={{ render, blocked }}><Stack.Navigator screenOptions={{
+  const sheetOptions = { presentation: Platform.OS === 'web' ? 'transparentModal' as const : 'formSheet' as const, sheetAllowedDetents: [0.65, 0.9], sheetGrabberVisible: true, sheetCornerRadius: 24, contentStyle: { backgroundColor: Platform.OS === 'web' ? 'transparent' : palette.surface } };
+  return <NativeSheetProvider key={scope}><SceneContext.Provider value={{ render, blocked }}><Stack.Navigator screenOptions={{
     headerShown: false, contentStyle: { backgroundColor: palette.background }, animation: motion.enabled ? 'default' : 'none', gestureEnabled: !blocked,
-  }}><Stack.Group navigationKey={scope}>{[initialScreen, ...screenNames.filter(name => name !== initialScreen)].map(name => <Stack.Screen key={name} name={name} initialParams={{ tab: initialScreen === 'signInMethods' ? 'Account' : 'Groups' }} component={RouteScene} options={name === 'expenseIcon' ? { presentation: Platform.OS === 'web' ? 'transparentModal' : 'formSheet', sheetAllowedDetents: [0.65, 0.9], sheetGrabberVisible: true, sheetCornerRadius: 24, contentStyle: { backgroundColor: Platform.OS === 'web' ? 'transparent' : palette.surface } } : undefined} />)}</Stack.Group></Stack.Navigator></SceneContext.Provider>;
+  }}><Stack.Group navigationKey={scope}>{[initialScreen, ...screenNames.filter(name => name !== initialScreen && name !== 'sheet')].map(name => <Stack.Screen key={name} name={name} initialParams={{ tab: initialScreen === 'signInMethods' ? 'Account' : 'Groups' }} component={RouteScene} options={name === 'expenseIcon' ? sheetOptions : undefined} />)}<Stack.Screen name="sheet" component={SheetScene} options={sheetOptions} /></Stack.Group></Stack.Navigator></SceneContext.Provider></NativeSheetProvider>;
+}
+
+function SheetScene(props: NativeStackScreenProps<Routes, 'sheet'>) {
+  return <NativeSheetScreen {...props} blocked={useContext(SceneContext).blocked} />;
 }

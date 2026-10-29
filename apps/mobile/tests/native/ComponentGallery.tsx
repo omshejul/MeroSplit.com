@@ -4,6 +4,7 @@ import { Platform, ScrollView, View } from 'react-native';
 import { Text } from 'react-native-paper';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AppFrame, ScreenHeader, pageContentStyle } from '../../src/AppNavigation';
+import AppStack, { NavigationContainer, useAppNavigation } from '../../src/AppStack';
 import { UIProvider, Button, Icon, SettingsRow, useUI } from '../../src/ui';
 import type { Group, Command, Session } from '../../src/types';
 import { recalculateLocal, putLocalExpense } from '../fixtures';
@@ -134,4 +135,5 @@ function Gallery() {
     {page === 'Rows' && <FloatingActionContainer><Button title="QA floating action" onPress={() => done('Floating action')} /></FloatingActionContainer>}
   </AppFrame>;
 }
-export default function ComponentGallery() { useEffect(() => { readPrefetch.configure(readScope(session), true); return () => readPrefetch.configure('', false); }, []); return <SafeAreaProvider><UIProvider><Gallery /></UIProvider></SafeAreaProvider>; }
+function GalleryStack() { const navigation = useAppNavigation(); return <NavigationContainer ref={navigation.ref}><AppStack initialScreen="home" scope="component-gallery" blocked={false} render={() => <Gallery />} /></NavigationContainer>; }
+export default function ComponentGallery() { useEffect(() => { readPrefetch.configure(readScope(session), true); return () => readPrefetch.configure('', false); }, []); return <SafeAreaProvider><UIProvider><GalleryStack /></UIProvider></SafeAreaProvider>; }

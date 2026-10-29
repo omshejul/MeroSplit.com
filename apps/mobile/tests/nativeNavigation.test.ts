@@ -21,7 +21,7 @@ function module(env: Record<string, any> = {}) {
   const context = { render: () => null, blocked: false };
   const scope = { ...routes, React, StackActions, getStateFromPath, Platform: { OS: 'web' }, createContext: () => context,
     createNativeStackNavigator: () => ({ Navigator: 'Navigator', Screen: 'Screen', Group: 'Group' }), useUI: () => ({ palette: {}, motion: { enabled: true } }),
-    KeyboardDialog: 'KeyboardDialog', DialogFocus: 'DialogFocus', Dialog: { Title: 'Title' }, CancelDialogActions: 'CancelDialogActions', Button: 'Button',
+    KeyboardDialog: 'KeyboardDialog', DialogFocus: 'DialogFocus', Dialog: { Title: 'Title' }, CancelDialogActions: 'CancelDialogActions', Button: 'Button', NativeSheetProvider: 'NativeSheetProvider', NativeSheetScreen: 'NativeSheetScreen',
     ScreenDraftDiscard: { Provider: 'DraftDiscard' }, ScreenRemovalLock: { Provider: 'Lock' }, useCallback: (fn: any) => fn, ...env };
   return new Function('env', `with(env){${code};return {useAppNavigation,RouteScene,AppStack,webLinking};}`)(scope);
 }
@@ -33,8 +33,9 @@ function navigationHarness() {
   const ref: any = { isReady: () => true, addListener: () => () => {}, getRootState: () => state, getCurrentRoute: () => state.routes[state.index], canGoBack: () => state.index > 0,
     goBack: () => ref.dispatch(CommonActions.goBack()), dispatch: (action: any) => { actions.push(action); if (intercept) intercept(action); else apply(action); } };
   ref.current = ref;
-  const api = module({ useNavigationContainerRef: () => ref, useSyncExternalStore: (_subscribe: any, snapshot: any) => snapshot() });
-  return { apply, intercept: (handler: (action: any) => void) => { intercept = handler; }, navigation: () => api.useAppNavigation(), state: () => state, names: () => state.routes.map((route: any) => route.name), actions,
+  let cursor=0;const slots:any[]=[],effects:(()=>void)[]=[];
+  const api = module({ useNavigationContainerRef: () => ref, useSyncExternalStore: (_subscribe: any, snapshot: any) => snapshot(),useRef:(initial:any)=>slots[cursor++]??={current:initial},useEffect:(effect:()=>void)=>effects.push(effect) });
+  return { apply, intercept: (handler: (action: any) => void) => { intercept = handler; }, navigation: () => {cursor=0;const value=api.useAppNavigation();effects.splice(0).forEach(effect=>effect());return value;}, state: () => state, names: () => state.routes.map((route: any) => route.name), actions,
     reset: (route: routes.AppRoute) => ref.dispatch(CommonActions.reset({ index: 0, routes: [route] })) };
 }
 
@@ -293,13 +294,42 @@ test('the native icon sheet pushes over the bill and dismissal keeps the same bi
  h.navigation().back(true);assert.equal(h.state().routes.at(-1).key,billKey);assert.deepEqual(h.names(),['home','group','expenseDetail']);
 });
 
-test('only the icon route uses the existing native form sheet, while web retains a transparent overlay',()=>{
+test('icon and person selectors share the existing native form sheet options',()=>{
  for(const OS of ['ios','android','web']){
   const tree=module({Platform:{OS}}).AppStack({render(){},blocked:false,initialScreen:'home',scope:'one'});
   const screens=nodes(tree).filter(node=>node.type==='Screen'),picker=screens.find(node=>node.props.name==='expenseIcon');assert.ok(picker);
   assert.equal(picker.props.options.presentation,OS==='web'?'transparentModal':'formSheet');assert.deepEqual(picker.props.options.sheetAllowedDetents,[.65,.9]);assert.equal(picker.props.options.sheetGrabberVisible,true);
-  assert.ok(screens.filter(node=>node!==picker).every(node=>node.props.options===undefined));
+  const people=screens.find(node=>node.props.name==='sheet');assert.equal(people.props.options,picker.props.options);
+  assert.ok(screens.filter(node=>node!==picker&&node!==people).every(node=>node.props.options===undefined));
  }
  const cold=module().webLinking.getStateFromPath('/app/groups/g/bills/b/icon',{screens:routes.routePaths});assert.deepEqual(cold.routes.map((route:any)=>route.name),['home','group','expenseDetail','expenseIcon']);
  const h=navigationHarness();h.navigation().go('expenseDetail',{groupId:'g',expenseId:'b'});h.navigation().go('expenseIcon');h.navigation().complete('expenseDetail');assert.deepEqual(h.names(),['home','group','expenseDetail']);
+});
+
+test('person sheet preserves the exact expense route and Back removes only the overlay',()=>{
+ const h=navigationHarness();h.navigation().go('expense',{groupId:'g',expenseId:null});const form=h.state().routes.at(-1);
+ h.apply(StackActions.push('sheet',{...form.params,sheetId:'payer',ownerKey:form.key}));
+ assert.equal(h.navigation().route.key,form.key);assert.equal(h.navigation().route.name,'expense');
+ h.navigation().back(true);assert.deepEqual(h.names(),['home','group','expense']);assert.equal(h.state().routes.at(-1).key,form.key);
+});
+
+test('app navigation dismisses the person sheet before asking to discard its parent draft',()=>{
+ const h=navigationHarness();h.navigation().go('expense',{groupId:'g'});const form=h.state().routes.at(-1);
+ h.apply(StackActions.push('sheet',{sheetId:'split',ownerKey:form.key}));h.navigation().go('group');
+ assert.deepEqual(h.names(),['home','group','expense'],'first action removes only the overlay');
+ let requested:any;h.intercept(action=>{requested=action;});h.navigation();
+ assert.equal(requested.type,'POP_TO');assert.equal(requested.payload.name,'group');assert.equal(h.state().routes.at(-1).key,form.key,'draft remains until its guard accepts');
+});
+
+test('a sheet navigation completion cannot replay after account replacement or another current screen',()=>{
+ for(const replacement of [{name:'home',params:{tab:'Account'}},{name:'expense',params:{groupId:'other'}}] as routes.AppRoute[]){
+  const h=navigationHarness();h.navigation().go('expense',{groupId:'g'});const form=h.state().routes.at(-1);
+  h.apply(StackActions.push('sheet',{sheetId:'split',ownerKey:form.key}));h.navigation().go('group');h.reset(replacement);const before=h.state();h.navigation();assert.equal(h.state(),before);
+ }
+});
+
+
+test('late sheet cleanup targets the removed overlay and cannot pop its parent draft',()=>{
+ const h=navigationHarness();h.navigation().go('expense',{groupId:'g'});const form=h.state().routes.at(-1);h.apply(StackActions.push('sheet',{sheetId:'id',ownerKey:form.key}));
+ const sheet=h.state().routes.at(-1),close={...StackActions.pop(1),source:sheet.key,target:h.state().key};h.apply(close);const before=h.state();h.apply(close);assert.equal(h.state(),before);assert.equal(h.state().routes.at(-1).key,form.key);
 });
