@@ -8,8 +8,10 @@ test('visible modal focus scopes block update restart until every modal closes',
  const body=source.statements.filter(node=>!ts.isImportDeclaration(node)).map(node=>node.getText(source).replace(/^export (default )?/, '')).join('\n');
  let cleanup:(()=>void)|undefined;
  const env={React:{createElement:(type:any,props:any,...children:any[])=>({type,props,children})},View:'View',Platform:{OS:'native'},useRef:()=>({current:null}),useDialogMotion(){},useEffect(){},useLayoutEffect(effect:()=>void|(()=>void)){cleanup=effect()||undefined;}};
- const {DialogFocus,hasOpenDialogs}=new Function('env',`with(env){${ts.transpile(body,{target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.React})};return {DialogFocus,hasOpenDialogs};}`)(env);
+ const {DialogFocus,hasOpenDialogs,subscribeDialogs}=new Function('env',`with(env){${ts.transpile(body,{target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.React})};return {DialogFocus,hasOpenDialogs,subscribeDialogs};}`)(env);
  function mount(props:any): (()=>void)|undefined {cleanup=undefined;DialogFocus({children:null,...props});return cleanup;}
  assert.equal(hasOpenDialogs(),false);mount({active:false});assert.equal(hasOpenDialogs(),false);mount({modal:false});assert.equal(hasOpenDialogs(),false,'full-screen join focus scope is not a modal');
+ const observed:boolean[]=[],unsubscribe=subscribeDialogs(()=>observed.push(hasOpenDialogs()));
  const first=mount({active:true}),second=mount({active:true});assert.equal(hasOpenDialogs(),true);first!();assert.equal(hasOpenDialogs(),true);second!();assert.equal(hasOpenDialogs(),false);
+ assert.deepEqual(observed,[true,true,true,false]);unsubscribe();const later=mount({active:true});later!();assert.equal(observed.length,4);
 });

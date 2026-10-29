@@ -6,7 +6,9 @@ import { useDialogMotion } from './useDialogMotion';
 // Paper portals can overlap. Only the latest dialog owns browser keyboard focus.
 const dialogs: HTMLElement[] = [];
 const visibleDialogs = new Set<object>();
+const dialogListeners = new Set<() => void>();
 export function hasOpenDialogs() { return visibleDialogs.size > 0; }
+export function subscribeDialogs(listener: () => void) { dialogListeners.add(listener); return () => { dialogListeners.delete(listener); }; }
 export default function DialogFocus({ active = true, busy = false, onEscape, children, style, label, modal = true }: {
   modal?: boolean; label?: string; active?: boolean; busy?: boolean; onEscape?: () => void; children: React.ReactNode; style?: StyleProp<ViewStyle>;
 }) {
@@ -15,8 +17,8 @@ export default function DialogFocus({ active = true, busy = false, onEscape, chi
   useDialogMotion(body, active);
   useLayoutEffect(() => {
     if (!active || !modal) return;
-    const dialog = {}; visibleDialogs.add(dialog);
-    return () => { visibleDialogs.delete(dialog); };
+    const dialog = {}; visibleDialogs.add(dialog); dialogListeners.forEach(listener => listener());
+    return () => { visibleDialogs.delete(dialog); dialogListeners.forEach(listener => listener()); };
   }, [active, modal]);
   useEffect(() => {
     if (Platform.OS !== 'web' || !active) return;

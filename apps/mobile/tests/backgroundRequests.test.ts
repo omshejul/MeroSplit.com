@@ -22,7 +22,7 @@ function deferred<T>() { let resolve!: (value: T) => void; const promise = new P
 function fixture() {
   const response = deferred<any>(), active = { token: 'A' }, group = { id: 'g', version: 1 };
   const state: any = { busy: false, reading: 0, route: {}, navigations: [], saved: [] };
-  const env: any = { ApiError, session: active, selected: { group }, pending: [], lock: { current: false },
+  const env: any = { ApiError, appUpdates: { engage() {} }, session: active, selected: { group }, pending: [], lock: { current: false },
     scopeGeneration: { current: 0 }, browseCurrent: { current: 'route-one' }, activeSessionRef: { current: active }, ownerRef: { current: 'owner' }, owner: 'owner',
     profileRevision: { current: 0 }, opening: { current: null }, openRequests: { current: new Map() }, submissions: { current: new Set() }, authHeldRef: { current: false }, navigation: { ref: { getRootState: () => state.route, getCurrentRoute: () => ({ key: state.route.key ?? 'route-one' }) } },
     setBusyRoutes: (v: string[]) => state.busy = v.length > 0,
