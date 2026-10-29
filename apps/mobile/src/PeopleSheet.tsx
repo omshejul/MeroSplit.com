@@ -1,6 +1,6 @@
 import RowGroup from './RowGroup';
 import React, { useState } from 'react';
-import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { Text } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import DialogFocus from './DialogFocus';
@@ -14,7 +14,7 @@ export default function PeopleSheet({ visible, onDismiss, title, icon, total, co
   const close = () => { if (!disabled) onDismiss(); };
   return <Modal visible={visible} transparent animationType={motion?.enabled ? 'fade' : 'none'} onRequestClose={close} statusBarTranslucent>
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
-      <Pressable accessible={false} onPress={close} style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.45)' }]} />
+      <Button kind="plain" accessible={false} disabled={disabled} onPress={close} style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.45)' }]} />
       <View pointerEvents="box-none" onLayout={event => setAvailable(event.nativeEvent.layout.height)} style={{ flex: 1, justifyContent: 'flex-end', alignItems: 'center' }}>
         <View style={{ width: Math.min(560, width), maxHeight: Math.max(0, Math.min(maxHeight, available - insets.top - 12)), backgroundColor: palette.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 10, flexShrink: 1 }}>
           <View accessible={false} style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: palette.outline, alignSelf: 'center', marginBottom: 8 }} />
