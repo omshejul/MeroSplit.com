@@ -17,7 +17,7 @@ function picker(props: Record<string, any>, name = 'BillIconPicker') {
  const source=readFileSync(new URL('../src/BillIconPicker.tsx',import.meta.url),'utf8').replace(/^import .*;\n/gm,'').replace(/^export (?:default )?/gm,'');
  const slots:any[]=[];let cursor=0,blocked=false;const cleanups:(()=>void)[]=[];
  const React={createElement:(type:string,props:any,...children:any[]):Element=>({type,props:props??{},children})};
- const env={React,Platform:{OS:'ios'},View:'View',FlatList:'FlatList',Pressable:'Pressable',Icon:'Icon',Text:'Text',Button:'Button',ErrorText:'ErrorText',DialogFocus:'DialogFocus',StyleSheet:{absoluteFill:{}},requestAnimationFrame:(call:()=>void)=>call(),categoryIcon,expenseIconChoices,manualCategory,useWindowDimensions:()=>({width:393,height:852}),useSafeAreaInsets:()=>({top:44,bottom:34}),useScreenRemovalLock:(value:boolean)=>{blocked=value;},useUI:()=>({ui:{caption:{}},palette:{text:'white',muted:'gray',accent:'purple',soft:'soft',surface:'surface',outline:'line'},motion:{enabled:false}}),useEffect(effect:()=>void|(()=>void)){const index=cursor++;if(!(index in slots)){slots[index]=true;const cleanup=effect();if(cleanup)cleanups.push(cleanup);}},useState(initial:any){const index=cursor++;if(!(index in slots))slots[index]=initial;return [slots[index],(value:any)=>{slots[index]=typeof value==='function'?value(slots[index]):value;}];},useRef(initial:any){const index=cursor++;if(!(index in slots))slots[index]={current:initial};return slots[index];}};
+ const env={React,Platform:{OS:'ios'},View:'View',FlatList:'FlatList',Pressable:'Pressable',Icon:'Icon',Text:'Text',Button:'Button',ErrorText:'ErrorText',DialogFocus:'DialogFocus',StyleSheet:{absoluteFill:{}},requestAnimationFrame:(call:()=>void)=>call(),categoryIcon,expenseIconChoices,manualCategory,useWindowDimensions:()=>({width:393,height:852,fontScale:props.fontScale??1}),useSafeAreaInsets:()=>({top:44,bottom:34}),useScreenRemovalLock:(value:boolean)=>{blocked=value;},useUI:()=>({ui:{caption:{}},palette:{text:'white',muted:'gray',accent:'purple',soft:'soft',surface:'surface',outline:'line'},motion:{enabled:false}}),useEffect(effect:()=>void|(()=>void)){const index=cursor++;if(!(index in slots)){slots[index]=true;const cleanup=effect();if(cleanup)cleanups.push(cleanup);}},useState(initial:any){const index=cursor++;if(!(index in slots))slots[index]=initial;return [slots[index],(value:any)=>{slots[index]=typeof value==='function'?value(slots[index]):value;}];},useRef(initial:any){const index=cursor++;if(!(index in slots))slots[index]={current:initial};return slots[index];}};
  const component=new Function('env',`with(env){${ts.transpile(source,{target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.React})};return ${name};}`)(env);
  const render=()=>{cursor=0;return component(props);};return Object.assign(render,{unmount:()=>cleanups.forEach(fn=>fn()),blocked:()=>blocked});
 }
@@ -87,4 +87,9 @@ test('icon saves reject unavailable, archived and reversed choices and skip an u
  await assert.rejects(save(expense,'not-an-icon',()=>{}),/available icon/);
  env.selected.group.archived=true;await assert.rejects(save(expense,'general',()=>{}),/cannot be changed/);
  env.selected.group.archived=false;await assert.rejects(save({...expense,deleted:true},'general',()=>{}),/cannot be changed/);assert.equal(writes,0);
+});
+
+test('large text uses fewer columns so labels fit without shrinking text',()=>{
+ const render=picker({fontScale:1.3,category:'food',onClose(){},onSelect:async()=>{}});
+ assert.equal(find(render(),'FlatList').props.numColumns,3);assert.equal(find(render(),'FlatList').props.data.length,20);render.unmount();
 });

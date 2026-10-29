@@ -22,14 +22,15 @@ export default function BillIconPicker({ category, disabled = false, active = tr
   category?: string | null; disabled?: boolean; active?: boolean;
   onSelect: (category: string, onQueued: () => void) => Promise<void>; onClose: () => void;
 }) {
-  const { palette, ui } = useUI(), { width, height } = useWindowDimensions(), insets = useSafeAreaInsets();
+  const { palette, ui } = useUI(), { width, height, fontScale } = useWindowDimensions(), insets = useSafeAreaInsets();
   const [saving, setSaving] = useState(false), [queued, setQueued] = useState(false), [error, setError] = useState('');
   const [picked, setPicked] = useState<string | null>(null), [sheetWidth, setSheetWidth] = useState(Math.min(width, 560));
   const list = useRef<FlatList<(typeof expenseIconChoices)[number]>>(null);
   const lock = useRef(false), live = useRef(true), handedOff = useRef(false);
   useEffect(() => { live.current = true; return () => { live.current = false; }; }, []);
   useScreenRemovalLock(saving && !queued);
-  const current = picked ?? manualCategory(category ?? 'general'), cell = Math.max(44, (sheetWidth - 70) / 4);
+  const columns = fontScale > 1.15 ? 3 : 4;
+  const current = picked ?? manualCategory(category ?? 'general'), cell = Math.max(44, (sheetWidth - 40 - (columns - 1) * 10) / columns);
   const blocked = saving && !queued;
   const close = () => { if (!lock.current || handedOff.current) onClose(); };
   async function choose(value: string) {
@@ -46,7 +47,7 @@ export default function BillIconPicker({ category, disabled = false, active = tr
     } finally { lock.current = false; if (live.current) setSaving(false); }
   }
   const content = <DialogFocus active={active} busy={blocked} label="Choose bill icon" onEscape={close} style={{ flex: 1 }}>
-    <FlatList ref={list} accessibilityRole="radiogroup" data={expenseIconChoices} numColumns={4} keyExtractor={item => item.category} initialNumToRender={20} nestedScrollEnabled
+    <FlatList ref={list} accessibilityRole="radiogroup" data={expenseIconChoices} key={columns} numColumns={columns} keyExtractor={item => item.category} initialNumToRender={20} nestedScrollEnabled
       style={{ flex: 1, marginTop: 44, width: '100%', maxWidth: 560, alignSelf: 'center' }} onLayout={event => setSheetWidth(event.nativeEvent.layout.width)}
       ListHeaderComponent={<View>
         {!!error && <View style={{ paddingBottom: 12 }}><ErrorText live>{error}</ErrorText></View>}
