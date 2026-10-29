@@ -177,6 +177,33 @@ def test_activity_skips_handoff_noise_and_duplicate_receipt_acknowledgements(cli
     assert len(records) == 1 and records[0]["payment"]["amount"] == attempt["amount"]
 
 
+def test_activity_hides_existing_icon_only_edits_before_paging_but_keeps_real_edits_and_history(client, group):
+    body = expense(group[1]) | {"category": "general", "category_auto": True}
+    path = f"/groups/{group[0]}/expenses"
+    assert send(client, "post", path, body).status_code == 200
+    for version, category in enumerate(["general", "cycling", "cleaning", "cycling"], start=1):
+        body.update(command_id=uid(), version=version, category=category, category_auto=False)
+        assert send(client, "put", f"{path}/{body['id']}", body).status_code == 200
+    icon_rows = set(Change.objects.filter(group_id=group[0], kind="expense_saved", data__version__gt=1).values_list("id", flat=True))
+    body.update(command_id=uid(), version=5, category="food", notes="Real bill edit")
+    assert send(client, "put", f"{path}/{body['id']}", body).status_code == 200
+    seen, cursor = [], None
+    while True:
+        response = send(client, "get", f"/activity?{urlencode({'limit': 1, **({'cursor': cursor} if cursor else {})})}")
+        assert response.status_code == 200, response.content
+        result = response.json()
+        assert result["items"], "icon edits must be filtered before the page limit"
+        seen.extend(row for row in result["items"] if "bill" in row)
+        cursor = result["next_cursor"]
+        if not cursor:
+            break
+    assert [row["kind"] for row in seen] == ["bill_edited", "bill_added"]
+    assert not icon_rows.intersection(int(row["id"]) for row in seen)
+    assert Change.objects.filter(id__in=icon_rows).count() == 4
+    history = send(client, "get", f"{path}/{body['id']}/versions").json()
+    assert any(change["field"] == "category" for item in history["items"] for change in item["changes"])
+
+
 def test_payment_confirmation_activity_uses_bounded_duplicate_lookup(client, group, capsys):
     attempts = [PaymentAttempt(group_id=group[0], sender_id=group[1][0], recipient_id=group[1][1], amount=1,
         state="confirmed", payee="synthetic@bank", payee_version=1, group_version=1, expires_at=timezone.now()) for _ in range(2000)]

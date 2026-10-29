@@ -299,6 +299,13 @@ def account_activity(actor, *, limit=50, cursor=None):
     revision = _activity_revision(actor)
     context = {"actor": actor.pk, "resource": "account_activity", "limit": limit}
     query = Change.objects.filter(group_id__in=_activity_groups(actor).values("id"), kind__in=ACTIVITY_KINDS)
+    # Keep icon choices in version history without making them human activity.
+    icon_only = Q(kind="expense_saved", data__version__gt=1) & (
+        ~Q(data__category=F("data___history__before__category"))
+        | ~Q(data__category_auto=F("data___history__before__category_auto")))
+    for field in ("description", "total", "paid", "shares", "split", "date", "notes", "deleted"):
+        icon_only &= Q(**{f"data__{field}": F(f"data___history__before__{field}")})
+    query = query.exclude(icon_only)
     prior_payment_event = Change.objects.alias(payment_id=Coalesce(KeyTextTransform("settlement_id", "data"), KeyTextTransform("id", "data"))).filter(
         group_id=OuterRef("group_id"), kind__in=["manual_settlement", "payment_confirm"], payment_id=OuterRef("confirmed_payment_id"),
     ).filter(Q(kind="manual_settlement") | Q(id__lt=OuterRef("id")))
