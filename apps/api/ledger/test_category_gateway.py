@@ -29,7 +29,7 @@ def decision(category="food", probability=0.95):
 @pytest.mark.parametrize("category", CATEGORIES)
 def test_choice_uses_the_top_category_without_a_confidence_cutoff(category):
     assert decision_category(decision(category)) == category
-    assert decision_category(decision(category, 0.02)) == category
+    assert decision_category(decision(category, 0.06)) == category
 
 
 @pytest.mark.parametrize("bad", [None, [], {}, {"model": "another/model"}, {"model": MODEL, "answers": None}])
@@ -74,9 +74,9 @@ def test_outbound_request_contains_only_title_and_fixed_definitions_without_fall
     assert payload["questions"] == {"icon": {
         "type": "choice", "instructions": INSTRUCTIONS, "criteria": ICONS,
     }}
-    assert INSTRUCTIONS == "Pick the icon from Hugeicons Core Free (@hugeicons/core-free-icons) that best represents this title."
-    assert len(ICONS) == len(CATEGORIES) == 75
-    assert all(key == value for key, value in ICONS.items())
+    assert "broad bill icon" in INSTRUCTIONS
+    assert len(ICONS) == len(CATEGORIES) == 20
+    assert all(key.endswith("Icon") and value for key, value in ICONS.items())
     assert request.headers["Authorization"] == "Bearer synthetic-key"
 
 
@@ -101,9 +101,9 @@ def test_provider_failure_does_not_echo_a_title_key_or_provider_error_body():
 
 
 def test_highest_probability_wins_even_if_the_reported_choice_disagrees():
-    data = decision("cycling", 0.3)
+    data = decision("transport", 0.3)
     data["answers"]["icon"]["choice"] = "Invoice01Icon"
-    assert decision_category(data) == "cycling"
+    assert decision_category(data) == "transport"
 
 
 def test_exact_ties_use_the_fixed_category_order():

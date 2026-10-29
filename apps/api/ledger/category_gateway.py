@@ -6,89 +6,16 @@ import math
 import urllib.error
 import urllib.request
 
+from .expense_icon_catalog import OPTIONS
+
 MODEL = "typesafe-ai/jev"
 ENDPOINT = "https://ai-gateway.vercel.sh/v1/evaluate"
-CATEGORIES = {
-    "food": "Restaurant01Icon",
-    "groceries": "ShoppingBasket01Icon",
-    "water": "WaterEnergyIcon",
-    "utilities": "FlashIcon",
-    "transport": "Car01Icon",
-    "travel": "Airplane01Icon",
-    "rent": "Home01Icon",
-    "shopping": "ShoppingBag01Icon",
-    "entertainment": "Ticket01Icon",
-    "health": "HealthIcon",
-    "education": "Book01Icon",
-    "coffee": "Coffee01Icon",
-    "tea": "TeaIcon",
-    "bakery": "Bread01Icon",
-    "dessert": "CakeSliceIcon",
-    "fastfood": "Pizza01Icon",
-    "alcohol": "BeerIcon",
-    "produce": "CarrotIcon",
-    "meat": "SteakIcon",
-    "seafood": "FishIcon",
-    "dairy": "MilkCartonIcon",
-    "snacks": "PopcornIcon",
-    "electricity": "ElectricPlugsIcon",
-    "gas": "GasStoveIcon",
-    "internet": "Wifi01Icon",
-    "mobile": "SmartPhone02Icon",
-    "household": "KitchenUtensilsIcon",
-    "cleaning": "CleaningBucketIcon",
-    "laundry": "WashingMachineIcon",
-    "repairs": "RepairIcon",
-    "furniture": "Sofa01Icon",
-    "appliances": "FridgeIcon",
-    "electronics": "ComputerIcon",
-    "clothing": "TShirtIcon",
-    "footwear": "ShoesIcon",
-    "beauty": "PerfumeIcon",
-    "haircut": "Scissor01Icon",
-    "taxi": "TaxiIcon",
-    "bus": "Bus01Icon",
-    "train": "Train01Icon",
-    "metro": "MetroIcon",
-    "fuel": "FuelStationIcon",
-    "parking": "CircleParkingIcon",
-    "tolls": "Road01Icon",
-    "cycling": "BicycleIcon",
-    "carmaintenance": "Car02Icon",
-    "flights": "Airplane02Icon",
-    "hotel": "Hotel01Icon",
-    "movies": "Film01Icon",
-    "music": "Music01Icon",
-    "gaming": "GameController01Icon",
-    "sports": "FootballIcon",
-    "fitness": "Dumbbell01Icon",
-    "books": "Book02Icon",
-    "stationery": "PencilIcon",
-    "tuition": "School01Icon",
-    "childcare": "BabyBottleIcon",
-    "pets": "PawPrintIcon",
-    "gifts": "GiftIcon",
-    "charity": "CharityIcon",
-    "insurance": "Shield02Icon",
-    "taxes": "TaxesIcon",
-    "bankfees": "CreditCardIcon",
-    "shipping": "DeliveryBox01Icon",
-    "office": "OfficeIcon",
-    "medicine": "Medicine01Icon",
-    "dental": "DentalToothIcon",
-    "flowers": "Flower01Icon",
-    "photography": "Camera01Icon",
-    "subscriptions": "RepeatIcon",
-    "software": "SoftwareIcon",
-    "garbage": "TrashIcon",
-    "wastecollection": "GarbageTruckIcon",
-    "recycling": "Recycle02Icon",
-    "general": "Invoice01Icon"
-}
-ICONS = {icon: icon for icon in CATEGORIES.values()}
+
+CATEGORIES = {key: option[1] for key, option in OPTIONS.items()}
+ICONS = {option[1]: f"{option[0]}: {option[2]}" for option in OPTIONS.values()}
 ICON_CATEGORIES = {icon: category for category, icon in CATEGORIES.items()}
 
-INSTRUCTIONS = 'Pick the icon from Hugeicons Core Free (@hugeicons/core-free-icons) that best represents this title.'
+INSTRUCTIONS = "Pick the one broad bill icon that best represents the title. Use the supplied meanings rather than inventing a more specific icon."
 
 def definition_revision():
     return hashlib.sha256(json.dumps({

@@ -1,0 +1,186 @@
+{
+  "options": {
+    "general": [
+      "Other",
+      "Invoice01Icon",
+      "Receipts, miscellaneous expenses or an unclear title."
+    ],
+    "food": [
+      "Food",
+      "Restaurant01Icon",
+      "Meals, restaurants, takeaway, bakeries and desserts."
+    ],
+    "drinks": [
+      "Drinks",
+      "TeaIcon",
+      "Coffee, tea, soft drinks and alcoholic drinks."
+    ],
+    "groceries": [
+      "Groceries",
+      "ShoppingBasket03Icon",
+      "Groceries, produce, meat, fish, dairy and snacks."
+    ],
+    "utilities": [
+      "Utilities",
+      "FlashIcon",
+      "Electricity, water, gas, internet and mobile bills."
+    ],
+    "transport": [
+      "Transport",
+      "Car01Icon",
+      "Taxis, driving, fuel, parking, tolls, cycling and vehicle maintenance."
+    ],
+    "transit": [
+      "Transit",
+      "Train01Icon",
+      "Buses, trains, metro and other public transport."
+    ],
+    "travel": [
+      "Travel",
+      "Airplane01Icon",
+      "Flights, accommodation and trips."
+    ],
+    "home": [
+      "Home & family",
+      "Home01Icon",
+      "Rent, household goods, furniture, appliances and childcare."
+    ],
+    "shopping": [
+      "Shopping",
+      "ShoppingBag01Icon",
+      "Clothes, shoes, electronics, beauty and personal care."
+    ],
+    "health": [
+      "Health",
+      "HealthIcon",
+      "Healthcare, medicines and dental care."
+    ],
+    "education": [
+      "Education",
+      "Book01Icon",
+      "Books, stationery, tuition, courses and school expenses."
+    ],
+    "entertainment": [
+      "Leisure",
+      "Ticket01Icon",
+      "Movies, music, games, events and leisure activities."
+    ],
+    "fitness": [
+      "Fitness",
+      "Dumbbell01Icon",
+      "Sports, exercise and gym expenses."
+    ],
+    "work": [
+      "Work",
+      "Briefcase01Icon",
+      "Office expenses, professional tools and work software."
+    ],
+    "gifts": [
+      "Gifts & giving",
+      "GiftIcon",
+      "Gifts, flowers, donations and charity."
+    ],
+    "pets": [
+      "Pets",
+      "PawPrintIcon",
+      "Pet food, care and veterinary expenses."
+    ],
+    "fees": [
+      "Fees & taxes",
+      "CreditCardIcon",
+      "Bank fees, insurance, taxes and general recurring fees."
+    ],
+    "services": [
+      "Services",
+      "RepairIcon",
+      "Cleaning, laundry, repairs, maintenance and delivery services."
+    ],
+    "waste": [
+      "Waste",
+      "TrashIcon",
+      "Refuse collection, rubbish disposal and recycling services."
+    ]
+  },
+  "aliases": {
+    "general": "general",
+    "other": "general",
+    "food": "food",
+    "bakery": "food",
+    "dessert": "food",
+    "fastfood": "food",
+    "coffee": "drinks",
+    "tea": "drinks",
+    "alcohol": "drinks",
+    "groceries": "groceries",
+    "produce": "groceries",
+    "meat": "groceries",
+    "seafood": "groceries",
+    "dairy": "groceries",
+    "snacks": "groceries",
+    "utilities": "utilities",
+    "water": "utilities",
+    "electricity": "utilities",
+    "gas": "utilities",
+    "internet": "utilities",
+    "mobile": "utilities",
+    "transport": "transport",
+    "taxi": "transport",
+    "fuel": "transport",
+    "parking": "transport",
+    "tolls": "transport",
+    "cycling": "transport",
+    "carmaintenance": "transport",
+    "bus": "transit",
+    "train": "transit",
+    "metro": "transit",
+    "travel": "travel",
+    "flights": "travel",
+    "hotel": "travel",
+    "rent": "home",
+    "household": "home",
+    "furniture": "home",
+    "appliances": "home",
+    "childcare": "home",
+    "shopping": "shopping",
+    "electronics": "shopping",
+    "clothing": "shopping",
+    "footwear": "shopping",
+    "beauty": "shopping",
+    "haircut": "shopping",
+    "health": "health",
+    "medicine": "health",
+    "dental": "health",
+    "education": "education",
+    "books": "education",
+    "stationery": "education",
+    "tuition": "education",
+    "entertainment": "entertainment",
+    "movies": "entertainment",
+    "music": "entertainment",
+    "gaming": "entertainment",
+    "photography": "entertainment",
+    "sports": "fitness",
+    "fitness": "fitness",
+    "office": "work",
+    "software": "work",
+    "gifts": "gifts",
+    "charity": "gifts",
+    "flowers": "gifts",
+    "pets": "pets",
+    "insurance": "fees",
+    "taxes": "fees",
+    "bankfees": "fees",
+    "subscriptions": "fees",
+    "cleaning": "services",
+    "laundry": "services",
+    "repairs": "services",
+    "shipping": "services",
+    "garbage": "waste",
+    "wastecollection": "waste",
+    "recycling": "waste",
+    "foodanddrink": "food",
+    "diningout": "food",
+    "transportation": "transport",
+    "medical": "health"
+  }
+}

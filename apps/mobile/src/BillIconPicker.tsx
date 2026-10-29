@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { FlatList, Platform, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { Text } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import DialogFocus from './DialogFocus';
-import { categoryIcon, expenseIconChoices } from './categoryIcons';
+import { categoryIcon, manualCategory, expenseIconChoices } from './categoryIcons';
 import { useScreenRemovalLock } from './screenRemoval';
 import { Button, ErrorText, Icon, useUI } from './ui';
 
@@ -21,14 +22,15 @@ export default function BillIconPicker({ category, disabled = false, active = tr
   category?: string | null; disabled?: boolean; active?: boolean;
   onSelect: (category: string, onQueued: () => void) => Promise<void>; onClose: () => void;
 }) {
-  const { palette } = useUI(), { width, height } = useWindowDimensions(), insets = useSafeAreaInsets();
+  const { palette, ui } = useUI(), { width, height, fontScale } = useWindowDimensions(), insets = useSafeAreaInsets();
   const [saving, setSaving] = useState(false), [queued, setQueued] = useState(false), [error, setError] = useState('');
   const [picked, setPicked] = useState<string | null>(null), [sheetWidth, setSheetWidth] = useState(Math.min(width, 560));
   const list = useRef<FlatList<(typeof expenseIconChoices)[number]>>(null);
   const lock = useRef(false), live = useRef(true), handedOff = useRef(false);
   useEffect(() => { live.current = true; return () => { live.current = false; }; }, []);
   useScreenRemovalLock(saving && !queued);
-  const current = picked ?? category ?? 'general', cell = Math.max(44, (sheetWidth - 80) / 5);
+  const columns = fontScale > 1.15 ? 3 : 4;
+  const current = picked ?? manualCategory(category ?? 'general'), cell = Math.max(44, (sheetWidth - 40 - (columns - 1) * 10) / columns);
   const blocked = saving && !queued;
   const close = () => { if (!lock.current || handedOff.current) onClose(); };
   async function choose(value: string) {
@@ -45,15 +47,16 @@ export default function BillIconPicker({ category, disabled = false, active = tr
     } finally { lock.current = false; if (live.current) setSaving(false); }
   }
   const content = <DialogFocus active={active} busy={blocked} label="Choose bill icon" onEscape={close} style={{ flex: 1 }}>
-    <FlatList ref={list} accessibilityRole="radiogroup" data={expenseIconChoices} numColumns={5} keyExtractor={item => item.category} initialNumToRender={25} nestedScrollEnabled
+    <FlatList ref={list} accessibilityRole="radiogroup" data={expenseIconChoices} key={columns} numColumns={columns} keyExtractor={item => item.category} initialNumToRender={20} nestedScrollEnabled
       style={{ flex: 1, marginTop: 44, width: '100%', maxWidth: 560, alignSelf: 'center' }} onLayout={event => setSheetWidth(event.nativeEvent.layout.width)}
       ListHeaderComponent={<View>
         {!!error && <View style={{ paddingBottom: 12 }}><ErrorText live>{error}</ErrorText></View>}
       </View>}
       columnWrapperStyle={{ gap: 10 }} contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: Math.max(insets.bottom, 16), gap: 10 }}
       renderItem={({ item }) => <Button kind="plain" accessibilityRole="radio" accessibilityLabel={item.label} accessibilityState={{ checked: current === item.category }} disabled={saving || disabled || !active} onPress={() => void choose(item.category)}
-        style={{ flex: 1, height: cell, borderWidth: 1.5, borderColor: current === item.category ? palette.accent : 'transparent', borderRadius: 14, backgroundColor: current === item.category ? palette.soft : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
+        style={{ flex: 1, minHeight: Math.max(96, cell + 24), paddingVertical: 10, paddingHorizontal: 4, gap: 8, borderWidth: 1.5, borderColor: current === item.category ? palette.accent : 'transparent', borderRadius: 14, backgroundColor: current === item.category ? palette.soft : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
         <Icon name={item.icon} size={28} color={current === item.category ? palette.accent : palette.text} />
+        <Text style={[ui.caption, { fontSize: 12, lineHeight: 16, color: palette.text, textAlign: 'center' }]}>{item.label}</Text>
       </Button>} />
     <View pointerEvents="box-none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 44, paddingHorizontal: 12, alignItems: 'flex-end' }}>
       {Platform.OS !== 'ios' && <View accessible={false} pointerEvents="none" style={{ position: 'absolute', top: 8, width: 36, height: 4, backgroundColor: palette.outline, borderRadius: 2, alignSelf: 'center' }} />}

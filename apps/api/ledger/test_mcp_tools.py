@@ -287,6 +287,10 @@ def test_account_context_is_minimal_and_uses_configured_links(ledger, settings):
     actor = ledger[0]
     settings.MCP_SERVER_URL = "https://merosplit.example.invalid/mcp"
     context = get_account_context(actor)
+    choices = context.pop("icon_options")
+    from .expense_icon_catalog import OPTIONS
+    assert {item["value"] for item in choices} == {"auto", *OPTIONS}
+    assert all(item["label"] and item["description"] for item in choices)
     assert context == {"account": {"id": actor.pk, "display_name": "Canonical owner"}, "currency": "INR",
                        "minor_unit": "paise", "minor_units_per_unit": 100, "amount_format": "integer string",
                        "app_url": "https://merosplit.example.invalid/app/", "setup_url": "https://merosplit.example.invalid/mcp/setup"}
@@ -496,3 +500,47 @@ def test_concurrent_edits_one_revision_accepts_only_one_command(ledger):
     assert sorted(results, key=str) == [409, "accepted"]
     bill.refresh_from_db()
     assert bill.version == 2 and CommandReceipt.objects.count() == 1
+
+
+@pytest.mark.parametrize("icon", ["auto", "general", "drinks", "food", "home", "waste"])
+def test_optional_bill_icon_is_explicit_and_replay_safe(ledger, icon):
+    from .expense_categories import expense_icons
+    from .test_api import expense
+    actor, _, _, group, me, peer, *_ = ledger
+    body = expense([str(me.pk), str(peer.pk)], beneficiaries=[0, 1]) | {"description": "Coffee", "category": "other"}
+    result = save_expense(actor, group.pk, body, icon=icon)
+    assert save_expense(actor, group.pk, body, icon=icon) == result
+    record = Expense.objects.get(pk=body["id"])
+    assert record.category == ("general" if icon == "auto" else icon)
+    assert record.category_auto is (icon == "auto")
+    hint = expense_icons(actor, body["id"])["items"][0]
+    assert hint["state"] == ("pending" if icon == "auto" else "manual")
+    if icon != "auto":
+        assert hint["category"] == icon
+    fails(409, lambda: save_expense(actor, group.pk, body, icon="shopping"))
+
+
+@pytest.mark.parametrize("invalid", ["Coffee01Icon", "tea", "invented", "", False, {}])
+def test_new_icon_parameter_rejects_unlisted_values_without_a_bill_write(ledger, invalid):
+    from .test_api import expense
+    actor, _, _, group, me, peer, *_ = ledger
+    body = expense([str(me.pk), str(peer.pk)], beneficiaries=[0, 1])
+    before = Expense.objects.count(), Change.objects.count()
+    fails(422, lambda: save_expense(actor, group.pk, body, icon=invalid))
+    assert (Expense.objects.count(), Change.objects.count()) == before
+
+
+def test_omitted_edit_keeps_manual_icon_and_auto_explicitly_restores_inference(ledger):
+    from .expense_categories import expense_icons
+    from .test_api import expense
+    actor, _, _, group, me, peer, *_ = ledger
+    body = expense([str(me.pk), str(peer.pk)], beneficiaries=[0, 1]) | {"description": "Coffee", "category": "other"}
+    save_expense(actor, group.pk, body, icon="drinks")
+    edit = body | {"command_id": str(uuid4()), "version": 1, "notes": "Updated note"}
+    save_expense(actor, group.pk, edit, expense_id=body["id"])
+    record = Expense.objects.get(pk=body["id"])
+    assert record.category == "drinks" and record.category_auto is False
+    save_expense(actor, group.pk, edit | {"command_id": str(uuid4()), "version": 2}, expense_id=body["id"], icon="auto")
+    record.refresh_from_db()
+    assert record.category == "general" and record.category_auto is True
+    assert expense_icons(actor, body["id"])["items"][0]["state"] == "pending"

@@ -18,10 +18,10 @@ pytestmark = pytest.mark.django_db(transaction=True)
 
 
 def run():
-    migration = importlib.import_module("ledger.migrations.0036_icon_name_choices")
+    migration = importlib.import_module("ledger.migrations.0037_versatile_expense_icons")
     assert migration.REVISION == categories.cache_revision()
     with connection.schema_editor() as editor:
-        migration.backfill_icon_names(apps, editor)
+        migration.backfill_versatile_icons(apps, editor)
 
 
 def test_backfill_queues_once_across_unrelated_accounts_without_changing_bills(client, group, monkeypatch):
@@ -66,8 +66,8 @@ def test_new_prompt_rechecks_previous_ready_results_in_backfill_and_on_read(clie
     shared = ExpenseCategoryCache.objects.get(owner=None)
     previous_owner.delete()
     assert ExpenseCategoryCache.objects.filter(pk=shared.pk, state="pending", category="").exists()
-    assert categories.process_category_decisions(evaluate=lambda *args: "tea") == 1
-    assert icons(client, body).json()["items"][0]["category"] == "tea"
+    assert categories.process_category_decisions(evaluate=lambda *args: "drinks") == 1
+    assert icons(client, body).json()["items"][0]["category"] == "drinks"
 
 
 @pytest.mark.parametrize("old_state", ["pending", "claimed", "uncertain", "failed", "ready"])
@@ -83,7 +83,33 @@ def test_policy_refresh_is_separate_from_old_jobs_and_does_not_repeat_new_calls(
     old_binding.refresh_from_db()
     assert old_cache.state == ("uncertain" if old_state == "pending" else old_state)
     assert old_binding.state == ("stale" if old_state == "pending" else old_state)
-    assert categories.process_category_decisions(evaluate=lambda *args: "wastecollection") == 1
-    assert icons(client, body).json()["items"][0]["category"] == "wastecollection"
+    assert categories.process_category_decisions(evaluate=lambda *args: "waste") == 1
+    assert icons(client, body).json()["items"][0]["category"] == "waste"
     run()
     assert categories.process_category_decisions(evaluate=lambda *args: pytest.fail("Already checked with new prompt")) == 0
+
+
+def test_backfill_repairs_only_untouched_mcp_generic_defaults_and_preserves_finances(client, group):
+    accidental = bill(client, group, description="Coffee", category="other", category_auto=False)
+    manual = bill(client, group, description="Explicit receipt", category="general", category_auto=False)
+    specific = bill(client, group, description="Tea", category="tea", category_auto=False)
+    change = Change.objects.get(data__id=accidental["id"], kind="expense_saved")
+    change.data["_history"]["origin"] = "mcp"
+    change.save(update_fields=["data"])
+    edited = bill(client, group, description="Later manual receipt", category="general", category_auto=False)
+    edit_change = Change.objects.get(data__id=edited["id"], kind="expense_saved")
+    edit_change.data["_history"]["origin"] = "mcp"
+    edit_change.save(update_fields=["data"])
+    Expense.objects.filter(pk=edited["id"]).update(version=2)
+    before = list(Change.objects.values()), list(ExpenseNotice.objects.values())
+    financial = list(Expense.objects.order_by("pk").values("id", "version", "description", "total", "paid", "shares", "split", "date", "category", "notes", "deleted"))
+    run()
+    assert Expense.objects.get(pk=accidental["id"]).category_auto is True
+    assert Expense.objects.get(pk=edited["id"]).category_auto is False
+    assert Expense.objects.get(pk=manual["id"]).category_auto is False
+    assert Expense.objects.get(pk=specific["id"]).category_auto is False
+    assert icons(client, accidental).json()["items"][0]["state"] == "pending"
+    assert icons(client, manual).json()["items"][0]["state"] == "manual"
+    assert icons(client, specific).json()["items"][0]["category"] == "drinks"
+    assert before == (list(Change.objects.values()), list(ExpenseNotice.objects.values()))
+    assert financial == list(Expense.objects.order_by("pk").values("id", "version", "description", "total", "paid", "shares", "split", "date", "category", "notes", "deleted"))

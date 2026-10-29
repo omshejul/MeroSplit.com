@@ -81,7 +81,7 @@ test('explicit manual categories including General override prior automatic icon
   const icons = { [categoryKey('group', 'bill', 'Dinner')]: 'food' };
   assert.equal(expenseCategory(bill, icons), 'food');
   assert.equal(expenseCategory({ ...bill, category_auto: false }, icons), 'general');
-  assert.equal(expenseCategory({ ...bill, category: 'water' }, icons), 'water');
+  assert.equal(expenseCategory({ ...bill, category: 'water' }, icons), 'utilities');
   assert.equal(expenseCategory({ ...bill, title: 'New title' }, icons), undefined);
 });
 
