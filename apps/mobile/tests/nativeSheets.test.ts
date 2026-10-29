@@ -49,8 +49,17 @@ test('person sheets keep Done in the header on every platform and disable empty 
   const env={React:{createElement:(type:any,props:any,...children:any[])=>({type,props:props??{},children})},Platform:{OS},NativeSheet:'NativeSheet',Modal:'Modal',DialogFocus:'DialogFocus',KeyboardAvoidingView:'KeyboardAvoidingView',ScrollView:'ScrollView',View:'View',Text:'Text',Icon:'Icon',Button:'Button',RowGroup:'RowGroup',StyleSheet:{absoluteFill:{},hairlineWidth:1},useState:(value:any)=>[value,()=>{}],useWindowDimensions:()=>({height:852,width:393}),useSafeAreaInsets:()=>({top:44,bottom:34}),useUI:()=>({ui:{},palette:{},motion:{enabled:false}})};
   const component=new Function('env',`with(env){${code};return PeopleSheet;}`)(env);
   const tree=component({visible:true,onDismiss(){},title:'Split expense',icon:'people',count:0,disabled:false,maxHeight:800,children:'rows'});
-  const body=nodes(tree);if(OS!=='web')assert.equal(tree.type,'NativeSheet');const done=body.find(node=>node.props.accessibilityLabel==='Apply split');assert.equal(done.props.title,'Done');assert.equal(done.props.disabled,true);assert.ok(body.find(node=>node.type==='ScrollView').props.nestedScrollEnabled);
+  const body=nodes(tree);if(OS==='android')assert.equal(tree.type,'NativeSheet');if(OS==='ios'){assert.equal(tree.type,'Modal');assert.equal(tree.props.presentationStyle,'pageSheet');assert.equal(tree.props.visible,true);assert.equal(tree.props.allowSwipeDismissal,true);}const done=body.find(node=>node.props.accessibilityLabel==='Apply split');assert.equal(done.props.title,'Done');assert.equal(done.props.disabled,true);assert.ok(body.find(node=>node.type==='ScrollView').props.nestedScrollEnabled);
   if(OS==='web')assert.equal(component({visible:false,disabled:false,maxHeight:800}),null);
+  if(OS==='ios'){
+   let dismissals=0;
+   const busy=component({visible:true,onDismiss:()=>dismissals++,title:'Split expense',icon:'people',count:3,disabled:true,maxHeight:800,children:'rows'});
+   assert.equal(busy.props.allowSwipeDismissal,false);busy.props.onRequestClose();assert.equal(dismissals,0);
+   const ready=component({visible:true,onDismiss:()=>dismissals++,title:'Who paid?',icon:'pay',count:2,disabled:false,maxHeight:800,children:'rows'});
+   ready.props.onRequestClose();assert.equal(dismissals,1);
+   nodes(ready).find(node=>node.props.accessibilityLabel==='Apply payers').props.onPress();assert.equal(dismissals,2);
+   const closed=component({visible:false,disabled:false,maxHeight:800});assert.equal(closed.type,'Modal');assert.equal(closed.props.visible,false,'iOS owns hiding and unmounting its native presentation');
+  }
  }
 });
 
