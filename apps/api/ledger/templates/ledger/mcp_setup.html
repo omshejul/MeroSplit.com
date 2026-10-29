@@ -3,6 +3,7 @@
 </head><body>
 <nav><a href="/app/">MeroSplit</a><a href="/privacy">Privacy</a><a href="/support">Support</a></nav>
 <main><h1>Connect MeroSplit to your agent</h1><p>Choose your current client below. Keep any other servers you already use. If an entry named <code>merosplit</code> already uses this URL, reuse it. Replace only that entry if its URL differs.</p>
+<p>Running your agent on a VPS? See <a href="#remote-server">remote server login without a browser</a>.</p>
 <p>Server name: <code>merosplit</code><br>Endpoint: <code>{{ endpoint }}</code><br>Transport: Streamable HTTP. Authentication: browser OAuth with automatic client registration and PKCE.</p>
 <p>You sign in to MeroSplit and explicitly approve read and write access, scope <code>merosplit:mcp</code>. The agent gets your existing permissions only. It can read groups and record bills and external payments. It cannot send money, launch UPI, invite people, export private contact or payment addresses, or delete your account. Payment records are not bank verification.</p>
 <p>Let the client open its OAuth approval page. Open the provided authorization URL manually only if the browser did not open automatically; use that same pending flow rather than starting another login.</p>
@@ -31,6 +32,20 @@
 <p>Enable MeroSplit in Customize and complete OAuth if needed. Confirm its tools appear in Available Tools. If disconnected, use the existing entry’s enable/reconnect controls, then verify below.</p><p><a href="https://cursor.com/docs/mcp">Official Cursor MCP guide</a></p>
 <h2>VS Code and Copilot</h2>
 <p>Add an HTTP server with URL <code>{{ endpoint }}</code> through <strong>MCP: Add Server</strong> and finish OAuth. Use <strong>MCP: List Servers</strong> to inspect MeroSplit, start it or restart only its client connection if discovery is stale. Keep the editor and current conversation open, then verify below.</p><p><a href="https://code.visualstudio.com/docs/agents/run/manage-mcp-servers">Official server management guide</a></p>
+<h2 id="remote-server">Remote server without a browser</h2>
+<p>You can run your MCP client on a remote server (VPS) and approve MeroSplit from your laptop or phone. Configure MeroSplit using your client's section above. If <code>codex mcp add</code> starts waiting for browser approval, press <strong>Ctrl+C</strong> to cancel that login, then check the saved entry with <code>codex mcp get merosplit</code>.</p>
+<ol>
+<li>Check that <code>codex mcp login --help</code> lists <code>--no-browser</code>. If it does not, update Codex or use the SSH fallback below.</li>
+<li>On the VPS, run <code>codex mcp login merosplit --no-browser</code> and leave it waiting.</li>
+<li>Open the printed authorization URL on your laptop or phone. Sign in to MeroSplit and approve access.</li>
+<li>Your browser may show a connection error at the loopback callback address after approval. Copy the entire final callback URL from the address bar and paste it only into the waiting Codex prompt on the VPS. It contains a one-time code; keep it out of chats and logs.</li>
+<li>Codex saves the credentials on the VPS. Follow the verification steps below to call <code>get_account_context</code> with <code>{}</code> in your current conversation.</li>
+</ol>
+<details><summary>Other clients or older versions: SSH tunnel fallback</summary>
+<p>For clients that print an authorization URL and use a loopback callback, start built-in OAuth login on the VPS and leave it waiting. Find the callback port in the URL's <code>redirect_uri</code>. On your laptop, run this command, replacing both <code>PORT</code> values with that port and <code>user@your-vps</code> with your SSH destination:</p>
+<pre>ssh -N -L 127.0.0.1:PORT:127.0.0.1:PORT user@your-vps</pre>
+<p>For an IPv6 callback at <code>[::1]</code>, use <code>ssh -N -L '[::1]:PORT:[::1]:PORT' user@your-vps</code>. Open the unchanged authorization URL on your laptop and approve access. The VPS client receives the callback and saves its credentials. Close the tunnel after login, then verify below.</p>
+</details>
 <h2>Verify without changing any records</h2>
 <ol><li><strong>Configured:</strong> the current client lists the correct endpoint.</li><li><strong>Authenticated:</strong> browser OAuth succeeded or the existing credentials are valid.</li><li><strong>Verified:</strong> the current conversation can call <code>get_account_context</code> with <code>{}</code> and confirm the returned account identity and MeroSplit links.</li></ol>
 <p>No group or transaction lookup is needed. Do not create bills, contacts, payments or other fixtures to verify setup. Configuration saved and OAuth succeeded are intermediate states, not a verified connection.</p>
