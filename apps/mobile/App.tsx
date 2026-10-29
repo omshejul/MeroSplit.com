@@ -1,3 +1,4 @@
+import { hasOpenDialogs } from './src/DialogFocus';
 import { NoticeBanner } from './src/UIStates';
 import { ErrorText } from './src/ui';
 import { PhotoSession } from './src/Avatar';
@@ -242,7 +243,7 @@ function AppContent() {
   async function restartUpdate(reload: () => Promise<void>) {
     const active = activeSessionRef.current, epoch = authEpoch.current;
     await restartForUpdate({ lock, reload,
-      safe: () => updateSafe.current && AppState.currentState === 'active' && !authHeldRef.current
+      safe: () => updateSafe.current && !hasOpenDialogs() && AppState.currentState === 'active' && !authHeldRef.current
         && !!active && activeSessionRef.current?.token === active.token && authEpoch.current === epoch,
       flushWrites: async () => { await draftWrites.current; await flushChatWrites(accountOwner(active!)); },
     });

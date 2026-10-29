@@ -126,7 +126,7 @@ test('Me mounts the shared update control and App owns the live restart gate and
  const {restartForUpdate}=await import('../src/appUpdate.ts');
  const calls:string[]=[], active={token:'current',baseUrl:'https://example.invalid',userId:'1'};
  let finish!:()=>void;
- const scope:any={restartForUpdate,lock:{current:false},updateSafe:{current:true},AppState:{currentState:'active'},authHeldRef:{current:false},activeSessionRef:{current:active},authEpoch:{current:1},
+ const scope:any={restartForUpdate,hasOpenDialogs:()=>false,lock:{current:false},updateSafe:{current:true},AppState:{currentState:'active'},authHeldRef:{current:false},activeSessionRef:{current:active},authEpoch:{current:1},
   draftWrites:{current:new Promise<void>(r=>{finish=r;})},flushChatWrites:async(owner:string)=>{assert.equal(owner,'one');calls.push('chat-write-check');},accountOwner:()=> 'one'};
  const restart=new Function('env',`with(env){${ts.transpile(declaration.getText(source),{target:ts.ScriptTarget.ES2022})};return restartUpdate;}`)(scope);
  const waiting=restart(async()=>{calls.push('reload');});

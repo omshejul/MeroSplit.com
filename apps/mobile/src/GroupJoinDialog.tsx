@@ -57,7 +57,7 @@ export default function GroupJoinDialog({ session, token, onJoined, onCancel }: 
   }
   function back() { if (!working && !uncertain) { if (step === 'confirm') setStep('name'); else if (step === 'name') setStep('choose'); else onCancel(); } }
   return <Modal visible presentationStyle="fullScreen" onRequestClose={() => { if (!working) onCancel(); }}>
-    <SafeAreaProvider><AppFrame><DialogFocus style={{ flex: 1 }} busy={working} onEscape={uncertain ? onCancel : back}>
+    <SafeAreaProvider><AppFrame><DialogFocus modal={false} style={{ flex: 1 }} busy={working} onEscape={uncertain ? onCancel : back}>
       <ScreenHeader title={preview ? `Join ${preview.name}` : 'Join group'} busy={working} onBack={uncertain ? onCancel : back} />
       <ScrollView role="main" contentInsetAdjustmentBehavior="automatic" contentContainerStyle={pageContentStyle} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
         <Text style={ui.caption}>Signed in as {session.email}</Text>
