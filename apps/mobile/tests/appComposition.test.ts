@@ -37,7 +37,7 @@ test('Me mounts Connect MCP on native and web, with current account key, session
     session: { email: 'one@example.invalid', token: 'synthetic-one' }, busy: false, lock: { current: false },
     myName: 'One', vpa: '', push: {}, unavailable: [], commands: [], groups: [], expired: false,
     legacy: [], legacySelf: {}, recoveries: [], ui: {}, saveName() {}, saveUPI() {}, exportData() {},
-    AppUpdates: 'AppUpdates', restartUpdate() {}, online: true, AccountHeader: 'AccountHeader', View: 'View', ProfileSettings: 'ProfileSettings', AccountNotifications: 'AccountNotifications',
+    appUpdates: { synthetic: 'shared-controller' }, AppUpdates: 'AppUpdates', online: true, AccountHeader: 'AccountHeader', View: 'View', ProfileSettings: 'ProfileSettings', AccountNotifications: 'AccountNotifications',
     DeleteAccount: 'DeleteAccount', ExportData: 'ExportData', SettingsRow: 'SettingsRow', Disclosure: 'Disclosure', Button: 'Button', Text: 'Text', SavedChanges: 'SavedChanges', LegacyRecords: 'LegacyRecords' };
   const busyChanges: boolean[] = []; env.route = { key: 'account' }; env.setSubmission = (value: boolean) => { env.lock.current = value; busyChanges.push(value); };
   env.setBusy = (value: boolean) => busyChanges.push(value);
@@ -48,7 +48,7 @@ test('Me mounts Connect MCP on native and web, with current account key, session
       const mounted = elements(render(env)).filter(node => node.type === MCPSettings);
       assert.equal(mounted.length, 1, `${os} Me must mount Connect MCP, not merely import it`);
       const updates = elements(render(env)).filter(node => node.type === 'AppUpdates');
-      assert.equal(updates.length, 1); assert.equal(updates[0].props.key, `app-updates|${env.owner}`); assert.equal(updates[0].props.busy, busy); assert.equal(updates[0].props.onRestart, env.restartUpdate);
+      assert.equal(updates.length, 1); assert.equal(updates[0].props.key, `app-updates|${env.owner}`); assert.equal(updates[0].props.update, env.appUpdates);
       const exports = elements(render(env)).filter(node => node.type === 'ExportData');
       assert.equal(exports.length, 1); assert.equal(exports[0].props.key, `export-data|${env.owner}`); assert.equal(exports[0].props.busy, busy);
       const settings = mounted[0];

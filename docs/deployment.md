@@ -19,3 +19,5 @@ Select a supported provider through server configuration. Preserve frozen delive
 Use your own EAS project, channel and signing credentials when building an independent app. The configured fingerprint runtime must match the installed native binary. Native dependency or capability changes need a new binary. Automatic checks must retain cached or embedded startup when offline.
 
 Review `apps/mobile/app.json` and `apps/mobile/eas.json` before building or publishing an update. Verify the actual running version/update after delivery; an upload receipt alone does not prove an OTA was installed. Keep signing keys and store submission credentials outside source control.
+
+Native startup checks are reused. Foregrounding, reconnecting and app interaction can check again after a five-minute cooldown; the Me button bypasses it. Downloads run without confirmation. A completed download offers Restart now or Later on a safe main screen, once per update per running session. Later leaves Restart to update in Me. Restart flushes draft/chat writes and rechecks account, navigation, foreground, sync and modal guards.

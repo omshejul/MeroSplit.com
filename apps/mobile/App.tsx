@@ -74,7 +74,8 @@ import type { NewGroupValues } from './src/CreateGroupForm';
 import { SavedChanges, LegacyRecovery as LegacyRecords } from './src/AccountRecovery';
 import ProfileSettings from './src/ProfileSettings';
 import SignInMethods from './src/SignInMethods';
-import AppUpdates from './src/AppUpdates';
+import AppUpdates, { AppUpdatePrompt } from './src/AppUpdates';
+import useAppUpdates from './src/useAppUpdates';
 import { restartForUpdate } from './src/appUpdate';
 import { usePushNotifications } from './src/PushSettings';
 import AccountNotifications from './src/AccountNotifications';
@@ -237,8 +238,8 @@ function AppContent() {
   const updateSafe = useRef(false);
   const profilePromptSafe = useRef(false);
   profilePromptSafe.current = screen === 'home' && tab === 'Groups' && !feedbackOpen && !alertOpen && !appLink && !newPersonInvite && !upiSetup;
-  updateSafe.current = ready && !!session && !expired && !authHeld && foreground && screen === 'home' && tab === 'Account'
-    && !busy && !reading && !pulling && !storageError && !appLink && !emailEntry && !feedbackOpen && !alertOpen && !upiSetup
+  updateSafe.current = ready && !!session && !expired && !authHeld && foreground && screen === 'home'
+    && !busy && !syncing && !reading && !pulling && !storageError && !appLink && !emailEntry && !feedbackOpen && !alertOpen && !upiSetup
     && !pushInvitationOpen && !returnAttemptId && !returns.length && !reviewCommand && !newPersonInvite && !pushTarget;
   async function restartUpdate(reload: () => Promise<void>) {
     const active = activeSessionRef.current, epoch = authEpoch.current;
@@ -248,7 +249,8 @@ function AppContent() {
       flushWrites: async () => { await draftWrites.current; await flushChatWrites(accountOwner(active!)); },
     });
   }
-  function engage() { opening.current = null; ++profileRevision.current; notices.engage(); }
+  const appUpdates = useAppUpdates({ enabled: ready && !!session && !expired && !authHeld, online, foreground, safe: updateSafe.current, busy, onRestart: restartUpdate });
+  function engage() { appUpdates.engage(); opening.current = null; ++profileRevision.current; notices.engage(); }
   function measureViewport() { scroll.current?.measureInWindow((x, y, width, height) => setViewport({ x, y, width, height })); }
   function navigate(value: Screen, params?: RouteParams) { setNotice(''); navigation.go(value, params); }
   function changeScope(value: Session | null) {
@@ -1445,7 +1447,7 @@ function AppContent() {
           <SettingsRow label="Sign out" icon="back" chevron={false} disabled={lock.current} onPress={() => confirm('Sign out?', storageIsDurable() ? 'Saved changes stay on this device for your next sign-in to this account.' : 'Export any temporary unsent changes before leaving. They will end when this tab closes.', async () => { await draftWrites.current; await flushChatWrites(); await endPushSession(session); await clearMediaPreviews(); await saveSession(null); changeScope(null); }, 'Sign out')} />
           <DeleteAccount email={session.email} busy={lock.current} onDelete={body => perform(() => deleteAccount(body))} />
         </View></View>
-        <AppUpdates key={`app-updates|${owner}`} busy={busy} online={online} onRestart={restartUpdate} />
+        <AppUpdates key={`app-updates|${owner}`} update={appUpdates} />
       </>}
     {showCreate && <HomeCreateInset />}
     </ScrollView>}
@@ -1458,6 +1460,7 @@ function AppContent() {
   return <PhotoSession.Provider value={authHeld || expired ? null : session}><NavigationContainer ref={navigation.ref} linking={webLinking}><><AppFrame onTouchStart={engage}><View ref={protectedContent} style={{ flex: 1 }} pointerEvents={authHeld ? 'none' : 'auto'} accessibilityElementsHidden={authHeld} importantForAccessibility={authHeld ? 'no-hide-descendants' : 'auto'} aria-hidden={authHeld}>
     <AppStack scope={`${owner}|${navigationScope}`} initialScreen={initialScreen.current} render={renderScreen} blocked={authHeld} />
   </View></AppFrame>
+    <AppUpdatePrompt update={appUpdates} />
     {session && !authHeld && !expired && <UPISetupDialog key={`upi-setup|${owner}|${session.token}`} afterFirstSplit={upiAfterSplit} visible={upiSetup && !(appLink && 'groupInviteToken' in appLink) && !feedbackOpen && screen !== 'settle' && screen !== 'expense' && screen !== 'billChat' && screen !== 'expenseVersions'} busy={busy} needsName={!session.displayName?.trim()} onSaveName={value => saveName(value, true)} onSave={saveUPI} onSkip={() => setUpiSetup(false)} />}
     {session && !authHeld && !expired && <FeedbackDialog key={`feedback|${owner}|${session.token}`} visible={feedbackOpen} onClose={() => setFeedbackOpen(false)} onSubmit={async body => {
       const active = session;
