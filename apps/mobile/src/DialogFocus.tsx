@@ -1,16 +1,23 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useLayoutEffect, useRef } from 'react';
 import { Platform, View, type StyleProp, type ViewStyle } from 'react-native';
 
 import { useDialogMotion } from './useDialogMotion';
 
 // Paper portals can overlap. Only the latest dialog owns browser keyboard focus.
 const dialogs: HTMLElement[] = [];
-export default function DialogFocus({ active = true, busy = false, onEscape, children, style, label }: {
-  label?: string; active?: boolean; busy?: boolean; onEscape?: () => void; children: React.ReactNode; style?: StyleProp<ViewStyle>;
+const visibleDialogs = new Set<object>();
+export function hasOpenDialogs() { return visibleDialogs.size > 0; }
+export default function DialogFocus({ active = true, busy = false, onEscape, children, style, label, modal = true }: {
+  modal?: boolean; label?: string; active?: boolean; busy?: boolean; onEscape?: () => void; children: React.ReactNode; style?: StyleProp<ViewStyle>;
 }) {
   const body = useRef<React.ComponentRef<typeof View>>(null), actions = useRef({ busy, onEscape });
   actions.current = { busy, onEscape };
   useDialogMotion(body, active);
+  useLayoutEffect(() => {
+    if (!active || !modal) return;
+    const dialog = {}; visibleDialogs.add(dialog);
+    return () => { visibleDialogs.delete(dialog); };
+  }, [active, modal]);
   useEffect(() => {
     if (Platform.OS !== 'web' || !active) return;
     let root: HTMLElement | null = null;

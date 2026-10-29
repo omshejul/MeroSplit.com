@@ -322,45 +322,39 @@ function updateModule() {
  return {module,state,calls};
 }
 
-test('manual update screen adds no JS startup polling; Check, Download and Restart stay explicit', async () => {
+test('single update button checks, downloads and safely restarts without a dialog', async () => {
  const native=updateModule(), lock={current:false};
  const app=production('AppUpdates.tsx',{Updates:native.module});
  const props={busy:false,online:true,onRestart:(reload:()=>Promise<void>)=>restartForUpdate({lock,safe:()=>true,flushWrites:async()=>{native.calls.push('flush');},reload})};
  let tree=app.render('AppUpdates',props);await app.commit();assert.deepEqual(native.calls,[]);
- button(tree,'Check').props.onPress();button(tree,'Check').props.onPress();await tick();
- assert.deepEqual(native.calls,['check']);tree=app.render('AppUpdates',props);assert.ok(button(tree,'Download'));
- button(tree,'Download').props.onPress();await tick();assert.deepEqual(native.calls,['check','download']);
- tree=app.render('AppUpdates',props);assert.ok(JSON.stringify(tree).includes('may also apply the next time'));
- button(tree,'Restart').props.onPress();await tick();assert.deepEqual(native.calls,['check','download','flush','reload']);
- assert.equal(lock.current,true,'successful reload retains lock until native replaces JS');
- app.unmount();
+ assert.equal(component(tree,'KeyboardDialog'),undefined);
+ button(tree,'Check for update').props.onPress();button(tree,'Check for update').props.onPress();await tick();
+ assert.deepEqual(native.calls,['check','download','flush','reload']);
+ tree=app.render('AppUpdates',props);assert.ok(button(tree,'Restarting…'));assert.equal(nodes(tree).filter(node=>node.type==='Button').length,1);
+ assert.equal(lock.current,true);app.unmount();
 });
 
-test('native automatic downloads update manual controls without polling JS or forcing an in-session reload', async () => {
- for (const platform of ['ios', 'android']) {
-  const native=updateModule(), app=production('AppUpdates.tsx',{Updates:native.module,Platform:{OS:platform}});
-  let restarts=0;
+
+test('native progress stays in the same button and cached updates restart on one tap', async () => {
+ for (const platform of ['ios','android']) {
+  const native=updateModule(),app=production('AppUpdates.tsx',{Updates:native.module,Platform:{OS:platform}});let restarts=0;
   const props={busy:false,online:true,onRestart:async()=>{restarts++;}};
-  native.state.isStartupProcedureRunning=true;
-  let tree=app.render('AppUpdates',props);await app.commit();
-  assert.equal(button(tree,'Check').props.disabled,true);
-  native.state.isStartupProcedureRunning=false;native.state.isDownloading=true;
-  tree=app.render('AppUpdates',props);await app.commit();assert.ok(JSON.stringify(tree).includes('Downloading…'));
-  native.state.isDownloading=false;native.state.isUpdatePending=true;
-  tree=app.render('AppUpdates',props);await app.commit();
-  assert.ok(button(tree,'Restart'));assert.equal(restarts,0);assert.deepEqual(native.calls,[]);
-  tree=app.render('AppUpdates',{...props,busy:true});button(tree,'Restart').props.onPress();await tick();assert.equal(restarts,0);
-  button(app.render('AppUpdates',props),'Restart').props.onPress();await tick();assert.equal(restarts,1);
-  app.unmount();
+  native.state.isStartupProcedureRunning=true;let tree=app.render('AppUpdates',props);await app.commit();assert.equal(button(tree,'Checking…').props.disabled,true);
+  native.state.isStartupProcedureRunning=false;native.state.isDownloading=true;native.state.downloadProgress=.42;
+  tree=app.render('AppUpdates',props);await app.commit();assert.equal(button(tree,'Downloading 42%').props.disabled,true);assert.equal(component(tree,'KeyboardDialog'),undefined);
+  native.state.isDownloading=false;native.state.isUpdatePending=true;tree=app.render('AppUpdates',props);await app.commit();assert.equal(restarts,0);assert.deepEqual(native.calls,[]);
+  button(app.render('AppUpdates',{...props,busy:true}),'Restart to update').props.onPress();await tick();assert.equal(restarts,0);
+  button(app.render('AppUpdates',{...props,online:false}),'Restart to update').props.onPress();await tick();assert.equal(restarts,1);assert.deepEqual(native.calls,[]);app.unmount();
  }
 });
+
 
 test('manual update controls reject the old testing channel, missing runtime and disabled native updates', () => {
  for (const overrides of [{channel:'merosplit-1-1-testing'},{channel:null},{runtimeVersion:null},{isEnabled:false}]) {
   const native=updateModule();Object.assign(native.module,overrides);
   const app=production('AppUpdates.tsx',{Updates:native.module});
   const tree=app.render('AppUpdates',{busy:false,online:true,onRestart:async()=>{assert.fail();}});
-  assert.equal(button(tree,'Check'),undefined);assert.deepEqual(native.calls,[]);app.unmount();
+  assert.equal(button(tree,'Check for update'),undefined);assert.deepEqual(native.calls,[]);app.unmount();
  }
 });
 
@@ -382,14 +376,14 @@ test('update footer reports the installed binary and running update, never a pen
  tree=web.render('AppUpdates',props);assert.equal(button(tree,'Check for update'),undefined);assert.ok(JSON.stringify(tree).includes('reload the page'));assert.ok(!JSON.stringify(tree).includes('Version 1.2'));web.unmount();
 });
 
-test('footer Check starts one existing check and opens progress, while a downloaded update still needs explicit Restart', async () => {
- const native=updateModule(),app=production('AppUpdates.tsx',{Updates:native.module});let restarts=0;
- const props={busy:false,online:true,onRestart:async()=>{restarts++;}};
- let tree=app.render('AppUpdates',props);button(tree,'Check for update').props.onPress();button(tree,'Check for update').props.onPress();await tick();
- tree=app.render('AppUpdates',props);assert.equal(component(tree,'KeyboardDialog').props.visible,true);assert.deepEqual(native.calls,['check']);
- native.state.isUpdatePending=true;button(app.render('AppUpdates',props),'Check for update').props.onPress();await tick();assert.equal(restarts,0);
- button(app.render('AppUpdates',props),'Restart').props.onPress();await tick();assert.equal(restarts,1);app.unmount();
+test('no new updates appears in the button then resets, with no dialog or startup polling', async () => {
+ const native=updateModule();native.module.checkForUpdateAsync=async()=>{native.calls.push('check');return {isAvailable:false,isRollBackToEmbedded:false};};
+ const app=production('AppUpdates.tsx',{Updates:native.module});const props={busy:false,online:true,onRestart:async()=>{assert.fail();}};
+ let tree=app.render('AppUpdates',props);await app.commit();assert.deepEqual(native.calls,[]);
+ button(tree,'Check for update').props.onPress();await tick();tree=app.render('AppUpdates',props);await app.commit();assert.ok(button(tree,'No new updates'));assert.equal(button(tree,'No new updates').props.icon,'check');assert.equal(component(tree,'KeyboardDialog'),undefined);
+ app.timer();tree=app.render('AppUpdates',props);assert.ok(button(tree,'Check for update'));assert.deepEqual(native.calls,['check']);app.unmount();
 });
+
 
 test('Account mounts exactly one update footer after all settings and account actions', () => {
  const source=ts.createSourceFile('App.tsx',readFileSync(new URL('../App.tsx',import.meta.url),'utf8'),ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
@@ -401,42 +395,29 @@ test('Account mounts exactly one update footer after all settings and account ac
  const content=parent.getText(source);assert.ok(content.indexOf('<DeleteAccount')<content.indexOf('<AppUpdates'));
 });
 
-test('update checks and downloads report failures, preserve retry, and block offline or unsupported builds', async () => {
+test('update failures stay inline and retrying a cached download does not download again', async () => {
  for(const extra of [{Platform:{OS:'web'}},{__DEV__:true}]) {
-  const native=updateModule(), app=production('AppUpdates.tsx',{Updates:native.module,...extra});
-  const tree=app.render('AppUpdates',{busy:false,online:true,onRestart:async()=>{assert.fail();}});
-  assert.equal(button(tree,'Check'),undefined);assert.deepEqual(native.calls,[]);app.unmount();
+  const native=updateModule(),app=production('AppUpdates.tsx',{Updates:native.module,...extra});assert.equal(button(app.render('AppUpdates',{busy:false,online:true,onRestart:async()=>{assert.fail();}}),'Check for update'),undefined);assert.deepEqual(native.calls,[]);app.unmount();
  }
- const native=updateModule(), app=production('AppUpdates.tsx',{Updates:native.module});
- let online=false;
- const props=()=>({busy:false,online,onRestart:async()=>{throw Error('Finish the payment first.');}});
- button(app.render('AppUpdates',props()),'Check').props.onPress();await tick();assert.deepEqual(native.calls,[]);
- assert.ok(JSON.stringify(app.render('AppUpdates',props())).includes('Connect to the internet'));
- online=true;native.module.checkForUpdateAsync=async()=>{throw Error('provider details should stay private');};
- button(app.render('AppUpdates',props()),'Check').props.onPress();await tick();
- assert.ok(JSON.stringify(app.render('AppUpdates',props())).includes("Couldn't check"));
- native.module.checkForUpdateAsync=async()=>({isAvailable:true,isRollBackToEmbedded:false});
- button(app.render('AppUpdates',props()),'Check').props.onPress();await tick();
- native.module.fetchUpdateAsync=async()=>{throw Error('download-provider');};
- button(app.render('AppUpdates',props()),'Download').props.onPress();await tick();
- assert.ok(button(app.render('AppUpdates',props()),'Download'));assert.ok(JSON.stringify(app.render('AppUpdates',props())).includes('Download failed'));
- native.state.isUpdatePending=true;
- button(app.render('AppUpdates',props()),'Restart').props.onPress();await tick();
- assert.ok(JSON.stringify(app.render('AppUpdates',props())).includes('Finish the payment first.'));assert.ok(button(app.render('AppUpdates',props()),'Restart'));
- app.unmount();
+ const native=updateModule(),app=production('AppUpdates.tsx',{Updates:native.module});let online=false,blocked=true;
+ const props=()=>({busy:false,online,onRestart:async(reload:()=>Promise<void>)=>{if(blocked)throw Error('Finish the payment first.');await reload();}});
+ button(app.render('AppUpdates',props()),'Check for update').props.onPress();await tick();assert.deepEqual(native.calls,[]);assert.ok(JSON.stringify(app.render('AppUpdates',props())).includes('Connect to the internet'));
+ online=true;native.module.checkForUpdateAsync=async()=>{throw Error('private-provider');};button(app.render('AppUpdates',props()),'Check for update').props.onPress();await tick();assert.ok(JSON.stringify(app.render('AppUpdates',props())).includes("Couldn't check"));assert.ok(!JSON.stringify(app.render('AppUpdates',props())).includes('private-provider'));
+ native.module.checkForUpdateAsync=async()=>{native.calls.push('check');return{isAvailable:true,isRollBackToEmbedded:false};};native.module.fetchUpdateAsync=async()=>{throw Error('private-download-provider');};
+ button(app.render('AppUpdates',props()),'Check for update').props.onPress();await tick();assert.ok(JSON.stringify(app.render('AppUpdates',props())).includes('Download failed'));assert.ok(!JSON.stringify(app.render('AppUpdates',props())).includes('private-download-provider'));
+ native.module.fetchUpdateAsync=async()=>{native.calls.push('download');return{isNew:true,isRollBackToEmbedded:false};};button(app.render('AppUpdates',props()),'Check for update').props.onPress();await tick();assert.ok(JSON.stringify(app.render('AppUpdates',props())).includes('Finish the payment first.'));
+ native.calls.length=0;blocked=false;online=false;button(app.render('AppUpdates',props()),'Restart to update').props.onPress();await tick();assert.deepEqual(native.calls,['reload']);app.unmount();
 });
 
-test('downloaded native state survives component remount, including embedded rollback and emergency launch', async () => {
+
+test('downloaded native state survives remount and rollback applies without a download prompt', async () => {
  const native=updateModule();native.state.isUpdatePending=true;native.state.downloadedUpdate={type:'rollback'};
- const app=production('AppUpdates.tsx',{Updates:native.module});
- let tree=app.render('AppUpdates',{busy:false,online:false,onRestart:async()=>{}});
- assert.ok(button(tree,'Restart'));assert.ok(JSON.stringify(tree).includes('built-in version is ready'));
- assert.deepEqual(native.calls,[]);app.unmount();
+ const app=production('AppUpdates.tsx',{Updates:native.module});let restarted=0;
+ const tree=app.render('AppUpdates',{busy:false,online:false,onRestart:async()=>{restarted++;}});assert.deepEqual(native.calls,[]);button(tree,'Restart to update').props.onPress();await tick();assert.equal(restarted,1);assert.deepEqual(native.calls,[]);app.unmount();
  native.state.isUpdatePending=false;native.state.downloadedUpdate=undefined;native.state.currentlyRunning.isEmergencyLaunch=true;
- const remount=production('AppUpdates.tsx',{Updates:native.module});
- tree=remount.render('AppUpdates',{busy:false,online:true,onRestart:async()=>{}});
- assert.ok(JSON.stringify(tree).includes('after an update problem'));assert.ok(!JSON.stringify(tree).includes('latest version'));remount.unmount();
+ const remount=production('AppUpdates.tsx',{Updates:native.module});const later=remount.render('AppUpdates',{busy:false,online:true,onRestart:async()=>{}});assert.ok(JSON.stringify(later).includes('after an update problem'));remount.unmount();
 });
+
 
 test('update restart waits for writes and rechecks live account, route, auth, foreground and payment safety', async () => {
  for(const reason of ['account changed','route changed','auth started','background','payment started']) {
@@ -466,10 +447,10 @@ test('the actual App restart guard blocks editing and waits for pending draft an
  const make=(extra:Record<string,any>={})=>{
   const session={token:'current-account'},calls:string[]=[];
   const env:any={ready:true,session,expired:false,authHeld:false,foreground:true,screen:'home',tab:'Account',busy:false,reading:0,pulling:false,storageError:null,appLink:null,emailEntry:null,feedbackOpen:false,alertOpen:false,upiSetup:false,pushInvitationOpen:false,returnAttemptId:null,returns:[],reviewCommand:null,newPersonInvite:null,pushTarget:null,
-   updateSafe:{current:false},activeSessionRef:{current:session},authEpoch:{current:1},lock:{current:false},AppState:{currentState:'active'},authHeldRef:{current:false},draftWrites:{current:Promise.resolve()},flushChatWrites:async()=>{calls.push('chat-flush');},accountOwner:()=> 'current-owner',restartForUpdate,...extra};
+   hasOpenDialogs:()=>false,updateSafe:{current:false},activeSessionRef:{current:session},authEpoch:{current:1},lock:{current:false},AppState:{currentState:'active'},authHeldRef:{current:false},draftWrites:{current:Promise.resolve()},flushChatWrites:async()=>{calls.push('chat-flush');},accountOwner:()=> 'current-owner',restartForUpdate,...extra};
   return {env,calls,restart:new Function('env',`with(env){ const StaggerItem = 'StaggerItem';${code};return restartUpdate;}`)(withSharedUI(env))};
  };
- for(const state of [{screen:'expense'},{screen:'settle'},{busy:true},{reading:1},{pushInvitationOpen:true},{authHeld:true},{returnAttemptId:'payment'},{reviewCommand:{}}]) {
+ for(const state of [{hasOpenDialogs:()=>true},{screen:'expense'},{screen:'settle'},{busy:true},{reading:1},{pushInvitationOpen:true},{authHeld:true},{returnAttemptId:'payment'},{reviewCommand:{}}]) {
   const app=make(state);
   await assert.rejects(app.restart(async()=>{assert.fail('unsafe reload');}),/Finish what's in progress/);
   assert.deepEqual(app.calls,[]);assert.equal(app.env.lock.current,false);
@@ -482,13 +463,10 @@ test('the actual App restart guard blocks editing and waits for pending draft an
 });
 
 
-test('an empty download clears the stale available action and permits an explicit recheck', async () => {
+test('an empty download reports no new updates and allows a later recheck', async () => {
  const native=updateModule();native.state.isUpdateAvailable=true;native.module.fetchUpdateAsync=async()=>({isNew:false,isRollBackToEmbedded:false});
- const app=production('AppUpdates.tsx',{Updates:native.module});
- const props={busy:false,online:true,onRestart:async()=>{assert.fail();}};
- button(app.render('AppUpdates',props),'Download').props.onPress();await tick();
- const tree=app.render('AppUpdates',props);assert.ok(button(tree,'Check'));assert.equal(button(tree,'Restart'),undefined);
- assert.ok(JSON.stringify(tree).includes('No update was downloaded.'));app.unmount();
+ const app=production('AppUpdates.tsx',{Updates:native.module});const props={busy:false,online:true,onRestart:async()=>{assert.fail();}};
+ button(app.render('AppUpdates',props),'Check for update').props.onPress();await tick();let tree=app.render('AppUpdates',props);await app.commit();assert.ok(button(tree,'No new updates'));app.timer();assert.ok(button(app.render('AppUpdates',props),'Check for update'));app.unmount();
 });
 
 
@@ -719,4 +697,30 @@ test('person invite shares reuse one link after missing, cancelled and successfu
     assert.equal(invites, 1);
     assert.equal(shares, 4);
   } finally { app.unmount(); }
+});
+
+test('the same button shows checking, actual download progress and restarting without another tap', async () => {
+ const native=updateModule();let checked!:(result:any)=>void,downloaded!:(result:any)=>void,reloaded=0;
+ native.module.checkForUpdateAsync=()=>new Promise(resolve=>{checked=resolve;});native.module.fetchUpdateAsync=()=>new Promise(resolve=>{downloaded=resolve;});
+ const app=production('AppUpdates.tsx',{Updates:native.module}),props={busy:false,online:true,onRestart:async()=>{reloaded++;}};
+ button(app.render('AppUpdates',props),'Check for update').props.onPress();let tree=app.render('AppUpdates',props);assert.equal(button(tree,'Checking…').props.disabled,true);
+ checked({isAvailable:true,isRollBackToEmbedded:false});await tick();tree=app.render('AppUpdates',props);assert.ok(button(tree,'Downloading…'));
+ native.state.isDownloading=true;
+ for(const [value,label] of [[0,'Downloading 0%'],[.42,'Downloading 42%'],[1,'Downloading 100%'],[Infinity,'Downloading…']] as const){native.state.downloadProgress=value;tree=app.render('AppUpdates',props);const action=button(tree,label);assert.ok(action);assert.equal(action.props.accessibilityState.busy,true);assert.equal(action.props.disabled,true);const icon=action.props.icon({color:'white'});assert.equal(icon.children[0].type,'LoadingSpinner');}
+ native.state.isDownloading=false;downloaded({isNew:true,isRollBackToEmbedded:false});await tick();assert.equal(reloaded,1);tree=app.render('AppUpdates',props);assert.ok(button(tree,'Restarting…'));app.unmount();
+});
+
+test('an update response after unmount cannot start a download or restart',async()=>{
+ for(const stage of ['check','download']){
+  const native=updateModule();let release!:(result:any)=>void,restarts=0;
+  if(stage==='check')native.module.checkForUpdateAsync=()=>new Promise(resolve=>{release=resolve;});
+  else native.module.fetchUpdateAsync=()=>new Promise(resolve=>{release=resolve;});
+  const app=production('AppUpdates.tsx',{Updates:native.module});const props={busy:false,online:true,onRestart:async()=>{restarts++;}};
+  app.render('AppUpdates',props);await app.commit();button(app.render('AppUpdates',props),'Check for update').props.onPress();await tick();app.unmount();release(stage==='check'?{isAvailable:true,isRollBackToEmbedded:false}:{isNew:true,isRollBackToEmbedded:false});await tick();assert.equal(restarts,0);assert.ok(!native.calls.includes('download'));assert.ok(!native.calls.includes('reload'));
+ }
+});
+
+test('rollback follows the same check download restart flow without prompts',async()=>{
+ const native=updateModule();native.module.checkForUpdateAsync=async()=>{native.calls.push('check');return{isAvailable:false,isRollBackToEmbedded:true};};native.module.fetchUpdateAsync=async()=>{native.calls.push('download');return{isNew:false,isRollBackToEmbedded:true};};
+ const app=production('AppUpdates.tsx',{Updates:native.module});button(app.render('AppUpdates',{busy:false,online:true,onRestart:async(reload:()=>Promise<void>)=>reload()}),'Check for update').props.onPress();await tick();assert.deepEqual(native.calls,['check','download','reload']);app.unmount();
 });
