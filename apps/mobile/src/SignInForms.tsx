@@ -18,7 +18,7 @@ export function EmailSignIn({ email, busy, onEmail, onSend, sendLabel = 'Send si
     </View>
     <View style={{ gap: 12 }}>
       <EmailField label="Email" placeholder="you@example.com" value={email} onChangeText={onEmail} style={{ minHeight: 48, borderRadius: 12 }} />
-      <Button title={busy && sending ? 'Sending…' : sendLabel} accessibilityLabel={sendLabel} kind="primary" style={{ borderRadius: 12 }} contentStyle={{ minHeight: 48 }} disabled={busy || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())} onPress={send} />
+      <Button title={busy && sending ? 'Sending…' : sendLabel} accessibilityLabel={sendLabel} kind="primary" style={{ borderRadius: 12, minHeight: 48 }} disabled={busy || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())} onPress={send} />
       {secondary}
     </View>
   </Form>;
@@ -32,7 +32,7 @@ export function CodeSignIn({ email, code, resendSeconds, busy, onCode, onConfirm
   return <Form style={{ gap: 12 }} label="Sign-in code" onSubmit={() => { if (!busy && /^[0-9]{4}$/.test(code)) confirm(); }}>
     <Text style={ui.body}>Enter your four-digit sign-in code for {email.trim()}.</Text>
     <TextField label="4-digit code" value={code} onChangeText={value => onCode(value.replace(/\D/g, '').slice(0, 4))} maxLength={4} autoCorrect={false} autoCapitalize="none" autoComplete="one-time-code" keyboardType="number-pad" />
-    <Button title={busy && action === 'confirm' ? 'Signing in…' : 'Sign in'} accessibilityLabel="Sign in" kind="primary" style={{ borderRadius: 12 }} contentStyle={{ minHeight: 48 }} disabled={busy || !/^[0-9]{4}$/.test(code)} onPress={confirm} />
+    <Button title={busy && action === 'confirm' ? 'Signing in…' : 'Sign in'} accessibilityLabel="Sign in" kind="primary" style={{ borderRadius: 12, minHeight: 48 }} disabled={busy || !/^[0-9]{4}$/.test(code)} onPress={confirm} />
     <ResendControls busy={busy} sending={busy && action === 'resend'} resendSeconds={resendSeconds} onResend={resend} onChangeEmail={onChangeEmail} />
   </Form>;
 }

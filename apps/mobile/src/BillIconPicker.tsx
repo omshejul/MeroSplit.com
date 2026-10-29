@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { FlatList, Platform, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { FlatList, Platform, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import DialogFocus from './DialogFocus';
 import { categoryIcon, expenseIconChoices } from './categoryIcons';
@@ -62,7 +62,7 @@ export default function BillIconPicker({ category, disabled = false, active = tr
   </DialogFocus>;
   if (Platform.OS !== 'web') return content;
   return <View style={{ flex: 1, justifyContent: 'flex-end', alignItems: 'center' }}>
-    <Pressable accessible={false} style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.45)' }]} onPress={close} />
+    <Button kind="plain" accessible={false} disabled={blocked} style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.45)' }]} onPress={close} />
     <View style={{ width: Math.min(width, 560), height: Math.min(height * 0.65, height - insets.top - 12), backgroundColor: palette.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24 }}>{content}</View>
   </View>;
 }

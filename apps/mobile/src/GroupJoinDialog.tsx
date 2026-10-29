@@ -65,27 +65,27 @@ export default function GroupJoinDialog({ session, token, onJoined, onCancel }: 
         {!!error && <ErrorState error={error} retryLabel="Refresh invitation" disabled={working} onRetry={!preview ? () => setRetry(value => value + 1) : undefined} />}
         {preview?.already_member ? <>
           <Text style={ui.body}>You already belong to {preview.name}.</Text>
-          <Button title="Open group" kind="primary" disabled={working} onPress={() => void join()} contentStyle={{ minHeight: 48 }} />
+          <Button title="Open group" kind="primary" disabled={working} onPress={() => void join()} style={{ minHeight: 48 }} />
         </> : preview && (step === 'choose' ? <>
           <Text style={ui.body}>If someone already added you, find your name.</Text>
           <View>
-            {preview.people.map(person => <PersonRow key={person.id} name={person.name} photo={person.profile_photo} trailing={<Button title="This is me" accessibilityLabel={`This is me: ${person.name}`} disabled={working} onPress={() => choose(person)} contentStyle={{ minHeight: 48 }} />} />)}
+            {preview.people.map(person => <PersonRow key={person.id} name={person.name} photo={person.profile_photo} trailing={<Button title="This is me" accessibilityLabel={`This is me: ${person.name}`} disabled={working} onPress={() => choose(person)} style={{ minHeight: 48 }} />} />)}
             <View style={ui.row}><Text style={[ui.rowTitle, { flex: 1, minWidth: 0 }]}>I'm not listed</Text>
-              <Button title="Join as new" disabled={working} onPress={() => choose(null)} contentStyle={{ minHeight: 48 }} /></View>
+              <Button title="Join as new" disabled={working} onPress={() => choose(null)} style={{ minHeight: 48 }} /></View>
           </View>
           <Text style={ui.caption}>People already linked to an account are not listed.</Text>
         </> : step === 'name' ? <>
           <TextField label="Your name in this group" value={name} onChangeText={setName} editable={!working} maxLength={120} autoCapitalize="words" autoCorrect={false} />
           <Text style={ui.caption}>This does not change your account name.</Text>
-          <Button title="Review join" kind="primary" disabled={working || !name.trim() || name.trim().length > 120} onPress={() => { if (name.trim() && name.trim().length <= 120) setStep('confirm'); }} contentStyle={{ minHeight: 48 }} />
+          <Button title="Review join" kind="primary" disabled={working || !name.trim() || name.trim().length > 120} onPress={() => { if (name.trim() && name.trim().length <= 120) setStep('confirm'); }} style={{ minHeight: 48 }} />
         </> : <>
           <Text style={ui.section}>Join as {name.trim()}?</Text>
           <PersonRow name={name} title={name.trim()} photo={profile?.avatar ?? profile?.profile_photo} />
           <Text style={ui.body}>{choice ? `${choice.name}'s existing bills and payments will be linked to you in this group.` : 'You will join as a new person. Existing bills and payments will stay unchanged.'}</Text>
-          <Button title={working ? 'Joining…' : uncertain ? 'Try again' : `Join as ${name.trim()}`} kind="primary" disabled={working} onPress={() => void join()} contentStyle={{ minHeight: 48 }} />
-          {!uncertain && <Button title="Choose again" kind="text" disabled={working} onPress={() => setStep('choose')} contentStyle={{ minHeight: 48 }} />}
+          <Button title={working ? 'Joining…' : uncertain ? 'Try again' : `Join as ${name.trim()}`} kind="primary" disabled={working} onPress={() => void join()} style={{ minHeight: 48 }} />
+          {!uncertain && <Button title="Choose again" kind="text" disabled={working} onPress={() => setStep('choose')} style={{ minHeight: 48 }} />}
         </>)}
-        <Button title="Cancel" kind="text" disabled={working} onPress={onCancel} contentStyle={{ minHeight: 48 }} />
+        <Button title="Cancel" kind="text" disabled={working} onPress={onCancel} style={{ minHeight: 48 }} />
       </ScrollView>
     </DialogFocus></AppFrame></SafeAreaProvider>
   </Modal>;
