@@ -537,8 +537,10 @@ def test_authenticated_mcp_history_origin_is_durable_and_request_scoped(ledger, 
     assert bearer[0] not in data and 'client_id' not in data and 'access_token' not in data
 
 
-def test_actual_oauth_mcp_same_generic_edit_without_auto_flag_is_manual(ledger, bearer):
+@pytest.mark.parametrize("manual", [False, True])
+def test_mcp_generic_edit_only_disables_auto_with_an_explicit_manual_flag(ledger, bearer, manual, settings):
     from . import expense_categories
+    settings.AI_GATEWAY_API_KEY = "synthetic-only"
     body = {"id": str(uuid4()), "command_id": str(uuid4()), "description": "Synthetic dinner", "date": "2026-10-21", "total": "100", "paid": {str(ledger[3].participants.first().id): "100"}, "split": {"mode": "equal", "values": {str(person.id): "1" for person in ledger[3].participants.all()}}, "category": "general", "category_auto": True}
     async def check():
         async with running_app(MeroSplitApplication(), bearer[0]) as http:
@@ -546,11 +548,50 @@ def test_actual_oauth_mcp_same_generic_edit_without_auto_flag_is_manual(ledger, 
                 assert not (await client.call_tool("save_expense", {"group_id": str(ledger[3].id), "payload": body})).is_error
                 def ready():
                     expense_categories.expense_icons(ledger[0], body["id"])
-                    expense_categories.process_category_decisions(evaluate=lambda *args: "food")
+                    assert expense_categories.process_category_decisions(evaluate=lambda *args: "food") == 1
                 await sync_to_async(ready, thread_sensitive=False)()
                 edited = body | {"command_id": str(uuid4()), "version": 1}
-                edited.pop("category_auto")
+                if manual:
+                    edited["category_auto"] = False
+                else:
+                    edited.pop("category_auto")
                 assert not (await client.call_tool("save_expense", {"group_id": str(ledger[3].id), "expense_id": body["id"], "payload": edited})).is_error
     asyncio.run(check())
-    assert Expense.objects.get(pk=body["id"]).category_auto is False
-    assert expense_categories.expense_icons(ledger[0], body["id"])["items"][0]["state"] == "manual"
+    assert Expense.objects.get(pk=body["id"]).category_auto is not manual
+    assert expense_categories.expense_icons(ledger[0], body["id"])["items"][0]["state"] == ("manual" if manual else "ready")
+
+
+@pytest.mark.parametrize("category", ["other", "general", "Other", ""])
+@pytest.mark.parametrize("manual", [False, True])
+def test_mcp_new_generic_bill_defaults_to_auto_unless_explicitly_manual(ledger, bearer, settings, category, manual):
+    from . import expense_categories
+    settings.AI_GATEWAY_API_KEY = "synthetic-only"
+    person = str(ledger[3].participants.first().id)
+    body = {"id": str(uuid4()), "command_id": str(uuid4()), "description": "Coffee", "date": "2026-10-29", "total": "13500", "paid": {person: "13500"}, "split": {"mode": "equal", "values": {person: "1"}}, "category": category}
+
+    if manual:
+        body["category_auto"] = False
+
+    async def create():
+        async with running_app(MeroSplitApplication(), bearer[0]) as http:
+            async with sdk(http) as client:
+                arguments = {"group_id": str(ledger[3].id), "payload": body}
+                first = await client.call_tool("save_expense", arguments)
+                replay = await client.call_tool("save_expense", arguments)
+                assert not first.is_error
+                assert replay.structured_content == first.structured_content
+    asyncio.run(create())
+    record = Expense.objects.get(pk=body["id"])
+    assert record.category_auto is not manual
+    if manual:
+        assert expense_categories.expense_icons(ledger[0], body["id"])["items"][0]["state"] == "manual"
+        assert not record.category_decisions.exists()
+        return
+    assert expense_categories.expense_icons(ledger[0], body["id"])["items"][0]["state"] == "pending"
+    changes = Change.objects.count()
+    assert expense_categories.process_category_decisions(evaluate=lambda title, key: "coffee") == 1
+    hint = expense_categories.expense_icons(ledger[0], body["id"])["items"][0]
+    assert hint["state"] == "ready" and hint["category"] == "coffee"
+    record.refresh_from_db()
+    assert record.version == 1 and record.total == 13500 and record.category == category
+    assert Change.objects.count() == changes
