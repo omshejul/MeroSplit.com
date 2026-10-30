@@ -1,3 +1,4 @@
+import { useLoading } from './LoadingOverlay';
 import RowGroup from './RowGroup';
 import PersonChoice from './PersonChoice';
 import { NoticeBanner } from './UIStates';
@@ -151,6 +152,7 @@ export default function ExpenseForm({ group, expense, selfId, busy, onSave, owne
     return () => { mounted.current = false; if (discard.current === remove) discard.current = null; };
   }, [store, discard]);
   const lock = useRef(false), disabled = !ready || busy || saving || fileBusy || handedOff.current;
+  useLoading(!ready && !error || saving || fileBusy);
   useScreenRemovalLock(saving || fileBusy);
   const acceptedExpense = group.expenses.find(value => value.id === draft.id);
   const label = (id: string) => {

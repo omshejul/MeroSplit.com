@@ -1,3 +1,4 @@
+import { useLoading } from './LoadingOverlay';
 import { Dialog } from './DialogParts';
 import React, { useEffect, useRef, useState } from 'react';
 import { useWindowDimensions } from 'react-native';
@@ -50,6 +51,7 @@ export default function OAuthContinuation({ session, busy, onSaveName, beforeCon
   }
   if (pending?.scope !== scope) return null;
   const disabled = busy || working;
+  useLoading(working);
   return <KeyboardDialog label="Review agent access" visible dismissable={false} onDismiss={dismiss} maxHeight={Math.max(0, height - 48)}>
 
       <Dialog.Title aria-level={2}>Review agent access</Dialog.Title>

@@ -1,3 +1,4 @@
+import { useLoading } from './LoadingOverlay';
 import { BillIconButton } from './BillIconPicker';
 import { useRowDivider } from './rowDividers';
 import RowGroup from './RowGroup';
@@ -67,6 +68,7 @@ function LegacyPayments({ group, selfId, accepted, busy, onPayment, onPrefetchPa
 function PersonalTransferRow({ transfer, group, selfId, disabled, onSettle, onRemind, onExplain }: { transfer: Transfer; group: Group; selfId: string; disabled: boolean; onSettle: Props['onSettle']; onRemind?: Props['onRemind']; onExplain: (transfer: Transfer, restoreFocus: () => void) => void }) {
   const { palette: colors, ui } = useUI();
   const [reminding, setReminding] = useState(false);
+  useLoading(reminding);
   const row = useRef<React.ComponentRef<typeof View>>(null);
   const divider = useRowDivider();
   const outgoing = transfer.sender === selfId, counterpart = outgoing ? transfer.recipient : transfer.sender;
@@ -204,18 +206,19 @@ export default function GroupScreen({ bottomClearance = 120, categoryIcons, head
   const payments = personalSettlements(group, selfId);
   const searchable = rows.length >= 5 || !!(historyWindow?.next_cursor || historyWindow?.previous?.length || historyWindow?.query);
   const showSearch = searching;
-  const searchRequest = useRef<AbortController | null>(null);
+  const searchRequest = useRef<AbortController | null>(null), [loadingSearch, setLoadingSearch] = useState(false);
+  useLoading(loadingSearch);
   useEffect(() => () => searchRequest.current?.abort(), []);
   async function runSearch(query: string) {
     searchRequest.current?.abort();
-    const controller = new AbortController(); searchRequest.current = controller;
+    const controller = new AbortController(); searchRequest.current = controller; setLoadingSearch(true);
     try {
       const applied = await onHistoryPage?.(historyResource, 'search', query, controller.signal, accepted);
       if (controller.signal.aborted) return false;
       if (applied) list.current?.scrollToOffset({ offset: 0, animated: false });
       return applied ?? !historyWindow?.query;
     } catch { return false; }
-    finally { if (searchRequest.current === controller) searchRequest.current = null; }
+    finally { if (searchRequest.current === controller) { searchRequest.current = null; setLoadingSearch(false); } }
   }
   async function closeSearch() {
     Keyboard.dismiss();

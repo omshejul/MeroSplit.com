@@ -1,3 +1,4 @@
+import { useLoading } from './LoadingOverlay';
 import { ErrorState } from './UIStates';
 import { CloseDialogActions } from './DialogParts';
 import { Dialog } from './DialogParts';
@@ -23,15 +24,16 @@ function confirmed(value: Preferences) {
 }
 export default function AccountNotifications({ session, push, busy, onBusyChange }: { session: Session; push: PushControls; busy: boolean; onBusyChange: (value: boolean) => void }) {
   const { height } = useWindowDimensions();
-  const [open, setOpen] = useState(false), [preferences, setPreferences] = useState<Preferences | null>(() => cachedRead<Preferences>(session, '/me/notifications/preferences') ?? null), [error, setError] = useState(''), [working, setWorking] = useState(false), [pendingEnabled, setPendingEnabled] = useState<boolean | null>(null);
+  const [open, setOpen] = useState(false), [preferences, setPreferences] = useState<Preferences | null>(() => cachedRead<Preferences>(session, '/me/notifications/preferences') ?? null), [error, setError] = useState(''), [working, setWorking] = useState(false), [pendingEnabled, setPendingEnabled] = useState<boolean | null>(null), [loading, setLoading] = useState(false);
   const activeToken = useRef(session.token); activeToken.current = session.token;
   const row = useRef<React.ComponentRef<typeof View>>(null), mounted = useRef(true), inFlight = useRef(false), revision = useRef(0);
   function accept(value: Preferences) { rememberRead(session, '/me/notifications/preferences', value); setPreferences(value); }
   async function load() {
     if (inFlight.current) return;
-    const current = ++revision.current;
+    const current = ++revision.current; setLoading(true);
     try { const value = confirmed(await request<Preferences>(session, '/me/notifications/preferences')); if (mounted.current && current === revision.current) { accept(value); setError(''); } }
     catch { if (mounted.current && current === revision.current) setError('Could not load notifications. Try again.'); }
+    finally { if (mounted.current && current === revision.current) setLoading(false); }
   }
   useEffect(() => {
     mounted.current = true; if (!push.state.working) void load();
@@ -43,7 +45,7 @@ export default function AccountNotifications({ session, push, busy, onBusyChange
   async function update(value: Preferences, enablePush = false) {
     if (busy || inFlight.current) return;
     const previous = preferences;
-    inFlight.current = true; ++revision.current; setWorking(true); setPendingEnabled(value.expense_updates); setPreferences(value); setError('');
+    inFlight.current = true; ++revision.current; setLoading(false); setWorking(true); setPendingEnabled(value.expense_updates); setPreferences(value); setError('');
     try {
       let saved = confirmed(await request<Preferences>(session, '/me/notifications/preferences', 'PUT', { expense_updates: value.expense_updates, email_reminders: value.email_reminders }));
       if (!mounted.current || activeToken.current !== session.token) return;
@@ -63,6 +65,7 @@ export default function AccountNotifications({ session, push, busy, onBusyChange
   const disabled = busy || working || push.state.working || !preferences;
   const rowEnabled = pendingEnabled ?? (!!preferences?.expense_updates && preferences.notifications_enabled !== false);
   const value = preferences ? rowEnabled ? 'On' : 'Off' : undefined;
+  useLoading(open && (loading || working));
   function close() { setOpen(false); requestAnimationFrame(() => row.current?.focus()); }
   useEffect(() => {
     if (Platform.OS !== 'web' || !open) return;

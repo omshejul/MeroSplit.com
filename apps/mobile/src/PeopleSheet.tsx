@@ -1,3 +1,4 @@
+import LoadingOverlay from './LoadingOverlay';
 import RowGroup from './RowGroup';
 import React, { useState } from 'react';
 import { KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
@@ -22,6 +23,7 @@ export default function PeopleSheet({ visible, onDismiss, title, icon, total, co
         {(total || count !== undefined) && <Text style={ui.caption}>{[total, count === undefined ? '' : `${count} selected`].filter(Boolean).join(' · ')}</Text>}
       </View>
     </KeyboardAvoidingView>
+    <LoadingOverlay inline />
   </DialogFocus>;
   // Keep iOS dismissal in UIKit; native-stack removal crashes Fabric on the shipped runtime.
   if (Platform.OS === 'ios') return <Modal visible={visible} presentationStyle="pageSheet" animationType={motion.enabled ? 'slide' : 'none'} allowSwipeDismissal={!disabled} onRequestClose={close}><View style={{ flex: 1, backgroundColor: palette.surface }}>{content}</View></Modal>;

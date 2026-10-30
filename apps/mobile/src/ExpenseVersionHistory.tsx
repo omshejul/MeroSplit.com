@@ -1,3 +1,4 @@
+import { useLoading } from './LoadingOverlay';
 import ScrollBottomInset from './ScrollBottomInset';
 import { ErrorState } from './UIStates';
 import { EmptyState } from './UIStates';
@@ -61,6 +62,7 @@ export default function ExpenseVersionHistory({ session, groupId, expenseId, gro
   const controller = useRef<AbortController | null>(null), mounted = useRef(false), allowed = useRef(active), connected = useRef(online);
   allowed.current = active; connected.current = online;
   const shown = active && page?.scope === scope ? page : null;
+  useLoading(active && busy);
   const list = useRef<FlatList<Row>>(null);
   async function load(before?: number, signal?: AbortSignal) {
     if (!allowed.current) return false;

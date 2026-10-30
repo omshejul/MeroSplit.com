@@ -1,3 +1,4 @@
+import LoadingOverlay, { useLoading } from './LoadingOverlay';
 import React, { useEffect, useRef, useState } from 'react';
 import { FlatList, Platform, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { Text } from 'react-native-paper';
@@ -32,6 +33,7 @@ export default function BillIconPicker({ category, disabled = false, active = tr
   const columns = fontScale > 1.15 ? 3 : 4;
   const current = picked ?? manualCategory(category ?? 'general'), cell = Math.max(44, (sheetWidth - 40 - (columns - 1) * 10) / columns);
   const blocked = saving && !queued;
+  useLoading(blocked);
   const close = () => { if (!lock.current || handedOff.current) onClose(); };
   async function choose(value: string) {
     if (!active || disabled || lock.current) return;
@@ -62,6 +64,7 @@ export default function BillIconPicker({ category, disabled = false, active = tr
       {Platform.OS !== 'ios' && <View accessible={false} pointerEvents="none" style={{ position: 'absolute', top: 8, width: 36, height: 4, backgroundColor: palette.outline, borderRadius: 2, alignSelf: 'center' }} />}
       <Button iconOnly icon="close" kind="text" accessibilityLabel="Close icon picker" disabled={blocked} onPress={close} style={{ width: 44, height: 44 }} />
     </View>
+    <LoadingOverlay inline />
   </DialogFocus>;
   if (Platform.OS !== 'web') return content;
   return <View style={{ flex: 1, justifyContent: 'flex-end', alignItems: 'center' }}>

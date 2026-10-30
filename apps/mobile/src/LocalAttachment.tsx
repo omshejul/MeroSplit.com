@@ -1,3 +1,4 @@
+import { useLoading } from './LoadingOverlay';
 import AttachmentRow from './AttachmentRow';
 import MediaPreviewFrame from './MediaPreviewFrame';
 import React, { useEffect, useState } from 'react';
@@ -10,14 +11,15 @@ import { useUI } from './ui';
 
 // The same private, local preview is used by bill drafts and pending uploads.
 export default function LocalAttachment({ file, disabled, onError }: { file: PickedMedia; disabled: boolean; onError: (message: string) => void }) {
-  const { ui, palette } = useUI(), [uri, setUri] = useState('');
+  const { ui, palette } = useUI(), [uri, setUri] = useState(''), [opening, setOpening] = useState(false), [failed, setFailed] = useState(false);
+  useLoading(opening);
   useEffect(() => {
     let active = true, resolved = '';
-    setUri('');
-    void localMediaUrl(file).then(value => { resolved = value; if (active) setUri(value); else clearLocalMediaUrl(value); }).catch(() => { if (active) onError('Could not load the saved file.'); });
+    setUri(''); setFailed(false);
+    void localMediaUrl(file).then(value => { resolved = value; if (active) setUri(value); else clearLocalMediaUrl(value); }).catch(() => { if (active) { setFailed(true); onError('Could not load the saved file.'); } });
     return () => { active = false; if (resolved) clearLocalMediaUrl(resolved); };
   }, [file.uri]);
   const pdf = file.type === 'application/pdf';
-  return <AttachmentRow title={file.name} label={`Preview ${file.name}`} subtitle={`${mediaSize(file.size)} · Tap to preview`} disabled={disabled || !uri} onOpen={() => void openLocalMedia(file, uri).catch(() => onError('Could not preview this file. Try again.'))} thumbnail={uri && !pdf ? <Image source={{ uri }} style={{ width: 56, height: 56, borderRadius: 8 }} accessibilityLabel={file.name} onError={() => onError('Could not load the photo preview.')} />
-      : <MediaPreviewFrame borderRadius={8} label={`${pdf ? 'PDF' : 'Photo'} preview`} text={pdf ? 'PDF' : 'Photo'} />} />;
+  return <AttachmentRow title={file.name} label={`Preview ${file.name}`} subtitle={`${mediaSize(file.size)} · Tap to preview`} disabled={disabled || !uri} onOpen={() => { setOpening(true); void openLocalMedia(file, uri).catch(() => onError('Could not preview this file. Try again.')).finally(() => setOpening(false)); }} thumbnail={uri && !pdf ? <Image source={{ uri }} style={{ width: 56, height: 56, borderRadius: 8 }} accessibilityLabel={file.name} onError={() => onError('Could not load the photo preview.')} />
+      : <MediaPreviewFrame loading={!uri && !failed} borderRadius={8} label={`${pdf ? 'PDF' : 'Photo'} preview`} text={pdf ? 'PDF' : 'Photo'} />} />;
 }

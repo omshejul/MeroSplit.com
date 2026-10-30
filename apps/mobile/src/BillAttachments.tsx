@@ -1,3 +1,4 @@
+import { useLoading } from './LoadingOverlay';
 import RowGroup from './RowGroup';
 import { animateLayout } from './layoutTransition';
 import { ErrorState } from './UIStates';
@@ -105,6 +106,7 @@ export default function BillAttachments({ session, groupId, expenseId, revision,
     }) }]);
   }
   const disabled = busy || loading || working, editable = !readOnly && canModify;
+  useLoading(loading || working);
   return <View role="region" accessibilityLabel="Attachments" style={{ gap: 10 }}>
     <SectionHeading>Attachments{items.length ? ` (${items.length})` : ''}</SectionHeading>
     {!session ? <Text style={ui.caption}>Sign in to view attachments.</Text> : <>

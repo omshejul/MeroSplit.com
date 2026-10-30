@@ -1,3 +1,4 @@
+import { useLoading } from './LoadingOverlay';
 import React, { useState } from 'react';
 import { Image, Platform, View } from 'react-native';
 import { Text } from 'react-native-paper';
@@ -32,6 +33,7 @@ export default function SignInMethods({ session, busy, connections, onGoogle, on
   const { ui, dark } = useUI(), linked = connections.connected;
   const [appleError, setAppleError] = useState<Error | null>(null);
   const disabled = busy || connections.working || connections.status !== 'ready';
+  useLoading(connections.working || !connections.connected && connections.status === 'loading');
   function disconnect(account: ConnectedProvider) {
     const name = account.provider === 'google' ? 'Google' : 'Apple';
     Alert.alert(`Disconnect ${name}?`, `Remove ${account.email || account.uid} as a sign-in method. You can use your other sign-in methods.`, [

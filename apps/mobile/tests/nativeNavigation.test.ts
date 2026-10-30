@@ -23,7 +23,7 @@ function module(env: Record<string, any> = {}) {
     createNativeStackNavigator: () => ({ Navigator: 'Navigator', Screen: 'Screen', Group: 'Group' }), useUI: () => ({ palette: {}, motion: { enabled: true } }),
     KeyboardDialog: 'KeyboardDialog', DialogFocus: 'DialogFocus', Dialog: { Title: 'Title' }, CancelDialogActions: 'CancelDialogActions', Button: 'Button', NativeSheetProvider: 'NativeSheetProvider', NativeSheetScreen: 'NativeSheetScreen',
     ScreenDraftDiscard: { Provider: 'DraftDiscard' }, ScreenRemovalLock: { Provider: 'Lock' }, useCallback: (fn: any) => fn, ...env };
-  return new Function('env', `with(env){${code};return {useAppNavigation,RouteScene,AppStack,webLinking};}`)(scope);
+  return new Function('env', `with(env){ const useLoading = env.useLoading ?? (() => {}), LoadingOverlay = env.LoadingOverlay ?? 'LoadingOverlay';${code};return {useAppNavigation,RouteScene,AppStack,webLinking};}`)(scope);
 }
 function navigationHarness() {
   const router = StackRouter({ initialRouteName: 'home' });
@@ -124,7 +124,7 @@ test('App renders each retained route using its own group and record; account ad
   let render: ts.FunctionDeclaration | undefined;
   function visit(node: ts.Node) { if (ts.isFunctionDeclaration(node) && node.name?.text === 'renderScreen') render = node; ts.forEachChild(node, visit); } visit(app);
   const declarations = render!.body!.statements.slice(0, 11).map(node => node.getText(app)).join('\n');
-  const compute = new Function('env', `with(env){${ts.transpile(declarations + ';return {screen,selected,expense,noticeVisibility};', { target: ts.ScriptTarget.ES2022 })}}`);
+  const compute = new Function('env', `with(env){ const useLoading = env.useLoading ?? (() => {}), LoadingOverlay = env.LoadingOverlay ?? 'LoadingOverlay';${ts.transpile(declarations + ';return {screen,selected,expense,noticeVisibility};', { target: ts.ScriptTarget.ES2022 })}}`);
   const env = { submissions: { current: new Set() }, route: { name: 'group', params: { groupId: 'behind' } }, focused: false, groups: [{ group: { id: 'behind', participants: [], expenses: [{ id: 'b' }], settlements: [] } }, { group: { id: 'front', participants: [], expenses: [], settlements: [] } }], commands: [], session: { userId: '1' },
     notices: { notices: [], acknowledgeVisible() {} }, authHeld: false, foreground: true, expired: false, alertOpen: false, viewport: null, scrollEpoch: 0, owner: 'account', online: true, groupVersions: { current: '' } };
   assert.equal(compute(env).selected.group.id, 'behind'); assert.equal(compute(env).noticeVisibility.enabled, false);
@@ -148,7 +148,7 @@ test('the actual form commit callback transfers both file ownership and navigati
     ts.forEachChild(node, visit);
   } visit(source);
   const calls: string[] = [], expense = {}, attachment = {};
-  const handler = new Function('env', `with(env){${ts.transpile('const handler = ' + callback!.getText(source), { target: ts.ScriptTarget.ES2022 })};return handler;}`)({
+  const handler = new Function('env', `with(env){ const useLoading = env.useLoading ?? (() => {}), LoadingOverlay = env.LoadingOverlay ?? 'LoadingOverlay';${ts.transpile('const handler = ' + callback!.getText(source), { target: ts.ScriptTarget.ES2022 })};return handler;}`)({
     saveExpense: (value: unknown, file: unknown, onQueued: () => void) => { assert.equal(value, expense); assert.equal(file, attachment); calls.push('commit'); onQueued(); },
     billQueued: () => calls.push('navigation-ownership'),
   });
@@ -163,7 +163,7 @@ test('an uncached browser route attempts resolution once and cannot auto-loop af
   let reads = 0;
   const env = { ready: true, session: { token: 'current' }, authHeld: false, expired: false, busy: false, appLink: null, groupId: 'g', expenseId: null, settlementId: null, selected: null, expense: null, settlement: null,
     screen: 'group', resolvedRoute: { current: '' }, navigation: { route: { key: 'entry-one' } }, setAppLink: () => reads++ };
-  const run = new Function('env', `with(env){${ts.transpile('const handler = ' + callback!.getText(source), { target: ts.ScriptTarget.ES2022 })};return handler;}`)(env);
+  const run = new Function('env', `with(env){ const useLoading = env.useLoading ?? (() => {}), LoadingOverlay = env.LoadingOverlay ?? 'LoadingOverlay';${ts.transpile('const handler = ' + callback!.getText(source), { target: ts.ScriptTarget.ES2022 })};return handler;}`)(env);
   run(); run(); assert.equal(reads, 1); env.navigation.route.key = 'entry-two'; run(); assert.equal(reads, 2);
 });
 
@@ -238,7 +238,7 @@ test('actual payment Save commits before returning and waits for app and form lo
   let declaration: ts.FunctionDeclaration | undefined;
   function visit(node: ts.Node) { if (ts.isFunctionDeclaration(node) && node.name?.text === 'savePayment') declaration = node; ts.forEachChild(node, visit); } visit(source);
   let committed = false; const completion = h.navigation();
-  const save = new Function('env', `with(env){${ts.transpile(declaration!.getText(source), { target: ts.ScriptTarget.ES2022 })};return savePayment;}`)({
+  const save = new Function('env', `with(env){ const useLoading = env.useLoading ?? (() => {}), LoadingOverlay = env.LoadingOverlay ?? 'LoadingOverlay';${ts.transpile(declaration!.getText(source), { target: ts.ScriptTarget.ES2022 })};return savePayment;}`)({
     selected: { group: { archived: false } }, selfId: 'self', pending: [], session: null, uuid: () => 'payment-id', groupId: 'g',
     command: (_method: string, path: string, body: any) => ({ path, body }),
     queue: async (command: any) => { assert.equal(command.path, '/groups/g/settlements'); assert.equal(command.body.id, 'payment-id'); committed = true; },

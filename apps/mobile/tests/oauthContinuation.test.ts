@@ -14,6 +14,7 @@ function component() {
   };
   const code = ts.transpile(readFileSync(new URL('../src/OAuthContinuation.tsx', import.meta.url), 'utf8'), { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.React });
   const modules: Record<string, unknown> = {
+    './LoadingOverlay': { useLoading() {} },
     react: { ...React, default: React }, 'react-native': { View: 'View', useWindowDimensions: () => ({ width: 390, height: 640 }) }, 'react-native-paper': { Text: 'Text', Dialog: { Title: 'Title' } },
     './api': { request: async (_: unknown, path: string) => { requests.push(path); return { authorization_url: await replies.shift() }; } },
     './EmailLinkScreens': { NameOnlyForm: 'NameOnlyForm' }, './DialogFocus': 'DialogFocus', './KeyboardDialog': 'KeyboardDialog',

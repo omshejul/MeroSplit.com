@@ -29,7 +29,7 @@ function form(db: any, options: any = {}) {
   };
   const source=ts.createSourceFile('ExpenseForm.tsx',readFileSync(new URL('../src/ExpenseForm.tsx',import.meta.url),'utf8'),ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
   const body=source.statements.filter(n=>!ts.isImportDeclaration(n)).map(n=>n.getText(source).replace(/^export (?:default )?/, '')).join('\n');
-  const component=new Function('env',`with(env){${ts.transpile(body,{target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.React})};return ExpenseForm;}`)(env);
+  const component=new Function('env',`with(env){ const useLoading = env.useLoading ?? (() => {}), LoadingOverlay = env.LoadingOverlay ?? 'LoadingOverlay';${ts.transpile(body,{target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.React})};return ExpenseForm;}`)(env);
   const props={group,selfId:'self',owner:'account-a',writes,busy:false,onSave:async(...args:any[])=>{saves.push(args);args[2]?.()},...options};
   const render=()=>{cursor=0;return component(props)};
   const settle=async()=>{for(let i=0;i<5;i++){render();effects.splice(0).forEach(fn=>fn());await tick()}return render()};
@@ -102,7 +102,7 @@ test('actual navigation Cancel preserves draft; Discard waits for its own persis
  }ts.forEachChild(node,visit)}visit(source);
  assert(handlers.cancel&&handlers.discard);const actions:any[]=[],clears:any[]=[];let release!:(value:boolean)=>void;
  const env={pending:{type:'GO_BACK'},blocked:false,localBlocked:false,discardLock:{current:false},setDiscarding(){},navigation:{isFocused:()=>true,dispatch:(v:any)=>actions.push(v)},setPending:(v:any)=>clears.push(v),draftDiscard:{current:()=>new Promise<boolean>(r=>release=r)}};
- const bind=(name:string)=>new Function('env',`with(env){${ts.transpile('const handler = '+handlers[name],{target:ts.ScriptTarget.ES2022})};return handler;}`)(env);
+ const bind=(name:string)=>new Function('env',`with(env){ const useLoading = env.useLoading ?? (() => {}), LoadingOverlay = env.LoadingOverlay ?? 'LoadingOverlay';${ts.transpile('const handler = '+handlers[name],{target:ts.ScriptTarget.ES2022})};return handler;}`)(env);
  bind('cancel')();assert.equal(actions.length,0);assert.equal(clears.length,1);bind('discard')();await tick();assert.equal(actions.length,0,'navigation must wait for SQLite discard');release(false);await tick();assert.equal(actions.length,0,'failed discard must retain form');bind('discard')();await tick();release(true);await tick();assert.equal(actions.length,1);
 });
 

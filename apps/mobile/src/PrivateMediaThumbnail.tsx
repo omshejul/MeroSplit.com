@@ -27,5 +27,5 @@ export default function PrivateMediaThumbnail({ session, media, size = 56, profi
   if (failed) return <MediaPreviewFrame size={size} label={`${preview} preview unavailable`} text={preview === 'PDF' ? 'PDF' : 'Photo'} />;
   if (profile) return <Avatar size={size} photo={media} backgroundColor={palette.soft} label="Your profile photo"><Icon name="me" size={24} color={palette.muted} /></Avatar>;
   return url ? <Image source={{ uri: url }} style={[shape, { backgroundColor: palette.soft }]} resizeMode={preview === 'PDF' ? 'contain' : 'cover'} accessibilityLabel={profile ? 'Your profile photo' : media.name} onError={retry} />
-    : <MediaPreviewFrame size={size} label={`Loading ${preview} preview`} />;
+    : <MediaPreviewFrame loading size={size} label={`Loading ${preview} preview`} />;
 }

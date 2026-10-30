@@ -1,3 +1,4 @@
+import { useLoading } from './LoadingOverlay';
 import { LoadingState } from './UIStates';
 import { NoticeBanner } from './UIStates';
 import { ErrorText } from './ui';
@@ -65,6 +66,7 @@ export default function SplitwiseImportScreen({ session, busy, onBusyChange, onI
   const scope = accountOwner(session); activeOwner.current = scope;
   const current = () => mounted.current && activeOwner.current === scope;
   const disabled = busy || checking || working;
+  useLoading(checking || working);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   useEffect(() => {
     let active = true; setChecking(true); setError('');

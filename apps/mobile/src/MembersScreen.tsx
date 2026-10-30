@@ -1,3 +1,4 @@
+import { useLoading } from './LoadingOverlay';
 import RowGroup from './RowGroup';
 import { NoticeBanner } from './UIStates';
 import { CloseDialogActions } from './DialogParts';
@@ -161,6 +162,7 @@ function MemberSettings({ group, selfId, busy, addPersonRequest = 0, onAction, o
   const savedEmail = directPerson?.email ?? '', email = contactEmail ?? savedEmail;
   const emailChanged = email.trim().toLowerCase() !== savedEmail.trim().toLowerCase();
   const disabled = busy || working;
+  useLoading(working);
   useEffect(() => {
     if (lastAddRequest.current === addPersonRequest) return;
     lastAddRequest.current = addPersonRequest;

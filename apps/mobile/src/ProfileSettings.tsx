@@ -1,3 +1,4 @@
+import { useLoading } from './LoadingOverlay';
 import RowGroup from './RowGroup';
 import FieldDialog from './FieldDialog';
 import { TextField, UPIAddressField } from './FormFields';
@@ -24,6 +25,7 @@ export default function ProfileSettings({ name, vpa, busy, onSaveName, onSaveUPI
   const initialChoiceFocused = useRef(false);
   const choices = useRef<React.ComponentRef<typeof View>>(null), doneArea = useRef<React.ComponentRef<typeof View>>(null), { height } = useWindowDimensions();
   const disabled = busy || saving, isName = editing === 'name', isAppearance = editing === 'appearance', isCurrency = editing === 'currency', isChoice = isAppearance || isCurrency;
+  useLoading(saving);
   const valid = isName ? !!draft.trim() : validUPIAddress(draft.trim());
   function open(field: NonNullable<typeof editing>) { initialChoiceFocused.current = false; setDraft(field === 'name' ? name : vpa); setError(''); setEditing(field); }
   function close() { const row = isName ? nameRow : isAppearance ? appearanceRow : isCurrency ? currencyRow : upiRow; Keyboard.dismiss(); setEditing(null); setError(''); requestAnimationFrame(() => row.current?.focus()); }

@@ -1,3 +1,4 @@
+import { useLoading } from './LoadingOverlay';
 import React, { useEffect, useRef, useState } from 'react';
 import { Keyboard, Platform, TextInput } from 'react-native';
 import { Text } from 'react-native-paper';
@@ -41,12 +42,14 @@ export default function PushInvitation({ owner, session, eligible, push, onVisib
   }, [allowed, owner, session.token, session.baseUrl]);
   const show = allowed && visible;
   useEffect(() => { onVisibility(show); return () => onVisibility(false); }, [show, onVisibility]);
+  const [enabling, setEnabling] = useState(false);
+  useLoading(enabling);
   async function enable() {
     if (!mounted.current || !show || requesting.current) return;
-    requesting.current = true; setVisible(false);
+    requesting.current = true; setEnabling(true); setVisible(false);
     try { await push.enable(); }
     catch { if (mounted.current) toast('Could not enable notifications. Try again in Me → Notifications.'); }
-    finally { requesting.current = false; }
+    finally { requesting.current = false; if (mounted.current) setEnabling(false); }
   }
   return <KeyboardDialog visible={show} onDismiss={() => setVisible(false)}>
     <Dialog.Title>Stay updated on shared bills?</Dialog.Title>

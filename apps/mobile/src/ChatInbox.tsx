@@ -1,3 +1,4 @@
+import { useLoading } from './LoadingOverlay';
 import React, { useEffect, useRef, useState } from 'react';
 import { Text, View } from 'react-native';
 import { request } from './api';
@@ -12,6 +13,7 @@ export default function ChatInbox({ session, active, busy, onOpen, onEmptyChange
   const [saved, setSaved] = useState<{ scope: string; page: Inbox } | null>(null);
   const page = saved?.scope === scope ? saved.page : null;
   const emptyHandler = useRef(onEmptyChange); emptyHandler.current = onEmptyChange;
+  useLoading(active && !page && !error);
   useEffect(() => {
     setError('');
     if (!active) { emptyHandler.current?.(false); return; }
