@@ -9,8 +9,6 @@ const actionSource = readFileSync(new URL('../src/AddActionButton.tsx', import.m
 const actionCode = ts.transpile(actionSource, { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React });
 const source = ts.createSourceFile('HomeCreateButton.tsx', readFileSync(new URL('../src/HomeCreateButton.tsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
 const fn = source.statements.find(node => ts.isFunctionDeclaration(node))!;
-const insetFn = source.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === 'HomeCreateInset')!;
-const insetCode = ts.transpile(insetFn.getText(source).replace('export ', ''), { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React });
 const code = ts.transpile(fn.getText(source).replace('export default ', ''), { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React });
 
 test('Create capsule anchors above custom/native navigation and keeps margins transparent to touches', () => {
@@ -23,8 +21,6 @@ test('Create capsule anchors above custom/native navigation and keeps margins tr
     const native = OS === 'ios' && Version >= 26;
     assert.equal(tree.type, native ? 'NativeSafeAreaView' : 'View');
     assert.equal(loaded, native ? 1 : 0, 'Only native iOS tabs need the experimental inset component');
-    const inset = new Function('env', `with(env){${insetCode};return HomeCreateInset;}`)(withSharedUI(env))();
-    if (native) { assert.equal(inset.type, 'NativeSafeAreaView'); assert.deepEqual(inset.props.edges, { bottom: true }); assert.equal(inset.props.pointerEvents, 'none'); } else assert.equal(inset, null);
     assert.deepEqual(tree.props.edges, native ? { bottom: true } : undefined);
     assert.deepEqual(tree.props.style, { position: 'absolute', left: 0, right: 0, bottom: 0, flex: 0, zIndex: 1 });
     assert.equal(tree.props.pointerEvents, 'box-none');
@@ -44,7 +40,7 @@ test('Create capsule anchors above custom/native navigation and keeps margins tr
     assert.equal(button.props.style.minHeight, 48);
     assert.equal(button.props.style.borderRadius, 999);
     button.props.onPress(); assert.equal(clicked, 1);
-    const disabled = render({ direct, disabled: true, onPress() {} }).children[0].children[0];
+    const disabled=render({ direct, disabled: true, onPress() {} }).children[0].children[0];
     assert.equal((OS === 'ios' ? disabled.children[0] : disabled).props.disabled, true);
     if (OS === 'ios') assert.equal(disabled.props.interactive, false);
   }
@@ -77,4 +73,13 @@ test('Create capsule keeps the existing create route, appears on Groups/People o
   assert.equal(styles(false, true, {})[1].paddingBottom, 120);
   assert.equal(styles(false, false, {})[1], false);
   assert.equal(styles(true, false, {}, 180)[1].paddingBottom, 180, 'Larger accessibility text gets measured clearance');
+});
+
+test('stack floating actions report their entire overlay including bottom safe area',()=>{
+ const source=readFileSync(new URL('../src/FloatingActionContainer.tsx',import.meta.url),'utf8').replace(/^import .*$/mg,'').replace('export default ','');
+ const code=ts.transpile(source,{target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.React});
+ const render=new Function('env',`with(env){${code};return FloatingActionContainer;}`)({React,Platform:{OS:'ios',Version:27},BottomSafeArea:'BottomSafeArea',View:'View',pageWidthStyle:{}});
+ let height=0;const tree=render({home:false,children:'Add expense',onHeight:(value:number)=>{height=value;}});
+ assert.equal(tree.type,'BottomSafeArea');assert.equal(tree.children[0].props.onLayout,undefined);
+ tree.props.onLayout({nativeEvent:{layout:{height:196}}});assert.equal(height,196);
 });

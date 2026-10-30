@@ -1,3 +1,4 @@
+import ScrollBottomInset from './ScrollBottomInset';
 import { ErrorState } from './UIStates';
 import { EmptyState } from './UIStates';
 import PaginationFooter from './PaginationFooter';
@@ -110,10 +111,10 @@ export default function ExpenseVersionHistory({ session, groupId, expenseId, gro
     ListHeaderComponent={<View style={styles.subtitle}><Text style={ui.body}>{title}</Text>{shown && !online && <Text style={ui.caption}>Downloaded version history. Connect to check for newer changes.</Text>}{shown && !!error && <ErrorState error={error} disabled={busy} onRetry={online && !paging.failed ? () => setRetry(value => value + 1) : undefined} />}</View>}
     ListEmptyComponent={error ? <ErrorState error={error} onRetry={online ? () => setRetry(value => value + 1) : undefined} style={styles.status} />
       : !shown ? (cacheScope === scope ? <LoadingSpinner visible /> : undefined) : <EmptyState message={shown.next_before ? 'No recorded changes on this page.' : 'No version history was recorded.'} />}
-    ListFooterComponent={<PaginationFooter paging={paging} error="Could not load earlier changes." loadingLabel="Loading…" style={styles.status}>
+    ListFooterComponent={<><PaginationFooter paging={paging} error="Could not load earlier changes." loadingLabel="Loading…" style={styles.status}>
       {shown?.legacy_gap && rows.length > 0 && <Text style={ui.caption}>Some earlier details weren’t recorded.</Text>}
       {shown?.next_before != null && !online && <Text style={ui.caption}>Earlier changes have not downloaded. Reconnect to finish.</Text>}
-    </PaginationFooter>} />;
+    </PaginationFooter><ScrollBottomInset /></>} />;
 }
 const styles = StyleSheet.create({
   subtitle: { paddingBottom: 18 },

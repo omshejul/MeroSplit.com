@@ -1,3 +1,4 @@
+import ScrollBottomInset from './ScrollBottomInset';
 import AppLogo from './AppLogo';
 import React, { useEffect, useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, View } from 'react-native';
@@ -31,6 +32,7 @@ export default function SignInLayout({ children, busy, onBack }: { children: Rea
         </View>
         {children}
       </View>
+      <ScrollBottomInset />
     </ScrollView>
   </View>;
   // Android edge-to-edge windows may overlay the IME despite adjustResize.

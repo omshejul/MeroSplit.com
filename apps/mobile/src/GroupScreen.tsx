@@ -32,6 +32,7 @@ import { SectionHeading, AmountText, balanceColor, Button, Icon, useUI } from '.
 
 type Transfer = { sender: string; recipient: string; amount: string };
 type Props = {
+  bottomClearance?: number;
   categoryIcons?: ExpenseIcons; noticeVisibility?: NoticeVisibility; header?: React.ReactNode;
   revision?: number; onUpdatesAvailable?: (available: boolean) => void; previewError?: string;
   group: Group; accepted: Group; pending: Command[]; busy: boolean; selfId: string;
@@ -162,7 +163,7 @@ function BillSearch({ value, onChange, onSearch, onClose, showSubmit, autoFocus 
   </View>;
 }
 
-export default function GroupScreen({ categoryIcons, header, noticeVisibility, group: incoming, accepted: incomingAccepted, previewError: incomingPreviewError = '', revision = 0, onUpdatesAvailable, pending, busy, selfId, pagingScope = incoming.id, active = true, online = true, onRefresh, refreshing = false, onVisibleBills, onPrefetchBill, onPrefetchPayment, onLoadBalanceGroup, onHistoryPage, onExpense, onPayment, onSettle, onRemind }: Props) {
+export default function GroupScreen({ bottomClearance = 120, categoryIcons, header, noticeVisibility, group: incoming, accepted: incomingAccepted, previewError: incomingPreviewError = '', revision = 0, onUpdatesAvailable, pending, busy, selfId, pagingScope = incoming.id, active = true, online = true, onRefresh, refreshing = false, onVisibleBills, onPrefetchBill, onPrefetchPayment, onLoadBalanceGroup, onHistoryPage, onExpense, onPayment, onSettle, onRemind }: Props) {
   const { ui, motion } = useUI();
   // Background cache updates must not replace a page while someone is reading it.
   // Adopt both views together only for an explicit read or the user's saved changes.
@@ -244,7 +245,7 @@ export default function GroupScreen({ categoryIcons, header, noticeVisibility, g
       onScroll={event => { setScrollEpoch(value => value + 1); }}
       keyboardShouldPersistTaps="handled" onViewableItemsChanged={viewable.current} onRefresh={onRefresh} refreshing={refreshing}
       keyExtractor={row => row.kind === 'bill' ? `bill:${row.bill.id}` : `payment:${row.payment.id}`}
-      contentContainerStyle={[pageContentStyle, { gap: 0, paddingBottom: 120 }]} renderItem={({ item: row }) => <StaggerItem entry={entries.current.get(transactionKey(row))}>{row.kind === 'payment'
+      contentContainerStyle={[pageContentStyle, { gap: 0, paddingBottom: bottomClearance }]} renderItem={({ item: row }) => <StaggerItem entry={entries.current.get(transactionKey(row))}>{row.kind === 'payment'
         ? <PaymentRow payment={row.payment} accepted={accepted} group={group} selfId={selfId} busy={busy} onPayment={onPayment} onPrefetchPayment={onPrefetchPayment} />
         : <BillTimelineRow categoryIcons={categoryIcons} expense={row.bill} group={group} selfId={selfId} busy={busy} onExpense={onExpense} onPrefetchBill={onPrefetchBill} noticeVisibility={group === accepted ? visibility : undefined} />}</StaggerItem>}
       ListHeaderComponent={<View style={s.content}>{header}
