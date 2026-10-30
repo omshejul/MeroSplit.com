@@ -85,11 +85,12 @@ test('native tab changes keep routes authoritative and never mount four account 
   const body = file.statements.filter(node => !ts.isImportDeclaration(node)).map(node => node.getText(file).replace(/^export (?:default )?/, '')).join('\n');
   const refs = { current: 0 }, selected: string[] = [], rendered: string[] = [];
   const render = new Function('env', `with(env){${ts.transpile(body, { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React })};return HomeTabs;}`)({
-    React, Platform: { Version: '27' }, Tabs: { Host: 'NativeTabs', Screen: 'NativeTab' }, Animated: { View: 'AnimatedView' },
+    React, SafeAreaProvider:'SafeAreaProvider', SafeAreaView:'SafeAreaView', Platform: { Version: '27' }, Tabs: { Host: 'NativeTabs', Screen: 'NativeTab' }, Animated: { View: 'AnimatedView' },
     useRef: () => refs, useUI: () => ({ palette: { accent: 'accent', background: 'background' }, dark: true }), useHomeTabSwipe: () => ({}),
   });
   const props = { selected: 'Groups', busy: false, onSelect: (value: string) => selected.push(value), render: (value: string) => { rendered.push(value); return value; } };
   const tree = render(props); assert.equal(tree.type, 'NativeTabs'); assert.deepEqual(rendered, ['Groups']);
+  for(const screen of tree.children[0]){const provider=screen.children[0];assert.equal(provider?.type,'SafeAreaProvider','native tab owns its safe-area context from first mount');const boundary=provider.children[0];assert.equal(boundary.type,'SafeAreaView');assert.deepEqual(boundary.props.edges,['bottom']);assert.equal(boundary.props.style.flex,1);}
   tree.props.onTabSelected({ nativeEvent: { provenance: 4, selectedScreenKey: 'Friends', actionOrigin: 'user' } });
   assert.deepEqual(selected, ['Friends']); assert.equal(refs.current, 4);
   tree.props.onTabSelected({ nativeEvent: { provenance: 5, selectedScreenKey: 'Activity', actionOrigin: 'programmatic-js' } });

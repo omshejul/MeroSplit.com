@@ -7,23 +7,23 @@ const parse=(path:string)=>ts.createSourceFile(path,read(path),ts.ScriptTarget.L
 const app=parse('App.tsx');
 function find(source:ts.SourceFile,predicate:(node:ts.Node)=>boolean){let result:ts.Node|undefined;function visit(node:ts.Node){if(predicate(node))result=node;ts.forEachChild(node,visit);}visit(source);return result;}
 const main=find(app,node=>ts.isJsxElement(node)&&node.openingElement.tagName.getText(app)==='ScrollView'&&node.openingElement.attributes.properties.some(a=>ts.isJsxAttribute(a)&&a.name.getText(app)==='role'&&a.initializer?.getText(app)==='"main"')) as ts.JsxElement;
-const footers=main.children.filter(child=>/Home(Create|Tab)Inset/.test(child.getText(app))).map(child=>child.getText(app));
+const footers=main.children.filter(child=>/ScrollBottomInset/.test(child.getText(app))).map(child=>child.getText(app));
 const React={Fragment:'Fragment',createElement:(type:any,props:any,...children:any[])=>({type,props:props??{},children})};
-function evaluate(expression:string,env:Record<string,any>){const program=ts.transpile(`function render(){return (${expression});}`,{jsx:ts.JsxEmit.React,target:ts.ScriptTarget.ES2022});return new Function('env',`with(env){${program};return render();}`)({React,HomeCreateInset:'NavigationInset',HomeTabInset:'NavigationInset',ScrollBottomInset:'PhysicalInset',...env});}
-function count(value:any):number{return Array.isArray(value)?value.reduce((n,v)=>n+count(v),0):value&&typeof value==='object'?(value.type==='NavigationInset'?1:0)+count(value.children):0;}
+function evaluate(expression:string,env:Record<string,any>){const program=ts.transpile(`function render(){return (${expression});}`,{jsx:ts.JsxEmit.React,target:ts.ScriptTarget.ES2022});return new Function('env',`with(env){${program};return render();}`)({React,ScrollBottomInset:'PhysicalInset',...env});}
+function count(value:any):number{return Array.isArray(value)?value.reduce((n,v)=>n+count(v),0):value&&typeof value==='object'?(value.type==='PhysicalInset'?1:0)+count(value.children):0;}
 
-test('all native home lists keep a navigation inset when create actions are absent',()=>{
+test('home bodies leave bottom insets to navigation while stack pages keep their physical inset',()=>{
  for(const tab of ['Groups','Friends','Account'])for(const showCreate of [false,true]){
   const result=evaluate(`<>${footers.join('')}</>`,{screen:'home',tab,showCreate});
-  assert.equal(count(result),showCreate?0:1,`${tab}, create=${showCreate}: create footer owns its own navigation inset`);
+  assert.equal(count(result),0,`${tab}, create=${showCreate}: safe area belongs to the parent tab layout`);
  }
- assert.equal(count(evaluate(`<>${footers.join('')}</>`,{screen:'expenseDetail',showCreate:false})),0,'stack pages have no home tab overlay');
+ assert.equal(count(evaluate(`<>${footers.join('')}</>`,{screen:'expenseDetail',showCreate:false})),1,'stack pages still own their physical home-indicator inset');
 });
 
-test('Activity places navigation clearance after inbox and pagination inside its virtualized list',()=>{
+test('Activity leaves the bottom safe area to its parent tab layout',()=>{
  const source=parse('src/ActivityScreen.tsx');const attribute=find(source,node=>ts.isJsxAttribute(node)&&node.name.getText(source)==='ListFooterComponent') as ts.JsxAttribute;
  const expression=(attribute.initializer as ts.JsxExpression).expression!.getText(source);
- assert.equal(count(evaluate(expression,{footer:'Inbox',PaginationFooter:'PaginationFooter',paging:{},s:{message:{}}})),1);
+ assert.equal(count(evaluate(expression,{footer:'Inbox',PaginationFooter:'PaginationFooter',paging:{},s:{message:{}}})),0);
 });
 
 test('bill list bottom spacing grows with the measured floating action',()=>{

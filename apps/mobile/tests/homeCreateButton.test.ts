@@ -18,18 +18,15 @@ test('Create footer stays in normal layout above custom/native navigation', () =
       require: (name: string) => { assert.equal(name, 'react-native-screens/experimental'); loaded++; return { SafeAreaView: 'NativeSafeAreaView' }; } };
     const render = new Function('env', `with(env){${actionCode};${code};return HomeCreateButton;}`)(withSharedUI(env));
     const tree = render({ direct, disabled: false, onPress: () => clicked++ });
-    const native = OS === 'ios' && Version >= 26;
-    assert.equal(tree.type, native ? 'NativeSafeAreaView' : 'View');
-    assert.equal(loaded, native ? 1 : 0, 'Only native iOS tabs need the experimental inset component');
-    assert.deepEqual(tree.props.edges, native ? { bottom: true } : undefined);
-    assert.deepEqual(tree.props.style, { flex: 0 });
+    assert.equal(tree.type, 'View');
+    assert.equal(loaded, 0, 'Navigation owns the inset, never the action');
+    assert.equal(tree.props.edges, undefined);
     assert.equal(tree.props.pointerEvents, 'box-none');
-    assert.equal(tree.props.collapsable, false);
-    const content = tree.children[0], glass = content.children[0], button = OS === 'ios' ? glass.children[0] : glass;
+    const content = tree, glass = content.children[0], button = OS === 'ios' ? glass.children[0] : glass;
     if (OS === 'ios') { assert.equal(glass.type, 'GlassSurface'); assert.equal(glass.props.interactive, true); assert.equal(glass.props.tintColor, 'accent'); }
     assert.equal(button.props.kind, 'primary');
     assert.equal(button.props.style.backgroundColor, OS === 'ios' ? 'transparent' : 'accent', 'iOS pressable must not paint over native glass');
-    assert.equal(tree.props.style.position, undefined, 'home actions reserve space instead of overlaying the tabs');
+    assert.equal(Object.assign({}, ...tree.props.style).position, undefined, 'home actions reserve space instead of overlaying the tabs');
     assert.equal(content.props.pointerEvents, 'box-none');
     assert.equal(content.props.style[1].paddingBottom, 16);
     assert.equal(content.props.style[1].alignItems, 'flex-end');
@@ -37,7 +34,7 @@ test('Create footer stays in normal layout above custom/native navigation', () =
     assert.equal(button.props.style.minHeight, 48);
     assert.equal(button.props.style.borderRadius, 999);
     button.props.onPress(); assert.equal(clicked, 1);
-    const disabled=render({ direct, disabled: true, onPress() {} }).children[0].children[0];
+    const disabled=render({ direct, disabled: true, onPress() {} }).children[0];
     assert.equal((OS === 'ios' ? disabled.children[0] : disabled).props.disabled, true);
     if (OS === 'ios') assert.equal(disabled.props.interactive, false);
   }

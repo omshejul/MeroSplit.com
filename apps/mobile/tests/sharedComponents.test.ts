@@ -133,10 +133,12 @@ test('AppLogo uses one asset and respects the requested size without an extra ac
   const f = fixture({ Image: 'Image' }); const logo = f.render('AppLogo', { size: 40 }); assert.equal(logo.props.source, '../assets/brand/mark.png'); assert.equal(logo.props.style.width, 40); assert.equal(logo.props.accessible, false);
 });
 
-test('FloatingActionContainer preserves native iOS tab insets, other platforms and measured clearance', () => {
-  for (const OS of ['ios', 'android', 'web']) for (const Version of [25, 26]) for (const home of [false, true]) {
-    const f = fixture({ Platform: { OS, Version } }); let height = 0; const tree = f.render('FloatingActionContainer', { home, children: 'Add', onHeight: (value: number) => height = value }); const native = home && OS === 'ios' && Version >= 26;
-    assert.equal(tree.type, native ? 'NativeSafeAreaView' : home ? 'View' : 'BottomSafeArea'); assert.equal(tree.props.pointerEvents, 'box-none'); assert.deepEqual(tree.props.edges, native ? { bottom: true } : undefined); f.find(tree, n => !!n.props.onLayout).props.onLayout({ nativeEvent: { layout: { height: 80 } } }); assert.equal(height, 80);
+test('FloatingActionContainer keeps stack actions above the physical safe area and reports full height', () => {
+  for (const OS of ['ios', 'android', 'web']) {
+    const f = fixture({ Platform: { OS } }); let height = 0;
+    const tree = f.render('FloatingActionContainer', { children: 'Add', onHeight: (value: number) => height = value });
+    assert.equal(tree.type, 'BottomSafeArea'); assert.equal(tree.props.pointerEvents, 'box-none'); assert.equal(tree.props.style.position, 'absolute');
+    tree.props.onLayout({ nativeEvent: { layout: { height: 80 } } }); assert.equal(height, 80);
   }
 });
 
