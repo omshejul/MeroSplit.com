@@ -72,6 +72,14 @@ for (const bad of [{ nonce: 'bad' }, { client_id: 'wrong' }, { expires_in: 0 }, 
   });
 }
 
+test('Google connect conflict avoids the login-only email instruction', async () => {
+  const mock = fetchReplies([Response.json({ errors: [{ code: 'google_email_conflict' }] }, { status: 409 })]);
+  try {
+    await assert.rejects(finishGoogle({ ...attempt, process: 'connect' }, 'signed', alice, () => true), /Couldn't connect Google\. Please try again\./);
+    assert.equal(alice.token, 'session-a');
+  } finally { mock.restore(); }
+});
+
 test('offline/provider HTML/conflict responses expose safe retry copy only', async () => {
   const mock = fetchReplies([Error('private transport detail'), new Response('private upstream body'), Response.json({ errors: [{ code: 'google_email_conflict' }] }, { status: 409 })]);
   try {

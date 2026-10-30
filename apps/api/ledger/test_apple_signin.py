@@ -164,10 +164,30 @@ def test_connect_cannot_take_other_apple_identity_and_stale_actor_is_rejected(ke
     other = get_user_model().objects.create_user(username="other", email="other@example.invalid")
     SocialAccount.objects.create(user=owner, provider="apple", uid="apple-sub")
     client = authenticated_client(other)
-    assert submit(client, keys, settings, apple, challenge(client, "connect"), "connect").status_code == 409
+    response = submit(client, keys, settings, apple, challenge(client, "connect"), "connect")
+    assert response.status_code == 409
+    assert response.json()["errors"][0]["code"] == "apple_already_connected"
+    assert "another MeroSplit account" in response.json()["errors"][0]["message"]
+    assert send(client, "get", "/me").json()["id"] == other.pk
     proof = challenge(client, "connect")
     assert submit(client, keys, settings, apple, proof, "login").status_code == 409
     assert SocialAccount.objects.get().user_id == owner.pk
+
+
+def test_connect_integrity_failure_does_not_claim_another_account_owns_apple(keys, settings, apple, monkeypatch):
+    user = get_user_model().objects.create_user(username="connect-owner", email="owner@example.invalid")
+    SocialAccount.objects.create(user=user, provider="google", uid="existing-google")
+    client = authenticated_client(user)
+
+    def duplicate_account(*args):
+        SocialAccount.objects.create(user=user, provider="google", uid="existing-google")
+
+    monkeypatch.setattr("ledger.apple_signin.complete_token_login", duplicate_account)
+    response = submit(client, keys, settings, apple, challenge(client, "connect"), "connect")
+    assert response.status_code == 409
+    assert response.json()["errors"][0]["code"] == "apple_unavailable"
+    assert not SocialAccount.objects.filter(provider="apple").exists()
+    assert send(client, "get", "/me").json()["id"] == user.pk
 
 
 def test_offline_exchange_consumes_proof_without_local_adoption_or_automatic_retry(keys, settings, apple):
