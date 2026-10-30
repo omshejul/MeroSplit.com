@@ -52,7 +52,7 @@ def test_crawler_preview_exposes_only_group_title_and_never_joins(client, group)
         assert '<script>' not in html and '&lt;script&gt;' in html and 'पुणे 🧡' in html
         assert f'content="https://merosplit.com{path}/card.png"' in html
         assert 'summary_large_image' in html and '<meta property="og:image:width" content="1200">' in html
-        assert 'Open MeroSplit' in html and '/app/invite/join#token=' in html
+        assert 'Continue to join' in html and '/app/invite/join#token=' in html
         assert 'http-equiv' not in html and '<script' not in html
         assert client.actor.email not in html and 'balances' not in html and 'participants' not in html
         assert response['Cache-Control'] == 'private, no-store'
@@ -107,6 +107,35 @@ def test_exact_routes_no_query_echo_no_redirects_and_post_never_joins(client, gr
         assert Client().post(path).status_code == 405
     assert Participant.objects.count() == count
     assert {'/': '/j/*'} in APPLE_ASSOCIATION['applinks']['details'][0]['components']
+
+
+@pytest.mark.parametrize('invalid', ['missing', 'revoked', 'archived', 'query'])
+def test_unavailable_invitation_has_private_recovery_page(client, group, invalid):
+    gid, *_ = group
+    code = link(client, gid)
+    name = Group.objects.get(pk=gid).name
+    path = '/j/' + code
+    if invalid == 'missing':
+        path = '/j/' + 'z' * 32
+    elif invalid == 'revoked':
+        GroupInviteLink.objects.filter(group_id=gid).delete()
+    elif invalid == 'archived':
+        Group.objects.filter(pk=gid).update(archived=True)
+    else:
+        path += '?next=private-value'
+    before = Participant.objects.count(), CommandReceipt.objects.count(), Change.objects.count()
+    response = Client().get(path)
+    html = response.content.decode()
+    assert response.status_code == 404 and response['Content-Type'].startswith('text/html')
+    assert '<h1>Invitation unavailable</h1>' in html
+    assert 'Ask the person who invited you to share a new link.' in html
+    assert '<a href="/app/">Go to MeroSplit</a>' in html
+    assert code not in html and name not in html and client.actor.email not in html and 'private-value' not in html
+    assert response['Cache-Control'] == 'private, no-store' and response['Referrer-Policy'] == 'no-referrer'
+    nonce = re.search(r'<style nonce="([A-Za-z0-9_-]+)">', html).group(1)
+    assert f"'nonce-{nonce}'" in response['Content-Security-Policy']
+    assert "default-src 'none'" in response['Content-Security-Policy'] and '<script' not in html
+    assert (Participant.objects.count(), CommandReceipt.objects.count(), Change.objects.count()) == before
 
 
 def test_card_is_group_specific_bounded_for_long_titles():

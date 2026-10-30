@@ -23,14 +23,23 @@ export default function GroupJoinDialog({ session, token, onJoined, onCancel }: 
   const { ui } = useUI();
   const profile = cachedRead<{ avatar?: import('./types').ProfilePhoto; profile_photo?: import('./types').ProfilePhoto }>(session, '/me');
   const [preview, setPreview] = useState<Preview | null>(null), [error, setError] = useState(''), [working, setWorking] = useState(false), [retry, setRetry] = useState(0);
+  const [unavailable, setUnavailable] = useState(false);
   const [step, setStep] = useState<'choose' | 'name' | 'confirm'>('choose'), [choice, setChoice] = useState<Person | null>(null), [name, setName] = useState(''), [uncertain, setUncertain] = useState(false);
   const attempt = useRef<JoinRequest | null>(null), flight = useRef(false), live = useRef(true), scope = useRef('');
   scope.current = `${session.token}|${token}`;
   useEffect(() => {
     live.current = true; const controller = new AbortController();
-    setPreview(null); setError(''); setStep('choose'); setChoice(null); setName(''); attempt.current = null; setUncertain(false);
+    setPreview(null); setError(''); setUnavailable(false); setStep('choose'); setChoice(null); setName(''); attempt.current = null; setUncertain(false);
     void request<Preview>(session, '/group-invite-links/preview', 'POST', { token }, 'json', controller.signal)
-      .then(value => { if (!controller.signal.aborted) setPreview(value); }, err => { if (!controller.signal.aborted) setError(err.message); });
+      .then(value => {
+        if (controller.signal.aborted) return;
+        setPreview(value);
+        if (!value.already_member && !value.people.length) { setName(session.displayName ?? ''); setStep('name'); }
+      }, err => {
+        if (controller.signal.aborted) return;
+        setUnavailable(err instanceof ApiError && (err.status === 403 || err.status === 404));
+        setError(err instanceof ApiError && err.status === 404 ? 'This invitation is no longer available. Ask the organizer for a new link.' : err.message);
+      });
     return () => { live.current = false; controller.abort(); };
   }, [session.token, token, retry]);
   function choose(person: Person | null) {
@@ -50,25 +59,29 @@ export default function GroupJoinDialog({ session, token, onJoined, onCancel }: 
     } catch (err) {
       if (live.current && scope.current === owner) {
         setError(err instanceof Error ? err.message : 'Could not join. Try again.');
+        if (err instanceof ApiError && (err.status === 403 || err.status === 404)) {
+          setUnavailable(true);
+          if (err.status === 404) setError('This invitation is no longer available. Ask the organizer for a new link.');
+        }
         const rejected = err instanceof ApiError && err.status >= 400 && err.status < 500 && err.status !== 429;
         if (rejected) { attempt.current = null; setUncertain(false); setPreview(null); setStep('choose'); }
         else setUncertain(true); // A lost response retries the exact confirmed request.
       }
     } finally { flight.current = false; if (live.current && scope.current === owner) setWorking(false); }
   }
-  function back() { if (!working && !uncertain) { if (step === 'confirm') setStep('name'); else if (step === 'name') setStep('choose'); else onCancel(); } }
+  function back() { if (!working && !uncertain) { if (step === 'confirm') setStep('name'); else if (step === 'name' && preview?.people.length) setStep('choose'); else onCancel(); } }
   return <Modal visible presentationStyle="fullScreen" onRequestClose={() => { if (!working) onCancel(); }}>
     <SafeAreaProvider><AppFrame><DialogFocus modal={false} style={{ flex: 1 }} busy={working} onEscape={uncertain ? onCancel : back}>
       <ScreenHeader title={preview ? `Join ${preview.name}` : 'Join group'} busy={working} onBack={uncertain ? onCancel : back} />
       <ScrollView role="main" contentInsetAdjustmentBehavior="automatic" contentContainerStyle={pageContentStyle} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
         <Text style={ui.caption}>Signed in as {session.email}</Text>
         {!preview && !error && <LoadingState label="Checking invitation…" />}
-        {!!error && <ErrorState error={error} retryLabel="Refresh invitation" disabled={working} onRetry={!preview ? () => setRetry(value => value + 1) : undefined} />}
+        {!!error && <ErrorState error={error} retryLabel="Refresh invitation" disabled={working} onRetry={!preview && !unavailable ? () => setRetry(value => value + 1) : undefined} />}
         {preview?.already_member ? <>
           <Text style={ui.body}>You already belong to {preview.name}.</Text>
           <Button title="Open group" kind="primary" disabled={working} onPress={() => void join()} style={{ minHeight: 48 }} />
         </> : preview && (step === 'choose' ? <>
-          <Text style={ui.body}>If someone already added you, find your name.</Text>
+          <Text style={ui.body}>Pick your name to keep your existing bills and payments.</Text>
           <View>
             {preview.people.map(person => <PersonRow key={person.id} name={person.name} photo={person.profile_photo} trailing={<Button title="This is me" accessibilityLabel={`This is me: ${person.name}`} disabled={working} onPress={() => choose(person)} style={{ minHeight: 48 }} />} />)}
             <View style={ui.row}><Text style={[ui.rowTitle, { flex: 1, minWidth: 0 }]}>I'm not listed</Text>
@@ -84,9 +97,9 @@ export default function GroupJoinDialog({ session, token, onJoined, onCancel }: 
           <PersonRow name={name} title={name.trim()} photo={profile?.avatar ?? profile?.profile_photo} />
           <Text style={ui.body}>{choice ? `${choice.name}'s existing bills and payments will be linked to you in this group.` : 'You will join as a new person. Existing bills and payments will stay unchanged.'}</Text>
           <Button title={working ? 'Joining…' : uncertain ? 'Try again' : `Join as ${name.trim()}`} kind="primary" disabled={working} onPress={() => void join()} style={{ minHeight: 48 }} />
-          {!uncertain && <Button title="Choose again" kind="text" disabled={working} onPress={() => setStep('choose')} style={{ minHeight: 48 }} />}
+          {!uncertain && <Button title={preview.people.length ? 'Choose again' : 'Edit name'} kind="text" disabled={working} onPress={() => setStep(preview.people.length ? 'choose' : 'name')} style={{ minHeight: 48 }} />}
         </>)}
-        <Button title="Cancel" kind="text" disabled={working} onPress={onCancel} style={{ minHeight: 48 }} />
+        <Button title={unavailable ? 'Back to MeroSplit' : 'Cancel'} kind="text" disabled={working} onPress={onCancel} style={{ minHeight: 48 }} />
         <ScrollBottomInset />
       </ScrollView>
     </DialogFocus></AppFrame></SafeAreaProvider>
