@@ -87,13 +87,13 @@ export default function ProfilePhoto({ session, busy, onChanged, compact = false
     }) }]);
   }
   const disabled = busy || loading || working;
-  useLoading(loading || working);
+  useLoading(working);
   return <View style={{ gap: 10 }}>
     {!session ? <Text style={ui.caption}>Sign in to add your profile photo.</Text> : <>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
         <Button kind="plain" accessibilityRole="button" accessibilityLabel={avatar ? 'Change profile photo' : 'Choose profile photo'} accessibilityState={{ disabled }} disabled={disabled} onPress={() => void run(choose)} style={{ flex: compact ? undefined : 1, flexShrink: compact ? 0 : undefined, width: compact ? 64 : undefined, flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 64 }}>
           <Avatar label={phase === 'saved' ? 'Profile photo updated' : undefined} photo={avatar ?? fallback} source={preview ? { uri: preview.file.uri } : undefined} size={64} backgroundColor={palette.soft}><Icon name="me" size={30} /></Avatar>
-          {compact ? <View style={{ position: 'absolute', right: 0, bottom: 0, backgroundColor: palette.background, borderRadius: 12, padding: 3 }}>{phase === 'uploading' ? <LoadingSpinner visible label="Uploading profile photo" color={palette.accent} /> : <Icon name={phase === 'saved' ? 'check' : 'edit'} size={16} />}</View> : <Text style={[ui.body, { flex: 1 }]}>{phase === 'uploading' ? 'Uploading photo…' : phase === 'saved' ? 'Photo updated' : loading ? 'Loading photo…' : avatar ? 'Change photo' : 'Choose photo'}</Text>}
+          {compact ? <View style={{ position: 'absolute', right: 0, bottom: 0, backgroundColor: palette.background, borderRadius: 12, padding: 3 }}>{loading || phase === 'uploading' ? <LoadingSpinner visible label={loading ? 'Loading profile photo' : 'Uploading profile photo'} color={palette.accent} /> : <Icon name={phase === 'saved' ? 'check' : 'edit'} size={16} />}</View> : <Text style={[ui.body, { flex: 1 }]}>{phase === 'uploading' ? 'Uploading photo…' : phase === 'saved' ? 'Photo updated' : loading ? 'Loading photo…' : avatar ? 'Change photo' : 'Choose photo'}</Text>}
         </Button>
         {avatar && <RemoveMediaMenu open={optionsOpen} disabled={disabled} label="Photo options" removeLabel="Remove photo"
           onOpen={() => setOptionsOpen(true)} onClose={() => setOptionsOpen(false)} onRemove={remove} />}

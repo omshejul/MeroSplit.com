@@ -41,7 +41,7 @@ function appHarness() {
   let pending=Promise.resolve<unknown>(undefined),fetch=async()=>({id:groupId,version:1,is_direct:false,expenses:[]});
   let claimStarted!: () => void; const claiming = new Promise<void>(resolve => { claimStarted = resolve; });
   const route={key:'link-entry'}, db={withExclusiveTransactionAsync:async(work:(transaction:unknown)=>Promise<void>)=>work(db)};
-  const env: Record<string,any>={setPushOpportunity() {},scopeGeneration:{current:0},browseCurrent:{current:'entry'},opening:{current:null},openRequests:{current:new Map()},submissions:{current:new Set()},lock:{current:false},
+  const env: Record<string,any>={startLoading:()=>()=>{},setPushOpportunity() {},scopeGeneration:{current:0},browseCurrent:{current:'entry'},opening:{current:null},openRequests:{current:new Map()},submissions:{current:new Set()},lock:{current:false},
     navigation:{ref:{getRootState:()=>route,getCurrentRoute:()=>route}},setBusyRoutes(){},setReading(){},setExpired(){},publishIfChanged:async()=>{},ready:true,session,expired:false,busy:false,activeSessionRef,authHeldRef,cookieCheck,Platform:{OS:'web'},ApiError,
     draftWrites:{current:Promise.resolve()},open:(fn:()=>Promise<unknown>)=>{pending=fn();void pending.catch(()=>{});},fetchGroup:()=>{state.fetches++;return fetch();},
     withBill:async(_s: unknown,group: unknown)=>group,getDatabase:async()=>db,accountOwner:()=>session.userId,saveGroup:async()=>{state.saves++;},readVisibleGroup:async()=>null,

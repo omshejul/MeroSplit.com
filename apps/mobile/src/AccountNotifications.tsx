@@ -65,7 +65,7 @@ export default function AccountNotifications({ session, push, busy, onBusyChange
   const disabled = busy || working || push.state.working || !preferences;
   const rowEnabled = pendingEnabled ?? (!!preferences?.expense_updates && preferences.notifications_enabled !== false);
   const value = preferences ? rowEnabled ? 'On' : 'Off' : undefined;
-  useLoading(open && (loading || working));
+  useLoading(open && (working || loading && !preferences));
   function close() { setOpen(false); requestAnimationFrame(() => row.current?.focus()); }
   useEffect(() => {
     if (Platform.OS !== 'web' || !open) return;
