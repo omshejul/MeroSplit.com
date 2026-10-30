@@ -56,7 +56,6 @@ import { groupListRows } from './src/groupListRows';
 import { AddExpenseButton, AppFrame, pageContentStyle, ScreenHeader } from './src/AppNavigation';
 import HomeTabs from './src/HomeTabs';
 import HomeCreateButton from './src/HomeCreateButton';
-import HomeTabInset from './src/HomeTabInset';
 import ScrollBottomInset from './src/ScrollBottomInset';
 import { EmailSignIn, CodeSignIn } from './src/SignInForms';
 import SignInLayout from './src/SignInLayout';
@@ -1467,7 +1466,7 @@ function AppContent() {
         </View></View>
         <AppUpdates key={`app-updates|${owner}`} update={appUpdates} />
       </>}
-    {screen === 'home' ? !showCreate && <HomeTabInset /> : <ScrollBottomInset />}
+    {screen !== 'home' && <ScrollBottomInset />}
     </ScrollView>}
     </SceneTransition>
     {showCreate && <HomeCreateButton direct={direct} disabled={busy} onPress={() => navigate('create')} />}

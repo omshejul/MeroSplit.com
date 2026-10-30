@@ -1,7 +1,6 @@
 import { ErrorState } from './UIStates';
 import { EmptyState } from './UIStates';
 import PaginationFooter from './PaginationFooter';
-import HomeTabInset from './HomeTabInset';
 import ListRow from './ListRow';
 import { categoryIcon, categoryMeaning, expenseCategory } from './categoryIcons';
 import type { ExpenseIcons, ExpenseIconRef } from './categoryIcons';
@@ -36,7 +35,7 @@ export default function ActivityScreen({ categoryIcons = {}, onVisibleExpenses, 
     ListHeaderComponent={<>{header}{error ? <ErrorState error={error} retryLabel="Try again" disabled={busy} onRetry={onRefresh} style={s.message} /> : null}</>}
     ListEmptyComponent={showEmpty && !hasMore && !error ? <EmptyState message="No activity yet" illustration={<Mascot size="empty" visible={emptyVerified && !busy} />} style={s.empty} /> : undefined}
     renderItem={({ item, index }) => <ActivityRow categoryIcons={categoryIcons} item={item} busy={busy} onOpen={onOpen} showDay={index === 0 || activityDay(items[index - 1].created_at) !== activityDay(item.created_at)} />}
-    ListFooterComponent={<>{footer}<PaginationFooter paging={paging} error="Could not load earlier activity." style={s.message} /><HomeTabInset /></>} />;
+    ListFooterComponent={<>{footer}<PaginationFooter paging={paging} error="Could not load earlier activity." style={s.message} /></>} />;
 }
 
 function ActivityRow({ categoryIcons = {}, item, busy, showDay, onOpen }: {
