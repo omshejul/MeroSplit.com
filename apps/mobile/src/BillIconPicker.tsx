@@ -1,5 +1,4 @@
-import LoadingOverlay from './LoadingOverlay';
-import { useLoading } from './LoadingOverlay';
+import LoadingOverlay, { useLoading } from './LoadingOverlay';
 import React, { useEffect, useRef, useState } from 'react';
 import { FlatList, Platform, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { Text } from 'react-native-paper';

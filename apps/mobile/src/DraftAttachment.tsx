@@ -1,6 +1,5 @@
-import { useLoading } from './LoadingOverlay';
 import AttachmentPicker from './AttachmentPicker';
-import React, { useRef, useState } from 'react';
+import React, { useRef } from 'react';
 import { View } from 'react-native';
 import * as Crypto from 'expo-crypto';
 
@@ -14,13 +13,12 @@ export default function DraftAttachment({ value, path, disabled, onChange, onBus
   onChange: (value: PendingMediaUpload | undefined) => Promise<void>;
   onBusy: (busy: boolean) => void; onError: (error: string) => void;
 }) {
-  const lock = useRef(false), [working, setWorking] = useState(false);
-  useLoading(working);
+  const lock = useRef(false);
   async function run(action: () => Promise<void>) {
     if (disabled || lock.current) return;
-    lock.current = true; setWorking(true); onBusy(true);
+    lock.current = true; onBusy(true);
     try { await action(); } catch (error) { onError(error instanceof Error ? error.message : 'Could not save this file.'); }
-    finally { lock.current = false; setWorking(false); onBusy(false); }
+    finally { lock.current = false; onBusy(false); }
   }
   async function add(photo: boolean) {
     const picked = await pickMedia(photo); if (!picked) return;
