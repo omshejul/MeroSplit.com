@@ -80,6 +80,60 @@ def test_read_queues_once_and_cached_decision_never_changes_financial_or_notice_
     assert ExpenseNotice.objects.count() == notice_count
 
 
+def test_worker_recovers_from_database_outage_and_finishes_queued_icon(client, group, settings, monkeypatch):
+    from django.core.management import call_command
+    from django.db import OperationalError
+
+    from .management.commands import send_bill_notifications as worker
+
+    settings.PUSH_PROVIDER = "expo"
+    body = bill(client, group)
+    assert icons(client, body).json()["items"][0]["state"] == "pending"
+    attempts = []
+
+    def notifications(**kwargs):
+        attempts.append(True)
+        if len(attempts) == 1:
+            raise OperationalError("Temporary failure in name resolution")
+        return 0
+
+    monkeypatch.setattr(worker, "send_pending_bill_notifications", notifications)
+    for name in (
+        "check_pending_bill_receipts", "send_pending_digests", "send_pending_bill_emails",
+        "send_chat_notifications", "send_balance_statements", "send_membership_notifications",
+        "send_activity_notifications", "send_feedback_notifications",
+    ):
+        monkeypatch.setattr(worker, name, lambda **kwargs: 0)
+    monkeypatch.setattr(categories, "evaluate_title", lambda *args: "food")
+    sleeps = []
+
+    def sleep(interval):
+        sleeps.append(interval)
+        if len(sleeps) == 2:
+            raise KeyboardInterrupt
+
+    monkeypatch.setattr(worker.time, "sleep", sleep)
+    call_command("send_bill_notifications", loop=True)
+    assert len(attempts) == 2 and sleeps == [5, 5]
+    assert icons(client, body).json()["items"][0]["category"] == "food"
+
+
+def test_one_shot_worker_reports_database_errors(settings, monkeypatch):
+    from django.core.management import call_command
+    from django.db import OperationalError
+
+    settings.PUSH_PROVIDER = "expo"
+
+    def unavailable(**kwargs):
+        raise OperationalError("Temporary failure in name resolution")
+
+    monkeypatch.setattr(
+        "ledger.management.commands.send_bill_notifications.send_pending_bill_notifications", unavailable
+    )
+    with pytest.raises(OperationalError):
+        call_command("send_bill_notifications")
+
+
 @pytest.mark.parametrize(
     "category,automatic,expected",
     [
