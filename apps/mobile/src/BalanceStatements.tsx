@@ -68,7 +68,7 @@ export default function BalanceStatements({ session, visible, emailEnabled, busy
     if (mounted.current && preferences) accept({ ...preferences, delivery });
   }
   const disabled = busy || working || !preferences;
-  useLoading(visible && (working || !preferences && !error));
+  useLoading(visible && working);
   return <View role="region" accessibilityLabel="Balance statements" style={{ gap: 8 }}>
     {preferences && <>
       <NotificationSwitch icon="mail" label="Balance statements" checked={preferences.enabled} disabled={disabled} onChange={enabled => void run(() => update(enabled, preferences.frequency))} />

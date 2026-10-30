@@ -106,7 +106,7 @@ export default function BillAttachments({ session, groupId, expenseId, revision,
     }) }]);
   }
   const disabled = busy || loading || working, editable = !readOnly && canModify;
-  useLoading(loading || working);
+  useLoading(working);
   return <View role="region" accessibilityLabel="Attachments" style={{ gap: 10 }}>
     <SectionHeading>Attachments{items.length ? ` (${items.length})` : ''}</SectionHeading>
     {!session ? <Text style={ui.caption}>Sign in to view attachments.</Text> : <>

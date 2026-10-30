@@ -207,3 +207,14 @@ test('the changing safe viewport bounds Paper iOS content, not just its outer sh
   boundary.props.onLayout({ nativeEvent: { layout: { height: 844 } } });
   assert.equal(contentStyle(props).maxHeight, 758, 'MCP restores its original safe-window cap after keyboard dismissal');
 });
+
+test('confirmed connection lists stay usable without a global spinner during background revalidation', async () => {
+  const app = harness(); let tree = app.render(); await app.flush();
+  one(tree, 'SettingsRow').props.onPress(); await turn(); tree = app.render();
+  one(tree, 'KeyboardDialog').props.onDismiss(); app.render();
+  let finish!: (value: unknown) => void; app.respond(() => new Promise(resolve => { finish = resolve; }));
+  one(app.render(), 'SettingsRow').props.onPress(); tree = app.render();
+  assert.equal(one(tree, 'KeyboardDialog').props.visible, true);
+  assert.equal(app.loading.at(-1), false, 'known connections remain visible while revalidating');
+  finish({ connections: [] }); await turn(); app.render(); assert.equal(app.loading.at(-1), false); app.unmount();
+});

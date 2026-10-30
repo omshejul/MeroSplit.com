@@ -7,8 +7,9 @@ type Element = { type: any; props: Record<string, any>; children: any[] };
 const nodes = (value: any): Element[] => Array.isArray(value) ? value.flatMap(nodes) : value && typeof value === 'object' && 'children' in value ? [value, ...value.children.flatMap(nodes)] : [];
 const tick = async () => { for (let i = 0; i < 20; i++) await Promise.resolve(); };
 function inbox(send: any) {
+  const loading: boolean[] = [];
   let cursor = 0; const states: any[] = [], deps: Record<number, any[]> = {}, cleanups: Record<number, any> = {}; let effects: any[] = [], timer: any;
-  const env = { React: { createElement: (type: any, props: any, ...children: any[]) => ({ type, props: props ?? {}, children }) }, Text: 'Text', SectionHeading: 'SectionHeading', View: 'View', MotionReveal: 'MotionReveal', SettingsRow: 'SettingsRow', Button: 'Button', request: send, useUI: () => ({ ui: {} }),
+  const env = { useLoading: (value: boolean) => loading.push(value), React: { createElement: (type: any, props: any, ...children: any[]) => ({ type, props: props ?? {}, children }) }, Text: 'Text', SectionHeading: 'SectionHeading', View: 'View', MotionReveal: 'MotionReveal', SettingsRow: 'SettingsRow', Button: 'Button', request: send, useUI: () => ({ ui: {} }),
     setTimeout: (fn: () => void) => { assert.equal(timer, undefined, 'one timer'); timer = fn; return 1; }, clearTimeout: () => { timer = undefined; },
     useState: (initial: any) => { const id = cursor++; if (!(id in states)) states[id] = initial; return [states[id], (value: any) => { states[id] = typeof value === 'function' ? value(states[id]) : value; }]; },
     useRef: (initial: any) => { const id = cursor++; return states[id] ??= { current: initial }; },
@@ -17,7 +18,7 @@ function inbox(send: any) {
   const body = source.statements.filter(node => !ts.isImportDeclaration(node)).map(node => node.getText(source).replace(/^export (?:default )?/, '')).join('\n');
   const render = new Function('env', `with(env){ const useLoading = env.useLoading ?? (() => {}), LoadingOverlay = env.LoadingOverlay ?? 'LoadingOverlay'; const StaggerItem = 'StaggerItem';${ts.transpile(body, { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React })}; return ChatInbox;}`)(env);
   const props = { session: { baseUrl: 'https://example.test', userId: '1', token: 'one' }, active: true, busy: false, onOpen() {} };
-  return { render: (changes = {}) => { cursor = 0; return render({ ...props, ...changes }); }, commit: async () => { const pending = effects; effects = []; pending.forEach(fn => fn()); await tick(); }, unmount: () => Object.values(cleanups).forEach(fn => fn?.()), timer: () => timer, advance: async () => { const fn = timer; timer = undefined; fn(); await tick(); } };
+  return { loading, render: (changes = {}) => { cursor = 0; return render({ ...props, ...changes }); }, commit: async () => { const pending = effects; effects = []; pending.forEach(fn => fn()); await tick(); }, unmount: () => Object.values(cleanups).forEach(fn => fn?.()), timer: () => timer, advance: async () => { const fn = timer; timer = undefined; fn(); await tick(); } };
 }
 
 test('Unread Activity rows open the exact conversation and fetch never acknowledges it', async () => {
@@ -79,5 +80,20 @@ test('Empty verification is false while loading, on errors or unread rows and tr
     result = { conversations: [{ group_id: 'g', expense_id: 'b', bill: 'Unread bill', unread: 1 }], next_cursor: null };
     await app.advance(); assert.equal(verified, false);
     app.render({ ...props, active: false }); await app.commit(); assert.equal(verified, false);
+  } finally { app.unmount(); }
+});
+
+
+test('initial inbox reads and background polling stay quiet; requested older chats show progress', async () => {
+  let finish!: (value: any) => void;
+  const app = inbox(() => new Promise(resolve => { finish = resolve; }));
+  try {
+    app.render(); await app.commit(); app.render(); assert.equal(app.loading.at(-1), false);
+    finish({ conversations: [{ group_id: 'g', expense_id: 'b', group: 'Trip', bill: 'Lunch', unread: 1 }], next_cursor: 'older' }); await tick();
+    const tree = app.render(); nodes(tree).find(node => node.props.title === 'Older chats')!.props.onPress();
+    app.render(); await app.commit(); app.render(); assert.equal(app.loading.at(-1), true);
+    finish({ conversations: [], next_cursor: null }); await tick(); app.render(); assert.equal(app.loading.at(-1), false);
+    await app.advance(); app.render(); assert.equal(app.loading.at(-1), false, 'timer polling never blocks the cached feed');
+    finish({ conversations: [], next_cursor: null }); await tick();
   } finally { app.unmount(); }
 });

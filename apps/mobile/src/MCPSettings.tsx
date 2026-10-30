@@ -22,7 +22,7 @@ export default function MCPSettings({ session, busy, onBusyChange }: { session: 
   const [copied, setCopied] = useState(false);
   const row = useRef<React.ComponentRef<typeof View>>(null), mounted = useRef(true), inFlight = useRef(false), revision = useRef(0);
   const disabled = busy || working;
-  useLoading(open && (loading || working));
+  useLoading(open && (working || loading && connections === null));
   const setup = `${APP_ORIGIN}/mcp/setup`;
   const prompt = `Connect MeroSplit to this client using the instructions at ${setup}, then verify with get_account_context.`;
   useEffect(() => {

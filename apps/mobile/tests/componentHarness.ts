@@ -13,11 +13,12 @@ const programs = [...files, 'SignInMethods'].map(name => {
 // The existing screen tests substitute native hosts. Resolve extracted production
 // components through the same host/hook environment instead of copying their JSX.
 export function withSharedUI<T extends Record<string, any>>(input: T): T & Record<string, any> {
+  if (input) (input as Record<string, any>).startLoading ??= () => () => {};
   if (!input?.React?.createElement || input.__sharedUI) return input;
   const env: Record<string, any> = input; env.__sharedUI = true;
   for (const name of ['RowGroup', 'PeopleSheet', 'View', 'Text', 'Button', 'ErrorText', 'Avatar', 'Icon', 'TextField', 'EmailField', 'RadioChoice', 'SectionHeading', 'DialogScrollBody', 'CancelDialogActions', 'BottomSafeArea', 'ScrollBottomInset', 'ActivityIndicator']) env[name] ??= name;
   if (env.TextField === 'TextField' && input.TextInput) env.TextField = input.TextInput;
-  env.useLoading ??= () => {}; env.LoadingOverlay ??= 'LoadingOverlay';
+  env.useLoading ??= () => () => {}; env.startLoading ??= () => () => {}; env.LoadingOverlay ??= 'LoadingOverlay';
   env.useRowDivider ??= (divider?: boolean) => divider ?? true; env.animateLayout ??= () => {};
   env.StyleSheet ??= { hairlineWidth: 1, create: (value: any) => value };
   env.pageWidthStyle ??= {}; env.radii ??= { control: 12, surface: 16 }; env.Platform ??= { OS: 'native' };

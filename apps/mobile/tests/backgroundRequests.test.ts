@@ -260,3 +260,33 @@ test('real SQLite detail publication keeps newer pages/balances and cannot resto
   assert.equal(await save(f.env.session, accepted), false); assert.equal((await readVisibleGroup(db, 'owner', 'g'))!.kind, 'unavailable');
   raw.close();
 });
+
+function rootLoading(env: any) {
+  let expression: ts.Expression | undefined;
+  function visit(node: ts.Node) { if (!expression && ts.isCallExpression(node) && node.expression.getText(app) === 'useLoading') expression = node.arguments[0]; ts.forEachChild(node, visit); }
+  visit(app); assert.ok(expression);
+  return new Function('env', `with(env){return ${expression.getText(app)};}`)(env);
+}
+
+test('cached home stays usable during background reads; only explicit actions and refresh block', () => {
+  assert.equal(rootLoading({ busy: false, reading: 3, pulling: false }), false);
+  assert.equal(rootLoading({ busy: true, reading: 0, pulling: false }), true);
+  assert.equal(rootLoading({ busy: false, reading: 0, pulling: true }), true);
+});
+
+test('an explicit uncached record opens one spinner and coalesced taps release it once', async () => {
+  const f = fixture(); let waiting = 0;
+  f.env.startLoading = () => { waiting++; return () => { waiting--; }; };
+  const open = production('openBill', f.env), first = open({ id: 'bill' }), second = open({ id: 'bill' });
+  assert.equal(waiting, 1); assert.equal(f.state.reading, 1);
+  f.response.resolve(f.group); await Promise.all([first, second]); assert.equal(waiting, 0);
+});
+
+test('cached Activity including an empty page refreshes quietly; an uncached feed waits visibly', async () => {
+  for (const cached of [null, { items: [], firstPage: true }, { items: [{ id: 'cached' }], firstPage: true }]) {
+    const f = fixture(); let waiting = 0;
+    Object.assign(f.env, { activity: cached, readPrefetch: { peek: () => undefined }, readScope: () => 'scope', activityOwner: { current: '' }, setActivity() {}, setActivityError() {}, startLoading: () => { waiting++; return () => { waiting--; }; }, request: () => f.response.promise });
+    const task = production('refreshActivity', f.env)(); assert.equal(waiting, cached ? 0 : 1);
+    f.response.resolve({ read_mode: 'activity', items: [], revision: 'r', next_cursor: null }); await task; assert.equal(waiting, 0);
+  }
+});

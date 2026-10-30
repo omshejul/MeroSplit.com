@@ -8,6 +8,7 @@ const Loading = createContext({ active: false, start: () => () => {} });
 export function useLoading(active: boolean) {
   const { start } = useContext(Loading);
   useEffect(() => active ? start() : undefined, [active, start]);
+  return start;
 }
 
 export function LoadingProvider({ children }: { children: React.ReactNode }) {
