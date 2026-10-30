@@ -5,6 +5,27 @@ import ts from 'typescript';
 import { prepareGoogle, finishGoogle, type GoogleAttempt } from '../src/googleSignIn.ts';
 import type { Session } from '../src/types.ts';
 
+test('Apple connection errors distinguish confirmed ownership, legacy conflict and generic failures', async () => {
+  const original = globalThis.fetch;
+  const current: Session = { baseUrl: 'https://merosplit.test', userId: '7', email: 'owner@example.invalid', token: 'unchanged-session' };
+  const connect: GoogleAttempt = { session: current, process: 'connect', client: 'app', provider: 'apple', nonce: 'a'.repeat(64), state: 'b'.repeat(64), expiresAt: Date.now() + 180_000 };
+  try {
+    for (const [code, message] of [
+      ['apple_already_connected', 'This Apple ID is connected to another MeroSplit account. To access that account, sign out, then choose “Continue with Apple” on the sign-in screen.'],
+      ['apple_email_conflict', "Couldn't connect Apple. Please try again."],
+      ['apple_unavailable', "Couldn't connect Apple. Please try again."],
+    ]) {
+      globalThis.fetch = async () => Response.json({ errors: [{ code }] }, { status: 409 });
+      await assert.rejects(finishGoogle(connect, 'signed', current, () => true, { state: connect.state!, authorization_code: 'one' }), error => {
+        assert.equal((error as Error).message, message); assert.equal((error as Error & { code: string }).code, code); return true;
+      });
+      assert.equal(current.token, 'unchanged-session');
+    }
+    globalThis.fetch = async () => Response.json({ errors: [{ code: 'apple_email_conflict' }] }, { status: 409 });
+    await assert.rejects(finishGoogle({ ...connect, process: 'login' }, 'signed', undefined, () => true, { state: connect.state!, authorization_code: 'one' }), /Sign in with your email first/);
+  } finally { globalThis.fetch = original; }
+});
+
 const base = 'https://merosplit.test', nonce = 'a'.repeat(64), state = 'b'.repeat(64);
 const session: Session = { baseUrl: base, userId: '1', email: 'relay@privaterelay.appleid.com', token: 'session' };
 const attempt: GoogleAttempt = { session: { ...session, token: 'preauth' }, process: 'login', client: 'app', provider: 'apple', nonce, state, expiresAt: Date.now() + 180_000 };

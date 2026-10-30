@@ -5,23 +5,30 @@ export const GOOGLE_WEB_CLIENT_ID = '1091299527858-dmjm6sosrpqc7054m5nv6drpkgd03
 export const GOOGLE_IOS_CLIENT_ID = '1091299527858-189bnq3gr66tm2a1jsecvmd93n1s150a.apps.googleusercontent.com';
 export type GoogleProcess = 'login' | 'connect';
 export type GoogleAuthenticate = (stillCurrent: () => boolean) => Promise<Session | null>;
+export class ProviderSignInError extends Error {
+  readonly code: string;
+  constructor(code: string, message: string) { super(message); this.code = code; }
+}
 type Reply = { data?: { nonce?: string; state?: string; expires_in?: number; client_id?: string; user?: { id: number; email: string } }; meta?: { session_token?: string; is_authenticated?: boolean }; errors?: { code?: string }[] };
 export type GoogleAttempt = { session: Session; process: GoogleProcess; client: 'app' | 'browser'; nonce: string; expiresAt: number; provider?: 'google' | 'apple'; state?: string };
 
 async function post(session: Session, client: GoogleAttempt['client'], action: 'challenge' | 'token', body: object, provider: 'google' | 'apple' = 'google'): Promise<Reply> {
   const label = provider === 'apple' ? 'Apple' : 'Google';
+  const connecting = 'process' in body && body.process === 'connect';
+  const unavailable = connecting ? `Couldn't connect ${label}. Please try again.` : `Could not sign in with ${label}. Try again or use email.`;
   const response = await sessionRequest(session, `/_allauth/${client}/v1/auth/${provider}/${action}`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(15_000),
-  }).catch(() => { throw new Error(`Could not connect. Try ${label} again when online, or use email.`); });
-  if (!response.headers.get('content-type')?.includes('json')) throw new Error(`${label} sign-in is temporarily unavailable. Use email or try later.`);
+  }).catch(() => { throw new Error(connecting ? unavailable : `Could not connect. Try ${label} again when online, or use email.`); });
+  if (!response.headers.get('content-type')?.includes('json')) throw new Error(connecting ? unavailable : `${label} sign-in is temporarily unavailable. Use email or try later.`);
   let reply: Reply;
   try { reply = await response.json() as Reply; }
-  catch { throw new Error(`${label} sign-in is temporarily unavailable. Use email or try later.`); }
+  catch { throw new Error(connecting ? unavailable : `${label} sign-in is temporarily unavailable. Use email or try later.`); }
   if (!response.ok) {
     const code = reply.errors?.[0]?.code;
-    throw new Error(code === `${provider}_email_conflict` ? `Sign in with your email first, then connect ${label} in Me.`
+    throw new ProviderSignInError(code ?? `${provider}_unavailable`, provider === 'apple' && code === 'apple_already_connected' ? 'This Apple ID is connected to another MeroSplit account. To access that account, sign out, then choose “Continue with Apple” on the sign-in screen.'
+      : code === `${provider}_email_conflict` && !connecting ? `Sign in with your email first, then connect ${label} in Me.`
       : code === `${provider}_account_changed` ? 'Your signed-in account changed. Try again. Saved changes are safe.'
-      : `Could not sign in with ${label}. Try again or use email.`);
+      : unavailable);
   }
   return reply;
 }

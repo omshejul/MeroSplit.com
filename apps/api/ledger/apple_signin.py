@@ -32,6 +32,8 @@ def apple_error(request, code="apple_unavailable", status=400):
     message = "Could not sign in with Apple. Try again or use email."
     if code == "apple_email_conflict":
         message = "Sign in with your email first, then connect Apple in Me."
+    elif code == "apple_already_connected":
+        message = "This Apple ID is connected to another MeroSplit account. To access that account, sign out, then choose “Continue with Apple” on the sign-in screen."
     elif code == "apple_account_changed":
         message = "Your signed-in account changed. Try again. Saved changes are safe."
     return APIResponse(request, status=status, errors=[{"code": code, "message": message}])
@@ -146,7 +148,7 @@ class AppleTokenView(APIView):
             if existing and (not existing.user.is_active or entry_for_email(existing.user.email)):
                 raise ValidationError("Invalid Apple account")
             if data["process"] == "connect" and existing and existing.user_id != request.user.pk:
-                return apple_error(request, "apple_email_conflict", 409)
+                return apple_error(request, "apple_already_connected", 409)
             if data["process"] == "login" and not existing and (not email
                     or ((get_user_model().objects.filter(email__iexact=email).exists()
                          or EmailAddress.objects.filter(email__iexact=email).exists())
@@ -175,7 +177,7 @@ class AppleTokenView(APIView):
         except requests.RequestException:
             return apple_error(request, status=503)
         except IntegrityError:
-            return apple_error(request, "apple_email_conflict", 409)
+            return apple_error(request, status=409)
         except (ValidationError, OAuth2Error, jwt.PyJWTError, SignupClosedException, SocialAccount.DoesNotExist,
                 KeyError, TypeError, ValueError, InvalidToken):
             return apple_error(request)

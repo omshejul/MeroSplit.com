@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import ts from 'typescript';
+import { ProviderSignInError } from '../src/googleSignIn.ts';
 
 function load(name: string, mocks: Record<string, unknown>) {
   const source = readFileSync(new URL('../' + name, import.meta.url), 'utf8');
@@ -145,21 +146,22 @@ test('disconnect removes only the selected identity and a late old-account write
   } finally { h.close(); }
 });
 
-test('methods screen identifies accounts, confirms exact disconnect and disables stale controls', () => {
+test('methods screen identifies accounts, confirms exact disconnect and keeps Apple errors beside its button', async () => {
   const alerts: any[] = [], changes: any[] = [];
-  const React = { createElement: (type: any, props: any, ...children: any[]): any => typeof type === 'function' ? type({ ...props, children }) : ({ type, props: { ...props, children } }), Fragment: 'Fragment' };
+  let appleError: Error | null = null, current = true, pending: Promise<any> | undefined;
+  const React = { useState: () => [appleError, (value: Error | null) => { appleError = value; }], createElement: (type: any, props: any, ...children: any[]): any => typeof type === 'function' ? type({ ...props, children }) : ({ type, props: { ...props, children } }), Fragment: 'Fragment' };
   const screen = load('src/SignInMethods.tsx', { react: React,
     'react-native': { View: 'View', Image: 'Image', Platform: { OS: 'ios' } }, 'react-native-paper': { Text: 'Text' },
     './ui': { Button: 'Button', Icon: 'Icon', useUI: () => ({ ui: {}, palette: { accent: '#C7A6F2' }, dark: false }) },
     './alerts': { Alert: { alert: (...args: any[]) => alerts.push(args) } },
     './ListRow': { __esModule: true, default: (props: any) => React.createElement('Row', props, props.children, props.trailing) },
     './RowGroup': { __esModule: true, default: 'RowGroup' }, './NotificationSwitch': { __esModule: true, default: 'Switch' },
-    './UIStates': { ErrorState: 'ErrorState' }, './AppleSignInButton': { __esModule: true, default: 'Apple' },
+    './UIStates': { ErrorState: 'ErrorState', NoticeBanner: 'NoticeBanner' }, './googleSignIn': { ProviderSignInError }, './AppleSignInButton': { __esModule: true, default: 'Apple' },
     './GoogleSignInButton': { __esModule: true, default: 'Google' }, '../assets/oauth/google-g-light.png': 'official-g' }).default;
   const all = (node: any): any[] => Array.isArray(node) ? node.flatMap(all) : !node || typeof node !== 'object' ? [] : [node, ...all(node.props.children)];
   const connections = { status: 'ready', connected: { ...response(['google', 'apple']), autoLink: true, google: true, apple: true }, working: false, error: '',
     refresh() {}, disconnect: (id: string) => changes.push(id), setAutoLink: (value: boolean) => changes.push(value) };
-  const render = () => all(screen({ session: a, busy: false, connections, onGoogle() {}, onApple() {} }));
+  const render = () => all(screen({ session: a, busy: false, connections, onGoogle() {}, onApple(authenticate: any) { pending = authenticate(() => current); } }));
   const rows = render();
   assert.ok(rows.findIndex(node => node.type === 'Switch') < rows.findIndex(node => node.type === 'RowGroup'), 'Auto-link is above the connected accounts');
   assert.ok(rows.some(node => node.type === 'Text' && node.props.children.includes('google@example.invalid')));
@@ -170,4 +172,19 @@ test('methods screen identifies accounts, confirms exact disconnect and disables
   connections.status = 'loading';
   const refreshing = render(); assert.ok(refreshing.some(node => node.type === 'Text' && node.props.children.includes('google@example.invalid')));
   assert.equal(refreshing.find(node => node.props.title === 'Disconnect').props.disabled, true);
+  connections.status = 'ready'; connections.connected.apple = false;
+  connections.connected.accounts = connections.connected.accounts.filter(account => account.provider !== 'apple');
+  const attempt = (error?: Error) => {
+    render().find(node => node.type === 'Apple').props.onAuthenticate(async () => { if (error) throw error; return null; });
+    return pending;
+  };
+  assert.equal(await attempt(new ProviderSignInError('apple_already_connected', 'This Apple ID is connected to another MeroSplit account.')), null);
+  const failed = render(), banner = failed.findIndex(node => node.type === 'NoticeBanner');
+  assert.ok(banner > 0 && banner < failed.findIndex(node => node.type === 'Apple'));
+  assert.equal(failed[banner].props.tone, 'error');
+  assert.ok(failed.some(node => node.type === 'Text' && node.props.children.includes('Apple ID already connected')));
+  assert.equal(await attempt(), null); assert.equal(render().some(node => node.type === 'NoticeBanner'), false, 'retry/cancellation clears the old error');
+  await attempt(Error('private native failure')); assert.equal((appleError as unknown as Error).message, "Couldn't connect Apple. Please try again.");
+  current = false; await attempt(Error('old account failure')); assert.equal(appleError, null, 'late errors cannot appear in another account');
+  assert.equal(a.token, 'session-a'); assert.deepEqual(changes, ['1', false], 'failed Apple connect never disconnects or changes settings');
 });

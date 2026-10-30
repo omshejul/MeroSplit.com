@@ -1,9 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Image, Platform, View } from 'react-native';
 import { Text } from 'react-native-paper';
 import AppleSignInButton from './AppleSignInButton';
 import GoogleSignInButton from './GoogleSignInButton';
-import type { GoogleAuthenticate } from './googleSignIn';
+import { ProviderSignInError, type GoogleAuthenticate } from './googleSignIn';
 import type { Session } from './types';
 import type { ProviderConnections } from './useLinkedProviders';
 import type { ConnectedProvider } from './linkedProviders';
@@ -11,7 +11,7 @@ import { Alert } from './alerts';
 import ListRow from './ListRow';
 import RowGroup from './RowGroup';
 import NotificationSwitch from './NotificationSwitch';
-import { ErrorState } from './UIStates';
+import { ErrorState, NoticeBanner } from './UIStates';
 import { Button, Icon, useUI } from './ui';
 
 function ConnectedProviderRow({ account, leading, disabled, onDisconnect }: { account: ConnectedProvider; leading: React.ReactNode; disabled: boolean; onDisconnect: () => void }) {
@@ -30,6 +30,7 @@ export default function SignInMethods({ session, busy, connections, onGoogle, on
   onGoogle: (authenticate: GoogleAuthenticate) => void; onApple: (authenticate: GoogleAuthenticate) => void;
 }) {
   const { ui, dark } = useUI(), linked = connections.connected;
+  const [appleError, setAppleError] = useState<Error | null>(null);
   const disabled = busy || connections.working || connections.status !== 'ready';
   function disconnect(account: ConnectedProvider) {
     const name = account.provider === 'google' ? 'Google' : 'Apple';
@@ -46,7 +47,16 @@ export default function SignInMethods({ session, busy, connections, onGoogle, on
     </RowGroup>
     {linked ? <>
       {!linked.google && <View style={{ gap: 12 }}><Text style={ui.caption}>Add Google as another way to sign in.</Text><GoogleSignInButton baseUrl={session.baseUrl} process="connect" current={session} busy={disabled} onAuthenticate={onGoogle} /></View>}
-      {!linked.apple && Platform.OS === 'ios' && <AppleSignInButton baseUrl={session.baseUrl} process="connect" current={session} busy={disabled} onAuthenticate={onApple} />}
+      {!linked.apple && Platform.OS === 'ios' && <View style={{ gap: 12 }}>
+        {appleError && <NoticeBanner tone="error">{appleError instanceof ProviderSignInError && appleError.code === 'apple_already_connected' && <Text style={{ fontWeight: '600' }}>Apple ID already connected{'\n'}</Text>}{appleError.message}</NoticeBanner>}
+        <AppleSignInButton baseUrl={session.baseUrl} process="connect" current={session} busy={disabled} onAuthenticate={authenticate => {
+          setAppleError(null);
+          onApple(async stillCurrent => {
+            try { return await authenticate(stillCurrent); }
+            catch (error) { if (stillCurrent()) setAppleError(error instanceof ProviderSignInError ? error : new Error("Couldn't connect Apple. Please try again.")); return null; }
+          });
+        }} />
+      </View>}
     </> : <Text accessibilityLiveRegion="polite" style={ui.caption}>{connections.status === 'loading' ? 'Checking sign-in methods…' : 'Connect to the internet to check sign-in methods.'}</Text>}
     {!!connections.error && <ErrorState error={connections.error} disabled={busy || connections.working} onRetry={connections.status === 'error' ? connections.refresh : undefined} />}
     {connections.status === 'unknown' && <Button title="Try again" kind="text" disabled={busy} onPress={connections.refresh} />}
