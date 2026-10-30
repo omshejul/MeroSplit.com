@@ -11,7 +11,7 @@ const source = ts.createSourceFile('HomeCreateButton.tsx', readFileSync(new URL(
 const fn = source.statements.find(node => ts.isFunctionDeclaration(node))!;
 const code = ts.transpile(fn.getText(source).replace('export default ', ''), { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React });
 
-test('Create capsule anchors above custom/native navigation and keeps margins transparent to touches', () => {
+test('Create footer stays in normal layout above custom/native navigation', () => {
   for (const OS of ['ios', 'android', 'web']) for (const Version of [25, 26, 27]) for (const direct of [false, true]) {
     let loaded = 0, clicked = 0;
     const env = { React, View: 'View', Button: 'Button', Icon: 'Icon', GlassSurface: 'GlassSurface', useUI: () => ({ palette: { accent: 'accent', muted: 'muted' } }), Platform: { OS, Version }, pageWidthStyle: OS === 'web' ? { maxWidth: 760, alignSelf: 'center' } : {},
@@ -22,17 +22,14 @@ test('Create capsule anchors above custom/native navigation and keeps margins tr
     assert.equal(tree.type, native ? 'NativeSafeAreaView' : 'View');
     assert.equal(loaded, native ? 1 : 0, 'Only native iOS tabs need the experimental inset component');
     assert.deepEqual(tree.props.edges, native ? { bottom: true } : undefined);
-    assert.deepEqual(tree.props.style, { position: 'absolute', left: 0, right: 0, bottom: 0, flex: 0, zIndex: 1 });
+    assert.deepEqual(tree.props.style, { flex: 0 });
     assert.equal(tree.props.pointerEvents, 'box-none');
     assert.equal(tree.props.collapsable, false);
     const content = tree.children[0], glass = content.children[0], button = OS === 'ios' ? glass.children[0] : glass;
     if (OS === 'ios') { assert.equal(glass.type, 'GlassSurface'); assert.equal(glass.props.interactive, true); assert.equal(glass.props.tintColor, 'accent'); }
     assert.equal(button.props.kind, 'primary');
     assert.equal(button.props.style.backgroundColor, OS === 'ios' ? 'transparent' : 'accent', 'iOS pressable must not paint over native glass');
-    let measured = 0;
-    const measuredTree = render({ direct, disabled: false, onPress() {}, onHeight: (height: number) => { measured = height; } });
-    measuredTree.children[0].props.onLayout({ nativeEvent: { layout: { height: 164 } } });
-    assert.equal(measured, 164);
+    assert.equal(tree.props.style.position, undefined, 'home actions reserve space instead of overlaying the tabs');
     assert.equal(content.props.pointerEvents, 'box-none');
     assert.equal(content.props.style[1].paddingBottom, 16);
     assert.equal(content.props.style[1].alignItems, 'flex-end');
@@ -53,7 +50,7 @@ function find(predicate: (node: ts.Node) => boolean) {
   visit(app); assert.ok(found); return found!;
 }
 
-test('Create capsule keeps the existing create route, appears on Groups/People only, and clears the last row', () => {
+test('Create footer keeps the existing route, appears on Groups/People only, and removes obsolete overlay padding', () => {
   const declaration = find(node => ts.isVariableDeclaration(node) && node.name.getText(app) === 'showCreate') as ts.VariableDeclaration;
   const show = new Function('screen', 'tab', 'direct', 'showArchived', 'showHidden', `return ${declaration.initializer!.getText(app)}`);
   for (const screen of ['home', 'group', 'create', 'members', 'billChat', 'login']) for (const tab of ['Groups', 'Friends', 'Activity', 'Account']) for (const archived of [false, true]) for (const hidden of [false, true]) {
@@ -67,12 +64,12 @@ test('Create capsule keeps the existing create route, appears on Groups/People o
   const calls: string[] = [];
   new Function('navigate', `return ${((press.initializer as ts.JsxExpression).expression!).getText(app)}`)((name: string) => calls.push(name))();
   assert.deepEqual(calls, ['create']);
-  const padding = find(node => ts.isJsxAttribute(node) && node.name.getText(app) === 'contentContainerStyle' && node.getText(app).includes('showCreate')) as ts.JsxAttribute;
+  const padding = find(node => ts.isJsxAttribute(node) && node.name.getText(app) === 'contentContainerStyle' && node.getText(app).includes('showAddExpense')) as ts.JsxAttribute;
   const styles = new Function('showCreate', 'showAddExpense', 'pageContentStyle', 'createClearance=104', "screen='home'", "tab='Groups'", 'usesNativeHomeTabs=false', `return ${(padding.initializer as ts.JsxExpression).expression!.getText(app)}`);
-  assert.equal(styles(true, false, {})[1].paddingBottom, 104);
+  assert.equal(styles(true, false, {})[1], false);
   assert.equal(styles(false, true, {})[1].paddingBottom, 120);
   assert.equal(styles(false, false, {})[1], false);
-  assert.equal(styles(true, false, {}, 180)[1].paddingBottom, 180, 'Larger accessibility text gets measured clearance');
+  assert.equal(styles(true, false, {}, 180)[1], false, 'Normal-flow footer grows naturally with text');
 });
 
 test('stack floating actions report their entire overlay including bottom safe area',()=>{
