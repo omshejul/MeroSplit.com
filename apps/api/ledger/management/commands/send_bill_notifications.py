@@ -3,7 +3,7 @@ import time
 
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
-from django.db import close_old_connections
+from django.db import OperationalError, close_old_connections
 from django.db.models import Count
 from django.utils import timezone
 
@@ -45,27 +45,32 @@ class Command(BaseCommand):
             )
         try:
             while True:
-                close_old_connections()
-                count = send_pending_bill_notifications(limit=options["limit"])
-                receipts = check_pending_bill_receipts(limit=options["limit"])
-                digests = send_pending_digests(limit=options["limit"])
-                mailbox_notices = send_pending_bill_emails(limit=options["limit"])
-                chat = send_chat_notifications(limit=options['limit'])
-                statements = send_balance_statements(limit=options['limit'])
-                memberships = send_membership_notifications(limit=options['limit'])
-                activity = send_activity_notifications(limit=options['limit'])
-                if activity:
-                    self.stdout.write(f'Processed {activity} financial notifications')
-                feedback = send_feedback_notifications(limit=min(options['limit'], 5))
-                if feedback:
-                    self.stdout.write(f'Processed {feedback} feedback notifications')
-                if count or receipts or digests or mailbox_notices or chat or statements or memberships or not options["loop"]:
-                    self.stdout.write(f"Processed {count} bill notifications, {receipts} receipts and {digests} unread digests and {mailbox_notices} mailbox notices and {chat} chat deliveries and {statements} balance statements and {memberships} membership deliveries")
-                # One short cosmetic request AFTER delivery work, never a catch-up drain.
-                if process_category_decisions():
-                    states = dict(ExpenseCategoryCache.objects.filter(owner=None, definition_revision=cache_revision())
-                        .values('state').annotate(total=Count('pk')).values_list('state', 'total'))
-                    self.stdout.write('Shared expense icons: ' + json.dumps(states))
+                try:
+                    close_old_connections()
+                    count = send_pending_bill_notifications(limit=options["limit"])
+                    receipts = check_pending_bill_receipts(limit=options["limit"])
+                    digests = send_pending_digests(limit=options["limit"])
+                    mailbox_notices = send_pending_bill_emails(limit=options["limit"])
+                    chat = send_chat_notifications(limit=options['limit'])
+                    statements = send_balance_statements(limit=options['limit'])
+                    memberships = send_membership_notifications(limit=options['limit'])
+                    activity = send_activity_notifications(limit=options['limit'])
+                    if activity:
+                        self.stdout.write(f'Processed {activity} financial notifications')
+                    feedback = send_feedback_notifications(limit=min(options['limit'], 5))
+                    if feedback:
+                        self.stdout.write(f'Processed {feedback} feedback notifications')
+                    if count or receipts or digests or mailbox_notices or chat or statements or memberships or not options["loop"]:
+                        self.stdout.write(f"Processed {count} bill notifications, {receipts} receipts and {digests} unread digests and {mailbox_notices} mailbox notices and {chat} chat deliveries and {statements} balance statements and {memberships} membership deliveries")
+                    # One short cosmetic request AFTER delivery work, never a catch-up drain.
+                    if process_category_decisions():
+                        states = dict(ExpenseCategoryCache.objects.filter(owner=None, definition_revision=cache_revision())
+                            .values('state').annotate(total=Count('pk')).values_list('state', 'total'))
+                        self.stdout.write('Shared expense icons: ' + json.dumps(states))
+                except OperationalError:
+                    if not options["loop"]:
+                        raise
+                    self.stderr.write("Database unavailable; retrying next worker cycle")
                 if not options["loop"]:
                     return
                 time.sleep(options["interval"])
