@@ -5,15 +5,15 @@ import { readFileSync } from 'node:fs';
 import ts from 'typescript';
 const tick=()=>new Promise(r=>setTimeout(r,0));
 function deferred(){let resolve!:(v:any)=>void;const promise=new Promise(r=>resolve=r);return{promise,resolve};}
-function fixture(){let cursor=0;const state:any[]=[],deps:any[][]=[],cleanup:any[]=[];let effects:any[]=[];const old=deferred(),upload=deferred(),cleared:string[]=[],busy:boolean[]=[];
- const env:any={React:{createElement:(type:any,props:any,...children:any[])=>({type,props:props??{},children})},View:'View',Text:'Text',Button:'Button',Avatar:'Avatar',Icon:'Icon',RemoveMediaMenu:'RemoveMediaMenu',LoadingSpinner:'LoadingSpinner',ProfilePhotoCrop:'ProfilePhotoCrop',Platform:{OS:'ios'},Crypto:{randomUUID:()=> 'new'},Alert:{alert(){}},useUI:()=>({ui:{body:{},caption:{},error:{}},palette:{soft:'#eee',background:'#fff',accent:'#333'}}),accountOwner:()=> 'account',cachedRead:()=>({avatar:{id:'old'}}),request:()=>old.promise,pickMedia:async()=>({uri:'file:///new.jpg',name:'photo.jpg',size:100,type:'image/jpeg'}),clearPickedMedia:async(v:any)=>cleared.push(v.uri),uploadMedia:()=>upload.promise,
+function fixture(){let cursor=0;const state:any[]=[],deps:any[][]=[],cleanup:any[]=[];let effects:any[]=[];const old=deferred(),upload=deferred(),cleared:string[]=[],busy:boolean[]=[],loading:boolean[]=[];
+ const env:any={useLoading:(value:boolean)=>loading.push(value),React:{createElement:(type:any,props:any,...children:any[])=>({type,props:props??{},children})},View:'View',Text:'Text',Button:'Button',Avatar:'Avatar',Icon:'Icon',RemoveMediaMenu:'RemoveMediaMenu',LoadingSpinner:'LoadingSpinner',ProfilePhotoCrop:'ProfilePhotoCrop',Platform:{OS:'ios'},Crypto:{randomUUID:()=> 'new'},Alert:{alert(){}},useUI:()=>({ui:{body:{},caption:{},error:{}},palette:{soft:'#eee',background:'#fff',accent:'#333'}}),accountOwner:()=> 'account',cachedRead:()=>({avatar:{id:'old'}}),request:()=>old.promise,pickMedia:async()=>({uri:'file:///new.jpg',name:'photo.jpg',size:100,type:'image/jpeg'}),clearPickedMedia:async(v:any)=>cleared.push(v.uri),uploadMedia:()=>upload.promise,
  useRef:(v:any)=>{const i=cursor++;return state[i]??={current:v}},useState:(v:any)=>{const i=cursor++;if(!(i in state))state[i]=typeof v==='function'?v():v;return[state[i],(n:any)=>state[i]=typeof n==='function'?n(state[i]):n]},useEffect:(fn:any,values:any[])=>{const i=cursor++;if(!deps[i]||values.some((v,j)=>v!==deps[i][j])){deps[i]=values;effects.push(()=>{cleanup[i]?.();cleanup[i]=fn()})}}};
  const src=ts.createSourceFile('ProfilePhoto.tsx',readFileSync(new URL('../src/ProfilePhoto.tsx',import.meta.url),'utf8'),ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX),body=src.statements.filter(n=>!ts.isImportDeclaration(n) && !ts.isExportDeclaration(n)).map(n=>n.getText(src).replace(/^export (?:default )?/,'')).join('\n');
  const component=new Function('env',`with(env){${ts.transpile(body,{jsx:ts.JsxEmit.React,target:ts.ScriptTarget.ES2022})};return ProfilePhoto;}`)(withSharedUI(env));
- return{env,render:()=>{cursor=0;return component({session:{baseUrl:'https://test.invalid',userId:'1',token:'token'},busy:false,compact:true,onBusyChange:(v:boolean)=>busy.push(v)})},commit:async()=>{const p=effects;effects=[];p.forEach(f=>f());await tick()},old,upload,cleared,busy,unmount:()=>cleanup.forEach(f=>f?.())};}
+ return{env,render:(props:any={})=>{cursor=0;return component({session:{baseUrl:'https://test.invalid',userId:'1',token:'token'},busy:false,compact:true,onBusyChange:(v:boolean)=>busy.push(v),...props})},commit:async()=>{const p=effects;effects=[];p.forEach(f=>f());await tick()},old,upload,cleared,busy,loading,unmount:()=>cleanup.forEach(f=>f?.())};}
 function nodes(t:any):any[]{return !t||typeof t!=='object'?[]:[t,...(t.children??[]).flat(Infinity).flatMap(nodes)]}
 const choose=(t:any)=>nodes(t).find(n=>n.type==='Button'&&/profile photo/.test(n.props.accessibilityLabel??''));
-test('compact photo previews selection and exposes uploading without blocking the page',async()=>{const a=fixture();a.render();await a.commit();choose(a.render()).props.onPress();await tick();const tree=a.render();assert.equal(nodes(tree).find(n=>n.type==='Avatar').props.source?.uri,'file:///new.jpg');assert.ok(nodes(tree).some(n=>n.props.label==='Uploading profile photo'));assert.deepEqual(a.busy,[]);a.upload.resolve({avatar:{id:'new'}});await tick();a.unmount()});
+test('compact photo previews selection and exposes uploading without blocking the page',async()=>{const a=fixture();a.render();await a.commit();choose(a.render()).props.onPress();await tick();const tree=a.render();assert.equal(nodes(tree).find(n=>n.type==='Avatar').props.source?.uri,'file:///new.jpg');assert.ok(nodes(tree).some(n=>n.props.label==='Uploading profile photo'));assert.deepEqual(a.busy,[]);assert.ok(!a.loading.includes(true), "photo upload must not activate the global overlay");a.upload.resolve({avatar:{id:'new'}});await tick();a.unmount()});
 test('late GET cannot overwrite upload and displayed preview remains valid until unmount',async()=>{const a=fixture();a.render();await a.commit();choose(a.render()).props.onPress();await tick();a.upload.resolve({avatar:{id:'new'}});await tick();a.old.resolve({avatar:{id:'old'}});await tick();const avatar=nodes(a.render()).find(n=>n.type==='Avatar');assert.equal(avatar.props.photo.id,'new');assert.equal(avatar.props.source.uri,'file:///new.jpg');assert.deepEqual(a.cleared,[]);await a.commit();a.unmount();await tick();assert.deepEqual(a.cleared,['file:///new.jpg'])});
 
 test('failed upload retries the same selection and immutable upload ID',async()=>{
@@ -29,4 +29,16 @@ test('photo refresh updates group photos without sending financial commands and 
 });
 test('web crop bounds preserve a square, zoom and both edge positions',()=>{
  const source=ts.createSourceFile('ProfilePhotoCrop.web.tsx',readFileSync(new URL('../src/ProfilePhotoCrop.web.tsx',import.meta.url),'utf8'),ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);const fn=source.statements.find(n=>ts.isFunctionDeclaration(n)&&n.name?.text==='cropBounds')!;const crop=new Function(`${ts.transpile(fn.getText(source).replace(/^export /,''),{target:ts.ScriptTarget.ES2022})};return cropBounds;`)();assert.deepEqual(crop(2000,1000,1,0,0),{edge:1000,x:500,y:0});assert.deepEqual(crop(2000,1000,2,1,-1),{edge:500,x:1500,y:0});assert.deepEqual(crop(1000,2000,2,-1,1),{edge:500,x:0,y:1500});
+});
+
+test('upload error spans below the photo and account identity row',async()=>{
+ const a=fixture(),identity={type:'Text',props:{},children:['Account name and email']};
+ a.old.resolve({avatar:{id:'old'}});a.render();await a.commit();
+ a.env.uploadMedia=async()=>{throw Error('Could not confirm the upload. Refresh to check whether it finished, then try again.')};
+ choose(a.render()).props.onPress();await tick();await tick();
+ const tree=a.render({children:identity}),row=nodes(tree).find(n=>n.type==='View'&&n.props.style?.flexDirection==='row');
+ assert.ok(nodes(row).includes(identity),'identity must share the photo control row');
+ assert.ok(!nodes(row).some(n=>n.props.accessibilityLabel==='Retry photo upload'),'retry must be below the entire row');
+ assert.ok(nodes(tree).some(n=>n.props.accessibilityLabel==='Retry photo upload'));
+ a.unmount();
 });

@@ -1,4 +1,3 @@
-import { useLoading } from './LoadingOverlay';
 import { ErrorState } from './UIStates';
 
 import Avatar from './Avatar';
@@ -17,8 +16,8 @@ import RemoveMediaMenu from './RemoveMediaMenu';
 import type { Session } from './types';
 import { Button, Icon, useUI } from './ui';
 
-export type ProfilePhotoProps = { session: Session | null; busy: boolean; onBusyChange: (busy: boolean) => void; compact?: boolean; onChanged?: () => void | Promise<void> };
-export default function ProfilePhoto({ session, busy, onChanged, compact = false }: ProfilePhotoProps) {
+export type ProfilePhotoProps = { session: Session | null; busy: boolean; onBusyChange: (busy: boolean) => void; compact?: boolean; onChanged?: () => void | Promise<void>; children?: React.ReactNode };
+export default function ProfilePhoto({ session, busy, onChanged, compact = false, children }: ProfilePhotoProps) {
   const cachedProfile = session ? cachedRead<AvatarResult>(session, '/me') : undefined;
   const { ui, palette } = useUI(), [fallback, setFallback] = useState<ProfilePhotoValue | null>(cachedProfile?.profile_photo ?? null), [avatar, setAvatar] = useState<MediaMetadata | null>(cachedProfile?.avatar ?? null), [loading, setLoading] = useState(!cachedProfile), [working, setWorking] = useState(false), [error, setError] = useState('');
   const [preview, setPreview] = useState<{ file: PickedMedia; id: string } | null>(null), [phase, setPhase] = useState<'idle' | 'uploading' | 'saved' | 'failed'>('idle');
@@ -87,14 +86,14 @@ export default function ProfilePhoto({ session, busy, onChanged, compact = false
     }) }]);
   }
   const disabled = busy || loading || working;
-  useLoading(working);
   return <View style={{ gap: 10 }}>
     {!session ? <Text style={ui.caption}>Sign in to add your profile photo.</Text> : <>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
         <Button kind="plain" accessibilityRole="button" accessibilityLabel={avatar ? 'Change profile photo' : 'Choose profile photo'} accessibilityState={{ disabled }} disabled={disabled} onPress={() => void run(choose)} style={{ flex: compact ? undefined : 1, flexShrink: compact ? 0 : undefined, width: compact ? 64 : undefined, flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 64 }}>
           <Avatar label={phase === 'saved' ? 'Profile photo updated' : undefined} photo={avatar ?? fallback} source={preview ? { uri: preview.file.uri } : undefined} size={64} backgroundColor={palette.soft}><Icon name="me" size={30} /></Avatar>
-          {compact ? <View style={{ position: 'absolute', right: 0, bottom: 0, backgroundColor: palette.background, borderRadius: 12, padding: 3 }}>{loading || phase === 'uploading' ? <LoadingSpinner visible label={loading ? 'Loading profile photo' : 'Uploading profile photo'} color={palette.accent} /> : <Icon name={phase === 'saved' ? 'check' : 'edit'} size={16} />}</View> : <Text style={[ui.body, { flex: 1 }]}>{phase === 'uploading' ? 'Uploading photo…' : phase === 'saved' ? 'Photo updated' : loading ? 'Loading photo…' : avatar ? 'Change photo' : 'Choose photo'}</Text>}
+          {compact ? <View style={{ position: 'absolute', right: 0, bottom: 0, backgroundColor: palette.background, borderRadius: 12, padding: 3 }}>{loading || working ? <LoadingSpinner visible label={loading ? 'Loading profile photo' : phase === 'uploading' ? 'Uploading profile photo' : 'Updating profile photo'} color={palette.accent} /> : <Icon name={phase === 'saved' ? 'check' : 'edit'} size={16} />}</View> : <Text style={[ui.body, { flex: 1 }]}>{phase === 'uploading' ? 'Uploading photo…' : working ? 'Updating photo…' : phase === 'saved' ? 'Photo updated' : loading ? 'Loading photo…' : avatar ? 'Change photo' : 'Choose photo'}</Text>}
         </Button>
+        {children}
         {avatar && <RemoveMediaMenu open={optionsOpen} disabled={disabled} label="Photo options" removeLabel="Remove photo"
           onOpen={() => setOptionsOpen(true)} onClose={() => setOptionsOpen(false)} onRemove={remove} />}
       </View>
