@@ -37,6 +37,22 @@ test('Unread Activity rows open the exact conversation and fetch never acknowled
   } finally { app.unmount(); }
 });
 
+test('offline pause retains downloaded unread chats without polling or changing pages', async () => {
+  let calls = 0;
+  const app = inbox(async () => { calls++; return { conversations: [{ group_id: 'g', expense_id: 'b', group: 'Trip', bill: 'Lunch', unread: 2 }], next_cursor: 'older' }; });
+  try {
+    app.render(); await app.commit();
+    app.render({ active: false }); await app.commit();
+    const tree = app.render({ active: false });
+    const row = nodes(tree).find(node => node.type === 'SettingsRow');
+    assert.ok(row, 'downloaded chats must not disappear on disconnect');
+    assert.equal(row.props.value, '2 unread'); assert.equal(row.props.disabled, true);
+    assert.equal(nodes(tree).find(node => node.props.title === 'Older chats')!.props.disabled, true);
+    assert.equal(calls, 1); assert.equal(app.timer(), undefined);
+    assert.equal(app.render({ active: false, session: { baseUrl: 'https://example.test', userId: '2', token: 'two' } }), null, 'cached rows never cross accounts');
+  } finally { app.unmount(); }
+});
+
 test('Pausing cancels the in-flight inbox and a late old-account response cannot appear in the new account', async () => {
   const calls: { account: string; signal: AbortSignal; resolve: (data: any) => void }[] = [], verification: boolean[] = [];
   const props = { onEmptyChange: (empty: boolean) => verification.push(empty) };

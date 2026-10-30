@@ -72,7 +72,7 @@ test('Create capsule keeps the existing create route, appears on Groups/People o
   new Function('navigate', `return ${((press.initializer as ts.JsxExpression).expression!).getText(app)}`)((name: string) => calls.push(name))();
   assert.deepEqual(calls, ['create']);
   const padding = find(node => ts.isJsxAttribute(node) && node.name.getText(app) === 'contentContainerStyle' && node.getText(app).includes('showCreate')) as ts.JsxAttribute;
-  const styles = new Function('showCreate', 'showAddExpense', 'pageContentStyle', 'createClearance=104', `return ${(padding.initializer as ts.JsxExpression).expression!.getText(app)}`);
+  const styles = new Function('showCreate', 'showAddExpense', 'pageContentStyle', 'createClearance=104', "screen='home'", "tab='Groups'", 'usesNativeHomeTabs=false', `return ${(padding.initializer as ts.JsxExpression).expression!.getText(app)}`);
   assert.equal(styles(true, false, {})[1].paddingBottom, 104);
   assert.equal(styles(false, true, {})[1].paddingBottom, 120);
   assert.equal(styles(false, false, {})[1], false);
