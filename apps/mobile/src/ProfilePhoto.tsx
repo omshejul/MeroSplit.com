@@ -1,3 +1,4 @@
+import { useLoading } from './LoadingOverlay';
 import { ErrorState } from './UIStates';
 
 import Avatar from './Avatar';
@@ -86,6 +87,7 @@ export default function ProfilePhoto({ session, busy, onChanged, compact = false
     }) }]);
   }
   const disabled = busy || loading || working;
+  useLoading(loading || working);
   return <View style={{ gap: 10 }}>
     {!session ? <Text style={ui.caption}>Sign in to add your profile photo.</Text> : <>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>

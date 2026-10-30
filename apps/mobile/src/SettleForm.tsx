@@ -1,3 +1,4 @@
+import { useLoading } from './LoadingOverlay';
 import { NoticeBanner } from './UIStates';
 import { PersonSelectionList } from './PersonChoice';
 import { currencySymbol } from './currency';
@@ -58,6 +59,7 @@ export default function SettleForm({ group, initial, busy, selfId, onSave, onRev
   const armedHere = useRef<string | null>(null);
   const returnChange = useRef(onReturnPaymentChange); returnChange.current = onReturnPaymentChange;
   const lock = useRef(false), mounted = useRef(true), disabled = busy || saving || !!chooser;
+  useLoading(saving);
   useScreenRemovalLock(saving || !!chooser);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   useEffect(() => {

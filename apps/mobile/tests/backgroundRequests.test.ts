@@ -128,7 +128,7 @@ test('actual GroupScreen search callback never scrolls for a stale discarded res
   const offsets: any[] = [], response = deferred<boolean>();
   let searchFunction: ts.FunctionDeclaration | undefined;
   function find(n: ts.Node) { if (ts.isFunctionDeclaration(n) && n.name?.text === 'runSearch') searchFunction = n; ts.forEachChild(n, find); } find(file); assert.ok(searchFunction);
-  const env = { AbortController, searchRequest: { current: null }, historyWindow: {}, onHistoryPage: () => response.promise, historyResource: 'transactions', search: 'text', accepted: {}, list: { current: { scrollToOffset: (v: any) => offsets.push(v) } } };
+  const env = { setLoadingSearch() {}, AbortController, searchRequest: { current: null }, historyWindow: {}, onHistoryPage: () => response.promise, historyResource: 'transactions', search: 'text', accepted: {}, list: { current: { scrollToOffset: (v: any) => offsets.push(v) } } };
   const run = new Function('env', `with(env){ const StaggerItem = 'StaggerItem';${ts.transpile(searchFunction.getText(file), {target: ts.ScriptTarget.ES2022})};return ${callback.getText(file)};}`)(withSharedUI(env));
   run(); response.resolve(false); for (let i = 0; i < 10; i++) await Promise.resolve(); assert.deepEqual(offsets, []);
 });

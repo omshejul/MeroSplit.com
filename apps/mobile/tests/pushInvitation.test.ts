@@ -32,7 +32,7 @@ function harness(options: { os?: string; first?: boolean; failure?: boolean; key
     useUI: () => ({ ui: { body: {} } }), useToast: () => (message: string) => notices.push(message),
     KeyboardDialog: 'KeyboardDialog', Dialog: { Title: 'Title', Content: 'Content', Actions: 'Actions' }, Text: 'Text', Button: 'Button',
   };
-  new Function('env', 'exports', `with(env){${code}}`)(env, exports);
+  new Function('env', 'exports', `with(env){ const useLoading = env.useLoading ?? (() => {}), LoadingOverlay = env.LoadingOverlay ?? 'LoadingOverlay';${code}}`)(env, exports);
   const props: any = { owner: 'server|one', session: { token: 'session', baseUrl: 'https://server.invalid' }, eligible: true, onVisibility() {}, push: { state: { ready: true, enabled: false, optedIn: false, pendingOff: false, working: false, permission: 'ask' }, enable: async () => { enables++; if (options.failure) throw Error('Offline'); return true; } } };
   let tree: any;
   function render() { do { dirty = false; cursor = 0; tree = exports.default(props); effects.splice(0).forEach(fn => fn()); } while (dirty); return tree; }
@@ -77,7 +77,7 @@ test('native invitation choice is durable and isolated per account and backend',
   const source = ts.createSourceFile('native.ts', readFileSync(new URL('../src/native.ts', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true);
   const fn = source.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === 'claimPushInvitation')!;
   const store = new Map<string, string>();
-  const run = new Function('env', `with(env){${ts.transpile(fn.getText(source).replace(/^export /, ''), { target: ts.ScriptTarget.ES2022 })};return claimPushInvitation;}`)({ SecureStore: { getItemAsync: async (key: string) => store.get(key), setItemAsync: async (key: string, value: string) => store.set(key, value) }, digestStringAsync: async (_: any, owner: string) => createHash('sha256').update(owner).digest('hex'), CryptoDigestAlgorithm: { SHA256: 'sha256' } });
+  const run = new Function('env', `with(env){ const useLoading = env.useLoading ?? (() => {}), LoadingOverlay = env.LoadingOverlay ?? 'LoadingOverlay';${ts.transpile(fn.getText(source).replace(/^export /, ''), { target: ts.ScriptTarget.ES2022 })};return claimPushInvitation;}`)({ SecureStore: { getItemAsync: async (key: string) => store.get(key), setItemAsync: async (key: string, value: string) => store.set(key, value) }, digestStringAsync: async (_: any, owner: string) => createHash('sha256').update(owner).digest('hex'), CryptoDigestAlgorithm: { SHA256: 'sha256' } });
   for (const owner of ['server|1', 'server|2', 'other-server|1']) { assert.equal(await run(owner), true); assert.equal(await run(owner), false); }
   assert.equal(store.size, 3);
 });
@@ -92,7 +92,7 @@ test('the production save handler offers push only after a new shared bill and a
       perform: async (work: any) => work(), queue: async () => { events.push('saved'); }, command() {}, expensePayload() {}, reviewCommand: null, setReviewCommand() {}, setReviewInput() {}, navigation: { complete: () => events.push('group') }, isOnline: () => false,
       upiPrompts: { current: new Set() }, claimFirstSplitUPIPrompt: async () => true, ownerRef: { current: 'server|one' }, activeSessionRef: { current: active }, setUpiAfterSplit() {}, setUpiSetup: () => events.push('upi'),
       setPushOpportunity: (candidate: any) => { assert.equal(candidate.expenseId, 'new'); assert.equal(candidate.owner, 'server|one'); events.push('push'); }, ...overrides };
-    return { env, events, save: new Function('env', `with(env){${ts.transpile(declaration.getText(file), { target: ts.ScriptTarget.ES2022 })};return saveExpense;}`)(env) };
+    return { env, events, save: new Function('env', `with(env){ const useLoading = env.useLoading ?? (() => {}), LoadingOverlay = env.LoadingOverlay ?? 'LoadingOverlay';${ts.transpile(declaration.getText(file), { target: ts.ScriptTarget.ES2022 })};return saveExpense;}`)(env) };
   }
   const bill = { id: 'new', deleted: false, paid: { me: '200' }, shares: { me: '100' } };
   const good = setup(); await good.save(bill); assert.deepEqual(good.events, ['saved', 'group', 'upi', 'push']);
@@ -104,7 +104,7 @@ test('the production invitation stays out of forms, loading, auth and other dial
   const file = ts.createSourceFile('App.tsx', readFileSync(new URL('../App.tsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   let expression!: ts.Expression;
   function visit(node: ts.Node) { if (ts.isJsxSelfClosingElement(node) && node.tagName.getText(file) === 'PushInvitation') { const attr = node.attributes.properties.find(p => ts.isJsxAttribute(p) && p.name.getText(file) === 'eligible') as ts.JsxAttribute; expression = (attr.initializer as ts.JsxExpression).expression!; } ts.forEachChild(node, visit); } visit(file); assert.ok(expression);
-  const check = new Function('env', `with(env){return ${expression.getText(file)};}`);
+  const check = new Function('env', `with(env){ const useLoading = env.useLoading ?? (() => {}), LoadingOverlay = env.LoadingOverlay ?? 'LoadingOverlay';return ${expression.getText(file)};}`);
   const env = { ready: true, foreground: true, online: true, expired: false, authHeld: false, busy: false, reading: 0, syncing: false, storageError: '', appLink: null, emailEntry: null, feedbackOpen: false, alertOpen: false, upiSetup: false, newPersonInvite: null, reviewCommand: null, returnAttemptId: null, screen: 'group', pushOpportunityReady, pushOpportunity: opportunity, owner: 'server|one', session: { token: 'session' }, selected: value, commands: [] };
   assert.equal(check(env), true);
   for (const changes of [{ ready: false }, { foreground: false }, { online: false }, { expired: true }, { authHeld: true }, { busy: true }, { reading: 1 }, { syncing: true }, { storageError: 'broken' }, { appLink: {} }, { emailEntry: {} }, { feedbackOpen: true }, { alertOpen: true }, { upiSetup: true }, { newPersonInvite: {} }, { reviewCommand: {} }, { returnAttemptId: 'pending' }, { screen: 'expense' }, { screen: 'login' }]) assert.equal(check({ ...env, ...changes }), false, JSON.stringify(changes));

@@ -1,3 +1,4 @@
+import { useLoading } from './LoadingOverlay';
 import { Dialog } from './DialogParts';
 import React, { useEffect, useRef, useState } from 'react';
 import * as Crypto from 'expo-crypto';
@@ -16,6 +17,7 @@ export default function FeedbackDialog({ visible, onClose, onSubmit }: {
   const notify = useToast();
   const [text, setText] = useState(''), [busy, setBusy] = useState(false), [error, setError] = useState(''), [sent, setSent] = useState(false);
   const pending = useRef<FeedbackSubmission | null>(null), lock = useRef(false), mounted = useRef(true);
+  useLoading(busy);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   function close() {
     if (lock.current) return;

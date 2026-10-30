@@ -1,3 +1,4 @@
+import { useLoading } from './LoadingOverlay';
 import { Dialog } from './DialogParts';
 import { Text } from 'react-native-paper';
 import React, { useEffect, useRef, useState } from 'react';
@@ -18,6 +19,7 @@ export default function UPISetupDialog({ visible, busy, needsName, afterFirstSpl
   const lock = useRef(false), mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const disabled = busy || saving;
+  useLoading(saving);
   function skip() { if (!needsName && !busy && !lock.current) onSkip(); }
   async function save() {
     if (busy || lock.current || !validUPIAddress(vpa.trim())) return;

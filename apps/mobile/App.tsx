@@ -101,6 +101,7 @@ import { expenseCategory, expenseIconChoices, type ExpenseIconRef } from './src/
 import { useExpenseNotices } from './src/useExpenseNotices';
 import type { WindowFrame } from './src/expenseNotices';
 import { Text } from 'react-native-paper';
+import { LoadingProvider, useLoading } from './src/LoadingOverlay';
 import * as SplashScreen from 'expo-splash-screen';
 
 if (Platform.OS !== 'web') void SplashScreen.preventAutoHideAsync().catch(() => {});
@@ -144,6 +145,7 @@ function AppContent() {
   const [busyRoutes, setBusyRoutes] = useState<string[]>([]), [pulling, setPulling] = useState(false), [feedback, setFeedback] = useState(() => ({ text: Platform.OS === 'web' ? googleBrowserError(window.location.search) : '', tone: 'error' as 'info' | 'success' | 'warning' | 'error' }));
   const submissions = useRef(new Set<string>()), busy = busyRoutes.length > 0;
   const [reading, setReading] = useState(0);
+  useLoading(busy || reading > 0 || pulling);
   const opening = useRef<object | null>(null);
   const openRequests = useRef(new Map<string, { route: unknown; promise: Promise<unknown> }>());
   const [feedbackOpen, setFeedbackOpen] = useState(false);
@@ -604,7 +606,7 @@ function AppContent() {
         throw error;
       }
     };
-    return more || activity?.items.length || readPrefetch.peek(readScope(active), '/activity?limit=50') ? read() : browse('activity', read, false);
+    return more ? read() : activity?.items.length || readPrefetch.peek(readScope(active), '/activity?limit=50') ? background(read, false) : browse('activity', read, false);
   }
   useEffect(() => {
     if (ready && session && !authHeld && !expired && foreground && screen === 'home' && tab === 'Activity' && !busy && activityOwner.current !== owner && !activityError) void refreshActivity().catch(() => {});
@@ -1505,7 +1507,7 @@ function AppContent() {
     {session && !authHeld && !expired && Platform.OS === 'web' && <OAuthContinuation key={`oauth-continuation|${owner}|${session.token}`} session={session} busy={busy} onSaveName={value => saveName(value, true)} beforeContinue={async () => { await draftWrites.current; }} />}
   </></NavigationContainer></PhotoSession.Provider>;
 }
-export default function App() { return <SafeAreaProvider initialMetrics={initialWindowMetrics}><UIProvider><AppContent /></UIProvider></SafeAreaProvider>; }
+export default function App() { return <SafeAreaProvider initialMetrics={initialWindowMetrics}><UIProvider><LoadingProvider><AppContent /></LoadingProvider></UIProvider></SafeAreaProvider>; }
 const makeStyles = (colors: Palette) => StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
 });

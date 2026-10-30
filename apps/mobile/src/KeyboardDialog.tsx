@@ -1,3 +1,4 @@
+import LoadingOverlay from './LoadingOverlay';
 import React, { useState } from 'react';
 import { KeyboardAvoidingView, Platform, useWindowDimensions } from 'react-native';
 import { Dialog, Portal } from 'react-native-paper';
@@ -22,5 +23,6 @@ export default function KeyboardDialog({ visible, onDismiss, dismissable = true,
         <DialogFocus label={label} active={visible} modal={blocksAppRestart} busy={!dismissable} onEscape={onDismiss}>{children}</DialogFocus>
       </DialogContext.Provider>
     </Dialog>}
+    {visible && <LoadingOverlay inline />}
   </KeyboardAvoidingView></Portal>;
 }

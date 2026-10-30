@@ -8,7 +8,7 @@ function load(name: string, mocks: Record<string, unknown>) {
   const source = readFileSync(new URL('../' + name, import.meta.url), 'utf8');
   const code = ts.transpile(source, { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React, esModuleInterop: true });
   const module = { exports: {} as any };
-  new Function('require', 'module', 'exports', code)((name: string) => { assert.ok(name in mocks, 'unexpected dependency ' + name); return mocks[name]; }, module, module.exports);
+  new Function('require', 'module', 'exports', code)((name: string) => { if (name === './LoadingOverlay') return { useLoading() {} }; assert.ok(name in mocks, 'unexpected dependency ' + name); return mocks[name]; }, module, module.exports);
   return module.exports;
 }
 const a = { baseUrl: 'https://example.invalid', userId: '1', token: 'session-a', email: 'a@example.invalid' };

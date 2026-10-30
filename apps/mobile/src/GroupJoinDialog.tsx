@@ -1,3 +1,4 @@
+import LoadingOverlay, { useLoading } from './LoadingOverlay';
 import ScrollBottomInset from './ScrollBottomInset';
 import PersonRow from './PersonRow';
 import { ErrorState } from './UIStates';
@@ -69,6 +70,7 @@ export default function GroupJoinDialog({ session, token, onJoined, onCancel }: 
       }
     } finally { flight.current = false; if (live.current && scope.current === owner) setWorking(false); }
   }
+  useLoading(working || !preview && !error);
   function back() { if (!working && !uncertain) { if (step === 'confirm') setStep('name'); else if (step === 'name' && preview?.people.length) setStep('choose'); else onCancel(); } }
   return <Modal visible presentationStyle="fullScreen" onRequestClose={() => { if (!working) onCancel(); }}>
     <SafeAreaProvider><AppFrame><DialogFocus modal={false} style={{ flex: 1 }} busy={working} onEscape={uncertain ? onCancel : back}>
@@ -102,6 +104,7 @@ export default function GroupJoinDialog({ session, token, onJoined, onCancel }: 
         <Button title={unavailable ? 'Back to MeroSplit' : 'Cancel'} kind="text" disabled={working} onPress={onCancel} style={{ minHeight: 48 }} />
         <ScrollBottomInset />
       </ScrollView>
+    <LoadingOverlay inline />
     </DialogFocus></AppFrame></SafeAreaProvider>
   </Modal>;
 }

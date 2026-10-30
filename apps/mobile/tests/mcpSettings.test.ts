@@ -15,7 +15,7 @@ function one(tree: unknown, type: string) { const rows = elements(tree).filter(n
 function button(tree: unknown, title: string) { const value = elements(tree).find(node => (node.type === 'Button' && node.props.title === title || node.type === 'SettingsRow' && node.props.label === title)); assert.ok(value, title); return value; }
 const session = { token: 'synthetic-one', baseUrl: 'https://example.invalid/', email: 'one@example.invalid', userId: '1' };
 function harness(os = 'ios') {
-  const slots: any[] = [], effects: (() => void)[] = [], calls: any[] = [], copies: string[] = [], busy: boolean[] = [];
+  const slots: any[] = [], effects: (() => void)[] = [], calls: any[] = [], copies: string[] = [], busy: boolean[] = [], loading: boolean[] = [];
   const viewport = { height: 667, width: 375, fontScale: 1 }, insets = { top: 20, bottom: 0, left: 0, right: 0 };
   const listeners = new Map<string, (event: any) => void>(); let index = 0, focused = 0;
   let input = { session, busy: false, onBusyChange: (value: boolean) => busy.push(value) };
@@ -35,6 +35,7 @@ function harness(os = 'ios') {
   };
   const shared = withSharedUI({ React, Dialog: { Title: 'Title', Actions: 'Actions' }, View: 'View', Text: 'Text', Button: 'Button', ErrorText: 'ErrorText', useUI: () => ({ ui: {} }) });
   const modules: Record<string, unknown> = {
+    './LoadingOverlay': { useLoading(value: boolean) { loading.push(value); } },
     './UIStates': { LoadingState: shared.LoadingState, EmptyState: shared.EmptyState, ErrorState: shared.ErrorState },
     react: { __esModule: true, ...React, default: shared.React },
     'react-native-safe-area-context': { useSafeAreaInsets: () => insets },
@@ -54,7 +55,7 @@ function harness(os = 'ios') {
     (fn: () => void) => fn(),
   );
   return {
-    calls, copies, busy, listeners, viewport, insets,
+    calls, copies, busy, loading, listeners, viewport, insets,
     copyWith(handler: typeof copy) { copy = handler; },
     respond(handler: typeof request) { request = handler; },
     render(next: Partial<typeof input> = {}) { input = { ...input, ...next }; index = 0; const tree = exports.default(input); one(tree, 'SettingsRow').props.rowRef.current = { focus: () => focused++ }; return tree; },
@@ -68,9 +69,11 @@ test('Connect MCP offers clipboard setup and a device list, with header dismissa
   const app = harness(); let tree = app.render(); await app.flush(); tree = app.render();
   assert.equal(one(tree, 'SettingsRow').props.label, 'Connect MCP');
   assert.equal(one(tree, 'KeyboardDialog').props.visible, false);
+  assert.equal(app.loading.at(-1), false, 'closed settings do not show the global overlay');
   assert.equal(app.calls.length, 0, 'the closed settings row does not fetch connections');
   one(tree, 'SettingsRow').props.onPress(); tree = app.render();
   assert.equal(one(tree, 'KeyboardDialog').props.visible, true);
+  assert.equal(app.loading.at(-1), true, 'open settings register the actual pending read');
   assert.ok(elements(one(tree, 'ScrollBody')).some(node => node.type === 'Text' && node.children.includes('Loading connections…')));
   assert.equal(one(tree, 'KeyboardDialog').props.dismissable, true, 'loading cannot trap someone in the dialog');
   await turn(); tree = app.render();
@@ -111,11 +114,12 @@ test('Disconnect keeps busy guards and the selected ID, then reloads devices', a
   assert.equal(app.focusCount(), 0);
   for (const title of ['Disconnect', 'Copy prompt']) assert.equal(button(tree, title).props.disabled, true);
   assert.deepEqual(app.busy, [true]);
+  assert.equal(app.loading.at(-1), true, 'disconnect keeps the overlay until its request and refresh finish');
   assert.equal(app.calls.filter(call => call.method === 'DELETE').length, 1);
   assert.equal(app.calls[1].path, '/me/mcp/client%2Fone');
   finish(); await turn(); assert.deepEqual(app.busy, [true, false]);
   assert.equal(one(app.render(), 'KeyboardDialog').props.dismissable, true);
-  assert.equal(app.calls.at(-1).method, 'GET'); app.unmount();
+  assert.equal(app.calls.at(-1).method, 'GET'); assert.equal(app.loading.at(-1), false); app.unmount();
 });
 
 test('loading failure stays inline, reopening retries and external busy blocks entry and dismissal', async () => {

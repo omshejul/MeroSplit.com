@@ -1,3 +1,4 @@
+import { useLoading } from './LoadingOverlay';
 import { Dialog } from './DialogParts';
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Platform } from 'react-native';
@@ -84,6 +85,7 @@ function RouteScene({ route, navigation }: NativeStackScreenProps<Routes, Screen
   const { render, blocked } = useContext(SceneContext), focused = useIsFocused();
   const [localBlocked, setLocalBlocked] = useState(false), [pending, setPending] = useState<NavigationAction | null>(null);
   const [discarding, setDiscarding] = useState(false), discardLock = useRef(false);
+  useLoading(discarding);
   const [deferred, setDeferred] = useState<NavigationAction | null>(null);
   const [queued, setQueued] = useState(false), committed = useRef(false), draftDiscard = useRef<(() => Promise<boolean>) | null>(null);
   const onQueued = useCallback(() => { committed.current = true; setQueued(true); }, []);

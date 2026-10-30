@@ -1,3 +1,4 @@
+import { useLoading } from './LoadingOverlay';
 import { DialogScrollBody } from './DialogParts';
 import { ErrorText } from './ui';
 import { Avatar } from './ui';
@@ -219,6 +220,7 @@ export default function BillChatScreen({ session, groupId, expenseId, active, on
     const waiting = incoming.current; incoming.current = []; follow.current = true; forceFollow.current = true; setNewMessages(false);
     setMessages(previous => mergeChatMessages(previous, waiting)); list.current?.scrollToOffset({ offset: 0, animated: motion.enabled });
   }
+  useLoading(working || enabled && !page && !error);
   const paging = useScrollPagination({ scope, cursor: page?.older_cursor, enabled, load: async signal => {
     follow.current = false; forceFollow.current = false;
     const before = new Set(rows.current.map(row => row.id));

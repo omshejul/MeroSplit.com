@@ -1,3 +1,4 @@
+import { useLoading } from './LoadingOverlay';
 import { ErrorState, LoadingState } from './UIStates';
 import { CloseDialogActions } from './DialogParts';
 import { ErrorText } from './ui';
@@ -121,6 +122,7 @@ export default function BalanceExplanation({ selection, currentKey, onClose }: {
     return () => { active = false; };
   }, [selection, retry]);
   const maxHeight = Math.max(180, height - insets.top - insets.bottom - 48);
+  useLoading(!!selection && !stale && !result && !error);
   return <KeyboardDialog visible={!!selection} onDismiss={close} maxHeight={maxHeight}>
     <View style={{ flexShrink: 1 }}>
       <Dialog.Title aria-level={2}>Why this amount?</Dialog.Title>

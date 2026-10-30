@@ -1,3 +1,4 @@
+import { useLoading } from './LoadingOverlay';
 import { DialogScrollBody } from './DialogParts';
 import { Dialog } from './DialogParts';
 import React, { useRef, useState } from 'react';
@@ -13,6 +14,7 @@ export default function DeleteAccount({ email: currentEmail, busy, onDelete }: {
   const [open, setOpen] = useState(false), [confirmation, setConfirmation] = useState(''), [email, setEmail] = useState(''), [error, setError] = useState(''), [working, setWorking] = useState(false);
   const lock = useRef(false), disabled = busy || working;
   let valid = false;
+  useLoading(working);
   try { accountDeletionInput(confirmation, email, currentEmail); valid = true; } catch { /* The button stays disabled until both fields match. */ }
   async function remove() {
     if (disabled || lock.current) return;
