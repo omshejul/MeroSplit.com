@@ -1,3 +1,4 @@
+import ScrollBottomInset from './ScrollBottomInset';
 import PersonRow from './PersonRow';
 import { ErrorState } from './UIStates';
 import { LoadingState } from './UIStates';
@@ -86,6 +87,7 @@ export default function GroupJoinDialog({ session, token, onJoined, onCancel }: 
           {!uncertain && <Button title="Choose again" kind="text" disabled={working} onPress={() => setStep('choose')} style={{ minHeight: 48 }} />}
         </>)}
         <Button title="Cancel" kind="text" disabled={working} onPress={onCancel} style={{ minHeight: 48 }} />
+        <ScrollBottomInset />
       </ScrollView>
     </DialogFocus></AppFrame></SafeAreaProvider>
   </Modal>;

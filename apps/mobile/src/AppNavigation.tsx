@@ -59,8 +59,8 @@ export function AppTabs({ selected, busy, onSelect }: { selected: string; busy: 
     {tabs.map(item => <TabButton key={item.value} item={item} selected={selected === item.value} busy={busy} onSelect={onSelect} />)}
   </TabBarSurface></BottomSafeArea>;
 }
-export function AddExpenseButton({ disabled, onPress }: { disabled: boolean; onPress: () => void }) {
-  return <FloatingActionContainer><AddActionButton title="Add expense" disabled={disabled} onPress={onPress} /></FloatingActionContainer>;
+export function AddExpenseButton({ disabled, onPress, onHeight }: { disabled: boolean; onPress: () => void; onHeight?: (height: number) => void }) {
+  return <FloatingActionContainer onHeight={onHeight}><AddActionButton title="Add expense" disabled={disabled} onPress={onPress} /></FloatingActionContainer>;
 }
 const styles = StyleSheet.create({
   floating: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingBottom: 16 },

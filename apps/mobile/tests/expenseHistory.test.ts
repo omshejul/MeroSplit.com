@@ -126,7 +126,7 @@ test('empty bounded pages retain earlier-history navigation instead of claiming 
   });
   app.render(); await app.commit(); let tree = app.render();
   assert.equal(tree.props.ListEmptyComponent.children.flat(Infinity).find((n: any) => n?.type === 'Text').children[0], 'No recorded changes on this page.');
-  tree.props.ListFooterComponent.children.flat(Infinity).find((node: any) => node?.props?.title === 'Load older').props.onPress();
+  footerButton(tree, 'Load older').props.onPress();
   await tick(); tree = app.render(); await app.commit();
   assert.equal(calls, 2); assert.equal(tree.props.data[0].version.id, 'earlier-real-edit');
   app.unmount();
@@ -148,7 +148,7 @@ test('a changed server revision clears old history instead of mixing redacted or
   let calls = 0;
   const app = component(async () => ++calls === 1 ? { ...page(), next_before: 2 } : { ...page('new'), version: 4 });
   app.render(); await app.commit(); let tree = app.render();
-  tree.props.ListFooterComponent.children.flat(Infinity).find((node: any) => node?.props?.title === 'Load older').props.onPress(); await tick(); tree = app.render(); await app.commit();
+  footerButton(tree, 'Load older').props.onPress(); await tick(); tree = app.render(); await app.commit();
   assert.equal(calls, 2); assert.equal(tree.props.data.length, 0);
   assert.equal(tree.props.ListEmptyComponent.children[0].children[0], 'History changed. Refresh to see the latest.');
   app.unmount();

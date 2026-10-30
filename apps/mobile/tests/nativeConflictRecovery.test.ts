@@ -118,7 +118,7 @@ test('review fetch cannot publish a screen or cache after the account/session ge
 
 test('actual group callsite passes preview status separately from the live header', () => {
   const previewError = 'Balances show accepted records. Sync or review saved changes before previewing a new total.';
-  const view = variable('groupView', { screen: 'group', selected: { group }, preview: group, previewError, GroupScreen: 'GroupScreen', categoryIcons: {}, listNotice: null, noticeVisibility: undefined, owner, groupId: 'g', ledgerRevision: 0, setLedgerUpdates() {}, pending: [edit], busy: false, selfId: 'a', loadBalanceGroup() {}, browseScope: '', remindPayment() {}, focused: true, foreground: true, expired: false, authHeld: false, online: true, pullToRefresh() {}, pulling: false });
+  const view = variable('groupView', { expenseClearance:120, screen: 'group', selected: { group }, preview: group, previewError, GroupScreen: 'GroupScreen', categoryIcons: {}, listNotice: null, noticeVisibility: undefined, owner, groupId: 'g', ledgerRevision: 0, setLedgerUpdates() {}, pending: [edit], busy: false, selfId: 'a', loadBalanceGroup() {}, browseScope: '', remindPayment() {}, focused: true, foreground: true, expired: false, authHeld: false, online: true, pullToRefresh() {}, pulling: false });
   assert.equal(view.props.previewError, previewError, 'preview status must travel with the snapshot');
   assert.equal(elements(view.props.header).some(node => node.children.includes(previewError)), false, 'live header must not relabel a held optimistic snapshot');
 });
