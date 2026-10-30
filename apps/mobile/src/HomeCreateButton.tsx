@@ -3,7 +3,7 @@ import React from 'react';
 
 import AddActionButton from './AddActionButton';
 
-// Custom tabs already sit outside the content area. Native iOS tabs overlay it.
-export default function HomeCreateButton({ direct, disabled, onPress, onHeight }: { direct: boolean; disabled: boolean; onPress: () => void; onHeight?: (height: number) => void }) {
-  return <FloatingActionContainer home onHeight={onHeight}><AddActionButton title={direct ? 'Add person' : 'Add group'} disabled={disabled} onPress={onPress} /></FloatingActionContainer>;
+// Reserve a footer in layout so tab switches cannot place the action under navigation.
+export default function HomeCreateButton({ direct, disabled, onPress }: { direct: boolean; disabled: boolean; onPress: () => void }) {
+  return <FloatingActionContainer home><AddActionButton title={direct ? 'Add person' : 'Add group'} disabled={disabled} onPress={onPress} /></FloatingActionContainer>;
 }

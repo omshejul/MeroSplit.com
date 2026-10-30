@@ -15,7 +15,7 @@ function count(value:any):number{return Array.isArray(value)?value.reduce((n,v)=
 test('all native home lists keep a navigation inset when create actions are absent',()=>{
  for(const tab of ['Groups','Friends','Account'])for(const showCreate of [false,true]){
   const result=evaluate(`<>${footers.join('')}</>`,{screen:'home',tab,showCreate});
-  assert.equal(count(result),1,`${tab}, create=${showCreate}: footer must clear the floating native tabs`);
+  assert.equal(count(result),showCreate?0:1,`${tab}, create=${showCreate}: create footer owns its own navigation inset`);
  }
  assert.equal(count(evaluate(`<>${footers.join('')}</>`,{screen:'expenseDetail',showCreate:false})),0,'stack pages have no home tab overlay');
 });
