@@ -621,7 +621,18 @@ function AppContent() {
     await browse(`activity:${target.groupId}:${target.kind}:${target.kind === 'bill' ? target.expenseId : target.kind === 'payment' ? target.settlementId : ''}:${chat}`, async current => {
       if (!session) return;
       const active = session;
-      let group = await fetchGroup(active, target.groupId);
+      let group: Group;
+      if (isOnline()) group = await fetchGroup(active, target.groupId);
+      else {
+        const db = await getDatabase(), scope = accountOwner(active);
+        const [visible, complete] = await Promise.all([readVisibleGroup(db, scope, target.groupId), readGroup(db, scope, target.groupId)]);
+        if (!current()) return;
+        if (visible?.kind !== 'shared') throw new Error('This record is not available offline. Connect to download it.');
+        group = complete?.kind === 'shared' && complete.group.version === visible.group.version ? complete.group : visible.group;
+        const downloaded = target.kind === 'bill' ? group.expenses.some(value => value.id === target.expenseId) || group.focused_expense?.id === target.expenseId
+          : target.kind === 'payment' ? group.settlements.some(value => value.id === target.settlementId) || group.focused_settlement?.id === target.settlementId : true;
+        if (!downloaded) throw new Error('These details have not downloaded. Connect to open this record.');
+      }
       if (target.kind === 'bill') group = await withBill(active, group, target.expenseId);
       if (target.kind === 'payment') group = await withPayment(active, group, target.settlementId);
       if (!current()) return;

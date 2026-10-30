@@ -8,6 +8,7 @@ import { expenseBalanceChange, formatMoney } from '../src/accounting.ts';
 import { paymentPresentation } from '../src/activityPresentation.ts';
 import { personalSettlements, personalTransfers } from '../src/personalBalances.ts';
 import { previewPending } from '../src/ledger.ts';
+import { cachedTimeline } from '../src/groupTimeline.ts';
 import type { Command, Group } from '../src/types.ts';
 
 type Element = { type: unknown; props: Record<string, any>; children: unknown[] };
@@ -18,7 +19,7 @@ function production(name: string, overrides: Record<string, any> = {}) {
   const helpers = source.statements.filter(node => ts.isVariableStatement(node) && node.declarationList.declarations.some(d => ['billImpact', 'participantName', 'displayDate', 's'].includes(d.name.getText(source)))).map(node => node.getText(source)).join('\n');
   const node = source.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === name); assert.ok(node);
   const code = ts.transpile(`${helpers}\n${node.getText(source).replace(/^export (?:default )?/, '')}\nreturn ${name};`, { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React });
-  return new Function('env', `with(env) { const StaggerItem = 'StaggerItem'; ${code} }`)(withSharedUI({ React, Animated, Keyboard: { dismiss() {} }, TextInput: 'TextInput', Platform: { OS: 'web' }, useLayoutEffect: () => {}, useEffect: () => {}, categoryIcon, categoryMeaning, expenseCategory, TransactionIcon: 'TransactionIcon', BillIconButton: 'BillIconButton', PagingFooter: 'PagingFooter', LegacyPayments: 'LegacyPayments', FlatList: 'FlatList', ScrollView: 'ScrollView', pageContentStyle: {}, LoadingSpinner: 'LoadingSpinner', useScrollPagination: (options: any) => ({ events: {}, loading: false, failed: false, canLoadMore: !!options.cursor, loadMore() {}, retry() {} }), expenseBalanceChange, formatMoney, paymentPresentation, personalSettlements, personalTransfers, BalanceExplanation: 'BalanceExplanation', balanceKey: () => '', useRef: (initial: unknown) => ({ current: initial }), useState: (initial: unknown) => [typeof initial === 'function' ? initial() : initial, () => {}], Avatar: 'Avatar', AmountText: 'AmountText', Text: 'Text', SectionHeading: 'SectionHeading', View: 'View', Pressable: 'Pressable', Icon: 'Icon', Button: 'Button', RecordSummary: 'RecordSummary', ParticipantAmountRow: 'ParticipantAmountRow', LogRow: 'LogRow', LogDate: 'LogDate', BillEffect: 'BillEffect', VisibleExpense: 'VisibleExpense', HistoryPages: 'HistoryPages', BillSearch: 'BillSearch', PaymentRow: 'PaymentRow', BillTimelineRow: 'BillTimelineRow', DetailDialog: 'DetailDialog', BillPeople: 'BillPeople', RecordAttribution: 'RecordAttribution', PersonalTransferRow: 'PersonalTransferRow', PendingChangeRow: 'PendingChangeRow', StyleSheet: { create: (styles: unknown) => styles }, radii: { surface: 16 }, balanceColor: (amount: string) => BigInt(amount) < 0n ? 'negative' : 'positive', useUI: () => ({ motion: { enabled: false }, ui: { numeric: { fontSize: 32, fontWeight: '600' }, caption: { fontSize: 14 }, row: { minHeight: 52, paddingVertical: 6 } }, palette: { muted: 'muted', line: '#334455', surface: 'surface', text: 'text' } }), ...overrides }));
+  return new Function('env', `with(env) { const StaggerItem = 'StaggerItem'; ${code} }`)(withSharedUI({ React, Animated, Keyboard: { dismiss() {} }, TextInput: 'TextInput', Platform: { OS: 'web' }, useLayoutEffect: () => {}, useEffect: () => {}, categoryIcon, categoryMeaning, expenseCategory, TransactionIcon: 'TransactionIcon', BillIconButton: 'BillIconButton', PagingFooter: 'PagingFooter', LegacyPayments: 'LegacyPayments', FlatList: 'FlatList', ScrollView: 'ScrollView', pageContentStyle: {}, LoadingSpinner: 'LoadingSpinner', useScrollPagination: (options: any) => ({ events: {}, loading: false, failed: false, canLoadMore: !!options.cursor, loadMore() {}, retry() {} }), expenseBalanceChange, formatMoney, paymentPresentation, cachedTimeline, personalSettlements, personalTransfers, BalanceExplanation: 'BalanceExplanation', balanceKey: () => '', useRef: (initial: unknown) => ({ current: initial }), useState: (initial: unknown) => [typeof initial === 'function' ? initial() : initial, () => {}], Avatar: 'Avatar', AmountText: 'AmountText', Text: 'Text', SectionHeading: 'SectionHeading', View: 'View', Pressable: 'Pressable', Icon: 'Icon', Button: 'Button', RecordSummary: 'RecordSummary', ParticipantAmountRow: 'ParticipantAmountRow', LogRow: 'LogRow', LogDate: 'LogDate', BillEffect: 'BillEffect', VisibleExpense: 'VisibleExpense', HistoryPages: 'HistoryPages', BillSearch: 'BillSearch', PaymentRow: 'PaymentRow', BillTimelineRow: 'BillTimelineRow', DetailDialog: 'DetailDialog', BillPeople: 'BillPeople', RecordAttribution: 'RecordAttribution', PersonalTransferRow: 'PersonalTransferRow', PendingChangeRow: 'PendingChangeRow', StyleSheet: { create: (styles: unknown) => styles }, radii: { surface: 16 }, balanceColor: (amount: string) => BigInt(amount) < 0n ? 'negative' : 'positive', useUI: () => ({ motion: { enabled: false }, ui: { numeric: { fontSize: 32, fontWeight: '600' }, caption: { fontSize: 14 }, row: { minHeight: 52, paddingVertical: 6 } }, palette: { muted: 'muted', line: '#334455', surface: 'surface', text: 'text' } }), ...overrides }));
 }
 function elements(tree: unknown): Element[] {
   if (Array.isArray(tree)) return tree.flatMap(elements);
@@ -154,20 +155,62 @@ test('virtualized timeline and legacy bill/payment lists preserve server order',
   const bill = { id: 'bill', description: 'Lunch', date: '2026-10-18' };
   const first = { id: 'first', sender: 'self', recipient: 'other', amount: '334' };
   const second = { ...first, id: 'second', reversed: true };
-  const value = { ...group, expenses: [bill], settlements: [first, second], transfers: [], transactions: [{ kind: 'bill', bill }, { kind: 'payment', payment: first }, { kind: 'payment', payment: second }] };
+  const value = { ...group, read_mode: 'summary', expenses: [bill], settlements: [first, second], transfers: [], transactions: [{ kind: 'bill', bill }, { kind: 'payment', payment: first }, { kind: 'payment', payment: second }] };
   const props = { group: value, accepted: value, selfId: 'self', pending: [], busy: true, onPayment() {}, onExpense() {} };
   const list = elements(render(props)).find(node => node.type === 'FlatList')!;
   assert.deepEqual(list.props.data.map((row: any) => row.bill?.id ?? row.payment.id), ['bill', 'first', 'second']);
   const rows = list.props.data.map((item: any) => list.props.renderItem({ item }).children[0]);
   assert.ok(rows.every((row: any) => row.props.busy));
   assert.ok(rows.filter((row: any) => row.type === 'PaymentRow').every((row: any) => row.props.accepted === value && row.props.onPayment === props.onPayment));
-  const fallback = { ...value, transactions: undefined };
+  const fallback = { ...value, read_mode: 'summary', transactions: undefined };
   const history = render({ ...props, group: fallback, accepted: fallback });
   assert.deepEqual(elements(history).find(node => node.type === 'FlatList')!.props.data.map((row: any) => row.bill.id), ['bill']);
   const payments = elements(history).find(node => node.type === 'LegacyPayments')!;
   assert.equal(payments.props.group, fallback);
   assert.ok(elements(history).some(node => node.type === 'DetailDialog' && node.props.title === 'Payment records'));
   assert.ok(!elements(history).some(node => node.type === 'HistoryPages'));
+});
+
+test('complete offline caches keep every payment in the dated bill timeline and preserve detail actions', () => {
+  const bill = billRow({ id: 'newer', date: '2026-10-28' }), old = billRow({ id: 'older', date: '2026-10-25' });
+  const payment = { id: 'received', sender: 'other', recipient: 'self', amount: '500', date: '2026-10-27', reversed: true };
+  const betweenOthers = { ...payment, id: 'other-members', sender: 'other', recipient: 'third', date: '2026-10-26', reversed: false };
+  const value = { ...group, name: 'Trip', expenses: [old, bill], settlements: [payment, betweenOthers], transfers: [] };
+  const open: unknown[] = [];
+  for (const is_direct of [false, true]) {
+    const full = { ...value, is_direct };
+    const tree = production('GroupScreen')({ group: full, accepted: full, selfId: 'self', pending: [], busy: false, online: false, onPayment: (row: unknown) => open.push(row) });
+    const nodes = elements(tree), list = nodes.find(node => node.type === 'FlatList')!;
+    assert.deepEqual(list.props.data.map((row: any) => row.bill?.id ?? row.payment.id), ['newer', 'received', 'other-members', 'older']);
+    assert.ok(!nodes.some(node => node.type === 'DetailDialog' && node.props.title === 'Payment records'));
+    const row = list.props.renderItem({ item: list.props.data[1] }).children[0];
+    assert.equal(row.type, 'PaymentRow');
+    elements(production('PaymentRow')(row.props)).find(node => node.type === 'LogRow')!.props.onPress();
+  }
+  assert.deepEqual(open, [payment, payment]);
+});
+
+test('offline search uses downloaded bill descriptions and notes and excludes payments like server search', () => {
+  let cursor = 0; const states: any[] = [];
+  const render = production('GroupScreen', { useState: (initial: any) => { const i = cursor++; if (!(i in states)) states[i] = typeof initial === 'function' ? initial() : initial; return [states[i], (value: any) => { states[i] = value; }]; } });
+  const bill = billRow({ notes: 'airport pickup' });
+  const value = { ...group, expenses: [bill], settlements: Array.from({ length: 5 }, (_, i) => ({ id: String(i), sender: 'other', recipient: 'self', amount: '100', date: '2026-10-17' })), transfers: [] };
+  const view = () => { cursor = 0; return elements(render({ group: value, accepted: value, pending: [], selfId: 'self', busy: false, online: false })); };
+  view().find(node => node.props.accessibilityLabel === 'Search bills')!.props.onPress();
+  for (const [query, ids] of [['pickup', ['bill']], ['Lunch', ['bill']], ['nothing', []], ['', ['bill', '4', '3', '2', '1', '0']]] as const) {
+    view().find(node => node.type === 'BillSearch')!.props.onChange(query);
+    const tree = view();
+    assert.ok(tree.some(node => node.type === 'BillSearch'));
+    assert.deepEqual(tree.find(node => node.type === 'FlatList')!.props.data.map((row: any) => row.bill?.id ?? row.payment.id), ids);
+  }
+});
+
+test('payment-only complete caches render payment rows without a separate dialog', () => {
+  const payment = { id: 'received', sender: 'other', recipient: 'self', amount: '500', date: null };
+  const value = { ...group, expenses: [], settlements: [payment], transfers: [] };
+  const nodes = elements(production('GroupScreen')({ group: value, accepted: value, selfId: 'self', pending: [], busy: false, online: false }));
+  assert.deepEqual(nodes.find(node => node.type === 'FlatList')!.props.data.map((row: any) => row.kind), ['payment']);
+  assert.ok(!nodes.some(node => node.type === 'DetailDialog'));
 });
 
 test('actual GroupScreen transaction rows expose offline new/edit bills and their detail callback', () => {

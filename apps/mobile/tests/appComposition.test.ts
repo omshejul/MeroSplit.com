@@ -84,7 +84,7 @@ test('Activity discovers unread chats before a bill is opened and resolves the a
   entry.props.onOpen('g', 'b'); assert.deepEqual(selected, [[{ kind: 'bill', groupId: 'g', expenseId: 'b' }, true]]);
   const declaration = app.body!.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === 'openActivityTarget')!;
   const calls: string[] = [], active = { token: 'current' };
-  const scope = { showReadGroup: () => calls.push('publish-group'), browse: async (_key: string, fn: any) => fn(() => true), saveReadGroup: async () => true, session: active, activeSessionRef: { current: active }, perform: async (fn: () => Promise<void>) => fn(), fetchGroup: async () => { calls.push('group-read'); return { id: 'g' }; }, withBill: async (_session: any, group: any, id: string) => { calls.push('bill-read-' + id); return group; }, getDatabase: async () => ({}), accountOwner: () => 'one', saveGroup: async () => {}, navigate: (screen: string) => calls.push(screen) };
+  const scope = { isOnline: () => true, showReadGroup: () => calls.push('publish-group'), browse: async (_key: string, fn: any) => fn(() => true), saveReadGroup: async () => true, session: active, activeSessionRef: { current: active }, perform: async (fn: () => Promise<void>) => fn(), fetchGroup: async () => { calls.push('group-read'); return { id: 'g' }; }, withBill: async (_session: any, group: any, id: string) => { calls.push('bill-read-' + id); return group; }, getDatabase: async () => ({}), accountOwner: () => 'one', saveGroup: async () => {}, navigate: (screen: string) => calls.push(screen) };
   const open = new Function('env', `with(env){${ts.transpile(declaration.getText(source), { target: ts.ScriptTarget.ES2022 })};return openActivityTarget;}`)(scope);
   await open(selected[0][0], true); assert.deepEqual(calls, ['group-read', 'bill-read-b', 'publish-group', 'billChat']);
 });
@@ -134,4 +134,35 @@ test('Me mounts the shared update control and App owns the live restart gate and
  scope.activeSessionRef.current={...active,token:'changed'};finish();
  await assert.rejects(waiting,/Finish what's in progress/);assert.deepEqual([...calls],['chat-write-check']);assert.equal(scope.lock.current,false);
  scope.activeSessionRef.current=active;await restart(async()=>{calls.push('reload');});assert.deepEqual([...calls],['chat-write-check','chat-write-check','reload']);assert.equal(scope.lock.current,true);
+});
+
+test('offline Activity opens downloaded bills, payments and chats without a network read', async () => {
+  const declaration = app.body!.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === 'openActivityTarget')!;
+  const cached = { id: 'g', version: 3, expenses: [{ id: 'b' }], settlements: [{ id: 'p' }] };
+  let complete: any = { kind: 'shared', group: cached }, visible: any = { kind: 'shared', group: { ...cached, read_mode: 'summary' } };
+  const navigations: any[] = [], published: any[] = [];
+  const active = { token: 'current' };
+  let current = true;
+  const scope = { session: active, isOnline: () => false, accountOwner: () => 'owner', getDatabase: async () => ({}),
+    readGroup: async (_db: any, owner: string) => { assert.equal(owner, 'owner'); return complete; }, readVisibleGroup: async () => visible,
+    fetchGroup: async () => { assert.fail('offline Activity cannot fetch the group'); },
+    withBill: async (_active: any, group: any, id: string) => { assert.ok(group.expenses.some((value: any) => value.id === id)); return group; },
+    withPayment: async (_active: any, group: any, id: string) => { assert.ok(group.settlements.some((value: any) => value.id === id)); return group; },
+    browse: async (_key: string, fn: any) => fn(() => current), saveReadGroup: async () => true,
+    showReadGroup: (group: any) => published.push(group), navigate: (...args: any[]) => navigations.push(args) };
+  const open = new Function('env', `with(env){${ts.transpile(declaration.getText(source), { target: ts.ScriptTarget.ES2022 })};return openActivityTarget;}`)(scope);
+  await open({ kind: 'bill', groupId: 'g', expenseId: 'b' });
+  await open({ kind: 'payment', groupId: 'g', settlementId: 'p' });
+  await open({ kind: 'bill', groupId: 'g', expenseId: 'b' }, true);
+  assert.deepEqual(navigations.map(value => value[0]), ['expenseDetail', 'paymentDetail', 'billChat']);
+  assert.ok(published.every(value => value === cached));
+  for (const unavailable of [null, { ...visible, kind: 'unavailable' }]) {
+    visible = unavailable;
+    await assert.rejects(open({ kind: 'bill', groupId: 'g', expenseId: 'b' }), /download|available|connection/i);
+  }
+  visible = { kind: 'shared', group: { ...cached, version: 4, expenses: [], settlements: [], read_mode: 'summary' } };
+  await assert.rejects(open({ kind: 'bill', groupId: 'g', expenseId: 'b' }), /download|connection/i, 'never substitute an older complete cache for newer records');
+  visible = { kind: 'shared', group: cached }; current = false;
+  await open({ kind: 'bill', groupId: 'g', expenseId: 'b' });
+  assert.equal(navigations.length, 3, 'stale offline reads cannot navigate');
 });

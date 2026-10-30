@@ -23,6 +23,7 @@ import { pageContentStyle } from './AppNavigation';
 import { expenseBalanceChange, formatMoney } from './accounting';
 import { Text } from 'react-native-paper';
 import { personalSettlements, personalTransfers } from './personalBalances';
+import { cachedTimeline } from './groupTimeline';
 import { paymentPresentation } from './activityPresentation';
 import { VisibleExpense } from './useExpenseNotices';
 import type { NoticeVisibility } from './useExpenseNotices';
@@ -194,10 +195,11 @@ export default function GroupScreen({ categoryIcons, header, noticeVisibility, g
   const historyResource = group.transactions ? 'transactions' : 'bills';
   const [search, setSearch] = useState(group.history?.[historyResource]?.query ?? ''), [searching, setSearching] = useState(!!group.history?.[historyResource]?.query);
   const historyWindow = group.history?.[historyResource];
-  const expenses = group.read_mode === 'summary' ? group.expenses : group.expenses.filter(expense => group.expenses.length < 5 || `${expense.description} ${expense.notes}`.toLowerCase().includes(search.trim().toLowerCase()));
   const transfers = personalTransfers(group, selfId);
   const celebrateSettled = pending.length === 0 && accepted.balances?.[selfId] === '0';
-  const rows: GroupTransaction[] = group.transactions ?? (group.read_mode === 'summary' ? expenses : [...expenses].reverse()).map(bill => ({ kind: 'bill', date: bill.date, bill }));
+  const rows: GroupTransaction[] = group.read_mode === 'summary'
+    ? group.transactions ?? group.expenses.map(bill => ({ kind: 'bill', date: bill.date, bill }))
+    : cachedTimeline(group, search);
   const payments = personalSettlements(group, selfId);
   const searchable = rows.length >= 5 || !!(historyWindow?.next_cursor || historyWindow?.previous?.length || historyWindow?.query);
   const showSearch = searching;
@@ -260,7 +262,7 @@ export default function GroupScreen({ categoryIcons, header, noticeVisibility, g
       ListEmptyComponent={<EmptyState style={s.empty} illustration={<Icon name="bill" size={32} />} message={historyWindow?.next_cursor ? 'No matching records on this page.' : historyWindow?.query || search.trim() ? 'No matching bills' : 'No bills or payments yet'} />}
       ListFooterComponent={<>
         <PaginationFooter paging={paging} />
-        {group.transactions === undefined && (!!payments.length || !!group.history?.settlements?.next_cursor) && <DetailDialog icon="payment" title="Payment records">
+        {group.read_mode === 'summary' && group.transactions === undefined && (!!payments.length || !!group.history?.settlements?.next_cursor) && <DetailDialog icon="payment" title="Payment records">
           <LegacyPayments group={group} accepted={accepted} selfId={selfId} busy={busy} onPayment={onPayment} onPrefetchPayment={onPrefetchPayment} onPage={onHistoryPage} scope={pagingScope} enabled={active && online} />
         </DetailDialog>}
       </>} />
