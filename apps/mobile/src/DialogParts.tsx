@@ -1,6 +1,7 @@
+import ScrollView from './KeyboardScrollView';
 import RowGroup from './RowGroup';
 import React, { useContext } from 'react';
-import { Platform, ScrollView, StyleSheet, View } from 'react-native';
+import { Platform, StyleSheet, View } from 'react-native';
 import { Dialog as PaperDialog, Text } from 'react-native-paper';
 import { Button, Icon, useUI, type IconName } from './ui';
 import { DialogContext } from './DialogContext';

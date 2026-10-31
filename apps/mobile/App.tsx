@@ -1,3 +1,4 @@
+import ScrollView from './src/KeyboardScrollView';
 import { hasOpenDialogs } from './src/DialogFocus';
 import { NoticeBanner } from './src/UIStates';
 import { ErrorText } from './src/ui';
@@ -15,7 +16,7 @@ import type { AppRoute, RouteParams, Screen } from './src/routes';
 import MotionReveal from './src/MotionReveal';
 import { loadBalanceSource } from './src/balanceExplanationStorage';
 import React, { useEffect, useRef, useState } from 'react';
-import { AppState, BackHandler, Linking, Platform, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { AppState, BackHandler, Linking, Platform, RefreshControl, StyleSheet, View } from 'react-native';
 import type { AlertButton } from 'react-native';
 import { Alert } from './src/alerts';
 import { SafeAreaProvider, SafeAreaView, initialWindowMetrics } from 'react-native-safe-area-context';

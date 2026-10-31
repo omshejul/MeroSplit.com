@@ -1,3 +1,4 @@
+import ScrollView from './KeyboardScrollView';
 import LoadingOverlay, { useLoading } from './LoadingOverlay';
 import ScrollBottomInset from './ScrollBottomInset';
 import PersonRow from './PersonRow';
@@ -5,7 +6,7 @@ import { ErrorState } from './UIStates';
 import { LoadingState } from './UIStates';
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Modal, ScrollView, View } from 'react-native';
+import { Modal, View } from 'react-native';
 import { Text } from 'react-native-paper';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as Crypto from 'expo-crypto';

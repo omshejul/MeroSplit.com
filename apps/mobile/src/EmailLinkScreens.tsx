@@ -1,9 +1,10 @@
+import ScrollView from './KeyboardScrollView';
 import ScrollBottomInset from './ScrollBottomInset';
 import { LoadingState } from './UIStates';
 import ResendControls from './ResendControls';
 import { Dialog } from './DialogParts';
 import React, { useState } from 'react';
-import { ScrollView, View } from 'react-native';
+import { View } from 'react-native';
 import { Text } from 'react-native-paper';
 
 import KeyboardDialog from './KeyboardDialog';

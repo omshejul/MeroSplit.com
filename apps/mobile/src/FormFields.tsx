@@ -1,5 +1,6 @@
+import TextInput from './KeyboardInput';
 import React, { useId } from 'react';
-import { StyleSheet, TextInput, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import type { StyleProp, ViewStyle } from 'react-native';
 
 export { default as RadioChoice } from './RadioChoice';

@@ -1,3 +1,5 @@
+import KeyboardScrollView from './KeyboardScrollView';
+import TextInput from './KeyboardInput';
 import { useLoading } from './LoadingOverlay';
 import { BillIconButton } from './BillIconPicker';
 import { useRowDivider } from './rowDividers';
@@ -18,7 +20,7 @@ import BillPeople from './BillPeople';
 import BalanceExplanation, { type BalanceSelection } from './BalanceExplanationDialog';
 import { balanceKey } from './balanceExplanation';
 import type { BalanceSource } from './balanceExplanationStorage';
-import { Animated, Keyboard, Platform, FlatList, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { Animated, Keyboard, Platform, FlatList, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { useScrollPagination } from './useScrollPagination';
 import { pageContentStyle } from './AppNavigation';
 import { expenseBalanceChange, formatMoney } from './accounting';
@@ -243,7 +245,7 @@ export default function GroupScreen({ bottomClearance = 120, categoryIcons, head
     load: signal => onHistoryPage?.(historyResource, 'next', undefined, signal, accepted) ?? Promise.resolve(false) });
   const visibility = noticeVisibility ? { ...noticeVisibility, viewport, scrollEpoch } : undefined;
   return <Animated.View ref={frame} role="region" accessibilityLabel={group.name} style={{ flex: 1, opacity }}>
-    <FlatList ref={list} contentInsetAdjustmentBehavior="automatic" data={rows} extraData={entryRevision} nestedScrollEnabled scrollEventThrottle={100} onEndReachedThreshold={0.3}
+    <FlatList renderScrollComponent={props => <KeyboardScrollView {...props} refreshControl={props.refreshControl ?? (onRefresh ? <RefreshControl refreshing={refreshing ?? false} onRefresh={onRefresh} /> : undefined)} />} ref={list} contentInsetAdjustmentBehavior="automatic" data={rows} extraData={entryRevision} nestedScrollEnabled scrollEventThrottle={100} onEndReachedThreshold={0.3}
       onLayout={event => { frame.current?.measureInWindow((x, y, width, height) => setViewport({ x, y, width, height })); }}
       onScroll={event => { setScrollEpoch(value => value + 1); }}
       keyboardShouldPersistTaps="handled" onViewableItemsChanged={viewable.current} onRefresh={onRefresh} refreshing={refreshing}

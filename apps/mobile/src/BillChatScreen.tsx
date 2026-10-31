@@ -1,3 +1,4 @@
+import TextInput from './KeyboardInput';
 import { useLoading } from './LoadingOverlay';
 import { DialogScrollBody } from './DialogParts';
 import { ErrorText } from './ui';
@@ -10,7 +11,7 @@ import { Dialog } from './DialogParts';
 import { useScrollPagination } from './useScrollPagination';
 import { APP_ORIGIN } from './appLinks';
 import React, { useEffect, useRef, useState } from 'react';
-import { FlatList, KeyboardAvoidingView, Linking, Platform, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { FlatList, KeyboardAvoidingView, Linking, Platform, Text, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import * as Crypto from 'expo-crypto';

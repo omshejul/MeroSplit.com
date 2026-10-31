@@ -69,3 +69,17 @@ test('native Back notifies the form once and owner cleanup cannot issue a second
  owner.render('NativeSheet',props);screen.render('NativeSheetScreen',{route:{params:{sheetId:':sheet:'}},navigation:screen.navigation,blocked:false});screen.unmount();assert.equal(dismissed,1);
  owner.render('NativeSheet',{...props,visible:false});assert.equal(owner.actions.length,1,'only the original push, even when owner getState still contains the removed sheet');owner.unmount();
 });
+
+test('iOS page sheets compensate for their measured screen origin when avoiding the keyboard',()=>{
+ const source=ts.createSourceFile('PeopleSheet.tsx',readFileSync(new URL('../src/PeopleSheet.tsx',import.meta.url),'utf8'),ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
+ const fn=source.statements.find(node=>ts.isFunctionDeclaration(node)&&node.name?.text==='PeopleSheet')!;
+ let cursor=0;const state:any[]=[];
+ const env={React:{createElement:(type:any,props:any,...children:any[])=>({type,props:props??{},children})},Platform:{OS:'ios'},Modal:'Modal',DialogFocus:'DialogFocus',KeyboardAvoidingView:'KeyboardAvoidingView',ScrollView:'ScrollView',View:'View',Text:'Text',Icon:'Icon',Button:'Button',RowGroup:'RowGroup',LoadingOverlay:'LoadingOverlay',useState:(initial:any)=>{const i=cursor++;if(!(i in state))state[i]=initial;return[state[i],(value:any)=>{state[i]=value;}];},useWindowDimensions:()=>({height:844,width:390}),useSafeAreaInsets:()=>({top:47,bottom:34}),useUI:()=>({ui:{},palette:{},motion:{enabled:false}})};
+ const component=new Function('env',`with(env){${ts.transpile(fn.getText(source).replace('export default ',''),{target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.React})};return PeopleSheet;}`)(env);
+ const render=()=>{cursor=0;return component({visible:true,disabled:false,maxHeight:844,children:'fields'});};
+ const nodes=(value:any):any[]=>Array.isArray(value)?value.flatMap(nodes):value&&typeof value==='object'?[value,...nodes(value.children)]:[];
+ let tree=render();tree.children[0].props.onLayout({nativeEvent:{layout:{height:797}}});tree=render();
+ assert.equal(nodes(tree).find(node=>node.type==='KeyboardAvoidingView').props.keyboardVerticalOffset,47);
+ tree.children[0].props.onLayout({nativeEvent:{layout:{height:844}}});tree=render();
+ assert.equal(nodes(tree).find(node=>node.type==='KeyboardAvoidingView').props.keyboardVerticalOffset,0,'full-height presentations do not add a second offset');
+});

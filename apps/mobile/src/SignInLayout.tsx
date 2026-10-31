@@ -1,7 +1,8 @@
+import ScrollView from './KeyboardScrollView';
 import ScrollBottomInset from './ScrollBottomInset';
 import AppLogo from './AppLogo';
 import React, { useEffect, useState } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, View } from 'react-native';
 import { Text } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { IconAction, useUI } from './ui';
