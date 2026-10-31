@@ -77,6 +77,8 @@ def test_device_entry_works_logged_out_without_loading_the_app():
     page = phone.get('/mcp/device')
     assert page.status_code == 200 and b'id="email-form"' in page.content
     assert b'/mcp/device.js' in page.content
+    assert b'id="email-form" method="post" action="/mcp/device"' in page.content
+    assert b'id="code-form" method="post" action="/mcp/device"' in page.content
     assert b'/app/' not in page.content and b'localhost' not in page.content
     assert b'name="csrfmiddlewaretoken"' in page.content
 
