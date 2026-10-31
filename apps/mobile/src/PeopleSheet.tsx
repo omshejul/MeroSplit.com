@@ -1,7 +1,8 @@
+import ScrollView from './KeyboardScrollView';
 import LoadingOverlay from './LoadingOverlay';
 import RowGroup from './RowGroup';
 import React, { useState } from 'react';
-import { KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { KeyboardAvoidingView, Modal, Platform, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { Text } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import DialogFocus from './DialogFocus';

@@ -35,3 +35,9 @@ Django allauth owns identity and sessions. Account linking is explicit. Keep acc
 ## UPI handoff
 
 The client can hand off to installed payment apps through `apps/mobile/src/upi.ts`. A handler check only establishes that an app can open the URI. Launch, cancellation and return do not prove a bank payment occurred. Recording bookkeeping and moving money are separate actions.
+
+## Keyboard visibility
+
+Use `TextField` and its variants for forms, or `KeyboardInput` for custom inputs. Put scrollable inputs inside `KeyboardScrollView`; dialogs use `DialogScrollBody` and people sheets supply their own scroller. For a virtualized list with editable content, return `KeyboardScrollView` from `renderScrollComponent`. The nearest container reveals the focused field on focus, keyboard and layout changes, and caps multiline inputs to the available height. Existing keyboard-avoiding ancestors own resizing; the scroller adds only remaining Android keyboard overlap. Web keeps the native browser components. Chat retains its separate composer viewport.
+
+`tests/native/KeyboardProbe.tsx` is an isolated synthetic native entry for screen, dialog, sheet, list, sign-in and chat keyboard checks. It writes measurements to `keyboard-probe.json` in the app's documents directory. Capture each reported `capture` stage, then create `keyboard-continue` there to advance. At the `tap: Message` stage, focus the actual chat composer through native UI automation. Production `index.ts` must never import the probe.
