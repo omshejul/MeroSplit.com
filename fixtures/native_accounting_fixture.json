@@ -1,0 +1,140 @@
+{
+  "fixture_type": "Transcription of synthetic native UI observations; not a Splitwise export",
+  "observed_on": "2026-10-16",
+  "source": "splitwise_android_walkthrough.json",
+  "app_version": "26.9.1/963",
+  "currency": "INR",
+  "minor_unit": "paise",
+  "encoding": "All money values are decimal integer strings; positive net means owed to participant",
+  "participants": [
+    "A",
+    "B",
+    "C"
+  ],
+  "events": [
+    {
+      "id": "E1",
+      "type": "expense",
+      "total": "50000",
+      "paid": {
+        "A": "0",
+        "B": "50000",
+        "C": "0"
+      },
+      "share": {
+        "A": "50000",
+        "B": "0",
+        "C": "0"
+      },
+      "expected_net_after": {
+        "A": "-50000",
+        "B": "50000",
+        "C": "0"
+      }
+    },
+    {
+      "id": "E2",
+      "type": "expense",
+      "total": "50000",
+      "paid": {
+        "A": "0",
+        "B": "0",
+        "C": "50000"
+      },
+      "share": {
+        "A": "0",
+        "B": "50000",
+        "C": "0"
+      },
+      "expected_net_after": {
+        "A": "-50000",
+        "B": "0",
+        "C": "50000"
+      }
+    },
+    {
+      "id": "P2",
+      "type": "manual_bookkeeping_payment",
+      "sender": "A",
+      "recipient": "C",
+      "amount": "20000",
+      "real_transfer": false,
+      "expected_net_after": {
+        "A": "-30000",
+        "B": "0",
+        "C": "30000"
+      }
+    },
+    {
+      "id": "E3",
+      "type": "expense",
+      "total": "10000",
+      "paid": {
+        "A": "10000",
+        "B": "0",
+        "C": "0"
+      },
+      "share": {
+        "A": "3334",
+        "B": "3333",
+        "C": "3333"
+      },
+      "expected_net_after": {
+        "A": "-23334",
+        "B": "-3333",
+        "C": "26667"
+      }
+    },
+    {
+      "id": "E4",
+      "type": "expense",
+      "total": "120000",
+      "paid": {
+        "A": "90000",
+        "B": "30000",
+        "C": "0"
+      },
+      "share": {
+        "A": "40000",
+        "B": "40000",
+        "C": "40000"
+      },
+      "expected_net_after": {
+        "A": "26666",
+        "B": "-13333",
+        "C": "-13333"
+      }
+    }
+  ],
+  "non_posting_checks": [
+    {
+      "id": "S1",
+      "after": "E2",
+      "action": "Enable Simplify group debts",
+      "observed_before": "A owes B INR500",
+      "observed_after": "A owes C INR500",
+      "ledger_effect": "none"
+    },
+    {
+      "id": "V1",
+      "action": "Reject exact allocations totaling0 against INR100",
+      "ledger_effect": "none"
+    },
+    {
+      "id": "L1",
+      "action": "Attempt fifth expense after four saved bills",
+      "observed": "Daily expense limit blocks new bill",
+      "ledger_effect": "none"
+    }
+  ],
+  "expected_final_net": {
+    "A": "26666",
+    "B": "-13333",
+    "C": "-13333"
+  },
+  "limitations": [
+    "Intermediate expected nets are independently calculated, not all separately displayed by the UI.",
+    "Final nets, rounding shares, changed settlement recipient and displayed group totals were observed.",
+    "Does not establish Splitwise private algorithms or original export format."
+  ]
+}

@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
-  <link rel="canonical" href="https://merosplit.com{% if page == 'privacy' %}/privacy{% elif page == 'delete' %}/delete-account{% elif page == 'chat' %}/chat-policy{% else %}/support{% endif %}">
-  <title>MeroSplit · {% if page == 'privacy' %}Privacy{% elif page == 'delete' %}Delete your account{% elif page == 'chat' %}Chat policy{% else %}Support{% endif %}</title>
+  <link rel="canonical" href="https://merosplit.com{% if page == 'privacy' %}/privacy{% elif page == 'terms' %}/terms{% elif page == 'delete' %}/delete-account{% elif page == 'chat' %}/chat-policy{% else %}/support{% endif %}">
+  <title>MeroSplit · {% if page == 'privacy' %}Privacy{% elif page == 'terms' %}Terms of use{% elif page == 'delete' %}Delete your account{% elif page == 'chat' %}Chat policy{% else %}Support{% endif %}</title>
   <meta name="theme-color" content="#EEF0F3" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#0F1114" media="(prefers-color-scheme: dark)">
   <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon.png">
@@ -50,6 +50,19 @@
     <h2>Your choices</h2>
     <p>You can disable bill alerts, export records and delete your account. To correct bill information, edit it in the group or contact the group organizer. A person can be removed from a group once their balance is zero; their history remains, and a linked account loses access to that group. Archiving a group preserves its members' access to the records. For further privacy requests, email <a href="mailto:mail@merosplit.com">mail@merosplit.com</a>.</p>
     <p>We will update this page when how the app handles information changes.</p>
+  {% elif page == 'terms' %}
+    <h1>Terms of use</h1>
+    <p>Effective 31 October 2026. MeroSplit is operated by Om Shejul. By using MeroSplit, you agree to these terms.</p>
+    <h2>What MeroSplit does</h2>
+    <p>MeroSplit records shared expenses, splits, balances, and payments made elsewhere. It never transfers money or verifies bank receipts.</p>
+    <h2>Your account and records</h2>
+    <p>Sign in only to your own account. Only add or change records you are authorized to manage. Review entries and permissions, and keep records as accurate as you reasonably can. Use MeroSplit lawfully and treat other people respectfully.</p>
+    <h2>Connected agents</h2>
+    <p>You may connect an agent with explicit OAuth consent. A connected agent uses your existing group permissions. Review any changes it makes. To revoke further access, disconnect it under Me → Connect MCP. A request already in flight can still finish.</p>
+    <h2>Privacy and availability</h2>
+    <p>Our <a href="/privacy">privacy policy</a> explains how we handle data, including shared financial history that may remain after account deletion. Availability may vary during beta. Pending offline changes are not accepted server records and may not yet appear to others.</p>
+    <h2>Support and updates</h2>
+    <p>Email <a href="mailto:mail@merosplit.com">mail@merosplit.com</a> for help with a dispute or correction. MeroSplit does not provide binding dispute decisions. We may update these terms; the current version will appear on this page.</p>
   {% elif page == 'delete' %}
     <h1>Delete your MeroSplit account</h1>
     <h2>In the app</h2>

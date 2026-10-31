@@ -1877,7 +1877,7 @@
     }
   ],
   "native_replay": {
-    "source_path": "research/results/native_accounting_fixture.json",
+    "source_path": "fixtures/native_accounting_fixture.json",
     "participants": [
       "A",
       "B",

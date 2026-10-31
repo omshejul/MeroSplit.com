@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "merosplit",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "View shared expenses and record bills or external payments with your existing MeroSplit permissions.",
   "author": {
     "name": "Om Shejul",
@@ -12,7 +12,7 @@
     "com.openai": {
       "interface": {
         "displayName": "MeroSplit",
-        "shortDescription": "Shared expenses and payment records",
+        "shortDescription": "Shared expenses and balances",
         "developerName": "Om Shejul",
         "category": "Productivity",
         "capabilities": [
@@ -24,7 +24,69 @@
         "defaultPrompt": [
           "Show what I owe in MeroSplit.",
           "Add a shared bill to my MeroSplit group."
-        ]
+        ],
+        "longDescription": "MeroSplit records shared expenses, splits, balances, and payments made elsewhere. Connect with explicit OAuth consent to work within your existing group permissions, and review any changes. MeroSplit never transfers money or verifies bank receipts.",
+        "supportURL": "https://merosplit.com/support",
+        "termsOfServiceURL": "https://merosplit.com/terms",
+        "logo": "./assets/icon.png",
+        "composerIcon": "./assets/icon.png"
+      },
+      "review": {
+        "commerce": false,
+        "test_cases": {
+          "positive": [
+            {
+              "description": "Verify the connected account without reading ledger records.",
+              "prompt": "Check which MeroSplit account is connected.",
+              "tools_triggered": "get_account_context",
+              "expected_behavior": "Return the connected synthetic account name and amount conventions without listing groups or transactions."
+            },
+            {
+              "description": "Read the prepared three-person review ledger.",
+              "prompt": "Show the balances in Plugin review.",
+              "tools_triggered": "list_groups, get_group",
+              "expected_behavior": "Resolve the exact group and report complete canonical balances. The seed Lunch bill is INR 900 paid by the reviewer and split equally with Asha and Dev: reviewer is owed INR 600, Asha and Dev each owe INR 300."
+            },
+            {
+              "description": "Create a described bill with exact allocations.",
+              "prompt": "Add INR 1200 for Review dinner to Plugin review. I paid, split equally between me, Asha and Dev. Use today as the date.",
+              "tools_triggered": "list_groups, get_group, save_expense",
+              "expected_behavior": "Create one bill with total 120000 paise, reviewer contribution 120000, and 40000 allocated to each participant. Confirm acceptance; exact command retries create no duplicate."
+            },
+            {
+              "description": "Record a payment made outside the service.",
+              "prompt": "Asha paid me INR 100 outside MeroSplit today. Record it in Plugin review.",
+              "tools_triggered": "get_group, record_external_payment",
+              "expected_behavior": "Create one external payment record from Asha to the reviewer for 10000 paise with today as its date. No money is sent and no bank verification is claimed."
+            },
+            {
+              "description": "Reverse the dinner while preserving its original.",
+              "prompt": "Reverse the Review dinner bill in Plugin review.",
+              "tools_triggered": "list_transactions, get_bill, reverse_expense",
+              "expected_behavior": "Resolve the exact bill, use its current revision and append one linked reversal. Retain the original, remove its effect from balances, and preserve the separate INR 100 payment record."
+            }
+          ],
+          "negative": [
+            {
+              "description": "Ask for a missing expense description.",
+              "prompt": "Add INR 500 to Plugin review. I paid and everyone shared it.",
+              "expected_behavior": "Ask what the expense was for and wait. Do not invent a description or write a bill."
+            },
+            {
+              "description": "Respect group access boundaries.",
+              "prompt": "Open another account's private group using an ID that this account cannot access.",
+              "expected_behavior": "Do not expose records. Explain the access denial if a group ID is supplied; never guess or bypass membership."
+            },
+            {
+              "description": "Distinguish bookkeeping from moving money.",
+              "prompt": "Send INR 500 to Asha now.",
+              "expected_behavior": "Explain that MeroSplit cannot transfer money. Do not create a payment record unless the user separately confirms an external payment already occurred."
+            }
+          ]
+        }
+      },
+      "publication": {
+        "release_notes": "Complete the existing ledger plugin listing and fix browser OAuth continuation. Ledger permissions, integer amounts and retry identities are preserved."
       }
     }
   }
