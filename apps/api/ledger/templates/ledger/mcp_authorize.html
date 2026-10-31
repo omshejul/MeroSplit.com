@@ -74,6 +74,7 @@
       <p class="note scope">Your existing group permissions still apply.</p>
     </div>
     <p class="notice"><span class="info" aria-hidden="true">i</span><span>Recording payments never moves money.</span></p>
+    {% if device_user_code %}<p>Server code: <strong style="font-family:monospace">{{ device_user_code }}</strong><br><span class="note">Only approve if this code matches the one on your server.</span></p>{% endif %}
     <form method="post" action="/oauth/authorize">
       {% csrf_token %}
       <input type="hidden" name="request" value="{{ authorization.id }}">
