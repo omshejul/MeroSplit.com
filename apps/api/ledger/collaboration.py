@@ -231,6 +231,8 @@ def create_opening(actor, group_id, payload):
     if previous:
         return previous
     writable(group)
+    if not group.simplify_debts:
+        raise HttpError(409, "Previous net balances require Simplify debts. Add the original bills instead.")
     members = people(group)
     if set(payload["balances"]) != set(members) or not any(v != "0" for v in payload["balances"].values()):
         raise AccountingError("Provide a nonzero opening vector for exactly these participants")
@@ -392,7 +394,10 @@ def remove_participant(actor, group_id, participant_id, payload):
         raise HttpError(409, "The organizer cannot be removed")
     if person.removed:
         raise HttpError(409, "This person was already removed")
-    balance = abs(int(snapshot(group)["balances"][str(person.id)]))
+    current = snapshot(group)
+    if not group.simplify_debts and any(str(person.id) in (row["sender"], row["recipient"]) for row in current["transfers"]):
+        raise HttpError(409, "Settle this person's repayments first")
+    balance = abs(int(current["balances"][str(person.id)]))
     if balance:
         amount = f"{balance // 100:,}" + (f".{balance % 100:02}" if balance % 100 else "")
         raise HttpError(409, f"Settle ₹{amount} first")

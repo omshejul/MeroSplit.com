@@ -15,7 +15,7 @@ function production(name: string, env: any) {
   let code=''; function visit(n: ts.Node) { if(ts.isFunctionDeclaration(n)&&n.name?.text===name)code=n.getText(source);ts.forEachChild(n,visit); } visit(source);assert.ok(code);
   return new Function('env',`with(env){${ts.transpile(code,{target:ts.ScriptTarget.ES2022})};return ${name};}`)(env);
 }
-const group=(id='g',version=1):Group=>({id,version,name:'Reuben',attribution_version:1,participants:[],expenses:[],settlements:[],activity:[],transfers:[],balances:{}});
+const group=(id='g',version=1):Group=>({id,version,name:'Reuben',attribution_version:1,simplify_debts:true,participants:[],expenses:[],settlements:[],activity:[],transfers:[],balances:{}});
 
 test('concurrent refresh triggers share one operation and a full refresh follows a targeted one once',async()=>{
  let calls=0,finish!:()=>void;

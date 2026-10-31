@@ -16,7 +16,7 @@ import KeyboardDialog from './KeyboardDialog';
 import SendInviteDialog from './SendInviteDialog';
 import { GroupMembershipActions } from './GroupMembershipActions';
 import React, { useEffect, useRef, useState } from 'react';
-import { Keyboard, Platform, Share, StyleSheet, View } from 'react-native';
+import { Keyboard, Platform, Share, StyleSheet, Switch, View } from 'react-native';
 import type { TextInputProps } from 'react-native';
 import { Text } from 'react-native-paper';
 import * as Crypto from 'expo-crypto';
@@ -391,6 +391,15 @@ function MemberSettings({ group, selfId, busy, addPersonRequest = 0, onAction, o
       onSend={sendConfirmedInvite} onCancel={() => { if (!disabled) { setInvitePerson(null); setFeedback(null); } }} />
     <FeedbackNote section="members" feedback={feedback} />
 
+    {!group.is_direct && <View style={s.section}>
+      <View style={ui.row}><Text style={[ui.rowTitle, { flex: 1 }]}>Simplify debts</Text><Switch accessibilityLabel="Simplify debts" value={group.simplify_debts !== false}
+        disabled={disabled || !organizer || !!group.archived || group.can_change_simplify !== true}
+        onValueChange={simplify_debts => void perform('simplify', async () => { await onAction('/simplify', { simplify_debts, version: group.version }); }, 'Repayment setting saved.')} /></View>
+      <Text style={ui.caption}>{group.simplify_debts !== false ? "Reduces payments using everyone's net balance." : 'Each person repays the member who paid for them.'}</Text>
+      {organizer && group.can_change_simplify === false && <Text style={ui.caption}>Settle all repayments and finish pending payments before changing this.</Text>}
+      {!organizer && <Text style={ui.caption}>The organizer controls this setting for everyone.</Text>}
+      <FeedbackNote section="simplify" feedback={feedback} />
+    </View>}
     {opening && <DetailDialog busy={disabled} icon="payment" title="Previous balances" initialOpen={needsOpeningAgreement}>
         <NoticeBanner tone={opening.accepted ? 'success' : 'warning'}>{opening.accepted ? 'Agreed and included in balances.' : 'Waiting for agreement. Not included in balances yet.'}</NoticeBanner>
         <Text style={ui.body}>From {opening.source}</Text><Text style={ui.caption}>As of {opening.cutoff}</Text>
@@ -411,8 +420,8 @@ function MemberSettings({ group, selfId, busy, addPersonRequest = 0, onAction, o
           () => void perform('archive', async () => { await onAction('/archive', { archived: !group.archived }); }, group.archived ? 'Group reopened.' : 'Group archived.'), group.archived ? 'Reopen group' : 'Archive group')} />
         <FeedbackNote section="archive" feedback={feedback} />
       </>}
-    <GroupMembershipActions hidden={!!group.hidden} busy={disabled} canLeave={BigInt(group.balances[selfId] ?? '0') === 0n}
-      blockedReason={BigInt(group.balances[selfId] ?? '0') !== 0n ? 'Settle your balance before deleting this group.' : undefined}
+    <GroupMembershipActions hidden={!!group.hidden} busy={disabled} canLeave={BigInt(group.balances[selfId] ?? '0') === 0n && !group.transfers.some(row => row.sender === selfId || row.recipient === selfId)}
+      blockedReason={BigInt(group.balances[selfId] ?? '0') !== 0n || group.transfers.some(row => row.sender === selfId || row.recipient === selfId) ? 'Settle your balance before deleting this group.' : undefined}
       onLeave={() => onMembership('leave')} onRestore={() => onMembership('restore')} />
   </View>;
 }

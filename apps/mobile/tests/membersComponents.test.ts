@@ -21,7 +21,7 @@ function production(file: string, extra: Record<string, any> = {}) {
   let effects: (() => void)[] = [];
   const env: Record<string, any> = {
     ...members, confirmedGroupInvite, copyText: async (value: string | Promise<string>) => { await value; }, React: { Fragment: 'Fragment', createElement: (type: any, props: any, ...children: any[]) => ({ type, props: props ?? {}, children }) },
-    useToast: () => () => {}, PersonInviteDialog: 'PersonInviteDialog', DetailDialog: 'DetailDialog', __DEV__: false, SettingsRow: 'SettingsRow', Platform: { OS: 'native' }, View: 'View', Text: 'Text', Pressable: 'Pressable', Button: 'Button', Avatar: 'Avatar', Icon: 'Icon', IconAction: 'IconAction',
+    useToast: () => () => {}, PersonInviteDialog: 'PersonInviteDialog', DetailDialog: 'DetailDialog', __DEV__: false, SettingsRow: 'SettingsRow', Platform: { OS: 'native' }, View: 'View', Text: 'Text', Switch: 'Switch', Pressable: 'Pressable', Button: 'Button', Avatar: 'Avatar', Icon: 'Icon', IconAction: 'IconAction',
     Constants: { platform: { ios: { buildNumber: '27' }, android: { versionCode: 26 } } }, requireOptionalNativeModule: () => ({ nativeApplicationVersion: '1.2', nativeBuildVersion: '27' }),
     EmailField: 'EmailField', TextField: 'TextField', GroupMembershipActions: 'GroupMembershipActions', KeyboardDialog: 'KeyboardDialog', SendInviteDialog: 'SendInviteDialog',
     Modal: 'Modal', SafeAreaProvider: 'SafeAreaProvider', ScrollView: 'ScrollView', AppFrame: 'AppFrame', ScreenHeader: 'ScreenHeader', pageContentStyle: {}, ApiError, LoadingSpinner: 'LoadingSpinner', DialogFocus: 'DialogFocus', DialogScrollBody: 'DialogScrollBody', CancelDialogActions: 'CancelDialogActions', ErrorText: 'ErrorText', Dialog: Object.assign(() => {}, { Title: 'Dialog.Title' }),
@@ -769,4 +769,19 @@ test('empty group invite starts with the account name and allows editing without
   assert.ok(button(tree, 'Join as Alex')); assert.equal(calls.length, 1, 'review does not join');
   button(tree, 'Edit name').props.onPress(); tree = app.render('GroupJoinDialog', props); assert.equal(component(tree, 'TextField').props.value, 'Alex');
   component(tree, 'ScreenHeader').props.onBack(); assert.equal(cancelled, 1); assert.equal(calls.length, 1); app.unmount();
+});
+
+
+test('Simplify is group-wide, owner-only and disabled until server confirms settlement', async () => {
+  const app=settings();
+  app.group.can_change_simplify=true;
+  let control=component(app.render(),'Switch');
+  assert.equal(control.props.value,true); assert.equal(control.props.disabled,false);
+  control.props.onValueChange(false); await tick();
+  assert.deepEqual(app.calls.at(-1),{path:'/simplify',body:{simplify_debts:false,version:1}});
+  app.group.can_change_simplify=false;
+  assert.equal(component(app.render(),'Switch').props.disabled,true);
+  app.group.can_change_simplify=true; app.group.owner_id=2;
+  assert.equal(component(app.render(),'Switch').props.disabled,true);
+  app.unmount();
 });

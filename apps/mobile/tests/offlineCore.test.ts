@@ -12,7 +12,7 @@ import { recordConnection, serverReachable, subscribeConnection } from '../src/c
 import { previewPending } from '../src/ledger.ts';
 import type { Group, Command } from '../src/types.ts';
 
-const accepted: Group = { attribution_version: 1, id: 'trip', name: 'Weekend', version: 3, owner_id: 1, participants: [{ id: 'self', name: 'You', user_id: 1 }], expenses: [], settlements: [], balances: { self: '0' }, transfers: [], activity: [{ id: 'old', detail: 'preserved' }] };
+const accepted: Group = { attribution_version: 1, simplify_debts: true, id: 'trip', name: 'Weekend', version: 3, owner_id: 1, participants: [{ id: 'self', name: 'You', user_id: 1 }], expenses: [], settlements: [], balances: { self: '0' }, transfers: [], activity: [{ id: 'old', detail: 'preserved' }] };
 const person: Command = { command_id: 'person-command', group_id: 'trip', base_version: 3, method: 'POST', path: '/groups/trip/participants', body: { command_id: 'person-command', id: 'john', name: 'John', email: '' }, state: 'pending', error: null };
 const rename: Command = { ...person, command_id: 'rename-command', path: '/groups/trip/participants/john/name', body: { command_id: 'rename-command', name: 'John Doe' } };
 const bill: Command = { ...person, command_id: 'bill-command', path: '/groups/trip/expenses', body: { command_id: 'bill-command', id: 'bill', description: 'Lunch', total: '10000', paid: { self: '10000' }, split: { mode: 'equal', values: { self: '1', john: '1' } }, date: '2026-10-24', category: '', notes: 'Local draft' } };

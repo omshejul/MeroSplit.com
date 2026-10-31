@@ -1,0 +1,293 @@
+[
+  {
+    "id": "chain",
+    "bills": [
+      [
+        {
+          "B": "50000"
+        },
+        {
+          "A": "50000"
+        }
+      ],
+      [
+        {
+          "C": "50000"
+        },
+        {
+          "B": "50000"
+        }
+      ]
+    ],
+    "payments": [],
+    "expected": [
+      {
+        "sender": "A",
+        "recipient": "B",
+        "amount": "50000"
+      },
+      {
+        "sender": "B",
+        "recipient": "C",
+        "amount": "50000"
+      }
+    ]
+  },
+  {
+    "id": "cycle",
+    "bills": [
+      [
+        {
+          "B": "30000"
+        },
+        {
+          "A": "30000"
+        }
+      ],
+      [
+        {
+          "C": "30000"
+        },
+        {
+          "B": "30000"
+        }
+      ],
+      [
+        {
+          "A": "30000"
+        },
+        {
+          "C": "30000"
+        }
+      ]
+    ],
+    "payments": [],
+    "expected": [
+      {
+        "sender": "A",
+        "recipient": "B",
+        "amount": "30000"
+      },
+      {
+        "sender": "C",
+        "recipient": "A",
+        "amount": "30000"
+      },
+      {
+        "sender": "B",
+        "recipient": "C",
+        "amount": "30000"
+      }
+    ]
+  },
+  {
+    "id": "mutual-offset",
+    "bills": [
+      [
+        {
+          "B": "50000"
+        },
+        {
+          "A": "50000"
+        }
+      ],
+      [
+        {
+          "A": "20000"
+        },
+        {
+          "B": "20000"
+        }
+      ]
+    ],
+    "payments": [],
+    "expected": [
+      {
+        "sender": "A",
+        "recipient": "B",
+        "amount": "30000"
+      }
+    ]
+  },
+  {
+    "id": "partial",
+    "bills": [
+      [
+        {
+          "B": "50000"
+        },
+        {
+          "A": "50000"
+        }
+      ]
+    ],
+    "payments": [
+      [
+        "A",
+        "B",
+        "20000"
+      ]
+    ],
+    "expected": [
+      {
+        "sender": "A",
+        "recipient": "B",
+        "amount": "30000"
+      }
+    ]
+  },
+  {
+    "id": "overpayment",
+    "bills": [
+      [
+        {
+          "B": "50000"
+        },
+        {
+          "A": "50000"
+        }
+      ]
+    ],
+    "payments": [
+      [
+        "A",
+        "B",
+        "60000"
+      ]
+    ],
+    "expected": [
+      {
+        "sender": "B",
+        "recipient": "A",
+        "amount": "10000"
+      }
+    ]
+  },
+  {
+    "id": "multiple-payers",
+    "bills": [
+      [
+        {
+          "A": "600",
+          "B": "400"
+        },
+        {
+          "A": "200",
+          "B": "300",
+          "C": "500"
+        }
+      ]
+    ],
+    "payments": [],
+    "expected": [
+      {
+        "sender": "C",
+        "recipient": "A",
+        "amount": "400"
+      },
+      {
+        "sender": "C",
+        "recipient": "B",
+        "amount": "100"
+      }
+    ]
+  },
+  {
+    "id": "settled-checkpoint",
+    "bills": [
+      [
+        {
+          "B": "50000"
+        },
+        {
+          "A": "50000"
+        }
+      ],
+      [
+        {
+          "C": "50000"
+        },
+        {
+          "B": "50000"
+        }
+      ]
+    ],
+    "payments": [
+      [
+        "A",
+        "C",
+        "50000"
+      ]
+    ],
+    "checkpoint": [
+      {
+        "sender": "A",
+        "recipient": "B",
+        "amount": "50000"
+      },
+      {
+        "sender": "C",
+        "recipient": "A",
+        "amount": "50000"
+      },
+      {
+        "sender": "B",
+        "recipient": "C",
+        "amount": "50000"
+      }
+    ],
+    "expected": []
+  },
+  {
+    "id": "edited-before-checkpoint",
+    "bills": [
+      [
+        {
+          "B": "60000"
+        },
+        {
+          "A": "60000"
+        }
+      ],
+      [
+        {
+          "C": "50000"
+        },
+        {
+          "B": "50000"
+        }
+      ]
+    ],
+    "payments": [
+      [
+        "A",
+        "C",
+        "50000"
+      ]
+    ],
+    "checkpoint": [
+      {
+        "sender": "A",
+        "recipient": "B",
+        "amount": "50000"
+      },
+      {
+        "sender": "C",
+        "recipient": "A",
+        "amount": "50000"
+      },
+      {
+        "sender": "B",
+        "recipient": "C",
+        "amount": "50000"
+      }
+    ],
+    "expected": [
+      {
+        "sender": "A",
+        "recipient": "B",
+        "amount": "10000"
+      }
+    ]
+  }
+]

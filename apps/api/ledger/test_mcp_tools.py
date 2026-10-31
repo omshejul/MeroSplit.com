@@ -134,7 +134,7 @@ def test_group_finance_is_complete_and_projection_does_not_export_private_metada
     assert [person["name"] for person in result["participants"]] == ["Canonical owner", "Canonical peer", "Manual guest"]
     assert [person["is_self"] for person in result["participants"]] == [True, False, False]
     assert all(set(person) == {"id", "name", "is_self", "removed"} for person in result["participants"])
-    assert set(result) == {"id", "name", "version", "archived", "is_direct", "currency", "participants", "balances", "transfers", "totals"}
+    assert set(result) == {"id", "name", "version", "archived", "is_direct", "currency", "participants", "balances", "transfers", "totals", "simplify_debts"}
     encoded = json.dumps(result)
     for secret in (actor.email, peer.email, "private-guest@example.invalid", "private-payee@bank", "Private imported source", "f" * 64):
         assert secret not in encoded

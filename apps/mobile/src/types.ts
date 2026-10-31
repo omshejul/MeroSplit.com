@@ -14,7 +14,7 @@ export type GroupTransaction = { kind: 'bill'; date: string | null; bill: BillRo
 export type ActivityTarget = { kind: 'bill'; groupId: string; expenseId: string } | { kind: 'payment'; groupId: string; settlementId: string } | { kind: 'group'; groupId: string };
 export type ActivityPerson = { id: string; name: string; is_self: boolean };
 export type ActivityItem = {
-  id: string; kind: 'bill_added' | 'bill_edited' | 'bill_deleted' | 'bill_restored' | 'bill_reversed' | 'payment_recorded' | 'payment_reversed' | 'member_added' | 'member_joined' | 'member_removed' | 'group_created' | 'group_archived' | 'group_unarchived';
+  id: string; kind: 'bill_added' | 'bill_edited' | 'bill_deleted' | 'bill_restored' | 'bill_reversed' | 'payment_recorded' | 'payment_reversed' | 'member_added' | 'member_joined' | 'member_removed' | 'group_created' | 'group_archived' | 'group_unarchived' | 'simplify_debts_changed';
   created_at: string; group: { id: string; name: string }; actor: { name: string; is_self: boolean } | null;
   bill?: { id: string; description: string; deleted: boolean; category?: string; category_auto?: boolean | null };
   payment?: { id: string; sender: ActivityPerson; recipient: ActivityPerson; amount: string; reversed: boolean };
@@ -27,6 +27,7 @@ export type Group = {
   attribution_version?: number; read_mode?: 'summary'; focused_expense?: Expense; focused_settlement?: Settlement; history?: Partial<Record<HistoryResource, HistoryWindow>>; transactions?: GroupTransaction[];
   id: string; name: string; version: number; participants: Participant[]; expenses: Expense[];
   settlements: Settlement[]; balances: Amounts; transfers: Transfer[]; activity: unknown[];
+  simplify_debts?: boolean; debt_checkpoint?: Transfer[]; can_change_simplify?: boolean;
   is_direct?: boolean; archived?: boolean; hidden?: boolean; owner_id?: number;
   opening_balance?: { id: string; balances: Amounts; source: string; cutoff: string; acknowledgments: Record<string, unknown>; accepted: boolean } | null;
   invites?: { id: string; participant_id: string; claimant_id: number | null; claimant_email: string | null; approved: boolean; revoked: boolean; intended_email?: string; send_state?: string; sent_at?: string | null; expires_at?: string }[];

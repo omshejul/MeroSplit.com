@@ -64,6 +64,15 @@ function HistoryRecords({ rows, group, selfId }: { rows: HistoryRow[]; group: Gr
 function ExplanationBody({ value, selfId }: { value: Explanation; selfId: string }) {
   const { ui, palette } = useUI(), { group, plan, index, people, history } = value;
   const own = people.find(person => person.id === selfId)!, chosen = plan[index], sender = nameFor(group, selfId, chosen.sender), recipient = nameFor(group, selfId, chosen.recipient), direct = people.length === 2;
+  if (group.simplify_debts === false) return <>
+    {value.pending && <Text style={ui.caption}>Includes changes waiting to sync.</Text>}
+    <Text style={ui.body}>{sender} to {recipient === 'You' ? 'you' : recipient}</Text>
+    <Text style={ui.amount}>{formatMoney(chosen.amount)}</Text>
+    <Text style={ui.caption}>Simplify debts is off. Bills and payments are combined between the same two people.</Text>
+    <SectionHeading>What makes up this amount</SectionHeading>
+    {value.directItems.map(row => <View key={row.id} style={{ gap: 4 }}><View style={ui.row}><Text style={[ui.body, { flex: 1 }]}>{row.title}</Text><Text style={ui.body}>{formatMoney(row.amount)}</Text></View>{row.share !== undefined && <Text style={ui.caption}>Your bill share: {formatMoney(row.share)}</Text>}</View>)}
+    <Text style={ui.caption}>Positive amounts add to this payment. Negative amounts reduce it. Each bill keeps its original shares.</Text>
+  </>;
   const bill = history.single;
   const otherId = direct ? group.participants.find(person => person.id !== selfId)!.id : '';
   const share = bill && BigInt(bill.paid[selfId] ?? '0') === 0n ? { label: 'Your share', amount: bill.shares[selfId] ?? '0' } : bill && bill.paid[selfId] === bill.total ? { label: `${nameFor(group, selfId, otherId)}'s share`, amount: bill.shares[otherId] ?? '0' } : { label: 'Effect on your balance', amount: absolute(own.balance) };

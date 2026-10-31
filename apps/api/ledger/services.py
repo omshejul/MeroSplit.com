@@ -7,7 +7,7 @@ from django.db.models import Q
 from django.utils import timezone
 from ninja.errors import HttpError
 
-from .accounting import AccountingError, propose_transfers, validate_expense
+from .accounting import AccountingError, direct_transfers, propose_transfers, validate_expense
 from .models import (
     Change,
     CommandReceipt,
@@ -80,7 +80,10 @@ def keep_removed_balances_zero(group):
     removed = list(group.participants.filter(removed=True).values_list("id", flat=True))
     if not removed:
         return
-    balances = snapshot(group)["balances"]
+    current = snapshot(group)
+    balances = current["balances"]
+    if not group.simplify_debts and any(str(person) in (row["sender"], row["recipient"]) for person in removed for row in current["transfers"]):
+        raise HttpError(409, "This change would reopen a removed person's repayment")
     if any(int(balances[str(person)]) for person in removed):
         raise HttpError(409, "This change would reopen a removed person's balance")
 
@@ -153,8 +156,10 @@ def settlement_dict(payment):
             **({"reversal": payment._reversal} if hasattr(payment, "_reversal") else {})}
 
 
-def finance_state(participant_ids, expense_rows, settlement_rows, opening_balances=None):
+def finance_state(participant_ids, expense_rows, settlement_rows, opening_balances=None, *, simplify_debts=True, debt_checkpoint=()):
     """Exact totals from monetary tuples; history text is not needed for balances."""
+    if not simplify_debts:
+        expense_rows, settlement_rows = list(expense_rows), list(settlement_rows)
     balances = {str(person): 0 for person in participant_ids}
     paid_totals, share_totals = dict(balances), dict(balances)
     spending = 0
@@ -173,7 +178,7 @@ def finance_state(participant_ids, expense_rows, settlement_rows, opening_balanc
     values = {person: str(amount) for person, amount in balances.items()}
     return {
         "balances": values,
-        "transfers": propose_transfers(values),
+        "transfers": propose_transfers(values) if simplify_debts else direct_transfers(expense_rows, settlement_rows, opening_balances, debt_checkpoint),
         "totals": {
             "spending": str(spending),
             "paid": {person: str(amount) for person, amount in paid_totals.items()},
@@ -195,6 +200,7 @@ def snapshot(group):
         ((e.total, e.paid, e.shares) for e in expenses if not e.deleted),
         ((p.sender_id, p.recipient_id, p.amount) for p in settlements if not p.reversed),
         opening.balances if opening and opening.accepted else None,
+        simplify_debts=group.simplify_debts, debt_checkpoint=group.debt_checkpoint,
     )
     result = {
         "attribution_version": 1,
@@ -202,6 +208,8 @@ def snapshot(group):
         "name": group.name,
         "version": group.version,
         "archived": group.archived,
+        "simplify_debts": group.simplify_debts, "debt_checkpoint": group.debt_checkpoint,
+        "can_change_simplify": not finance["transfers"] and not (opening and not opening.accepted) and not group.attempts.filter(state__in=["prepared", "reported"]).exists(),
         "is_direct": group.is_direct,
         "owner_id": group.owner_id,
         "participants": [
@@ -274,6 +282,9 @@ def snapshot(group):
 @transaction.atomic
 def create_group(actor, payload):
     from .membership import limit_links, linked_result, lock_link_users
+    # Preserve fingerprints from clients predating the optional setting.
+    if payload.get("simplify_debts", True):
+        payload = {key: value for key, value in payload.items() if key != "simplify_debts"}
     # Keep pre-flag creation receipts replayable after the schema adds its default.
     if not payload.get("is_direct", False):
         payload = {key: value for key, value in payload.items() if key != "is_direct"}
@@ -304,7 +315,8 @@ def create_group(actor, payload):
     if Group.objects.filter(id=payload["id"]).exists() or Participant.objects.filter(id__in=ids).exists():
         raise HttpError(409, "A supplied ID is already in use")
     group = Group.objects.create(
-        id=payload["id"], name=payload["name"], owner=actor, is_direct=payload.get("is_direct", False)
+        id=payload["id"], name=payload["name"], owner=actor, is_direct=payload.get("is_direct", False),
+        simplify_debts=payload.get("simplify_debts", True)
     )
     participants = Participant.objects.bulk_create(
         [
@@ -583,3 +595,32 @@ def reverse_settlement(actor, group_id, settlement_id, payload):
             "method": payment.method,
         }
     )
+
+
+@transaction.atomic
+def change_simplify(actor, group_id, payload):
+    group = visible_group(actor, group_id, lock=True)
+    previous, fingerprint = previous_result(actor, payload["command_id"], f"simplify:{group_id}", payload)
+    if previous:
+        return previous
+    writable(group)
+    if group.owner_id != actor.pk:
+        raise HttpError(403, "Only the organizer can change Simplify debts")
+    if group.version != payload["version"]:
+        raise HttpError(409, "This group changed. Refresh and try again.")
+    if group.is_direct:
+        raise AccountingError("Simplify debts is a group setting")
+    if group.simplify_debts != payload["simplify_debts"]:
+        current = snapshot(group)
+        if not current["can_change_simplify"] or OpeningBalance.objects.filter(group=group, accepted=False).exists():
+            raise HttpError(409, "Settle all repayments and finish pending payments before changing Simplify debts.")
+        # Preserve old, already-settled routing. Later edits contribute only their difference.
+        opening = OpeningBalance.objects.filter(group=group, accepted=True).first()
+        group.debt_checkpoint = direct_transfers(
+            group.expenses.filter(deleted=False).values_list("total", "paid", "shares"),
+            group.settlements.filter(reversed=False).values_list("sender_id", "recipient_id", "amount"),
+            opening.balances if opening else None,
+        )
+        group.simplify_debts = payload["simplify_debts"]
+        group.save(update_fields=["simplify_debts", "debt_checkpoint"])
+    return record_change(group, actor, payload["command_id"], fingerprint, "simplify_debts_changed", {"simplify_debts": group.simplify_debts})

@@ -126,7 +126,7 @@ export async function refreshGroups(db: Database, session: Session, mode: 'full'
     if (options.current && !options.current()) throw new Error('The signed-in account changed.');
     if (options.groupIds && !options.groupIds.includes(row.id) && cached?.kind === 'shared' && complete(cached.group)) { snapshots.push(withVisibility(cached.group, row.hidden === true)); continue; }
     // An older or filtered browsing page is not the unfiltered first page.
-    if (cached?.kind === 'shared' && complete(cached.group) && cached.group.id === row.id && cached.group.version === row.version && cached.group.attribution_version === 1 && cached.group.participants.every(person => typeof person.recorded_name === 'string' && person.account_email !== undefined) && (mode === 'summary' ? cached.group.read_mode === 'summary' && Array.isArray(cached.group.transactions) && !!cached.group.history?.transactions && !cached.group.history.transactions.cursor && !cached.group.history.transactions.query : !cached.group.read_mode)) snapshots.push(withVisibility(cached.group, row.hidden === true));
+    if (cached?.kind === 'shared' && complete(cached.group) && cached.group.id === row.id && cached.group.version === row.version && cached.group.attribution_version === 1 && typeof cached.group.simplify_debts === 'boolean' && cached.group.participants.every(person => typeof person.recorded_name === 'string' && person.account_email !== undefined) && (mode === 'summary' ? cached.group.read_mode === 'summary' && Array.isArray(cached.group.transactions) && !!cached.group.history?.transactions && !cached.group.history.transactions.cursor && !cached.group.history.transactions.query : !cached.group.read_mode)) snapshots.push(withVisibility(cached.group, row.hidden === true));
     else {
       const group = await fetchGroup(session, row.id, mode);
       if (!complete(group) || group.id !== row.id || group.version < row.version) throw new Error('The group refresh was incomplete. Try again.');
@@ -163,7 +163,7 @@ export async function claimLegacyGroup(db: Database, session: Session, groupId: 
     try { if (legacyMatchesServer(source.group, previewPending(cached.group, pending))) { status = 'queued'; reason = null; canonical = cached.group; } } catch { /* Preserve both records for review. */ }
   } else if (!source.commands.length && !server && !cached && !pending.length && !source.group.opening_balance && !source.group.participants.some(person => person.removed)) {
     const group = source.group;
-    append('POST', '/groups', { id: group.id, name: group.name, participants: group.participants.map(({ id, name }) => ({ id, name })), self_participant_id: selfId, is_direct: !!group.is_direct });
+    append('POST', '/groups', { id: group.id, name: group.name, participants: group.participants.map(({ id, name }) => ({ id, name })), self_participant_id: selfId, ...(group.simplify_debts === false ? { simplify_debts: false } : {}), is_direct: !!group.is_direct });
     for (const expense of group.expenses) {
       append('POST', `/groups/${groupId}/expenses`, expensePayload(expense));
       if (expense.deleted) append('POST', `/groups/${groupId}/expenses/${expense.id}/reverse`, { version: 1 });

@@ -15,6 +15,8 @@ class Group(models.Model):
     version = models.PositiveIntegerField(default=0)
     archived = models.BooleanField(default=False)
     is_direct = models.BooleanField(default=False)
+    simplify_debts = models.BooleanField(default=True, db_default=True)
+    debt_checkpoint = models.JSONField(default=list, db_default=[])
     import_source_hash = models.CharField(max_length=64, blank=True, default="")
 
     class Meta:

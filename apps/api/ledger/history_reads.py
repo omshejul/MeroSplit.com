@@ -425,6 +425,7 @@ def group_summary(actor, group_id, *, limit=50):
         group.expenses.filter(deleted=False).values_list("total", "paid", "shares").iterator(chunk_size=1000),
         group.settlements.filter(reversed=False).values_list("sender_id", "recipient_id", "amount").iterator(chunk_size=1000),
         opening.balances if opening and opening.accepted else None,
+        simplify_debts=group.simplify_debts, debt_checkpoint=group.debt_checkpoint,
     )
     profiles = {profile.user_id: {"vpa": profile.vpa, "version": profile.version, "bank_verified": False}
                 for profile in PaymentProfile.objects.filter(user_id__in=[person.user_id for person in participants if person.user_id and not person.removed])}
@@ -443,12 +444,14 @@ def group_summary(actor, group_id, *, limit=50):
     return {
         "read_mode": "summary", "attribution_version": 1, "id": str(group.id), "name": group.name, "version": group.version,
         "hidden": next(person.hidden for person in participants if person.user_id == actor.pk and not person.removed),
-        "archived": group.archived, "is_direct": group.is_direct, "owner_id": group.owner_id,
+        "archived": group.archived, "is_direct": group.is_direct, "simplify_debts": group.simplify_debts, "owner_id": group.owner_id,
         "participants": [{"id": str(person.id), "name": participant_display_name(person), "recorded_name": person.name,
                           "user_id": person.user_id, "removed": person.removed, "profile_photo": photos.get(person.user_id) if not person.removed else None,
                           "account_email": person.user.email if person.user_id and person.user.is_active and not person.removed else None,
                           "payment_profile": profiles.get(person.user_id), **({"email": person.contact_email} if group.owner_id == actor.pk else {})}
                          for person in participants],
+        "debt_checkpoint": group.debt_checkpoint,
+        "can_change_simplify": not finance["transfers"] and not (opening and not opening.accepted) and not group.attempts.filter(state__in=["prepared", "reported"]).exists(),
         **finance, "expenses": pages["bills"]["items"], "activity": pages["activity"]["items"],
         "settlements": pages["settlements"]["items"], "payment_attempts": pages["attempts"]["items"], "invites": invites,
         "transactions": transactions["items"],

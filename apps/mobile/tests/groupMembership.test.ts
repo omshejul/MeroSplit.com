@@ -12,7 +12,7 @@ import type { Command, Group, Session } from '../src/types.ts';
 
 const session: Session = { token: 'synthetic-token', userId: '1', email: 'synthetic@example.invalid', baseUrl: 'https://example.invalid' };
 const owner = accountOwner(session);
-const group: Group = { attribution_version: 1, id: 'g', name: 'Trip', version: 2, participants: [], expenses: [], settlements: [], balances: {}, transfers: [], activity: [] };
+const group: Group = { attribution_version: 1, simplify_debts: true, id: 'g', name: 'Trip', version: 2, participants: [], expenses: [], settlements: [], balances: {}, transfers: [], activity: [] };
 const leave: Command = { command_id: 'leave-id', group_id: 'g', method: 'POST', path: '/groups/g/leave', body: { command_id: 'leave-id' }, state: 'pending', error: null };
 const options = { isOnline: () => true, flushDrafts: async () => {}, uuid: () => 'leave-id' };
 

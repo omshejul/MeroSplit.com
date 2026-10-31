@@ -119,3 +119,33 @@ def propose_transfers(balances: Mapping[str, str]) -> list[dict[str, str]]:
         if creditors[recipient] == 0:
             del creditors[recipient]
     return transfers
+
+
+def combine_transfers(transfers):
+    """Offset only mutual debts between the same two people. Preserve chains/cycles."""
+    pairs = {}
+    for row in transfers:
+        sender, recipient, amount = row["sender"], row["recipient"], int(row["amount"])
+        if sender == recipient:
+            raise AccountingError("Choose different participants")
+        pair = tuple(sorted((sender, recipient)))
+        pairs[pair] = pairs.get(pair, 0) + (amount if sender == pair[0] else -amount)
+    return [
+        {"sender": left if amount > 0 else right, "recipient": right if amount > 0 else left, "amount": str(abs(amount))}
+        for (left, right), amount in sorted(pairs.items()) if amount
+    ]
+
+
+def direct_transfers(expense_rows, settlement_rows, opening_balances=None, checkpoint=()):
+    """Allocate each bill independently, then subtract actual payments and a settled checkpoint."""
+    rows = []
+    for _, paid, shares in expense_rows:
+        nets = {person: str(int(paid.get(person, "0")) - int(shares.get(person, "0")))
+                for person in paid.keys() | shares.keys()}
+        rows.extend(propose_transfers(nets))
+    if opening_balances:
+        rows.extend(propose_transfers(opening_balances))
+    rows.extend({"sender": str(recipient), "recipient": str(sender), "amount": str(amount)}
+                for sender, recipient, amount in settlement_rows)
+    rows.extend({"sender": row["recipient"], "recipient": row["sender"], "amount": row["amount"]} for row in checkpoint)
+    return combine_transfers(rows)
