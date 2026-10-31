@@ -222,7 +222,7 @@ def test_actual_expired_shared_claim_never_resends_even_after_read(client, group
 def test_legacy_ready_and_claimed_rows_survive_migration_without_backfill(client, group):
     ready, claimed = bill(client, group), bill(client, group, description="Legacy taxi")
     fields = [field.name for field in Expense._meta.fields if field.name != "created_at"]
-    before = list(Expense.objects.values(*fields)), list(Change.objects.values())
+    before = list(Expense.objects.order_by("id").values(*fields)), list(Change.objects.order_by("id").values())
     executor = MigrationExecutor(connection)
     latest = executor.loader.graph.leaf_nodes()
     try:
@@ -237,7 +237,7 @@ def test_legacy_ready_and_claimed_rows_survive_migration_without_backfill(client
     finally:
         MigrationExecutor(connection).migrate(latest)
     assert ExpenseCategoryDecision.objects.filter(cache__isnull=True).count() == 2
-    assert before == (list(Expense.objects.values(*fields)), list(Change.objects.exclude(kind="history_order_updated").values()))
+    assert before == (list(Expense.objects.order_by("id").values(*fields)), list(Change.objects.exclude(kind="history_order_updated").order_by("id").values()))
     assert icons(client, ready).json()["items"][0]["category"] == "food"
     assert icons(client, claimed).json()["items"][0]["state"] == "uncertain"
     assert categories.process_category_decisions(evaluate=lambda *args: pytest.fail("No legacy resend")) == 0
