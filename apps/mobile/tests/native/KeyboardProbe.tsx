@@ -54,11 +54,12 @@ function Probe() {
         for (let i = 0; i < 100 && !Keyboard.isVisible(); i++) await wait(100);
         await check('chat-composer', TextInput.State.currentlyFocusedInput() as Input | undefined ?? null);
       } else {
-        await check(mode + '-last', refs.current[7]);
-        await check(mode + '-switch-with-keyboard-open', refs.current[3]);
+        for (let i = 0; i < 60 && !refs.current[phase * 10 + 7]; i++) await wait(100);
+        await check(mode + '-last', refs.current[phase * 10 + 7]);
+        await check(mode + '-switch-with-keyboard-open', refs.current[phase * 10 + 3]);
         if (mode === 'screen') {
           setNotes(Array.from({ length: 35 }, (_, i) => `Line ${i + 1} of long notes`).join('\n'));
-          await wait(200); await check('multiline-long-notes', refs.current[8]);
+          await wait(200); await check('multiline-long-notes', refs.current[phase * 10 + 8]);
         }
       }
       Keyboard.dismiss(); await wait(500);
@@ -69,8 +70,8 @@ function Probe() {
     void run().catch(error => report.write(JSON.stringify({ platform: Platform.OS, rows, error: String(error), passed: false })));
     return () => { live = false; };
   }, [phase]);
-  const fields = Array.from({ length: 8 }, (_, i) => <TextField key={i} ref={node => { refs.current[i] = node; }} label={`Field ${i + 1}`} value={`Synthetic ${i + 1}`} onChangeText={() => {}} />);
-  const longField = <TextField ref={node => { refs.current[8] = node; }} label="Long notes" multiline value={notes} onChangeText={setNotes} style={{ minHeight: 80 }} />;
+  const fields = Array.from({ length: 8 }, (_, i) => <TextField key={i} ref={node => { refs.current[phase * 10 + i] = node; }} label={`Field ${i + 1}`} value={`Synthetic ${i + 1}`} onChangeText={() => {}} />);
+  const longField = <TextField ref={node => { refs.current[phase * 10 + 8] = node; }} label="Long notes" multiline value={notes} onChangeText={setNotes} style={{ minHeight: 80 }} />;
   const content = <View style={{ gap: 20 }}>{fields}{mode === 'screen' && longField}</View>;
   if (mode === 'dialog') return <FieldDialog title="Keyboard form" visible disabled={false} canSave onClose={() => {}} onSave={() => {}}>{content}</FieldDialog>;
   if (mode === 'sheet') return <PeopleSheet title="Keyboard sheet" icon="people" visible disabled={false} maxHeight={900} onDismiss={() => {}}>{content}</PeopleSheet>;
