@@ -13,10 +13,10 @@ export default function PeopleSheet({ visible, onDismiss, title, icon, total, co
   visible: boolean; onDismiss: () => void; title: string; icon: IconName; total?: string; count?: number; disabled: boolean; maxHeight: number; children: React.ReactNode;
 }) {
   const { ui, palette, motion } = useUI(), { height, width } = useWindowDimensions(), insets = useSafeAreaInsets();
-  const [headerHeight, setHeaderHeight] = useState(100);
+  const [headerHeight, setHeaderHeight] = useState(100), [sheetHeight, setSheetHeight] = useState(height);
   const close = () => { if (!disabled) onDismiss(); };
   const content = <DialogFocus active={visible} busy={disabled} onEscape={close} label={title} style={{ flex: 1 }}>
-    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={Platform.OS === 'ios' ? Math.max(0, height - sheetHeight) : 0} style={{ flex: 1 }}>
       <ScrollView style={{ flex: 1, marginTop: headerHeight }} nestedScrollEnabled keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 12 + insets.bottom }}><RowGroup>{children}</RowGroup></ScrollView>
       <View onLayout={event => setHeaderHeight(event.nativeEvent.layout.height)} style={{ position: 'absolute', top: 0, left: 0, right: 0, paddingHorizontal: 20, paddingTop: 20, paddingBottom: 16, gap: 6 }}>
         <View accessible={false} pointerEvents="none" style={{ position: 'absolute', top: 8, width: 36, height: 4, borderRadius: 2, backgroundColor: palette.outline, alignSelf: 'center' }} />
@@ -27,7 +27,7 @@ export default function PeopleSheet({ visible, onDismiss, title, icon, total, co
     <LoadingOverlay inline />
   </DialogFocus>;
   // Keep iOS dismissal in UIKit; native-stack removal crashes Fabric on the shipped runtime.
-  if (Platform.OS === 'ios') return <Modal visible={visible} presentationStyle="pageSheet" animationType={motion.enabled ? 'slide' : 'none'} allowSwipeDismissal={!disabled} onRequestClose={close}><View style={{ flex: 1, backgroundColor: palette.surface }}>{content}</View></Modal>;
+  if (Platform.OS === 'ios') return <Modal visible={visible} presentationStyle="pageSheet" animationType={motion.enabled ? 'slide' : 'none'} allowSwipeDismissal={!disabled} onRequestClose={close}><View onLayout={event => setSheetHeight(event.nativeEvent.layout.height)} style={{ flex: 1, backgroundColor: palette.surface }}>{content}</View></Modal>;
   if (Platform.OS !== 'web') return <NativeSheet visible={visible} disabled={disabled} onDismiss={onDismiss}>{content}</NativeSheet>;
   if (!visible) return null;
   return <Modal visible transparent animationType={motion.enabled ? 'fade' : 'none'} onRequestClose={close}><View style={{ flex: 1, justifyContent: 'flex-end', alignItems: 'center' }}>

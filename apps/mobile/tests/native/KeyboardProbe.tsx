@@ -28,9 +28,11 @@ const modes = ['screen', 'dialog', 'sheet', 'list', 'signin', 'chat'] as const;
 function Probe() {
   const [phase, setPhase] = useState(0), [notes, setNotes] = useState('Notes'), refs = useRef<(Input | null)[]>([]);
   const insets = useSafeAreaInsets(), mode = modes[phase];
+  const [checked, setChecked] = useState<number | null>(null);
   useEffect(() => {
     let live = true;
     async function check(name: string, node: Input | null) {
+      setChecked(null);
       if (!node) throw Error('Missing native input: ' + name);
       node.focus();
       await wait(700);
@@ -40,6 +42,7 @@ function Probe() {
       const frame = await measure(node), keyboard = Keyboard.metrics();
       const passed = node.isFocused() && !!keyboard && frame.height >= 20 && frame.y >= 0 && frame.y + frame.height <= keyboard.screenY + 1;
       rows.push({ name, ...frame, keyboard, focused: node.isFocused(), passed });
+      setChecked(refs.current.indexOf(node)); await wait(600);
       if (resume.exists) resume.delete();
       report.write(JSON.stringify({ platform: Platform.OS, rows, capture: name }));
       for (let i = 0; i < 60 && live && !resume.exists; i++) await wait(100);
@@ -70,8 +73,8 @@ function Probe() {
     void run().catch(error => report.write(JSON.stringify({ platform: Platform.OS, rows, error: String(error), passed: false })));
     return () => { live = false; };
   }, [phase]);
-  const fields = Array.from({ length: 8 }, (_, i) => <TextField key={i} ref={node => { refs.current[phase * 10 + i] = node; }} label={`Field ${i + 1}`} value={`Synthetic ${i + 1}`} onChangeText={() => {}} />);
-  const longField = <TextField ref={node => { refs.current[phase * 10 + 8] = node; }} label="Long notes" multiline value={notes} onChangeText={setNotes} style={{ minHeight: 80 }} />;
+  const fields = Array.from({ length: 8 }, (_, i) => <TextField key={i} ref={node => { refs.current[phase * 10 + i] = node; }} testID={checked === phase * 10 + i ? 'keyboard-probe-checked' : undefined} label={`Field ${i + 1}`} value={`Synthetic ${i + 1}`} onChangeText={() => {}} />);
+  const longField = <TextField ref={node => { refs.current[phase * 10 + 8] = node; }} testID={checked === phase * 10 + 8 ? 'keyboard-probe-checked' : undefined} label="Long notes" multiline value={notes} onChangeText={setNotes} style={{ minHeight: 80 }} />;
   const content = <View style={{ gap: 20 }}>{fields}{mode === 'screen' && longField}</View>;
   if (mode === 'dialog') return <FieldDialog title="Keyboard form" visible disabled={false} canSave onClose={() => {}} onSave={() => {}}>{content}</FieldDialog>;
   if (mode === 'sheet') return <PeopleSheet title="Keyboard sheet" icon="people" visible disabled={false} maxHeight={900} onDismiss={() => {}}>{content}</PeopleSheet>;
