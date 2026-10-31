@@ -13,7 +13,7 @@ from django.utils import timezone
 from ninja.errors import HttpError
 
 from . import email_delivery
-from .email_links import EXPIRY_PLACEHOLDER, LINK_PLACEHOLDER, activate_email_link, issue_email_link
+from .email_links import LINK_PLACEHOLDER, activate_email_link, issue_email_link
 from .models import (
     ExpenseDigest,
     ExpenseNotice,
@@ -22,6 +22,8 @@ from .models import (
     NotificationPreference,
     Participant,
 )
+from .notification_content import money, preview
+from .profiles import participant_display_name
 from .store_review import groups_for_actor, review_ids
 
 EMAIL_DELAY = timedelta(minutes=10)
@@ -204,6 +206,43 @@ def _unmailed(now):
                                         cancelled_at__isnull=True, email_policy=1, created_at__lte=now - EMAIL_DELAY)
 
 
+def _summary_versions(rows):
+    return {str(row.id): row.expense.version for row in rows}
+
+
+def _summary_label(value, limit, fallback=""):
+    # User text must not become a bearer link/code during placeholder substitution.
+    return preview(value, limit, fallback).replace("MEROSPLIT_", "MeroSplit ")
+
+
+def _digest_message(rows, user_id):
+    # One bounded participant query, rather than one query per bill or payer.
+    displayed = list(reversed(rows))[:5]
+    people = {str(person.id): person for person in Participant.objects.filter(
+        group_id__in={row.expense.group_id for row in displayed}).select_related("user")}
+    recipients = {person.group_id: person for person in people.values() if person.user_id == user_id}
+    bills = []
+    for row in displayed:
+        bill = row.expense
+        if not (person := recipients.get(bill.group_id)):
+            continue  # Concurrent removal is rejected by the final eligibility check.
+        payers = ["you" if payer.user_id == user_id else _summary_label(participant_display_name(payer), 40, "Someone")
+                  for key, value in bill.paid.items() if int(value) > 0 and (payer := people.get(key))]
+        if payers and payers[0] == "you":
+            payers[0] = "You"
+        paid_by = " and ".join(payers[:2]) + (f" and {len(payers) - 2} other payer{'s' if len(payers) != 3 else ''}" if len(payers) > 2 else "")
+        bills.append({"title": _summary_label(bill.description, 100, "Shared expense"),
+                      "group": _summary_label(bill.group.name, 80) if not bill.group.is_direct else "",
+                      "paid_by": paid_by or "Someone", "total": money(bill.total),
+                      "share": money(bill.shares.get(str(person.id), "0")),
+                      "paid": money(bill.paid.get(str(person.id), "0")) if len(payers) > 1 and int(bill.paid.get(str(person.id), "0")) else ""})
+    heading = f"{len(rows)} unread bill{'s' if len(rows) != 1 else ''}"
+    text, html = email_delivery.render_message("expense_digest", {
+        "heading": heading, "bills": bills, "remaining": max(0, len(rows) - len(bills)), "app_url": LINK_PLACEHOLDER,
+    })
+    return {"subject": f"{heading} in MeroSplit", "text": text, "html": html, "_expense_summary": _summary_versions(rows)}
+
+
 def create_due_digest():
     now = timezone.now()
     with transaction.atomic():
@@ -231,8 +270,9 @@ def create_due_digest():
             return None
         identifier = uuid4()
         grant = issue_email_link(email, purpose="digest", target={"kind": "home"}, source_key=f"expense-digest/{identifier}")
-        text, html = email_delivery.render_message("expense_digest", {"app_url": LINK_PLACEHOLDER, "expires_at": EXPIRY_PLACEHOLDER})
-        payload = email_delivery.message_payload(email, "You have unread updates in MeroSplit", text, html)
+        content = _digest_message([row for row in rows if row.id in allowed], pref.user_id)
+        payload = email_delivery.message_payload(email, content["subject"], content["text"], content["html"])
+        payload["_expense_summary"] = content["_expense_summary"]
         payload["_email_link_id"] = str(grant.id)
         digest = ExpenseDigest.objects.create(id=identifier, recipient=pref.user, recipient_email=email, due_at=now, payload=payload)
         ExpenseNotice.objects.filter(id__in=eligible).update(digest=digest)
@@ -245,7 +285,11 @@ def _digest_still_eligible(digest):
     if not pref or verified_recipient(pref.user) != digest.recipient_email:
         return False
     rows = list(digest.notices.select_related("expense__group", "recipient"))
-    return any(row.email_eligible and row.email_policy == 1 and row.created_at <= now - EMAIL_DELAY for row in _eligible_notices(rows))
+    eligible = [row for row in _eligible_notices(rows) if row.email_eligible and row.email_policy == 1 and row.created_at <= now - EMAIL_DELAY]
+    # Once attempted, never alter the frozen body or retry details that lost access.
+    if digest.first_attempt_at and "_expense_summary" in digest.payload:
+        return bool(eligible) and _summary_versions(eligible) == digest.payload["_expense_summary"]
+    return bool(eligible)
 
 
 def _cancel_digest(current):
@@ -290,18 +334,28 @@ def send_pending_digests(*, limit=100):
             continue
         if not row.first_attempt_at:
             # Discard invalid entries before the first provider attempt; never reassign them.
-            notices = list(row.notices.select_related("expense__group", "recipient"))
+            notices = list(row.notices.select_related("expense__group", "recipient").order_by("created_at", "id"))
             allowed = {notice.id for notice in _eligible_notices(notices) if notice.email_eligible}
             ExpenseNotice.objects.filter(pk__in=[notice.id for notice in notices if notice.id not in allowed]).update(digest=None, email_eligible=False)
+            notices = [notice for notice in notices if notice.id in allowed]
+            if notices and row.payload.get("_expense_summary") != _summary_versions(notices):
+                row.payload.update(_digest_message(notices, row.recipient_id))
+                current.update(payload=row.payload)
         with transaction.atomic():
             locked = current.select_for_update().first()
             if not locked:
                 continue
             now = timezone.now()
             current.update(first_attempt_at=row.first_attempt_at or now, attempts=row.attempts + 1)
+            row.first_attempt_at = row.first_attempt_at or now
             # Expiry starts with the first eligible attempt, never while work is deferred.
             if not _digest_still_eligible(row) or not current.filter(lease_until__gt=timezone.now()).exists():
-                _cancel_digest(current)
+                if locked.first_attempt_at:
+                    _cancel_digest(current)
+                else:
+                    # No provider call yet: refresh this same recipe on the next pass.
+                    current.update(state="pending", first_attempt_at=None, attempts=locked.attempts,
+                                   lease_id=None, lease_until=None, last_error="changed_before_send")
                 processed += 1
                 continue
             if link_id := row.payload.get("_email_link_id"):

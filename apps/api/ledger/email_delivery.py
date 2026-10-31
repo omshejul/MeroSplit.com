@@ -55,7 +55,7 @@ def materialize_payload(payload: dict, *, recipient: str | None = None) -> dict:
             values[CODE_PLACEHOLDER] = fallback_code(grant.id)
     except (EmailLoginGrant.DoesNotExist, ValidationError, ValueError, TypeError):
         raise EmailDeliveryUnavailable() from None
-    resolved = {key: value for key, value in payload.items() if key != "_email_link_id"}
+    resolved = {key: value for key, value in payload.items() if key not in {"_email_link_id", "_expense_summary"}}
     for part in ("text", "html"):
         if part in resolved:
             for marker, value in values.items():

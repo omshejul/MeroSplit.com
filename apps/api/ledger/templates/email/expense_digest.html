@@ -1,12 +1,22 @@
 <!DOCTYPE html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>You have unread updates in MeroSplit</title></head>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{{ heading|default:"Unread bills" }} in MeroSplit</title></head>
 <body style="margin:0;padding:32px 20px;background:#fff;color:#202024;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif">
-<div style="display:none;max-height:0;overflow:hidden;opacity:0">Open MeroSplit to see what changed.</div>
-<table role="presentation" style="max-width:520px;width:100%;margin:auto;border-collapse:collapse"><tr><td>
+<div style="display:none;max-height:0;overflow:hidden;opacity:0">See who paid and your share of each bill.</div>
+<table role="presentation" style="max-width:520px;width:100%;margin:auto;border-collapse:collapse;table-layout:fixed;word-wrap:break-word"><tr><td>
 <img src="{{ logo_url }}" width="40" height="40" alt="MeroSplit" style="display:block;border:0">
-<h1 style="font-size:24px;line-height:32px;margin-top:28px">You have unread updates</h1>
-<p style="font-size:16px;line-height:24px">There are expense updates you have not seen yet.</p>
-<p style="padding:12px 0"><a href="{{ app_url }}" style="display:inline-block;padding:14px 24px;background:#e87870;border-radius:10px;color:#202024;text-decoration:none;font-weight:600">Open MeroSplit</a></p>
-{% if expires_at %}<p style="font-size:13px;line-height:20px;color:#6b6b73">This link works until {{ expires_at }}.</p>{% endif %}
+<h1 style="font-size:24px;line-height:32px;margin:28px 0 12px">{{ heading|default:"Unread bills" }}</h1>
+{% for bill in bills %}
+<table role="presentation" style="width:100%;border-collapse:collapse;table-layout:fixed"><tr><td style="padding:20px 0;border-bottom:1px solid #e8e8ec">
+<p style="font-size:17px;line-height:24px;font-weight:600;margin:0 0 4px">{{ bill.title }}</p>
+{% if bill.group %}<p style="font-size:14px;line-height:20px;color:#6b6b73;margin:0 0 10px">{{ bill.group }}</p>{% endif %}
+<p style="font-size:15px;line-height:24px;margin:0">{{ bill.paid_by }} paid {{ bill.total }}</p>
+<p style="font-size:16px;line-height:24px;font-weight:600;margin:4px 0 0">Your share: {{ bill.share }}</p>
+{% if bill.paid %}<p style="font-size:15px;line-height:24px;margin:4px 0 0">You paid: {{ bill.paid }}</p>{% endif %}
+</td></tr></table>
+{% endfor %}
+{% if remaining %}<p style="font-size:15px;line-height:24px">{{ remaining }} more unread bill{{ remaining|pluralize }} in MeroSplit.</p>{% endif %}
+<p style="padding:12px 0"><a href="{{ app_url }}" style="display:inline-block;padding:14px 24px;background:#e87870;border-radius:10px;color:#202024;text-decoration:none;font-weight:600">Review bills</a></p>
+<p style="font-size:13px;line-height:20px;color:#6b6b73">Amounts in INR. Details reflect the bills when this email was prepared.</p>
+<p style="font-size:13px;line-height:20px;color:#6b6b73">If the link has expired, open MeroSplit and sign in normally.</p>
 <p style="font-size:13px;line-height:20px;color:#6b6b73">To stop these emails, turn off Email reminders in Me &gt; Notifications.</p>
 </td></tr></table></body></html>
