@@ -49,9 +49,9 @@ export default function OAuthContinuation({ session, busy, onSaveName, beforeCon
     flight.current = true; setWorking(true);
     try { await onSaveName(name); } finally { flight.current = false; if (current.current === scope) setWorking(false); }
   }
+  useLoading(working);
   if (pending?.scope !== scope) return null;
   const disabled = busy || working;
-  useLoading(working);
   return <KeyboardDialog label="Review agent access" visible dismissable={false} onDismiss={dismiss} maxHeight={Math.max(0, height - 48)}>
 
       <Dialog.Title aria-level={2}>Review agent access</Dialog.Title>

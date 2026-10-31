@@ -155,7 +155,9 @@ def test_unauthenticated_bearer_challenge_and_strict_ingress(ledger, bearer):
     asyncio.run(check())
 
 
-def test_invalid_bearer_rate_limit_is_durable_across_app_instances(ledger):
+def test_invalid_bearer_rate_limit_is_durable_across_app_instances(ledger, monkeypatch):
+    now = timezone.now()
+    monkeypatch.setattr("ledger.otp.timezone.now", lambda: now)
     async def check():
         async with running_app(MeroSplitApplication()) as one, running_app(MeroSplitApplication()) as two:
             for index in range(60):

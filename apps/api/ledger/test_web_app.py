@@ -27,6 +27,18 @@ def body(response):
     return b"".join(response.streaming_content) if response.streaming else response.content
 
 
+def test_plugin_listing_policy_pages_are_public_and_canonical():
+    browser = Client()
+    for path, title in [("/terms", "Terms of use"), ("/privacy", "Privacy"), ("/support", "Support")]:
+        response = browser.get(path)
+        assert response.status_code == 200
+        html = body(response).decode()
+        assert f'<link rel="canonical" href="https://merosplit.com{path}">' in html
+        assert f"MeroSplit · {title}" in html
+        assert 'href="/terms"' in html and "mail@merosplit.com" in html
+    assert "never transfers money or verifies bank receipts" in body(browser.get("/terms")).decode()
+
+
 def test_same_origin_shell_deep_links_csrf_and_isolated_sqlite_assets(exported_app):
     browser = Client(enforce_csrf_checks=True)
     for path in ["/app/", f"/app/groups/{uuid4()}/bills/{uuid4()}"]:
