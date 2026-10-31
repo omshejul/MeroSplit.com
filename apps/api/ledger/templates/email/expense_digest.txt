@@ -1,10 +1,15 @@
-You have unread updates
-
-There are expense updates you have not seen yet.
-
-Open MeroSplit: {{ app_url }}
-{% if expires_at %}
-This link works until {{ expires_at }}.
+{{ heading|default:"Unread bills" }}
+{% for bill in bills %}
+{{ bill.title }}{% if bill.group %} · {{ bill.group }}{% endif %}
+{{ bill.paid_by }} paid {{ bill.total }}
+Your share: {{ bill.share }}{% if bill.paid %}
+You paid: {{ bill.paid }}{% endif %}
+{% endfor %}{% if remaining %}
+{{ remaining }} more unread bill{{ remaining|pluralize }} in MeroSplit.
 {% endif %}
+Review bills: {{ app_url }}
+
+Amounts in INR. Details reflect the bills when this email was prepared.
+If the link has expired, open MeroSplit and sign in normally.
 
 To stop these emails, turn off Email reminders in Me > Notifications.

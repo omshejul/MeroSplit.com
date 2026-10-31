@@ -146,6 +146,7 @@ def test_digest_first_attempt_activates_expiry_and_retry_keeps_frozen_recipe(cli
     digest.refresh_from_db()
     assert grant.expires_at == digest.first_attempt_at + notifications.LINK_LIFETIME
     assert digest.first_attempt_at == clock[0] and len(provider) == 1
+    assert b"_expense_summary" not in provider[0]["data"]
     original_expiry = grant.expires_at
     clock[0] += timedelta(minutes=2)
     settings.PUBLIC_WEB_URL = "https://changed-synthetic.example.invalid"
