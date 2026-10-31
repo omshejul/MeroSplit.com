@@ -7,7 +7,7 @@ from uuid import UUID
 from django.core import signing
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from django.db.models import Exists, F, OuterRef, Q, Value
+from django.db.models import BooleanField, Exists, F, OuterRef, Q, Value
 from django.db.models.fields.json import KeyTextTransform
 from django.db.models.fields.tuple_lookups import TupleLessThan, TupleLessThanOrEqual
 from django.db.models.functions import Coalesce
@@ -305,7 +305,8 @@ def account_activity(actor, *, limit=50, cursor=None):
         | ~Q(data__category_auto=F("data___history__before__category_auto")))
     for field in ("description", "total", "paid", "shares", "split", "date", "notes", "deleted"):
         icon_only &= Q(**{f"data__{field}": F(f"data___history__before__{field}")})
-    query = query.exclude(icon_only)
+    # Legacy events lack before metadata. Unknown comparisons are not proof of an icon-only edit.
+    query = query.exclude(Coalesce(icon_only, Value(False), output_field=BooleanField()))
     prior_payment_event = Change.objects.alias(payment_id=Coalesce(KeyTextTransform("settlement_id", "data"), KeyTextTransform("id", "data"))).filter(
         group_id=OuterRef("group_id"), kind__in=["manual_settlement", "payment_confirm"], payment_id=OuterRef("confirmed_payment_id"),
     ).filter(Q(kind="manual_settlement") | Q(id__lt=OuterRef("id")))

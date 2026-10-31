@@ -177,6 +177,21 @@ def test_activity_skips_handoff_noise_and_duplicate_receipt_acknowledgements(cli
     assert len(records) == 1 and records[0]["payment"]["amount"] == attempt["amount"]
 
 
+def test_activity_keeps_legacy_edits_without_recorded_before_metadata(client, group):
+    body = expense(group[1])
+    path = f"/groups/{group[0]}/expenses"
+    assert send(client, "post", path, body).status_code == 200
+    body.update(command_id=uid(), version=1, description="Historical bill edit")
+    assert send(client, "put", f"{path}/{body['id']}", body).status_code == 200
+    change = Change.objects.get(group_id=group[0], kind="expense_saved", data__version=2)
+    # Before version history and automatic icons, genuine edits had neither field.
+    change.data.pop("_history")
+    change.data.pop("category_auto")
+    change.save(update_fields=["data"])
+    activity = send(client, "get", "/activity").json()["items"]
+    assert [row["kind"] for row in activity if "bill" in row] == ["bill_edited", "bill_added"]
+
+
 def test_activity_hides_existing_icon_only_edits_before_paging_but_keeps_real_edits_and_history(client, group):
     body = expense(group[1]) | {"category": "general", "category_auto": True}
     path = f"/groups/{group[0]}/expenses"

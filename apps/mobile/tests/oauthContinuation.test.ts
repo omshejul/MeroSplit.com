@@ -5,24 +5,31 @@ import ts from 'typescript';
 type Element = { type: string; props: Record<string, any>; children: unknown[] };
 function component() {
   const hooks: any[] = []; let position = 0, effects: (() => void)[] = [];
+  let sequence: string[] = [], previousSequence: string[] | undefined;
+  const hook = (kind: string) => { sequence.push(kind); return position++; };
   const navigated: string[] = [], requests: string[] = [], replies: any[] = [];
   const React = {
     createElement: (type: string, props: object, ...children: unknown[]): Element => ({ type, props, children }),
-    useState(initial: unknown) { const i = position++; if (!(i in hooks)) hooks[i] = initial; return [hooks[i], (v: any) => { hooks[i] = typeof v === 'function' ? v(hooks[i]) : v; }]; },
-    useRef(initial: unknown) { const i = position++; return hooks[i] ??= { current: initial }; },
-    useEffect(effect: () => any, deps: any[]) { const i = position++, prior = hooks[i]; if (!prior || deps.some((d, n) => d !== prior.deps[n])) effects.push(() => { prior?.cleanup?.(); hooks[i] = { deps, cleanup: effect() }; }); },
+    createContext(value: unknown) { return { value }; },
+    useContext(context: { value: unknown }) { hook('context'); return context.value; },
+    useState(initial: unknown) { const i = hook('state'); if (!(i in hooks)) hooks[i] = initial; return [hooks[i], (v: any) => { hooks[i] = typeof v === 'function' ? v(hooks[i]) : v; }]; },
+    useRef(initial: unknown) { const i = hook('ref'); return hooks[i] ??= { current: initial }; },
+    useEffect(effect: () => any, deps: any[]) { const i = hook('effect'), prior = hooks[i]; if (!prior || deps.some((d, n) => d !== prior.deps[n])) effects.push(() => { prior?.cleanup?.(); hooks[i] = { deps, cleanup: effect() }; }); },
   };
   const code = ts.transpile(readFileSync(new URL('../src/OAuthContinuation.tsx', import.meta.url), 'utf8'), { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.React });
   const modules: Record<string, unknown> = {
-    './LoadingOverlay': { useLoading() {} },
-    react: { ...React, default: React }, 'react-native': { View: 'View', useWindowDimensions: () => ({ width: 390, height: 640 }) }, 'react-native-paper': { Text: 'Text', Dialog: { Title: 'Title' } },
+    react: { ...React, default: React }, 'react-native': { View: 'View', StyleSheet: { absoluteFill: {}, create: (value: unknown) => value }, useWindowDimensions: () => ({ width: 390, height: 640 }) }, 'react-native-paper': { Text: 'Text', Dialog: { Title: 'Title' } },
     './api': { request: async (_: unknown, path: string) => { requests.push(path); return { authorization_url: await replies.shift() }; } },
     './EmailLinkScreens': { NameOnlyForm: 'NameOnlyForm' }, './DialogFocus': 'DialogFocus', './KeyboardDialog': 'KeyboardDialog',
     './DialogParts': { Dialog: { Title: 'Title', Actions: 'Actions' }, CancelDialogActions: 'Actions', DialogScrollBody: 'Body' },
     './ui': { Button: 'Button', ErrorText: 'ErrorText', useUI: () => ({ ui: { body: {}, caption: {} } }) },
   };
+  // Run the production hook so an early return cannot hide a hook-order crash.
+  const loadingCode = ts.transpile(readFileSync(new URL('../src/LoadingOverlay.tsx', import.meta.url), 'utf8'), { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.React });
+  const loading: any = {}; new Function('require', 'exports', loadingCode)((name: string) => modules[name], loading);
+  modules['./LoadingOverlay'] = loading;
   const exports: any = {}; new Function('require', 'exports', 'window', 'document', code)((name: string) => { assert.ok(name in modules, name); return modules[name]; }, exports, { location: { assign: (p: string) => navigated.push(p) } }, { activeElement: null });
-  return { ...exports, navigated, requests, replies, render(props: object): Element { position = 0; effects = []; return exports.default(props); }, async mount() { effects.forEach(e => e()); await tick(); } };
+  return { ...exports, navigated, requests, replies, render(props: object): Element { position = 0; effects = []; sequence = []; const tree = exports.default(props); if (previousSequence) assert.deepEqual(sequence, previousSequence, 'Hook order must stay unchanged between renders'); previousSequence = sequence; return tree; }, async mount() { effects.forEach(e => e()); await tick(); } };
 }
 function nodes(value: unknown): Element[] { if (Array.isArray(value)) return value.flatMap(nodes); if (!value || typeof value !== 'object' || !('children' in value)) return []; const n = value as Element; return [n, ...n.children.flatMap(nodes)]; }
 const tick = () => new Promise(resolve => setImmediate(resolve));
@@ -30,6 +37,7 @@ const consent = '/oauth/authorize?request=12345678-1234-1234-1234-123456789abc';
 const props = { session: { userId: '1', token: 'session', baseUrl: 'https://example.invalid', email: 'me@example.invalid', displayName: 'Me' }, busy: false, onSaveName: async () => {}, beforeContinue: async () => {} };
 const button = (tree: Element) => nodes(tree).find(n => n.type === 'Button' && n.props.title === 'Review access')!;
 
+test('loading and dismissing a pending connection preserve production hook order', async () => { const a = component(); a.replies.push(consent); assert.equal(a.render(props), null); await a.mount(); const dialog = a.render(props); assert.equal(dialog.type, 'KeyboardDialog'); nodes(dialog).find(n => n.type === 'Actions')!.props.onCancel(); assert.equal(a.render(props), null); });
 test('only the closed server-held selector is accepted', () => { const a = component(); assert.equal(a.oauthConsentPath(consent), consent); for (const v of [null, {}, '', '//evil.invalid', 'https://evil.invalid' + consent, consent + '&extra=1', consent + '#x', '/app/']) assert.equal(a.oauthConsentPath(v), null); });
 test('pending access is one blocking themed dialog, never an automatic approval', async () => { const a = component(); a.replies.push(consent); a.render(props); await a.mount(); const t = a.render(props), all = nodes(t); assert.equal(t.type, 'KeyboardDialog'); assert.equal(t.props.dismissable, false); assert.equal(t.props.label, 'Review agent access'); assert.ok(all.some(n => n.type === 'Title' && n.children.includes('Review agent access'))); assert.ok(button(t)); assert.deepEqual(a.navigated, []); });
 test('name onboarding stays inside the same dialog before review', async () => { const a = component(), p = { ...props, session: { ...props.session, displayName: '' } }; a.replies.push(consent); a.render(p); await a.mount(); const t = a.render(p); assert.equal(t.type, 'KeyboardDialog'); assert.equal(nodes(t).find(n => n.type === 'NameOnlyForm')!.props.autoFocus, false); assert.equal(button(t), undefined); assert.equal(nodes(t).find(n => n.type === 'Actions')!.props.disabled, false); assert.equal(nodes(t).find(n => n.type === 'Actions')!.props.cancelTitle, 'Not now'); });
