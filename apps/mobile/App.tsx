@@ -1162,8 +1162,8 @@ function AppContent() {
     if (!session) throw new Error('Sign in first.');
     requireConnectionForTemporaryStorage();
     const participants = [myName, ...values.people].map((name, index) => ({ id: uuid(), name: name.trim(), user_id: index === 0 ? Number(session.userId) : null, ...((index > 0 && (direct ? values.email : values.emails?.[index - 1] ?? '').trim()) ? { email: (direct ? values.email : values.emails?.[index - 1] ?? '').trim() } : {}) }));
-    const group = { ...emptyGroup(uuid(), direct ? values.people[0].trim() : values.name, participants), owner_id: Number(session.userId), is_direct: direct };
-    const id = uuid(), create: Command = { command_id: id, group_id: group.id, base_version: 0, method: 'POST', path: '/groups', body: { command_id: id, id: group.id, name: group.name, participants: participants.map(({ id, name, email }) => ({ id, name, ...(email ? { email } : {}) })), self_participant_id: participants[0].id, is_direct: direct }, state: 'pending', error: null };
+    const group = { ...emptyGroup(uuid(), direct ? values.people[0].trim() : values.name, participants), owner_id: Number(session.userId), is_direct: direct, simplify_debts: values.simplify_debts !== false };
+    const id = uuid(), create: Command = { command_id: id, group_id: group.id, base_version: 0, method: 'POST', path: '/groups', body: { command_id: id, id: group.id, name: group.name, participants: participants.map(({ id, name, email }) => ({ id, name, ...(email ? { email } : {}) })), self_participant_id: participants[0].id, is_direct: direct, ...(group.simplify_debts === false ? { simplify_debts: false } : {}) }, state: 'pending', error: null };
     await createPendingGroup(await getDatabase(), owner, group, [create]); await load(owner);
     if (direct && values.email.trim()) {
       setNewPersonInvite({ owner, groupId: group.id, personId: participants[1].id, email: values.email.trim().toLowerCase(), id: uuid() }); setNewPersonInviteError('');

@@ -67,6 +67,12 @@ class GroupIn(Command):
     self_participant_id: UUID
     participants: Annotated[list[Person], Field(min_length=1, max_length=100)]
     is_direct: bool = False
+    simplify_debts: StrictBool = True
+
+
+class SimplifyIn(Command):
+    simplify_debts: StrictBool
+    version: StrictInt = Field(ge=0)
 
 
 class Split(Input):

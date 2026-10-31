@@ -91,12 +91,14 @@ from .schemas import (
     SeenNoticesIn,
     SettlementIn,
     SignInPreferencesIn,
+    SimplifyIn,
     SplitwiseImportIn,
     SplitwiseImportResult,
     SplitwisePreviewIn,
     WriteResult,
 )
 from .services import (
+    change_simplify,
     create_group,
     record_settlement,
     reverse_expense,
@@ -701,3 +703,8 @@ def expense_icons_get(request, ids: str):
     from .expense_categories import expense_icons
 
     return expense_icons(request.auth, ids)
+
+
+@api.post("/groups/{group_id}/simplify", response=WriteResult)
+def simplify_group(request, group_id: UUID, body: SimplifyIn):
+    return change_simplify(request.auth, group_id, body.model_dump(mode="json"))

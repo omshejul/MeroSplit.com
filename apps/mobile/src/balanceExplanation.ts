@@ -1,4 +1,4 @@
-import { integer, proposeTransfers, type Transfer } from './accounting.ts';
+import { integer, proposeTransfers, directTransfers, billTransfers, type Transfer } from './accounting.ts';
 import { previewPending } from './ledger.ts';
 import type { Command, Expense, Group, Settlement } from './types.ts';
 
@@ -72,7 +72,7 @@ export function explainTransfer(source: Group, displayed: Group, selfId: string,
   const balances = Object.fromEntries(totals.map(person => [person.id, person.balance.toString()]));
   if (Object.keys(displayed.balances).length !== people.length || totals.some(person => person.balance.toString() !== displayed.balances[person.id])) throw new Error(changedBalance);
   if (!pending.length && source.totals && (spending.toString() !== source.totals.spending || totals.some(person => person.paid.toString() !== (source.totals!.paid[person.id] ?? '0') || person.share.toString() !== (source.totals!.shares[person.id] ?? '0')))) throw new Error(changedBalance);
-  const plan = proposeTransfers(balances);
+  const plan = group.simplify_debts === false ? directTransfers(group.expenses, group.settlements, group.opening_balance?.accepted ? group.opening_balance.balances : undefined, group.debt_checkpoint) : proposeTransfers(balances);
   if (JSON.stringify(plan) !== JSON.stringify(displayed.transfers)) throw new Error(changedBalance);
   const index = plan.findIndex(row => row.sender === transfer.sender && row.recipient === transfer.recipient && row.amount === transfer.amount);
   if (index < 0) throw new Error(changedBalance);
@@ -81,6 +81,14 @@ export function explainTransfer(source: Group, displayed: Group, selfId: string,
     remaining[row.sender] = (integer(remaining[row.sender], true) + integer(row.amount)).toString();
     remaining[row.recipient] = (integer(remaining[row.recipient], true) - integer(row.amount)).toString();
   }
-  return { group, plan, index, history: balanceHistory(group, selfId), owing: (-integer(remaining[transfer.sender], true)).toString(), owed: remaining[transfer.recipient], spending: spending.toString(), pending: pending.length > 0,
+  const effect = (row: Transfer) => row.sender === transfer.sender && row.recipient === transfer.recipient ? integer(row.amount) : row.sender === transfer.recipient && row.recipient === transfer.sender ? -integer(row.amount) : 0n;
+  const directItems = group.simplify_debts === false ? [
+    ...group.expenses.filter(row => !row.deleted).map(bill => ({ id: `bill:${bill.id}`, title: bill.description, amount: billTransfers(bill.paid, bill.shares).reduce((sum, row) => sum + effect(row), 0n).toString(), share: bill.shares[selfId] ?? '0' })),
+    ...group.settlements.filter(row => !row.reversed).map(row => ({ id: `payment:${row.id}`, title: 'Recorded payment', amount: (-effect(row)).toString(), share: undefined })),
+    { id: 'opening', title: 'Agreed starting balance', amount: (group.opening_balance?.accepted ? proposeTransfers(group.opening_balance.balances).reduce((sum, row) => sum + effect(row), 0n) : 0n).toString(), share: undefined },
+    { id: 'checkpoint', title: 'Earlier settled bills and payments', amount: (-(group.debt_checkpoint ?? []).reduce((sum, row) => sum + effect(row), 0n)).toString(), share: undefined },
+  ].filter(row => row.amount !== '0') : [];
+  if (group.simplify_debts === false && directItems.reduce((sum, row) => sum + integer(row.amount, true), 0n).toString() !== transfer.amount) throw new Error(changedBalance);
+  return { directItems, group, plan, index, history: balanceHistory(group, selfId), owing: group.simplify_debts === false ? transfer.amount : (-integer(remaining[transfer.sender], true)).toString(), owed: group.simplify_debts === false ? transfer.amount : remaining[transfer.recipient], spending: spending.toString(), pending: pending.length > 0,
     people: totals.map(person => ({ ...person, paid: person.paid.toString(), share: person.share.toString(), sent: person.sent.toString(), received: person.received.toString(), opening: person.opening.toString(), balance: person.balance.toString() })) };
 }

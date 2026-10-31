@@ -87,10 +87,11 @@ def get_group(actor, group_id):
         group.expenses.filter(deleted=False).values_list("total", "paid", "shares").iterator(chunk_size=1000),
         group.settlements.filter(reversed=False).values_list("sender_id", "recipient_id", "amount").iterator(chunk_size=1000),
         opening.balances if opening else None,
+        simplify_debts=group.simplify_debts, debt_checkpoint=group.debt_checkpoint,
     )
     return {
         "id": str(group.id), "name": group.name, "version": group.version,
-        "archived": group.archived, "is_direct": group.is_direct, "currency": "INR",
+        "archived": group.archived, "is_direct": group.is_direct, "simplify_debts": group.simplify_debts, "currency": "INR",
         "participants": [{"id": str(person.id), "name": participant_display_name(person),
                           "is_self": person.user_id == actor.pk and not person.removed, "removed": person.removed}
                          for person in people],

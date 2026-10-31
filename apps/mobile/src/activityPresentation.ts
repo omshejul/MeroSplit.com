@@ -30,6 +30,7 @@ export function activityPresentation(item: ActivityItem) {
     case 'member_added': title = `${actor} added ${item.person?.is_self ? 'you' : person}`; break;
     case 'member_joined': title = `${person} joined the group`; break;
     case 'member_removed': title = `${actor} removed ${item.person?.is_self ? 'you' : person}`; break;
+    case 'simplify_debts_changed': title = `${actor} changed Simplify debts`; break;
     case 'group_created': title = `${actor} created the group`; break;
     case 'group_archived': title = `${actor} archived the group`; break;
     case 'group_unarchived': title = `${actor} reopened the group`; break;

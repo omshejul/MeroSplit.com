@@ -195,7 +195,9 @@ Opening or sharing the preview has no ledger effect. Recalculate after accepted 
 
 ### Calculation and preserved history
 
-P0 preserves each purchase's original payer contributions and beneficiary shares, then calculates the outstanding repayment proposal from current group net balances. It does not keep a second authoritative table of pair debts or offer a direct-debt toggle. This avoids stale original debts after a rerouted payment. Expense Details still explains who originally paid for whom.
+P0 preserves each purchase's original payer contributions and beneficiary shares, then calculates the outstanding repayment proposal from current group net balances. The organizer can turn Simplify debts off for the whole group. Off allocates repayment within each bill, then offsets only mutual debts between the same two people. For multiple payers, each contribution first covers that payer's own share; the remaining bill debts match largest debtor and creditor with stable-ID ties. Chains and cycles across bills remain payable. Original shares remain visible in either mode.
+
+Existing groups default to On. The mode can change only when the current repayment plan is empty and no payment attempt or unaccepted starting balance is pending. Store the current direct pair balances as a checkpoint at that moment. Subtract that checkpoint from future direct calculations so settled historical payments never reopen debts; later bill edits and payment reversals apply only their difference. Mode changes are versioned and recorded in group activity. Net-only starting balances require Simplify debts because the original creditors are unknown.
 
 Match a largest debtor to a largest creditor, transfer the smaller absolute amount and repeat until all nets are zero. Use stable IDs for ties. This greedy method produces at most n−1 transfers among n nonzero participants. Do not claim that it always minimizes the number of transfers. The plan is a proposal, not an assertion that these people originally exchanged money.
 
@@ -203,7 +205,7 @@ Example in one group: Asha owes Bharat ₹500 and Bharat owes Charu ₹500. Nets
 
 Never combine currencies or cross group boundaries automatically. A confirmed settlement records actual sender, receiver, amount, source and originating plan version. Pending payment attempts survive later plan changes and receive an explicit in-flight display. Net-only historical imports are labeled as such; original payer/share detail is unavailable.
 
-If later users need a direct-debt mode, first specify how non-direct transfers allocate or rewrite outstanding obligations, including disconnected original debt graphs, partial repayments and cycles. Defer that mode until its invariants and UI explanations pass tests. Do not add a toggle over unadjusted historical edges.
+With Simplify off, actual payments offset the chosen pair. Overpayments become credit in the opposite direction. Payments to another member remain actual records and may create another direct obligation; never automatically reroute other pairs. A zero net does not mean the participant has settled all direct repayments.
 
 ### Required simplification cases
 

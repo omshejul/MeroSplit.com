@@ -136,3 +136,35 @@ export function proposeTransfers(balances: Amounts): Transfer[] {
   }
   return transfers;
 }
+
+
+/** Offset mutual debts, preserving debts through other people and circular debts. */
+export function combineTransfers(rows: Transfer[]): Transfer[] {
+  const pairs = new Map<string, { left: string; right: string; amount: bigint }>();
+  for (const row of rows) {
+    const [left, right] = [row.sender, row.recipient].sort();
+    if (left === right) throw new Error('Choose different participants.');
+    const key = JSON.stringify([left, right]), before = pairs.get(key)?.amount ?? 0n;
+    pairs.set(key, { left, right, amount: before + integer(row.amount) * (row.sender === left ? 1n : -1n) });
+  }
+  return [...pairs.values()].sort((a, b) => a.left < b.left ? -1 : a.left > b.left ? 1 : a.right < b.right ? -1 : a.right > b.right ? 1 : 0)
+    .filter(row => row.amount !== 0n).map(({ left, right, amount }) => ({ sender: amount > 0n ? left : right, recipient: amount > 0n ? right : left, amount: (amount > 0n ? amount : -amount).toString() }));
+}
+
+export function billTransfers(paid: Amounts, shares: Amounts): Transfer[] {
+  const ids = [...new Set([...Object.keys(paid), ...Object.keys(shares)])];
+  return proposeTransfers(Object.fromEntries(ids.map(id => [id, (integer(paid[id] ?? '0') - integer(shares[id] ?? '0')).toString()])));
+}
+
+export function reverseTransfers(rows: Transfer[]): Transfer[] {
+  return rows.map(row => ({ sender: row.recipient, recipient: row.sender, amount: row.amount }));
+}
+
+export function directTransfers(expenses: { paid: Amounts; shares: Amounts; deleted?: boolean }[], settlements: { sender: string; recipient: string; amount: string; reversed?: boolean }[], opening?: Amounts, checkpoint: Transfer[] = []): Transfer[] {
+  return combineTransfers([
+    ...expenses.filter(row => !row.deleted).flatMap(row => billTransfers(row.paid, row.shares)),
+    ...(opening ? proposeTransfers(opening) : []),
+    ...reverseTransfers(settlements.filter(row => !row.reversed)),
+    ...reverseTransfers(checkpoint),
+  ]);
+}
