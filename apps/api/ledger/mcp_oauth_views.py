@@ -1,9 +1,10 @@
 """Django-owned OAuth HTTP parsing and cookie-authenticated consent."""
 
 import json
+from pathlib import Path
 
 from django.core.exceptions import RequestDataTooBig
-from django.http import HttpResponse, JsonResponse
+from django.http import FileResponse, HttpResponse, JsonResponse
 from django.shortcuts import render
 from django.utils.encoding import iri_to_uri
 from django.views.decorators.csrf import csrf_exempt, csrf_protect
@@ -113,6 +114,15 @@ def _redirect(url):
     return response
 
 
+def _device_user_code(request, row):
+    if not row.device_secret_digest:
+        return None
+    code = request.session.get("mcp_device_user_code", "")
+    if oauth._user_code_digest(code) != row.user_code_digest:
+        raise oauth.OAuthError()
+    return code
+
+
 @csrf_protect
 @sensitive_post_parameters()
 def authorize(request):
@@ -129,15 +139,17 @@ def authorize(request):
             if set(data) != {"request"} or data["request"] != request.session.get(oauth.MCP_PENDING_SESSION_KEY):
                 raise oauth.OAuthError()
             row = oauth.get_pending(data["request"])
+            device_user_code = _device_user_code(request, row)
             if not request.user.is_authenticated:
                 return _redirect("/app/")
             if not request.user.is_active:
                 raise oauth.OAuthError("access_denied", 403)
-            if not request.user.first_name.strip():
+            if not request.user.first_name.strip() and not row.device_secret_digest:
                 return _redirect("/app/")
             response = render(request, "ledger/mcp_authorize.html", {"authorization": row,
                 "client_name": row.client.name, "account_name": request.user.first_name.strip() or request.user.email,
-                "account_email": request.user.email, "expected_user_id": str(request.user.pk)})
+                "account_email": request.user.email, "expected_user_id": str(request.user.pk),
+                "device_user_code": device_user_code})
             response["Cache-Control"] = "no-store"
             response["Referrer-Policy"] = "same-origin"
             response["Content-Security-Policy"] = "default-src 'none'; img-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'"
@@ -149,9 +161,11 @@ def authorize(request):
                 or data.get("request") != request.session.get(oauth.MCP_PENDING_SESSION_KEY)
                 or data.get("decision") not in {"allow", "cancel"}):
             raise oauth.OAuthError()
+        _device_user_code(request, oauth.get_pending(data["request"]))
         redirect = oauth.decide_authorization(request.user, data["request"], approved=data["decision"] == "allow",
             expected_user_id=data.get("expected_user_id"), network=client_network(request))
         request.session.pop(oauth.MCP_PENDING_SESSION_KEY, None)
+        request.session.pop("mcp_device_user_code", None)
         return _redirect(redirect)
     except oauth.OAuthError as exc:
         return _error(exc)
@@ -199,3 +213,80 @@ def revoke(request):
         return _response({})
     except oauth.OAuthError as exc:
         return _error(exc)
+
+
+@csrf_exempt
+@sensitive_post_parameters()
+@sensitive_variables()
+def device_start(request):
+    if request.method != "POST":
+        return _error(oauth.OAuthError(status=405))
+    try:
+        oauth.rate_limit("oauth-http", client_network(request))
+        return _response(oauth.begin_device_authorization(_body(request), client_network(request)))
+    except oauth.OAuthError as exc:
+        return _error(exc)
+
+
+@csrf_exempt
+@sensitive_post_parameters()
+@sensitive_variables()
+def device_poll(request):
+    if request.method != "POST":
+        return _error(oauth.OAuthError(status=405))
+    try:
+        oauth.rate_limit("oauth-http", client_network(request))
+        return _response(oauth.poll_device_authorization(_body(request), client_network(request)))
+    except oauth.OAuthError as exc:
+        return _error(exc)
+
+
+@csrf_protect
+@sensitive_post_parameters()
+def device_page(request):
+    if request.method not in {"GET", "POST"}:
+        return _error(oauth.OAuthError(status=405))
+    context, status = {}, 200
+    try:
+        oauth.rate_limit("oauth-http", client_network(request))
+        if request.method == "POST":
+            data = _body(request)
+            code = data.get("user_code", "")
+            context["user_code"] = code
+            row = oauth.pending_device_code(code, client_network(request))
+            request.session[oauth.MCP_PENDING_SESSION_KEY] = str(row.id)
+            compact = code.replace("-", "").replace(" ", "").upper()
+            request.session["mcp_device_user_code"] = compact[:4] + "-" + compact[4:]
+            return _redirect("/mcp/device")
+        if request.GET.get("done") == "1" or request.GET.get("cancelled") == "1":
+            context["done"] = request.GET.get("done") == "1"
+            context["cancelled"] = not context["done"]
+        elif request.session.get("mcp_device_user_code"):
+            row = oauth.get_pending(request.session.get(oauth.MCP_PENDING_SESSION_KEY))
+            if not row.device_secret_digest:
+                raise oauth.OAuthError()
+            if request.user.is_authenticated:
+                return _redirect(f"/oauth/authorize?request={row.id}")
+            context["sign_in"] = True
+    except oauth.OAuthError as exc:
+        status = exc.status
+        context["error"] = ("Too many attempts. Wait a few minutes before trying again." if status == 429 else
+                            "This code is invalid or expired. Check it and try again, or start login again on your server.")
+        request.session.pop("mcp_device_user_code", None)
+        request.session.pop(oauth.MCP_PENDING_SESSION_KEY, None)
+    response = render(request, "ledger/mcp_device.html", context, status=status)
+    response["Cache-Control"] = "no-store"
+    response["Referrer-Policy"] = "same-origin"
+    response["Content-Security-Policy"] = "default-src 'none'; script-src 'self'; connect-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"
+    return response
+
+
+@require_GET
+def device_asset(request, asset):
+    files = {"login.py": ("mcp_remote_login.py", "text/x-python"),
+             "device.js": ("assets/mcp-device.js", "text/javascript")}
+    filename, content_type = files[asset]
+    response = FileResponse((Path(__file__).parent / filename).open("rb"), content_type=content_type)
+    response["Cache-Control"] = "no-cache"
+    response["X-Content-Type-Options"] = "nosniff"
+    return response

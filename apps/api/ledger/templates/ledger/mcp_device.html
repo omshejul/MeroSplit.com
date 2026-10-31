@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="same-origin"><title>Connect your remote agent | MeroSplit</title>
+<link rel="stylesheet" href="/assets/typography.css">
+<style>
+:root{color-scheme:light dark;--bg:#F7F4FA;--card:#FFF;--text:#1E1626;--muted:#625A6B;--accent:#6B3FA0;--on:#FFF;--line:#DAD0E4}
+@media(prefers-color-scheme:dark){:root{--bg:#141018;--card:#1D1823;--text:#F3EEF7;--muted:#BDB2C8;--accent:#C7A6F2;--on:#1E1626;--line:#453B50}}
+*{box-sizing:border-box}body{margin:0;min-height:100svh;display:grid;place-items:center;padding:24px 16px;background:var(--bg);color:var(--text);font-size:16px;line-height:1.5}main{width:100%;max-width:480px}.brand{text-align:center;font-size:19px;font-weight:600;margin-bottom:24px}.card{padding:28px;border:1px solid var(--line);border-radius:20px;background:var(--card)}h1{font-size:26px;line-height:1.25;margin:0 0 12px;text-wrap:balance}p{margin:12px 0;color:var(--muted)}form{display:flex;flex-direction:column;gap:12px;margin-top:24px}label{font-weight:500}input,button{font:inherit;min-height:48px;border:1px solid var(--line);border-radius:10px;padding:12px 16px}input{background:var(--bg);color:var(--text);width:100%;min-width:0}input[name=user_code]{font-family:monospace;font-size:24px;text-transform:uppercase}button{background:var(--accent);color:var(--on);cursor:pointer;font-weight:500}button:disabled{opacity:.6;cursor:wait}:focus-visible{outline:3px solid var(--accent);outline-offset:3px}.note{font-size:14px}.error{color:var(--text)}[hidden]{display:none!important}@media(max-width:360px){.card{padding:20px}}
+</style></head><body><main><div class="brand">MeroSplit</div><section class="card">
+{% if done %}
+<h1>Access approved</h1><p>Return to your server. It should finish signing in shortly. You can close this page.</p><p class="note">If login does not finish, start it again on your server.</p>
+{% elif cancelled %}
+<h1>Connection cancelled</h1><p>No access was granted. You can close this page.</p>
+{% elif sign_in %}
+<h1>Sign in to MeroSplit</h1><p>Use the code from your email. Stay in this browser to finish connecting your server.</p>
+<form id="email-form">{% csrf_token %}<label for="email">Email</label><input id="email" name="email" type="email" autocomplete="email" maxlength="254" required><button type="submit">Send email code</button></form>
+<form id="code-form" hidden><label for="email-code">Email code</label><input id="email-code" name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{4}" maxlength="4" required><button type="submit">Sign in</button></form>
+<p id="login-error" class="error" role="alert"></p><p id="login-status" class="note" role="status"></p><noscript><p>Enable JavaScript to sign in. The device-code and approval pages work without it.</p></noscript>
+<script src="/mcp/device.js" defer></script>
+{% else %}
+<h1>Connect your remote agent</h1><p>Enter the code shown on the server where you started MeroSplit login.</p>
+<form method="post" action="/mcp/device">{% csrf_token %}<label for="user-code">Code from your server</label><input id="user-code" name="user_code" value="{{ user_code|default:'' }}" maxlength="32" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" required aria-describedby="code-note{% if error %} code-error{% endif %}" {% if error %}aria-invalid="true"{% endif %}><button type="submit">Continue</button><p id="code-note" class="note">Only enter a code from a login you started. Never enter a code sent by someone else.</p>{% if error %}<p id="code-error" class="error" role="alert">{{ error }}</p>{% endif %}</form>
+{% endif %}
+</section></main></body></html>
