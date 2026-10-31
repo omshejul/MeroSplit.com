@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('ledger', '0037_versatile_expense_icons'),
+        ('ledger', '0038_mcp_device_approval'),
     ]
 
     operations = [
