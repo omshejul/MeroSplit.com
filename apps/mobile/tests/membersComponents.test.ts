@@ -772,7 +772,7 @@ test('empty group invite starts with the account name and allows editing without
 });
 
 
-test('Simplify is group-wide, owner-only and disabled until server confirms settlement', async () => {
+test('Simplify is group-wide, available to active members and disabled until server confirms settlement', async () => {
   const app=settings();
   app.group.can_change_simplify=true;
   let control=component(app.render(),'Switch');
@@ -782,6 +782,12 @@ test('Simplify is group-wide, owner-only and disabled until server confirms sett
   app.group.can_change_simplify=false;
   assert.equal(component(app.render(),'Switch').props.disabled,true);
   app.group.can_change_simplify=true; app.group.owner_id=2;
+  control=component(app.render(),'Switch'); assert.equal(control.props.disabled,false);
+  control.props.onValueChange(true); await tick();
+  assert.equal(app.calls.at(-1)?.path,'/simplify');
+  app.group.participants[0].removed=true;
+  assert.equal(component(app.render(),'Switch').props.disabled,true);
+  app.group.participants[0].removed=false; app.group.participants[0].user_id=null;
   assert.equal(component(app.render(),'Switch').props.disabled,true);
   app.unmount();
 });

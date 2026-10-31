@@ -94,7 +94,12 @@ def test_setting_authorization_versions_pending_and_archived(client, group):
     outsider = authenticated_client(other)
     assert switch(outsider, group_id, False).status_code == 404
     Participant.objects.filter(pk=ids[1]).update(user=other)
-    assert switch(outsider, group_id, False).status_code == 403
+    assert switch(outsider, group_id, False).status_code == 200
+    assert Group.objects.get(pk=group_id).simplify_debts is False
+    assert switch(outsider, group_id, True).status_code == 200
+    Participant.objects.filter(pk=ids[1]).update(removed=True)
+    assert switch(outsider, group_id, False).status_code == 404
+    Participant.objects.filter(pk=ids[1]).update(removed=False)
     assert switch(client, group_id, False, version=0).status_code == 409
     attempt = PaymentAttempt.objects.create(group_id=group_id, sender_id=ids[0], recipient_id=ids[1], amount=1, payee="test@upi", payee_version=1, group_version=1, expires_at=timezone.now()+timezone.timedelta(minutes=5))
     assert switch(client, group_id, False).status_code == 409

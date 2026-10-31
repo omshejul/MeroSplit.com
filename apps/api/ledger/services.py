@@ -604,8 +604,6 @@ def change_simplify(actor, group_id, payload):
     if previous:
         return previous
     writable(group)
-    if group.owner_id != actor.pk:
-        raise HttpError(403, "Only the organizer can change Simplify debts")
     if group.version != payload["version"]:
         raise HttpError(409, "This group changed. Refresh and try again.")
     if group.is_direct:

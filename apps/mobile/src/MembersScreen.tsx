@@ -393,11 +393,10 @@ function MemberSettings({ group, selfId, busy, addPersonRequest = 0, onAction, o
 
     {!group.is_direct && <View style={s.section}>
       <View style={ui.row}><Text style={[ui.rowTitle, { flex: 1 }]}>Simplify debts</Text><Switch accessibilityLabel="Simplify debts" value={group.simplify_debts !== false}
-        disabled={disabled || !organizer || !!group.archived || group.can_change_simplify !== true}
+        disabled={disabled || !self || !!self.removed || self.user_id == null || !!group.archived || group.can_change_simplify !== true}
         onValueChange={simplify_debts => void perform('simplify', async () => { await onAction('/simplify', { simplify_debts, version: group.version }); }, 'Repayment setting saved.')} /></View>
       <Text style={ui.caption}>{group.simplify_debts !== false ? "Reduces payments using everyone's net balance." : 'Each person repays the member who paid for them.'}</Text>
-      {organizer && group.can_change_simplify === false && <Text style={ui.caption}>Settle all repayments and finish pending payments before changing this.</Text>}
-      {!organizer && <Text style={ui.caption}>The organizer controls this setting for everyone.</Text>}
+      {group.can_change_simplify === false && <Text style={ui.caption}>Settle all repayments and finish pending payments before changing this.</Text>}
       <FeedbackNote section="simplify" feedback={feedback} />
     </View>}
     {opening && <DetailDialog busy={disabled} icon="payment" title="Previous balances" initialOpen={needsOpeningAgreement}>
