@@ -78,7 +78,7 @@ function ExplanationBody({ value, selfId }: { value: Explanation; selfId: string
       return <InlineDetails key={row.id} title={row.title} icon={bill ? categoryIcon(bill.category) : row.id.startsWith('payment:') ? 'payment' : 'history'} amount={row.amount}>
         {bill && <Text style={ui.caption}>{Object.entries(bill.paid).filter(([, amount]) => BigInt(amount) > 0n).map(([id, amount]) => `${nameFor(group, selfId, id)} paid ${formatMoney(amount)}`).join(', ')}</Text>}
         {row.share !== undefined && <Text style={ui.caption}>Your share: {formatMoney(row.share)}</Text>}
-        <Text style={ui.caption}>{BigInt(row.amount) < 0n ? 'Reduces this payment by' : 'Adds to this payment by'} {formatMoney(absolute(row.amount))}</Text>
+        <Text style={ui.caption}>{BigInt(row.amount) < 0n ? 'Reduces this payment by' : 'Adds to this payment:'} {formatMoney(absolute(row.amount))}</Text>
       </InlineDetails>;
     })}
     <Text style={ui.caption}>Positive amounts add to this payment. Negative amounts reduce it. Each bill keeps its original shares.</Text>
