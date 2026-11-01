@@ -772,9 +772,11 @@ test('empty group invite starts with the account name and allows editing without
 });
 
 
-test('Simplify is group-wide, available to active members and disabled until server confirms settlement', async () => {
+test('Simplify is group-wide, available to active members and disabled only for pending payments or starting balances', async () => {
   const app=settings();
   app.group.can_change_simplify=true;
+  app.group.balances={a:"-50000",b:"50000"};
+  app.group.transfers=[{sender:"a",recipient:"b",amount:"50000"}];
   let control=component(app.render(),'Switch');
   assert.equal(control.props.value,true); assert.equal(control.props.disabled,false);
   control.props.onValueChange(false); await tick();

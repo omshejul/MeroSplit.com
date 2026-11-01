@@ -5,8 +5,8 @@ import pytest
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 
-from .accounting import direct_transfers
-from .models import Group, Participant, PaymentAttempt, PaymentProfile
+from .accounting import combine_transfers, credit_routed_payments, direct_transfers
+from .models import Change, Group, Participant, PaymentAttempt, PaymentProfile
 from .services import snapshot
 from .test_api import authenticated_client, expense, send, uid
 from .test_api import client as client
@@ -56,8 +56,7 @@ def test_direct_chain_summary_partial_payment_and_upi(client, group):
     assert {tuple(row.values()) for row in state["transfers"]} == {(ids[0], ids[1], "50000"), (ids[1], ids[2], "50000")}
     summary = send(client, "get", f"/groups/{group_id}/summary?limit=1").json()
     assert summary["transfers"] == state["transfers"]
-    assert summary["simplify_debts"] is False and summary["can_change_simplify"] is False
-    assert switch(client, group_id, True).status_code == 409
+    assert summary["simplify_debts"] is False and summary["can_change_simplify"] is True
     payment = {"command_id": uid(), "id": uid(), "sender": ids[0], "recipient": ids[1], "amount": "20000"}
     assert send(client, "post", f"/groups/{group_id}/settlements", payment).status_code == 200
     state = snapshot(Group.objects.get(pk=group_id))
@@ -109,13 +108,96 @@ def test_setting_authorization_versions_pending_and_archived(client, group):
     assert switch(client, group_id, False).status_code == 409
 
 
-def test_zero_net_direct_cycle_cannot_switch_remove_or_leave(client, group):
+def test_zero_net_direct_cycle_can_switch_but_cannot_remove_or_leave(client, group):
     group_id, ids, _ = group
     assert switch(client, group_id, False).status_code == 200
     for payer, beneficiary in [(1, 0), (2, 1), (0, 2)]:
         bill(client, group_id, ids, payer, beneficiary)
     state=snapshot(Group.objects.get(pk=group_id))
     assert set(state["balances"].values()) == {"0"} and len(state["transfers"]) == 3
-    assert switch(client, group_id, True).status_code == 409
     assert send(client, "post", f"/groups/{group_id}/participants/{ids[1]}/remove", {"command_id":uid()}).status_code == 409
     assert send(client, "post", f"/groups/{group_id}/leave", {"command_id":uid()}).status_code == 409
+
+
+def test_outstanding_chain_can_switch_both_ways_without_payments(client, group):
+    group_id, ids, _ = group
+    bill(client, group_id, ids, 1, 0)
+    bill(client, group_id, ids, 2, 1)
+    assert switch(client, group_id, False).status_code == 200
+    direct = snapshot(Group.objects.get(pk=group_id))
+    assert len(direct["transfers"]) == 2
+    assert switch(client, group_id, True).status_code == 200
+    assert snapshot(Group.objects.get(pk=group_id))["transfers"] == [{"sender": ids[0], "recipient": ids[2], "amount": "50000"}]
+    assert switch(client, group_id, False).status_code == 200
+    assert snapshot(Group.objects.get(pk=group_id))["transfers"] == direct["transfers"]
+
+
+def test_partial_simplified_payment_stays_credited_across_repeated_switches(client, group):
+    group_id, ids, _ = group
+    original = bill(client, group_id, ids, 1, 0)
+    bill(client, group_id, ids, 2, 1)
+    payment = {"command_id": uid(), "id": uid(), "sender": ids[0], "recipient": ids[2], "amount": "20000"}
+    assert send(client, "post", f"/groups/{group_id}/settlements", payment).status_code == 200
+    # A harmless request for the current setting must not hide earlier payments.
+    assert switch(client, group_id, True).status_code == 200
+    assert switch(client, group_id, False).status_code == 200
+    state = snapshot(Group.objects.get(pk=group_id))
+    expected = [{"sender": ids[0], "recipient": ids[1], "amount": "30000"}, {"sender": ids[1], "recipient": ids[2], "amount": "30000"}]
+    assert sorted(state["transfers"], key=lambda r:r["sender"]) == sorted(expected, key=lambda r:r["sender"])
+    assert state["balances"] == {ids[0]: "-30000", ids[1]: "0", ids[2]: "30000"}
+    assert state["settlements"][0]["id"] == payment["id"]
+    for _ in range(2):
+        assert switch(client, group_id, True).status_code == 200
+        assert switch(client, group_id, False).status_code == 200
+        assert snapshot(Group.objects.get(pk=group_id))["transfers"] == state["transfers"]
+    edited = {**original, "command_id": uid(), "version": 1, "total": "60000", "paid": {ids[1]: "60000"}}
+    assert send(client, "put", f"/groups/{group_id}/expenses/{original['id']}", edited).status_code == 200
+    assert next(r for r in snapshot(Group.objects.get(pk=group_id))["transfers"] if r["sender"] == ids[0])["amount"] == "40000"
+    assert send(client, "post", f"/groups/{group_id}/settlements/{payment['id']}/reverse", {"command_id": uid()}).status_code == 200
+    reversed_state = snapshot(Group.objects.get(pk=group_id))
+    assert reversed_state["balances"][ids[0]] == "-60000"
+    assert reversed_state["settlements"][0]["reversed"] is True
+
+
+def test_new_simplified_payment_after_direct_payment_and_checkpoint(client, group):
+    group_id, ids, _ = group
+    bill(client, group_id, ids, 1, 0)
+    bill(client, group_id, ids, 2, 1)
+    assert switch(client, group_id, False).status_code == 200
+    def pay(sender, recipient, amount):
+        assert send(client, "post", f"/groups/{group_id}/settlements", {"command_id": uid(), "id": uid(), "sender": sender, "recipient": recipient, "amount": amount}).status_code == 200
+    pay(ids[0], ids[1], "10000")
+    assert switch(client, group_id, True).status_code == 200
+    pay(ids[0], ids[2], "20000")
+    # Recipient-confirmed UPI settlements have a different activity event shape.
+    event = Change.objects.filter(group_id=group_id, kind="manual_settlement").latest("sequence")
+    event.kind, event.data = "payment_confirm", {"settlement_id": event.data["id"]}
+    event.save(update_fields=["kind", "data"])
+    assert switch(client, group_id, False).status_code == 200
+    assert {tuple(r.values()) for r in snapshot(Group.objects.get(pk=group_id))["transfers"]} == {(ids[0], ids[1], "20000"), (ids[1], ids[2], "30000")}
+
+
+@pytest.mark.parametrize("paid", ["10000", "50000", "70000"])
+def test_cross_component_payment_preserves_net_positions(paid):
+    original = [{"sender": "A", "recipient": "B", "amount": "50000"}, {"sender": "C", "recipient": "D", "amount": "50000"}]
+    raw = combine_transfers([*original, {"sender": "D", "recipient": "A", "amount": paid}])
+    credited = credit_routed_payments(raw, [("A", "D", paid)])
+    def nets(rows):
+        values = dict.fromkeys("ABCD", 0)
+        for row in rows:
+            values[row["sender"]] -= int(row["amount"])
+            values[row["recipient"]] += int(row["amount"])
+        return values
+    assert nets(credited) == nets(raw)
+    if int(paid) <= 50000:
+        assert not any(row["sender"] == "D" and row["recipient"] == "A" for row in credited)
+        assert {"sender": "C", "recipient": "B", "amount": paid} in credited
+
+
+def test_switch_keeps_departed_intermediary_out_of_outstanding_plan(client, group):
+    group_id, ids, _ = group
+    bill(client, group_id, ids, 1, 0)
+    bill(client, group_id, ids, 2, 1)
+    assert send(client, "post", f"/groups/{group_id}/participants/{ids[1]}/remove", {"command_id": uid()}).status_code == 200
+    assert switch(client, group_id, False).status_code == 200
+    assert snapshot(Group.objects.get(pk=group_id))["transfers"] == [{"sender": ids[0], "recipient": ids[2], "amount": "50000"}]

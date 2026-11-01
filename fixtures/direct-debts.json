@@ -289,5 +289,62 @@
         "amount": "10000"
       }
     ]
+  },
+  {
+    "id": "partial-simplified-payment-credited-before-turning-off",
+    "bills": [
+      [
+        {
+          "B": "50000"
+        },
+        {
+          "A": "50000"
+        }
+      ],
+      [
+        {
+          "C": "50000"
+        },
+        {
+          "B": "50000"
+        }
+      ]
+    ],
+    "payments": [
+      [
+        "A",
+        "C",
+        "20000"
+      ]
+    ],
+    "checkpoint": [
+      {
+        "sender": "A",
+        "recipient": "B",
+        "amount": "20000"
+      },
+      {
+        "sender": "B",
+        "recipient": "C",
+        "amount": "20000"
+      },
+      {
+        "sender": "C",
+        "recipient": "A",
+        "amount": "20000"
+      }
+    ],
+    "expected": [
+      {
+        "sender": "A",
+        "recipient": "B",
+        "amount": "30000"
+      },
+      {
+        "sender": "B",
+        "recipient": "C",
+        "amount": "30000"
+      }
+    ]
   }
 ]
