@@ -1,5 +1,7 @@
 import { withSharedUI } from './componentHarness.ts';
 import { currencySymbol } from '../src/currency.ts';
+import { categoryIcon } from '../src/categoryIcons.ts';
+import { directTransfers } from '../src/accounting.ts';
 import { explainTransfer, balanceKey } from '../src/balanceExplanation.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -29,7 +31,7 @@ function harness(file: string, name: string, extra: Record<string, any> = {}) {
   let cursor = 0, states: any[] = [], effects: (() => void)[] = [], cleanups: Record<number, () => void> = {};
   const deps: Record<number, any[]> = {};
   const draftDiscard = { current: null as null | (() => Promise<boolean>) };
-  const env: Record<string, any> = { animateLayout() {}, PeopleSheet: 'PeopleSheet', currencySymbol, cachedRead: () => undefined, rememberRead() {}, invalidateRead() {}, getDatabase: async () => ({}), draftDiscard, ScreenDraftDiscard: {}, useContext: () => draftDiscard, expenseDraftStore: () => ({ read: () => ({ then: (done: (value: null) => void) => { done(null); return { catch() {} }; } }), write: async () => {} }), React, Dialog, PersonInviteDialog: 'PersonInviteDialog', useToast: () => () => {}, DetailDialog: 'DetailDialog', useScreenRemovalLock() {}, validUPIAddress, View: 'View', ScrollView: 'ScrollView', KeyboardDialog: 'KeyboardDialog', Pressable: 'Pressable', Text: 'Text', LoadingSpinner: 'LoadingSpinner', NotificationSwitch: 'NotificationSwitch', PushSettings: 'PushSettings', BalanceStatements: 'BalanceStatements', DialogScrollBody: 'DialogScrollBody', Form: 'Form', SectionHeading: 'SectionHeading', Button: 'Button', Icon: 'Icon', SettingsRow: 'SettingsRow', BillPeople: 'BillPeople', DraftAttachment: 'DraftAttachment', LocalAttachment: 'LocalAttachment', AmountField: 'AmountField', TextField: 'TextField', DateField: 'DateField', ErrorText: 'ErrorText', Checkbox: { Item: 'Checkbox' }, RadioChoice: 'RadioChoice', Crypto: { randomUUID: () => 'bill-id' }, StyleSheet: { create: (value: any) => value }, Keyboard: { dismiss() {} }, useWindowDimensions: () => ({ height: 667 }), useSafeAreaInsets: () => ({ top: 20, bottom: 0 }), Platform: { OS: 'native' }, requestAnimationFrame: (fn: () => void) => fn(), useUI: () => ({ ui: {} }), formatMoney, integer, rupeesToPaise, validateExpense, ...extra,
+  const env: Record<string, any> = { animateLayout() {}, PeopleSheet: 'PeopleSheet', currencySymbol, cachedRead: () => undefined, rememberRead() {}, invalidateRead() {}, getDatabase: async () => ({}), draftDiscard, ScreenDraftDiscard: {}, useContext: () => draftDiscard, expenseDraftStore: () => ({ read: () => ({ then: (done: (value: null) => void) => { done(null); return { catch() {} }; } }), write: async () => {} }), React, Dialog, PersonInviteDialog: 'PersonInviteDialog', useToast: () => () => {}, DetailDialog: 'DetailDialog', useScreenRemovalLock() {}, validUPIAddress, View: 'View', ScrollView: 'ScrollView', KeyboardDialog: 'KeyboardDialog', BottomSheet: 'BottomSheet', Pressable: 'Pressable', Text: 'Text', LoadingSpinner: 'LoadingSpinner', NotificationSwitch: 'NotificationSwitch', PushSettings: 'PushSettings', BalanceStatements: 'BalanceStatements', DialogScrollBody: 'DialogScrollBody', Form: 'Form', SectionHeading: 'SectionHeading', Button: 'Button', Icon: 'Icon', SettingsRow: 'SettingsRow', BillPeople: 'BillPeople', DraftAttachment: 'DraftAttachment', LocalAttachment: 'LocalAttachment', AmountField: 'AmountField', TextField: 'TextField', DateField: 'DateField', ErrorText: 'ErrorText', Checkbox: { Item: 'Checkbox' }, RadioChoice: 'RadioChoice', Crypto: { randomUUID: () => 'bill-id' }, StyleSheet: { create: (value: any) => value }, Keyboard: { dismiss() {} }, useWindowDimensions: () => ({ height: 667 }), useSafeAreaInsets: () => ({ top: 20, bottom: 0 }), Platform: { OS: 'native' }, requestAnimationFrame: (fn: () => void) => fn(), useUI: () => ({ ui: {} }), formatMoney, integer, rupeesToPaise, validateExpense, ...extra,
     useState: (initial: any) => { const id = cursor++; if (!(id in states)) states[id] = typeof initial === 'function' ? initial() : initial; return [states[id], (value: any) => { states[id] = typeof value === 'function' ? value(states[id]) : value; }]; },
     useRef: (initial: any) => { const id = cursor++; return states[id] ??= { current: initial }; },
     useEffect: (fn: () => any, values: any[]) => { const id = cursor++; if (!deps[id] || values.some((value, i) => value !== deps[id][i])) { effects.push(() => { cleanups[id]?.(); cleanups[id] = fn(); }); deps[id] = values; } },
@@ -672,14 +674,14 @@ test('One member action opens name, email and removal controls inside a dialog',
 });
 
 
-test('balance dialog hides changed calculations, ignores late closed loads, and stays read-only', async () => {
+test('balance sheet hides changed calculations, ignores late closed loads, and stays read-only', async () => {
   let resolve!: (value: any) => void, restores = 0, closes = 0;
   const group = { id: 'g', name: 'Trip', version: 1, participants: [{ id: 'A', name: 'Riya' }, { id: 'B', name: 'Asha' }], expenses: [{ id: 'bill', description: 'Lunch', total: '501', paid: { B: '501' }, shares: { A: '501' }, date: '2026-10-19', deleted: false }], settlements: [], balances: { A: '-501', B: '501' }, transfers: [{ sender: 'A', recipient: 'B', amount: '501' }], activity: [] };
   const selection = { group, accepted: group, selfId: 'A', commands: [], transfer: group.transfers[0], restoreFocus: () => restores++, load: () => new Promise(done => { resolve = done; }) };
   const app = harness('src/BalanceExplanationDialog.tsx', 'BalanceExplanation', { explainTransfer, balanceKey, changedBalance: 'This balance changed.', Disclosure: 'Disclosure' });
   const props = { selection, currentKey: balanceKey(group as any, []), onClose: () => closes++ };
   let tree = app.render(props); app.commit();
-  assert.equal(nodes(tree).find(node => node.type === 'KeyboardDialog')!.props.visible, true);
+  assert.equal(nodes(tree).find(node => node.type === 'BottomSheet')!.props.visible, true);
   assert.ok(nodes(tree).some(node => node.type === 'Text' && node.children.includes('Loading the full breakdown…')));
   resolve({ group, saved: true }); await tick(); tree = app.render(props); app.commit();
   assert.ok(nodes(tree).some(node => typeof node.type === 'function' && node.type.name === 'ExplanationBody'));
@@ -687,7 +689,7 @@ test('balance dialog hides changed calculations, ignores late closed loads, and 
   const changed = app.render({ ...props, currentKey: 'newer group' }); app.commit();
   assert.ok(!nodes(changed).some(node => typeof node.type === 'function' && node.type.name === 'ExplanationBody'));
   assert.ok(nodes(changed).some(node => node.props.accessibilityRole === 'alert'));
-  find(tree, 'accessibilityLabel', 'Close explanation').props.onPress(); assert.equal(closes, 1); assert.equal(restores, 1);
+  find(tree, 'doneAccessibilityLabel', 'Close explanation').props.onDismiss(); assert.equal(closes, 1); assert.equal(restores, 1);
   assert.doesNotThrow(() => app.render({ ...props, selection: null }), 'closing renders safely before effects clear the loaded result');
   app.commit();
   const next = { ...selection };
@@ -696,7 +698,7 @@ test('balance dialog hides changed calculations, ignores late closed loads, and 
   app.render({ ...props, selection: null }); app.commit();
   old({ group, saved: false }); await tick();
   tree = app.render({ ...props, selection: null });
-  assert.equal(nodes(tree).find(node => node.type === 'KeyboardDialog')!.props.visible, false);
+  assert.equal(nodes(tree).find(node => node.type === 'BottomSheet')!.props.visible, false);
   assert.ok(!nodes(tree).some(node => typeof node.type === 'function' && node.type.name === 'ExplanationBody'));
   app.unmount();
 });
@@ -1105,7 +1107,7 @@ function billDiscardDialog(env: Record<string, any>) {
   function visit(node: ts.Node) { if (ts.isJsxElement(node) && node.openingElement.tagName.getText(source) === 'KeyboardDialog') expression = node; ts.forEachChild(node, visit); }
   visit(source); assert.ok(expression);
   const code = ts.transpile(`const dialog = ${expression!.getText(source)}`, { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React });
-  return new Function('env', `with(env){ const StaggerItem = 'StaggerItem';${code};return dialog;}`)(withSharedUI({ React, Dialog, PersonInviteDialog: 'PersonInviteDialog', useToast: () => () => {}, DetailDialog: 'DetailDialog', setDiscarding() {}, draftDiscard: { current: null }, discarding: false, discardLock: { current: false }, blocked: false, localBlocked: false, pending: env.discardBill ? { type: 'GO_BACK' } : null, setPending: (value: unknown) => env.setDiscardBill(!!value), KeyboardDialog: 'KeyboardDialog', DialogFocus: 'DialogFocus', CancelDialogActions: 'CancelDialogActions', Button: 'Button', ...env, navigation: { isFocused: () => true, dispatch: () => env.navigate('group') } }));
+  return new Function('env', `with(env){ const StaggerItem = 'StaggerItem';${code};return dialog;}`)(withSharedUI({ React, Dialog, PersonInviteDialog: 'PersonInviteDialog', useToast: () => () => {}, DetailDialog: 'DetailDialog', setDiscarding() {}, draftDiscard: { current: null }, discarding: false, discardLock: { current: false }, blocked: false, localBlocked: false, pending: env.discardBill ? { type: 'GO_BACK' } : null, setPending: (value: unknown) => env.setDiscardBill(!!value), KeyboardDialog: 'KeyboardDialog', BottomSheet: 'BottomSheet', DialogFocus: 'DialogFocus', CancelDialogActions: 'CancelDialogActions', Button: 'Button', ...env, navigation: { isFocused: () => true, dispatch: () => env.navigate('group') } }));
 }
 
 test('Back asks to discard the bill, Cancel retains the form and Discard leaves with the trash action', async () => {
@@ -1412,4 +1414,33 @@ test('Record screen reminders use current incoming debt, guard eligibility and b
   tree = app.render(props);
   assert.ok(nodes(tree).some(node => node.type === 'ErrorText' && node.children.includes('Reconnect and sync before sending a reminder.')));
   assert.equal(find(tree, 'title', 'Remind').props.disabled, false);
+});
+
+
+test('direct breakdown uses signed expandable contributions and labels payments without inventing a bill share', () => {
+  const expenses = [
+    { id: 'lunch', description: 'Lunch', total: '1000', paid: { A: '1000' }, shares: { A: '500', B: '500' }, category: 'food', date: '2026-10-28', deleted: false },
+    { id: 'taxi', description: 'Taxi', total: '200', paid: { B: '200' }, shares: { A: '200' }, category: 'transport', date: '2026-10-28', deleted: false },
+  ];
+  const settlements = [{ id: 'paid', sender: 'B', recipient: 'A', amount: '100', date: '2026-10-29' }];
+  const group: any = { id: 'pair', version: 1, name: 'Trip', simplify_debts: false, participants: [{ id: 'A', name: 'Me' }, { id: 'B', name: 'Asha' }], expenses, settlements, balances: { A: '200', B: '-200' }, transfers: directTransfers(expenses as any, settlements), activity: [] };
+  const value = explainTransfer(group, group, 'A', group.transfers[0]);
+  const app = harness('src/BalanceExplanationDialog.tsx', 'ExplanationBody', { categoryIcon, useUI: () => ({ ui: {}, palette: {} }) });
+  const tree = app.render({ value, selfId: 'A' });
+  assert.ok(nodes(tree).some(node => node.children.includes('Asha owes you')));
+  assert.ok(nodes(tree).some(node => node.children.includes(formatMoney('200'))));
+  const rows = nodes(tree).filter(node => typeof node.type === 'function' && node.type.name === 'InlineDetails');
+  assert.deepEqual(rows.map(row => row.props.amount), ['500', '-200', '-100']);
+  assert.equal(rows[0].props.icon, categoryIcon('food'));
+  assert.equal(rows[2].props.title, 'Recorded payment');
+  assert.ok(!nodes(rows[2]).some(node => node.children.includes('Your share: ')));
+  assert.ok(nodes(rows[1]).some(node => node.children.includes('Reduces this payment by')));
+  const disclosure = harness('src/BalanceExplanationDialog.tsx', 'InlineDetails', { useUI: () => ({ ui: {}, palette: {} }) });
+  let row = disclosure.render({ ...rows[1].props, children: rows[1].children });
+  assert.ok(nodes(row).some(node => node.children.includes('−')));
+  assert.ok(!nodes(row).some(node => node.children.includes('Reduces this payment by')));
+  find(row, 'accessibilityRole', 'button').props.onPress();
+  row = disclosure.render({ ...rows[1].props, children: rows[1].children });
+  assert.equal(find(row, 'accessibilityRole', 'button').props.accessibilityState.expanded, true);
+  assert.ok(nodes(row).some(node => node.children.includes('Reduces this payment by')));
 });

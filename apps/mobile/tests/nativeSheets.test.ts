@@ -42,14 +42,14 @@ test('busy sheets block user dismissal and replay an app action only after the l
 
 
 test('person sheets keep Done in the header on every platform and disable empty selections',()=>{
- const source=ts.createSourceFile('PeopleSheet.tsx',readFileSync(new URL('../src/PeopleSheet.tsx',import.meta.url),'utf8'),ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
+ const source=ts.createSourceFile('BottomSheet.tsx',readFileSync(new URL('../src/BottomSheet.tsx',import.meta.url),'utf8'),ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
  const code=ts.transpile(source.statements.filter(node=>!ts.isImportDeclaration(node)).map(node=>node.getText(source).replace(/^export (?:default )?/, '')).join('\n'),{target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.React});
  const nodes=(value:any):any[]=>Array.isArray(value)?value.flatMap(nodes):value&&typeof value==='object'?[value,...nodes(value.children)]:[];
  for(const OS of ['android','ios','web']){
   const env={React:{createElement:(type:any,props:any,...children:any[])=>({type,props:props??{},children})},Platform:{OS},NativeSheet:'NativeSheet',Modal:'Modal',DialogFocus:'DialogFocus',KeyboardAvoidingView:'KeyboardAvoidingView',ScrollView:'ScrollView',View:'View',Text:'Text',Icon:'Icon',Button:'Button',RowGroup:'RowGroup',StyleSheet:{absoluteFill:{},hairlineWidth:1},useState:(value:any)=>[value,()=>{}],useWindowDimensions:()=>({height:852,width:393}),useSafeAreaInsets:()=>({top:44,bottom:34}),useUI:()=>({ui:{},palette:{},motion:{enabled:false}})};
-  const component=new Function('env',`with(env){ const useLoading = env.useLoading ?? (() => {}), LoadingOverlay = env.LoadingOverlay ?? 'LoadingOverlay';${code};return PeopleSheet;}`)(env);
+  const component=new Function('env',`with(env){ const useLoading = env.useLoading ?? (() => {}), LoadingOverlay = env.LoadingOverlay ?? 'LoadingOverlay';${code};return BottomSheet;}`)(env);
   const tree=component({visible:true,onDismiss(){},title:'Split expense',icon:'people',count:0,disabled:false,maxHeight:800,children:'rows'});
-  const body=nodes(tree);if(OS==='android')assert.equal(tree.type,'NativeSheet');if(OS==='ios'){assert.equal(tree.type,'Modal');assert.equal(tree.props.presentationStyle,'pageSheet');assert.equal(tree.props.visible,true);assert.equal(tree.props.allowSwipeDismissal,true);}const done=body.find(node=>node.props.accessibilityLabel==='Apply split');assert.equal(done.props.title,'Done');assert.equal(done.props.disabled,true);assert.ok(body.find(node=>node.type==='ScrollView').props.nestedScrollEnabled);assert.equal(body.find(node=>node.type==='ScrollView').props.contentContainerStyle.paddingBottom,46,'modal rows clear the physical bottom inset without a native-stack provider');
+  const body=nodes(tree);if(OS==='android')assert.equal(tree.type,'NativeSheet');if(OS==='ios'){assert.equal(tree.type,'Modal');assert.equal(tree.props.presentationStyle,'pageSheet');assert.equal(tree.props.visible,true);assert.equal(tree.props.allowSwipeDismissal,true);}const done=body.find(node=>node.props.accessibilityLabel==='Apply split');assert.equal(done.props.title,'Done');assert.equal(done.props.disabled,true);assert.ok(body.find(node=>node.type==='ScrollView').props.nestedScrollEnabled);assert.equal(body.find(node=>node.type==='ScrollView').props.contentContainerStyle.paddingHorizontal,20,'content keeps the native scroll indicator clear of trailing amounts');assert.equal(body.find(node=>node.type==='ScrollView').props.style.paddingHorizontal,undefined);assert.equal(body.find(node=>node.type==='ScrollView').props.contentContainerStyle.paddingBottom,46,'modal rows clear the physical bottom inset without a native-stack provider');
   if(OS==='web')assert.equal(component({visible:false,disabled:false,maxHeight:800}),null);
   if(OS==='ios'){
    let dismissals=0;
@@ -71,11 +71,11 @@ test('native Back notifies the form once and owner cleanup cannot issue a second
 });
 
 test('iOS page sheets compensate for their measured screen origin when avoiding the keyboard',()=>{
- const source=ts.createSourceFile('PeopleSheet.tsx',readFileSync(new URL('../src/PeopleSheet.tsx',import.meta.url),'utf8'),ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
- const fn=source.statements.find(node=>ts.isFunctionDeclaration(node)&&node.name?.text==='PeopleSheet')!;
+ const source=ts.createSourceFile('BottomSheet.tsx',readFileSync(new URL('../src/BottomSheet.tsx',import.meta.url),'utf8'),ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
+ const fn=source.statements.find(node=>ts.isFunctionDeclaration(node)&&node.name?.text==='BottomSheet')!;
  let cursor=0;const state:any[]=[];
  const env={React:{createElement:(type:any,props:any,...children:any[])=>({type,props:props??{},children})},Platform:{OS:'ios'},Modal:'Modal',DialogFocus:'DialogFocus',KeyboardAvoidingView:'KeyboardAvoidingView',ScrollView:'ScrollView',View:'View',Text:'Text',Icon:'Icon',Button:'Button',RowGroup:'RowGroup',LoadingOverlay:'LoadingOverlay',useState:(initial:any)=>{const i=cursor++;if(!(i in state))state[i]=initial;return[state[i],(value:any)=>{state[i]=value;}];},useWindowDimensions:()=>({height:844,width:390}),useSafeAreaInsets:()=>({top:47,bottom:34}),useUI:()=>({ui:{},palette:{},motion:{enabled:false}})};
- const component=new Function('env',`with(env){${ts.transpile(fn.getText(source).replace('export default ',''),{target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.React})};return PeopleSheet;}`)(env);
+ const component=new Function('env',`with(env){${ts.transpile(fn.getText(source).replace('export default ',''),{target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.React})};return BottomSheet;}`)(env);
  const render=()=>{cursor=0;return component({visible:true,disabled:false,maxHeight:844,children:'fields'});};
  const nodes=(value:any):any[]=>Array.isArray(value)?value.flatMap(nodes):value&&typeof value==='object'?[value,...nodes(value.children)]:[];
  let tree=render();tree.children[0].props.onLayout({nativeEvent:{layout:{height:797}}});tree=render();
