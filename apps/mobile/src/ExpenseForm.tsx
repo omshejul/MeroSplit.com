@@ -106,7 +106,7 @@ function PayerFields({ participants, draft, disabled, preserveRemoved, label, on
 }
 
 function SplitFields({ participants, draft, disabled, preserveRemoved, label, onChange, status }: ExpenseSelectionProps) {
-  const { ui, palette, motion } = useUI();
+  const { ui, palette } = useUI();
   let shares: Record<string, string> = {};
   try {
     const total = rupeesToPaise(draft.amount);
@@ -116,7 +116,7 @@ function SplitFields({ participants, draft, disabled, preserveRemoved, label, on
   return <RowGroup style={styles.reveal}>
     <View accessibilityRole="radiogroup" accessibilityLabel="Split method" style={[styles.methods, { borderColor: palette.line }]}>
       {Object.entries(splitModes).map(([mode, title]) => <Button key={mode} title={title} kind="plain" accessibilityRole="radio" accessibilityState={{ checked: draft.mode === mode, disabled }} disabled={disabled}
-        onPress={() => { if (draft.mode !== mode) { animateLayout(!!motion?.enabled); onChange({ mode: mode as Split['mode'], splitValues: Object.fromEntries(draft.participantIds.map(id => [id, mode === 'shares' ? '1' : ''])) }); } }}
+        onPress={() => { if (draft.mode !== mode) { onChange({ mode: mode as Split['mode'], splitValues: Object.fromEntries(draft.participantIds.map(id => [id, mode === 'shares' ? '1' : ''])) }); } }}
         style={[styles.method, { backgroundColor: draft.mode === mode ? palette.soft : 'transparent' }]}>
         {mode === 'exact' ? <Text accessible={false} style={[ui.body, { color: draft.mode === mode ? palette.accent : palette.text, fontSize: 23, lineHeight: 28 }]}>{currencySymbol()}</Text>
           : <Icon name={mode === 'equal' ? 'equal' : mode === 'percent' ? 'percent' : 'shares'} size={23} color={draft.mode === mode ? palette.accent : palette.text} />}
@@ -129,10 +129,10 @@ function SplitFields({ participants, draft, disabled, preserveRemoved, label, on
       selected={draft.participantIds.includes(person.id)} disabled={disabled || (preserveRemoved && !!person.removed)} editable={!disabled && !person.removed}
       amount={!draft.participantIds.includes(person.id) ? 'Not included' : shares[person.id] !== undefined ? formatMoney(shares[person.id]) : undefined}
       mode={draft.mode} value={draft.splitValues[person.id] ?? ''}
-      onToggle={() => { animateLayout(!!motion?.enabled); onChange({ participantIds: draft.participantIds.includes(person.id) ? draft.participantIds.filter(id => id !== person.id) : [...draft.participantIds, person.id] }); }}
+      onToggle={() => { onChange({ participantIds: draft.participantIds.includes(person.id) ? draft.participantIds.filter(id => id !== person.id) : [...draft.participantIds, person.id] }); }}
       onChange={value => onChange({ splitValues: { ...draft.splitValues, [person.id]: value } })} /> : <View key={`share-${person.id}`} style={styles.field}>
       <PersonChoice person={person} amount={!draft.participantIds.includes(person.id) ? 'Not included' : shares[person.id] !== undefined ? formatMoney(shares[person.id]) : undefined} title={label(person.id)} selected={draft.participantIds.includes(person.id)} disabled={disabled || (preserveRemoved && !!person.removed)}
-        onPress={() => { animateLayout(!!motion?.enabled); onChange({ participantIds: draft.participantIds.includes(person.id) ? draft.participantIds.filter(id => id !== person.id) : [...draft.participantIds, person.id] }); }} />
+        onPress={() => { onChange({ participantIds: draft.participantIds.includes(person.id) ? draft.participantIds.filter(id => id !== person.id) : [...draft.participantIds, person.id] }); }} />
     </View>)}
     {draft.mode !== 'equal' && !!status && <Text accessibilityLiveRegion="polite" style={ui.caption}>{status}</Text>}
   </RowGroup>;

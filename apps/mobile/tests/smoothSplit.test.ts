@@ -15,3 +15,14 @@ const draft={amount:'1200',mode:'equal',participantIds:['a','b'],payerIds:['a'],
 const props={participants:[{id:'a',name:'Om',profile_photo:{id:'photo-a'}},{id:'b',name:'Dev'}],draft,disabled:false,preserveRemoved:false,label:(id:string)=>id,onChange:()=>{},status:''};
 test('adding a payer schedules layout motion before changing the selected people',()=>{const f=fixture();const tree=f.PayerFields({...props,onToggle:()=>f.events.push('toggle'),onAdjust:()=>{}});nodes(tree).find(n=>n.type==='Button'&&n.props.accessibilityRole==='checkbox'&&n.props.accessibilityLabel==='b').props.onPress();assert.deepEqual(f.events,['animation','toggle']);});
 test('split methods are a compact icon-and-label selector before the person list',()=>{const f=fixture(),tree=f.SplitFields(props);const flat=nodes(tree);const group=flat.find(n=>n.props.accessibilityRole==='radiogroup'||n.props.role==='radiogroup');assert.ok(group,'Expected a segmented split-method selector');const choices=nodes(group).filter(n=>n.type==='Button');assert.equal(choices.length,4);for(const option of choices){assert.ok(nodes(option).some(n=>n.type==='Icon'||n.type==='Text'&&n.children.includes(currencySymbol())));assert.ok(nodes(option).some(n=>n.type==='Text'));}assert.ok(flat.indexOf(group)<flat.findIndex(n=>n.type==='Button'&&n.props.accessibilityRole==='checkbox'));});
+
+test('split method and membership edits commit without native layout motion around inputs',()=>{
+ const f=fixture();
+ const changed={...props,onChange:()=>f.events.push('change')};
+ const tree=f.SplitFields(changed);
+ nodes(tree).find(n=>n.type==='Button'&&n.props.title==='Shares').props.onPress();
+ assert.deepEqual(f.events,['change']);f.events.length=0;
+ const shares=f.SplitFields({...changed,draft:{...draft,mode:'shares',splitValues:{a:'1',b:'1'}}});
+ nodes(shares).find(n=>n.type==='Button'&&n.props.accessibilityRole==='checkbox').props.onPress();
+ assert.deepEqual(f.events,['change']);
+});
