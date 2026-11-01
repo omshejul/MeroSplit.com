@@ -76,11 +76,11 @@ function PersonalTransferRow({ transfer, group, selfId, disabled, onSettle, onEx
   const canPay = outgoing && person?.user_id != null && !!person.payment_profile?.vpa;
   const action = canPay ? 'Pay with UPI' : 'Record payment';
   return <View style={[ui.row, s.transferRow, { borderBottomWidth: divider ? StyleSheet.hairlineWidth : 0 }]}>
-    <PersonRow divider={false} name={name} photo={person?.profile_photo} titleStyle={s.transferName} ref={row} accessibilityRole="button" accessibilityLabel={`Why ${outgoing ? 'you owe' : 'you are owed'} ${formatMoney(transfer.amount)} ${outgoing ? 'to' : 'by'} ${name}`} onPress={() => onExplain(transfer, () => row.current?.focus())} style={s.transferIdentity} trailing={<View style={s.transferAmount}><AmountText amount={transfer.amount} style={[s.balanceAmount, { color: outgoing ? colors.negative : colors.positive }]} /><Icon name="next" size={16} color={colors.muted} /></View>}>
-      <Text style={[ui.rowSub, s.logCaption]}>{outgoing ? 'You owe' : 'Owes you'}{removed ? ' · Removed' : ''}</Text>
+    <PersonRow divider={false} name={name} avatar={false} titleStyle={s.transferName} ref={row} accessibilityRole="button" accessibilityLabel={`Why ${outgoing ? 'you owe' : 'you are owed'} ${formatMoney(transfer.amount)} ${outgoing ? 'to' : 'by'} ${name}`} onPress={() => onExplain(transfer, () => row.current?.focus())} style={s.transferIdentity} trailing={<View style={s.transferAmount}><AmountText amount={transfer.amount} style={[s.balanceAmount, { color: outgoing ? colors.negative : colors.positive }]} /></View>}>
+      {removed && <Text style={[ui.rowSub, s.logCaption]}>Removed</Text>}
     </PersonRow>
     <View style={s.transferActions}>
-    <Button title={action} kind={canPay ? 'primary' : 'secondary'} icon={canPay ? 'pay' : 'payment'} compact accessibilityLabel={`${action} ${outgoing ? 'to' : 'from'} ${name}, ${formatMoney(transfer.amount)}`} disabled={disabled || !!removed} onPress={() => onSettle(transfer)} />
+    <Button title={canPay ? 'Pay' : 'Record'} kind={canPay ? 'primary' : 'secondary'} icon={canPay ? 'pay' : 'payment'} compact accessibilityLabel={`${action} ${outgoing ? 'to' : 'from'} ${name}, ${formatMoney(transfer.amount)}`} disabled={disabled || !!removed} onPress={() => onSettle(transfer)} />
     </View>
   </View>;
 }
@@ -265,7 +265,7 @@ export default function GroupScreen({ bottomClearance = 120, categoryIcons, head
         const total = rows.reduce((sum, transfer) => sum + BigInt(transfer.amount), 0n).toString();
         const title = outgoing ? 'You owe' : 'Owed to you';
         return <View key={title} role="region" accessibilityLabel={title} style={s.balanceSection}>
-          <View style={s.balanceHeading}><SectionHeading style={s.balanceSectionTitle}>{title}</SectionHeading><Text style={[ui.caption, s.balanceTotal]}>{formatMoney(total)} in {rows.length} {rows.length === 1 ? 'transfer' : 'transfers'}</Text></View>
+          <View style={s.balanceHeading}><SectionHeading style={s.balanceSectionTitle}>{title}</SectionHeading>{rows.length > 1 && <Text style={[ui.caption, s.balanceTotal]}>{formatMoney(total)}</Text>}</View>
           <RowGroup style={[s.balancePanel, { backgroundColor: colors.surface }]}>{rows.map(transfer => <PersonalTransferRow key={`${transfer.sender}:${transfer.recipient}`} transfer={transfer} group={group} selfId={selfId} disabled={busy || !!group.archived || pending.length > 0} onSettle={onSettle} onExplain={(transfer, restoreFocus) => setExplanation({ group, accepted, commands: pending, selfId, transfer, restoreFocus, load: onLoadBalanceGroup })} />)}</RowGroup>
         </View>;
       })}
@@ -346,11 +346,11 @@ const s = StyleSheet.create({
   balanceSectionTitle: { fontSize: 16, lineHeight: 22 },
   balanceTotal: { fontSize: 12, lineHeight: 18, fontVariant: ['tabular-nums'] },
   balancePanel: { borderRadius: radii.surface },
-  transferRow: { flexWrap: 'wrap', justifyContent: 'flex-start', columnGap: 8, rowGap: 2, paddingHorizontal: 12, paddingVertical: 6 },
-  transferIdentity: { flexBasis: '100%', gap: 10, minHeight: 44, borderBottomWidth: 0, paddingVertical: 0, paddingHorizontal: 0 },
+  transferRow: { flexWrap: 'wrap', justifyContent: 'flex-start', alignItems: 'center', columnGap: 8, rowGap: 4, paddingHorizontal: 12, paddingVertical: 6 },
+  transferIdentity: { flex: 1, flexBasis: 160, minWidth: 160, gap: 10, minHeight: 44, borderBottomWidth: 0, paddingVertical: 0, paddingHorizontal: 0 },
   transferName: { fontSize: 16, lineHeight: 22 },
   transferAmount: { flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 0 },
-  transferActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginLeft: 46, flex: 1 },
+  transferActions: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-end', minWidth: 112, marginLeft: 'auto' },
   content: { gap: 10 },
   summary: { gap: 4, paddingVertical: 8 },
   section: { gap: 10, paddingVertical: 4 },
