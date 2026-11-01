@@ -86,7 +86,7 @@ export function explainTransfer(source: Group, displayed: Group, selfId: string,
     ...group.expenses.filter(row => !row.deleted).map(bill => ({ id: `bill:${bill.id}`, title: bill.description, amount: billTransfers(bill.paid, bill.shares).reduce((sum, row) => sum + effect(row), 0n).toString(), share: bill.shares[selfId] ?? '0' })),
     ...group.settlements.filter(row => !row.reversed).map(row => ({ id: `payment:${row.id}`, title: 'Recorded payment', amount: (-effect(row)).toString(), share: undefined })),
     { id: 'opening', title: 'Agreed starting balance', amount: (group.opening_balance?.accepted ? proposeTransfers(group.opening_balance.balances).reduce((sum, row) => sum + effect(row), 0n) : 0n).toString(), share: undefined },
-    { id: 'checkpoint', title: 'Earlier settled bills and payments', amount: (-(group.debt_checkpoint ?? []).reduce((sum, row) => sum + effect(row), 0n)).toString(), share: undefined },
+    { id: 'checkpoint', title: 'Earlier payment routing', amount: (-(group.debt_checkpoint ?? []).reduce((sum, row) => sum + effect(row), 0n)).toString(), share: undefined },
   ].filter(row => row.amount !== '0') : [];
   if (group.simplify_debts === false && directItems.reduce((sum, row) => sum + integer(row.amount, true), 0n).toString() !== transfer.amount) throw new Error(changedBalance);
   return { directItems, group, plan, index, history: balanceHistory(group, selfId), owing: group.simplify_debts === false ? transfer.amount : (-integer(remaining[transfer.sender], true)).toString(), owed: group.simplify_debts === false ? transfer.amount : remaining[transfer.recipient], spending: spending.toString(), pending: pending.length > 0,

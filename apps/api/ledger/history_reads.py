@@ -415,7 +415,9 @@ def expense_detail(actor, group_id, expense_id, *, version=None):
 def group_summary(actor, group_id, *, limit=50):
     _limit(limit)
     group = visible_group(actor, group_id, lock=True)
-    participants = list(group.participants.select_related("user").order_by("id"))
+    participants = list(group.participants.select_related("user").annotate(
+        has_pending_payments=Exists(group.attempts.filter(state__in=["prepared", "reported"])),
+    ).order_by("id"))
     from .media import profile_photos
     photos = profile_photos(person.user_id for person in participants if not person.removed and person.user_id and person.user.is_active)
     group._attribution_names = {person.user_id: participant_display_name(person) for person in participants if person.user_id}
@@ -451,7 +453,7 @@ def group_summary(actor, group_id, *, limit=50):
                           "payment_profile": profiles.get(person.user_id), **({"email": person.contact_email} if group.owner_id == actor.pk else {})}
                          for person in participants],
         "debt_checkpoint": group.debt_checkpoint,
-        "can_change_simplify": not finance["transfers"] and not (opening and not opening.accepted) and not group.attempts.filter(state__in=["prepared", "reported"]).exists(),
+        "can_change_simplify": not (opening and not opening.accepted) and not participants[0].has_pending_payments,
         **finance, "expenses": pages["bills"]["items"], "activity": pages["activity"]["items"],
         "settlements": pages["settlements"]["items"], "payment_attempts": pages["attempts"]["items"], "invites": invites,
         "transactions": transactions["items"],

@@ -7,7 +7,14 @@ from django.db.models import Q
 from django.utils import timezone
 from ninja.errors import HttpError
 
-from .accounting import AccountingError, direct_transfers, propose_transfers, validate_expense
+from .accounting import (
+    AccountingError,
+    combine_transfers,
+    credit_routed_payments,
+    direct_transfers,
+    propose_transfers,
+    validate_expense,
+)
 from .models import (
     Change,
     CommandReceipt,
@@ -209,7 +216,7 @@ def snapshot(group):
         "version": group.version,
         "archived": group.archived,
         "simplify_debts": group.simplify_debts, "debt_checkpoint": group.debt_checkpoint,
-        "can_change_simplify": not finance["transfers"] and not (opening and not opening.accepted) and not group.attempts.filter(state__in=["prepared", "reported"]).exists(),
+        "can_change_simplify": not (opening and not opening.accepted) and not group.attempts.filter(state__in=["prepared", "reported"]).exists(),
         "is_direct": group.is_direct,
         "owner_id": group.owner_id,
         "participants": [
@@ -608,17 +615,50 @@ def change_simplify(actor, group_id, payload):
         raise HttpError(409, "This group changed. Refresh and try again.")
     if group.is_direct:
         raise AccountingError("Simplify debts is a group setting")
-    if group.simplify_debts != payload["simplify_debts"]:
+    changed = group.simplify_debts != payload["simplify_debts"]
+    if changed:
         current = snapshot(group)
-        if not current["can_change_simplify"] or OpeningBalance.objects.filter(group=group, accepted=False).exists():
-            raise HttpError(409, "Settle all repayments and finish pending payments before changing Simplify debts.")
-        # Preserve old, already-settled routing. Later edits contribute only their difference.
-        opening = OpeningBalance.objects.filter(group=group, accepted=True).first()
-        group.debt_checkpoint = direct_transfers(
-            group.expenses.filter(deleted=False).values_list("total", "paid", "shares"),
-            group.settlements.filter(reversed=False).values_list("sender_id", "recipient_id", "amount"),
-            opening.balances if opening else None,
-        )
+        if not current["can_change_simplify"]:
+            raise HttpError(409, "Finish pending payments or starting balances before changing Simplify debts.")
+        if not payload["simplify_debts"]:
+            opening = OpeningBalance.objects.filter(group=group, accepted=True).first()
+            raw = direct_transfers(
+                group.expenses.filter(deleted=False).values_list("total", "paid", "shares"),
+                group.settlements.filter(reversed=False).values_list("sender_id", "recipient_id", "amount"),
+                opening.balances if opening else None,
+            )
+            direct = combine_transfers([*raw, *(
+                {"sender": row["recipient"], "recipient": row["sender"], "amount": row["amount"]}
+                for row in group.debt_checkpoint
+            )])
+            # Only reroute payments recorded during the current Simplify period.
+            # Previous mode changes already preserve their routing in the checkpoint.
+            last_switch = group.changes.filter(kind="simplify_debts_changed").filter(
+                Q(data__mode_changed=True) | Q(data__mode_changed__isnull=True),
+            ).order_by("-sequence").first()
+            payments = group.settlements.filter(reversed=False).order_by("created_at", "id")
+            if last_switch:
+                payments = payments.filter(created_at__gt=last_switch.created_at)
+            remaining = credit_routed_payments(direct, payments.values_list("sender_id", "recipient_id", "amount")) if current["transfers"] else []
+            # People who already left must not regain debts as intermediaries.
+            for person in group.participants.filter(removed=True):
+                person_id = str(person.id)
+                while True:
+                    incoming = next((row for row in remaining if row["recipient"] == person_id), None)
+                    outgoing = next((row for row in remaining if row["sender"] == person_id), None)
+                    if not incoming or not outgoing:
+                        break
+                    amount = str(min(int(incoming["amount"]), int(outgoing["amount"])))
+                    bridge = {"sender": incoming["sender"], "recipient": outgoing["recipient"], "amount": amount}
+                    remaining = combine_transfers([*remaining, bridge,
+                        {"sender": person_id, "recipient": incoming["sender"], "amount": amount},
+                        {"sender": outgoing["recipient"], "recipient": person_id, "amount": amount},
+                    ])
+            group.debt_checkpoint = combine_transfers([*raw, *(
+                {"sender": row["recipient"], "recipient": row["sender"], "amount": row["amount"]}
+                for row in remaining
+            )])
         group.simplify_debts = payload["simplify_debts"]
         group.save(update_fields=["simplify_debts", "debt_checkpoint"])
-    return record_change(group, actor, payload["command_id"], fingerprint, "simplify_debts_changed", {"simplify_debts": group.simplify_debts})
+        keep_removed_balances_zero(group)
+    return record_change(group, actor, payload["command_id"], fingerprint, "simplify_debts_changed", {"simplify_debts": group.simplify_debts, "mode_changed": changed})

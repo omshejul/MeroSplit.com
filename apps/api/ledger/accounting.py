@@ -149,3 +149,46 @@ def direct_transfers(expense_rows, settlement_rows, opening_balances=None, check
                 for sender, recipient, amount in settlement_rows)
     rows.extend({"sender": row["recipient"], "recipient": row["sender"], "amount": row["amount"]} for row in checkpoint)
     return combine_transfers(rows)
+
+
+def credit_routed_payments(transfers, payments):
+    """Credit simplified payments through direct obligations without asking for refunds.
+
+    A pays C against A -> B -> C by reducing both debts. For separate
+    A -> B and D -> C debts, the same payment leaves D owing B instead.
+    The result changes routing only, never anyone's net balance.
+    """
+    payments = [(str(sender), str(recipient), int(amount)) for sender, recipient, amount in payments]
+    # The supplied direct plan already subtracts payments. Undo those deductions
+    # before allocating each payment to the debts it discharges.
+    rows = combine_transfers([*transfers, *(
+        {"sender": sender, "recipient": recipient, "amount": str(amount)}
+        for sender, recipient, amount in payments
+    )])
+    edges = {(row["sender"], row["recipient"]): int(row["amount"]) for row in rows}
+
+    def add(sender, recipient, amount):
+        if sender == recipient:
+            return
+        value = edges.pop((sender, recipient), 0) + amount - edges.pop((recipient, sender), 0)
+        if value:
+            edges[(sender, recipient) if value > 0 else (recipient, sender)] = abs(value)
+
+    for sender, recipient, amount in payments:
+        own = min(amount, edges.get((sender, recipient), 0))
+        add(sender, recipient, -own)
+        amount -= own
+        while amount:
+            outgoing = next(((s, r, n) for (s, r), n in sorted(edges.items()) if s == sender), None)
+            incoming = next(((s, r, n) for (s, r), n in sorted(edges.items()) if r == recipient), None)
+            portion = min(amount, outgoing[2] if outgoing else amount, incoming[2] if incoming else amount)
+            if outgoing:
+                add(outgoing[0], outgoing[1], -portion)
+            if incoming:
+                add(incoming[0], incoming[1], -portion)
+            add(incoming[0] if incoming else recipient, outgoing[1] if outgoing else sender, portion)
+            amount -= portion
+    return combine_transfers([
+        {"sender": sender, "recipient": recipient, "amount": str(amount)}
+        for (sender, recipient), amount in edges.items()
+    ])
