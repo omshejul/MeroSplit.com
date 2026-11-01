@@ -11,25 +11,27 @@ const source = ts.createSourceFile('HomeCreateButton.tsx', readFileSync(new URL(
 const fn = source.statements.find(node => ts.isFunctionDeclaration(node))!;
 const code = ts.transpile(fn.getText(source).replace('export default ', ''), { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React });
 
-test('Create footer stays in normal layout above custom/native navigation', () => {
+test('Create actions float above native glass while custom navigation stays in flow', () => {
   for (const OS of ['ios', 'android', 'web']) for (const Version of [25, 26, 27]) for (const direct of [false, true]) {
-    let loaded = 0, clicked = 0;
-    const env = { React, View: 'View', Button: 'Button', Icon: 'Icon', GlassSurface: 'GlassSurface', useUI: () => ({ palette: { accent: 'accent', muted: 'muted' } }), Platform: { OS, Version }, pageWidthStyle: OS === 'web' ? { maxWidth: 760, alignSelf: 'center' } : {},
+    let loaded = 0, clicked = 0; const native = OS === 'ios' && Version >= 26;
+    const env = { usesNativeHomeTabs:native,FloatingActionContainer:'FloatingActionContainer',React, View: 'View', Button: 'Button', Icon: 'Icon', GlassSurface: 'GlassSurface', useUI: () => ({ palette: { accent: 'accent', muted: 'muted' } }), Platform: { OS, Version }, pageWidthStyle: OS === 'web' ? { maxWidth: 760, alignSelf: 'center' } : {},
       require: (name: string) => { assert.equal(name, 'react-native-screens/experimental'); loaded++; return { SafeAreaView: 'NativeSafeAreaView' }; } };
     const render = new Function('env', `with(env){${actionCode};${code};return HomeCreateButton;}`)(withSharedUI(env));
     const tree = render({ direct, disabled: false, onPress: () => clicked++ });
-    assert.equal(tree.type, 'View');
+    assert.equal(tree.type, native ? 'FloatingActionContainer' : 'View');
     assert.equal(loaded, 0, 'Navigation owns the inset, never the action');
     assert.equal(tree.props.edges, undefined);
-    assert.equal(tree.props.pointerEvents, 'box-none');
+    if (!native) assert.equal(tree.props.pointerEvents, 'box-none');
     const content = tree, glass = content.children[0], button = OS === 'ios' ? glass.children[0] : glass;
     if (OS === 'ios') { assert.equal(glass.type, 'GlassSurface'); assert.equal(glass.props.interactive, true); assert.equal(glass.props.tintColor, 'accent'); }
     assert.equal(button.props.kind, 'primary');
     assert.equal(button.props.style.backgroundColor, OS === 'ios' ? 'transparent' : 'accent', 'iOS pressable must not paint over native glass');
-    assert.equal(Object.assign({}, ...tree.props.style).position, undefined, 'home actions reserve space instead of overlaying the tabs');
-    assert.equal(content.props.pointerEvents, 'box-none');
-    assert.equal(content.props.style[1].paddingBottom, 16);
-    assert.equal(content.props.style[1].alignItems, 'flex-end');
+    if (!native) {
+      assert.equal(Object.assign({}, ...tree.props.style).position, undefined);
+      assert.equal(content.props.pointerEvents, 'box-none');
+      assert.equal(content.props.style[1].paddingBottom, 16);
+      assert.equal(content.props.style[1].alignItems, 'flex-end');
+    }
     assert.equal(button.props.title, direct ? 'Add person' : 'Add group');
     assert.equal(button.props.style.minHeight, 48);
     assert.equal(button.props.style.borderRadius, 999);

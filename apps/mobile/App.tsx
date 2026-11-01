@@ -1,4 +1,4 @@
-import ScrollView from './src/KeyboardScrollView';
+import ScrollView from './src/HomeScrollView';
 import { hasOpenDialogs } from './src/DialogFocus';
 import { NoticeBanner } from './src/UIStates';
 import { ErrorText } from './src/ui';
@@ -127,6 +127,7 @@ function AppContent() {
   const offlineDownload = useRef<Promise<void> | null>(null);
   const [groups, setGroups] = useState<CachedGroup[]>([]), [commands, setCommands] = useState<Command[]>([]);
   const [expenseClearance, setExpenseClearance] = useState(120);
+  const [createClearance, setCreateClearance] = useState(0);
   const [showArchived, setShowArchived] = useState(false), [showHidden, setShowHidden] = useState(false);
   const [needsInvitation, setNeedsInvitation] = useState(false);
   const navigation = useAppNavigation(), { name: screen, params: routeParams = {} } = navigation.route;
@@ -1425,7 +1426,7 @@ function AppContent() {
       {screen === 'members' && selected && !selected.group.is_direct && !selected.group.archived && selected.group.participants.some(person => person.id === selfId && !person.removed && person.user_id === selected.group.owner_id) && <IconAction name="personAdd" label="Add person" disabled={busy} onPress={() => setAddPersonRequest(value => value + 1)} />}
     </ScreenHeader>}
     <SceneTransition changeKey={`${screen}|${tab}|${groupId ?? ''}|${expenseId ?? ''}|${settlementId ?? ''}|${screen === 'login' && challenge ? 'code' : 'entry'}`} active={focused}>
-    {screen === 'login' ? loginContent : groupView ? groupView : activityView ? activityView : screen === 'billChat' && session && selected && expense ? <BillChatScreen key={`${owner}|${groupId}|${expense.id}`} session={session} groupId={selected.group.id} expenseId={expense.id} billTitle={expense.description} billAmount={formatMoney(expense.total)} onOpenBill={() => navigate('expenseDetail')} active={focused && foreground && !authHeld && !expired} online={online} onRead={() => void push.clearReadPrompts().catch(() => {})} onUnsentChange={unsent => { if (ownerRef.current !== owner) return; if (unsent) { setHasDrafts(true); return; } void flushChatWrites().then(() => getDatabase()).then(db => db.getFirstAsync<{ n: number }>('SELECT count(*) AS n FROM drafts WHERE owner=? AND body<>?', owner, 'null')).then(value => { if (ownerRef.current === owner) setHasDrafts(!!value?.n); }).catch(() => {}); }} /> : screen === 'expenseVersions' && session && selected && expense ? <ExpenseVersionHistory key={`${owner}|${session.token}|${expense.id}`} session={session} groupId={selected.group.id} expenseId={expense.id} groupVersion={selected.group.version} title={expense.description} onInvalidated={() => { if (ownerRef.current === owner && activeSessionRef.current?.token === session.token) { setLastConfirmed(null); setSyncProblem(true); } }} active={focused && foreground && !authHeld && !expired} online={online} /> : <ScrollView role="main" ref={focused ? scroll : undefined} onLayout={focused ? measureViewport : undefined} onScroll={() => setScrollEpoch(value => value + 1)} scrollEventThrottle={100} key={`${owner}|${screen}|${groupId ?? ''}`} contentContainerStyle={[pageContentStyle, showAddExpense && { paddingBottom: 120 }]} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag"
+    {screen === 'login' ? loginContent : groupView ? groupView : activityView ? activityView : screen === 'billChat' && session && selected && expense ? <BillChatScreen key={`${owner}|${groupId}|${expense.id}`} session={session} groupId={selected.group.id} expenseId={expense.id} billTitle={expense.description} billAmount={formatMoney(expense.total)} onOpenBill={() => navigate('expenseDetail')} active={focused && foreground && !authHeld && !expired} online={online} onRead={() => void push.clearReadPrompts().catch(() => {})} onUnsentChange={unsent => { if (ownerRef.current !== owner) return; if (unsent) { setHasDrafts(true); return; } void flushChatWrites().then(() => getDatabase()).then(db => db.getFirstAsync<{ n: number }>('SELECT count(*) AS n FROM drafts WHERE owner=? AND body<>?', owner, 'null')).then(value => { if (ownerRef.current === owner) setHasDrafts(!!value?.n); }).catch(() => {}); }} /> : screen === 'expenseVersions' && session && selected && expense ? <ExpenseVersionHistory key={`${owner}|${session.token}|${expense.id}`} session={session} groupId={selected.group.id} expenseId={expense.id} groupVersion={selected.group.version} title={expense.description} onInvalidated={() => { if (ownerRef.current === owner && activeSessionRef.current?.token === session.token) { setLastConfirmed(null); setSyncProblem(true); } }} active={focused && foreground && !authHeld && !expired} online={online} /> : <ScrollView role="main" home={screen === 'home'} bottomClearance={showCreate ? createClearance : 0} ref={focused ? scroll : undefined} onLayout={focused ? measureViewport : undefined} onScroll={() => setScrollEpoch(value => value + 1)} scrollEventThrottle={100} key={`${owner}|${screen}|${groupId ?? ''}`} contentContainerStyle={[pageContentStyle, showAddExpense && { paddingBottom: 120 }]} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag"
       contentInsetAdjustmentBehavior={Platform.OS === 'ios' ? 'automatic' : undefined}
       refreshControl={session && !expired && (screen === 'home' || screen === 'group') ? <RefreshControl refreshing={false} tintColor={colors.accent} colors={[colors.accent]} onRefresh={pullToRefresh} /> : undefined}>
       {listNotice}
@@ -1484,7 +1485,7 @@ function AppContent() {
     {screen !== 'home' && <ScrollBottomInset />}
     </ScrollView>}
     </SceneTransition>
-    {showCreate && <HomeCreateButton direct={direct} disabled={busy} onPress={() => navigate('create')} />}
+    {showCreate && <HomeCreateButton direct={direct} disabled={busy} onHeight={height => setCreateClearance(Math.ceil(height) + 16)} onPress={() => navigate('create')} />}
     {showAddExpense && <AddExpenseButton disabled={busy} onHeight={height => setExpenseClearance(Math.max(120, Math.ceil(height) + 16))} onPress={() => open(() => openExpense())} />}
 
     </>;

@@ -27,7 +27,7 @@ const uiEnv = { FlatList: 'FlatList', pageContentStyle: {}, useRef: () => ({ cur
 
 test('Groups and Activity decorate only verified true empty states while retaining their existing copy', () => {
   const groups = productionFunction('src/GroupList.tsx', 'GroupList', uiEnv);
-  const activity = productionFunction('src/ActivityScreen.tsx', 'ActivityScreen', uiEnv);
+  const activity = productionFunction('src/ActivityScreen.tsx', 'ActivityScreen', {...uiEnv,useHomeTabScrollInsets:()=>({bottom:0})});
   const base = { groups: [], commands: [], busy: false, direct: false, decorated: true, onOpen() {} };
   // Visible mascots only; an invisible Mascot keeps the footprint without an image.
   const count = (tree: unknown) => elements(tree).filter(value => value.type === Mascot && value.props.visible).length;

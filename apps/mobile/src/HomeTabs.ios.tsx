@@ -2,7 +2,7 @@ import FallbackTabLayout from './FallbackTabLayout';
 import React, { useRef } from 'react';
 import { Animated, Platform } from 'react-native';
 import { Tabs } from 'react-native-screens';
-import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import type { HomeTabsProps } from './HomeTabs';
 import { useUI } from './ui';
@@ -36,10 +36,10 @@ export default function HomeTabs({ selected, busy, onSelect, render }: HomeTabsP
       preventNativeSelection={busy}
       specialEffects={{ repeatedTabSelection: { popToRoot: false, scrollToTop: false } }}
       style={{ backgroundColor: palette.background }}
-      ios={{ icon: { type: 'sfSymbol', name: tab.symbol }, selectedIcon: { type: 'sfSymbol', name: tab.selectedSymbol } }}>
-      <SafeAreaProvider><SafeAreaView edges={['bottom']} style={{ flex: 1 }}>
+      ios={{ overrideScrollViewContentInsetAdjustmentBehavior: false, icon: { type: 'sfSymbol', name: tab.symbol }, selectedIcon: { type: 'sfSymbol', name: tab.selectedSymbol } }}>
+      <SafeAreaProvider>
         {selected === tab.value ? <Animated.View {...swipe}>{render(tab.value)}</Animated.View> : null}
-      </SafeAreaView></SafeAreaProvider>
+      </SafeAreaProvider>
     </Tabs.Screen>)}
   </Tabs.Host>;
 }
