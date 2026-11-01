@@ -183,14 +183,14 @@ test('balances group canonical transfers by direction, sum exact paise, and pres
   const nodes = elements(production('GroupScreen')({ group: value, accepted: value, selfId: 'self', pending: [], busy: false }));
   const sections = nodes.filter(node => ['You owe', 'Owed to you'].includes(node.props.accessibilityLabel));
   assert.deepEqual(sections.map(node => node.props.accessibilityLabel), ['You owe', 'Owed to you']);
-  assert.ok(text(sections[0]).includes(`${formatMoney('150747')} in 2 transfers`));
-  assert.ok(text(sections[1]).includes(`${formatMoney('206367')} in 2 transfers`));
+  assert.ok(text(sections[0]).includes(formatMoney('150747')));
+  assert.ok(text(sections[1]).includes(formatMoney('206367')));
   assert.deepEqual(sections.flatMap(section => elements(section).filter(node => node.type === 'PersonalTransferRow').map(node => node.props.transfer)), [transfers[1], transfers[2], transfers[0], transfers[3]]);
   assert.deepEqual(value, original);
   const incoming = { ...value, transfers: [transfers[0]] };
   const incomingNodes = elements(production('GroupScreen')({ group: incoming, accepted: incoming, selfId: 'self', pending: [], busy: false }));
   assert.equal(incomingNodes.filter(node => node.props.accessibilityLabel === 'You owe').length, 0);
-  assert.ok(incomingNodes.some(node => node.type === 'Text' && text(node) === `${formatMoney('82834')} in 1 transfer`));
+  assert.ok(!incomingNodes.some(node => node.type === 'Text' && text(node) === formatMoney('82834')), 'a single balance does not repeat its amount in the section heading');
 });
 
 test('complete offline caches keep every payment in the dated bill timeline and preserve detail actions', () => {
@@ -467,7 +467,7 @@ test('balance rows have just one Record or Pay action', () => {
       onSettle: (value: unknown) => { assert.equal(value, transfer); opened = true; }, onExplain() {} });
     const buttons = elements(tree).filter(node => node.type === 'Button' && node.props.title);
     assert.equal(buttons.length, 1);
-    assert.equal(buttons[0].props.title, outgoing ? 'Pay with UPI' : 'Record payment');
+    assert.equal(buttons[0].props.title, outgoing ? 'Pay' : 'Record');
     buttons[0].props.onPress(); assert.equal(opened, true);
   }
 });
@@ -478,7 +478,7 @@ test('balance explanation target and Record remain independent siblings with unc
   const props = { transfer, group, selfId: 'self', disabled: false, onSettle: (row: unknown) => { assert.equal(row, transfer); records++; }, onExplain: (row: unknown, focus: unknown) => { assert.equal(row, transfer); assert.equal(typeof focus, 'function'); explanations++; } };
   const tree = render(props), direct = tree.children.filter(Boolean) as Element[];
   assert.deepEqual(direct.map(node => node.type), ['Button', 'View']);
-  const record = (tree: unknown) => elements(tree).find(node => node.props.title === 'Record payment')!;
+  const record = (tree: unknown) => elements(tree).find(node => node.props.title === 'Record')!;
   direct[0].props.onPress(); assert.equal(explanations, 1); assert.equal(records, 0);
   record(tree).props.onPress(); assert.equal(explanations, 1); assert.equal(records, 1);
   assert.equal(record(tree).props.disabled, false);
@@ -510,10 +510,10 @@ test('group and direct-person UPI actions use the same primary button without ch
   for (const direct of [false, true]) {
     let calls = 0;
     const props = { group: { ...payable, is_direct: direct }, transfer, selfId: 'self', disabled: false, onSettle: (value: unknown) => { assert.equal(value, transfer); calls++; }, onExplain() {} };
-    const button = elements(render(props)).find(node => node.props.title === 'Pay with UPI')!;
-    assert.equal(button.props.title, 'Pay with UPI'); assert.equal(button.props.kind, 'primary'); assert.equal(button.props.compact, true);
+    const button = elements(render(props)).find(node => node.props.title === 'Pay')!;
+    assert.equal(button.props.title, 'Pay'); assert.equal(button.props.kind, 'primary'); assert.equal(button.props.compact, true);
     button.props.onPress(); assert.equal(calls, 1);
-    assert.equal(elements(render({ ...props, disabled: true })).find(node => node.props.title === 'Pay with UPI')!.props.disabled, true);
+    assert.equal(elements(render({ ...props, disabled: true })).find(node => node.props.title === 'Pay')!.props.disabled, true);
   }
 });
 
