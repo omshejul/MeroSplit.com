@@ -19,6 +19,7 @@ import DraftAttachment from './DraftAttachment';
 import type { PendingMediaUpload } from './media';
 import { clearStagedMedia } from './media';
 import BillPeople from './BillPeople';
+import SplitPersonRow from './SplitPersonRow';
 import { expenseDraftStore } from './expenseDraft';
 import { getDatabase } from './native';
 
@@ -124,12 +125,14 @@ function SplitFields({ participants, draft, disabled, preserveRemoved, label, on
     </View>
     <Text style={ui.caption}>{!draft.participantIds.length ? 'Choose who to include.' : draft.mode === 'equal' ? `Split equally between ${draft.participantIds.length} ${draft.participantIds.length === 1 ? 'person' : 'people'}.` : draft.mode === 'exact' ? 'Enter what each person owes.' : draft.mode === 'percent' ? 'Enter each person’s percentage.' : 'Enter each person’s number of shares.'}</Text>
     <SelectionButton participants={participants} selected={draft.participantIds} disabled={disabled} label="people to split" onChange={participantIds => onChange({ participantIds })} />
-    {participants.filter(person => !person.removed || draft.participantIds.includes(person.id)).map(person => <View key={`share-${person.id}`} style={styles.field}>
+    {participants.filter(person => !person.removed || draft.participantIds.includes(person.id)).map(person => draft.mode !== 'equal' ? <SplitPersonRow key={`share-${person.id}`} person={person} title={label(person.id)}
+      selected={draft.participantIds.includes(person.id)} disabled={disabled || (preserveRemoved && !!person.removed)} editable={!disabled && !person.removed}
+      amount={!draft.participantIds.includes(person.id) ? 'Not included' : shares[person.id] !== undefined ? formatMoney(shares[person.id]) : undefined}
+      mode={draft.mode} value={draft.splitValues[person.id] ?? ''}
+      onToggle={() => { animateLayout(!!motion?.enabled); onChange({ participantIds: draft.participantIds.includes(person.id) ? draft.participantIds.filter(id => id !== person.id) : [...draft.participantIds, person.id] }); }}
+      onChange={value => onChange({ splitValues: { ...draft.splitValues, [person.id]: value } })} /> : <View key={`share-${person.id}`} style={styles.field}>
       <PersonChoice person={person} amount={!draft.participantIds.includes(person.id) ? 'Not included' : shares[person.id] !== undefined ? formatMoney(shares[person.id]) : undefined} title={label(person.id)} selected={draft.participantIds.includes(person.id)} disabled={disabled || (preserveRemoved && !!person.removed)}
         onPress={() => { animateLayout(!!motion?.enabled); onChange({ participantIds: draft.participantIds.includes(person.id) ? draft.participantIds.filter(id => id !== person.id) : [...draft.participantIds, person.id] }); }} />
-      {draft.mode !== 'equal' && draft.participantIds.includes(person.id) && <TextField autoCorrect={false}
-        label={`${label(person.id)} ${draft.mode === 'exact' ? `(${currencySymbol()})` : draft.mode === 'percent' ? '(%)' : '(shares)'}`} value={draft.splitValues[person.id] ?? ''}
-        onChangeText={value => onChange({ splitValues: { ...draft.splitValues, [person.id]: value } })} keyboardType="decimal-pad" editable={!disabled && !person.removed} />}
     </View>)}
     {draft.mode !== 'equal' && !!status && <Text accessibilityLiveRegion="polite" style={ui.caption}>{status}</Text>}
   </RowGroup>;
