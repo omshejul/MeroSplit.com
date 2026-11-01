@@ -522,3 +522,5 @@ Assess tools against the evidence needed: native UI walkthroughs, recorded input
 - What final brand, support domain, hosting budget and launch territories should be adopted after the prototype?
 
 These questions are not reasons to start a full clone. Resolve them through the staged prototype and consenting-user tests.
+
+Bill dates open in a dialog. An optional Add time switch starts with the current local time and preserves a saved time while editing. Save applies the selected date/time together; Cancel discards dialog edits. Existing bills retain date-only history unless a time is explicitly added.

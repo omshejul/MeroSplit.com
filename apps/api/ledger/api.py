@@ -234,7 +234,7 @@ def group_get(request, group_id: UUID):
 
 @api.post("/groups/{group_id}/expenses", response=WriteResult)
 def expense_create(request, group_id: UUID, body: ExpenseIn):
-    return save_expense(request.auth, group_id, body.model_dump(mode="json"), category_supplied="category" in body.model_fields_set)
+    return save_expense(request.auth, group_id, body.model_dump(mode="json", exclude={"time"} if "time" not in body.model_fields_set else set()), category_supplied="category" in body.model_fields_set)
 
 
 @api.get("/groups/{group_id}/summary")
@@ -263,7 +263,7 @@ def expense_versions(request, group_id: UUID, expense_id: UUID, before: int | No
 
 @api.put("/groups/{group_id}/expenses/{expense_id}", response=WriteResult)
 def expense_update(request, group_id: UUID, expense_id: UUID, body: ExpenseIn):
-    return save_expense(request.auth, group_id, body.model_dump(mode="json"), expense_id, category_supplied="category" in body.model_fields_set)
+    return save_expense(request.auth, group_id, body.model_dump(mode="json", exclude={"time"} if "time" not in body.model_fields_set else set()), expense_id, category_supplied="category" in body.model_fields_set)
 
 
 @api.post("/groups/{group_id}/expenses/{expense_id}/reverse", response=WriteResult)

@@ -149,7 +149,7 @@ def save_expense(actor, group_id, payload, *, expense_id=None, icon=None):
     category_supplied = "category" in body.model_fields_set and (
         body.category_auto is not None or body.category.strip().casefold() not in {"", "general", "other"}
     )
-    data = body.model_dump(mode="json")
+    data = body.model_dump(mode="json", exclude={"time"} if "time" not in body.model_fields_set else set())
     if icon is not None:
         if not isinstance(icon, str) or icon not in ("auto", *OPTIONS):
             raise HttpError(422, "Choose an icon from get_account_context.icon_options")

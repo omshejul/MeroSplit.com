@@ -57,6 +57,7 @@ class Expense(models.Model):
     shares = models.JSONField()
     split = models.JSONField()
     date = models.DateField()
+    time = models.TimeField(null=True, blank=True)
     created_at = models.DateTimeField(default=timezone.now, db_default=Now(), editable=False)
     category = models.CharField(max_length=40, default="other")
     category_auto = models.BooleanField(null=True, default=None)

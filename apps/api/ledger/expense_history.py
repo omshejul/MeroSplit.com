@@ -8,7 +8,7 @@ from .profiles import participant_display_name
 
 verified_mcp_history = ContextVar("verified_mcp_history", default=False)
 
-FIELDS = ("description", "total", "paid", "split", "date", "category", "notes", "deleted")
+FIELDS = ("description", "total", "paid", "split", "date", "time", "category", "notes", "deleted")
 
 
 def history_details(group, actor, before):
