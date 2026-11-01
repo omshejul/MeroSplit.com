@@ -13,7 +13,7 @@ export type MediaList = { attachments: MediaMetadata[]; can_modify: boolean };
 export type AvatarResult = { avatar: MediaMetadata | null; profile_photo?: import("./types").ProfilePhoto | null; cleanup_pending?: boolean };
 export type AttachmentResult = { attachment: MediaMetadata; version: number };
 export type MediaRemoval = { removed: true; cleanup_pending: boolean; version?: number };
-export type PendingMediaUpload = { id: string; path: string; file: PickedMedia };
+export type PendingMediaUpload = { id: string; path: string; file: PickedMedia; rejection?: string };
 const uploadDraftKey = (path: string) => `media-upload:${path}`;
 const pendingFilename = /^merosplit-upload-[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}\.(?:jpg|png|webp|pdf|bin)$/i;
 
@@ -103,7 +103,11 @@ export async function retryMediaUpload(db: Database, session: Session, path: str
     try { accepted = (await post<AttachmentResult>(session, path, pending.file, pending.id, undefined, undefined, current)).attachment; }
     catch (cause) {
       // Even a rejected file stays available for preview, export and recovery.
-      if (!current() || cause instanceof ApiError && [400, 413, 415, 422].includes(cause.status)) throw cause;
+      if (!current()) throw cause;
+      if (cause instanceof ApiError && [400, 413, 415, 422].includes(cause.status)) {
+        await db.runAsync('UPDATE drafts SET body=? WHERE owner=? AND group_id=? AND body=?', JSON.stringify({ ...pending, rejection: cause.message }), accountOwner(session), uploadDraftKey(path), JSON.stringify(pending));
+        throw cause;
+      }
       try { accepted = (await send<MediaList>(session, path)).attachments.find(item => item.id === pending.id); }
       catch { /* Preserve both request and staged bytes while the outcome is unknown. */ }
       if (!accepted) throw cause;
@@ -162,6 +166,7 @@ async function drainAccountMediaUploads(db: Database, session: Session, retry: t
     if (!current()) break;
     const upload = JSON.parse(row.body) as PendingMediaUpload | null;
     if (!upload || !/^\/groups\/[^/]+\/expenses\/[^/]+\/attachments$/.test(upload.path)) continue;
+    if (upload.rejection) { failed++; continue; }
     try { await retry(db, session, upload.path, undefined, undefined, undefined, current); }
     catch (error) { if (!current() || error instanceof ApiError && error.status === 401) throw error; failed++; }
   }

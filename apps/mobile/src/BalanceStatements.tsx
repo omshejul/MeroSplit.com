@@ -20,12 +20,12 @@ const path = '/me/balance-statements';
 function StatementDelivery({ delivery }: { delivery: Delivery | null }) {
   const { ui } = useUI();
   if (!delivery) return null;
-  const message = delivery.state === 'accepted' ? 'Statement accepted for email delivery.'
+  const message = delivery.state === 'accepted' ? 'Your statement has been emailed.'
     : delivery.error === 'too_big' ? 'This statement is too large to email. Use Export data in your account.'
       : delivery.state === 'held' ? 'Delivery could not be confirmed. Check your inbox before sending another statement.'
     : delivery.state === 'cancelled' ? 'Statement cancelled after your records or settings changed.'
           : delivery.state === 'failed' ? 'Could not email this statement. Try again later.'
-            : delivery.error ? 'Email is delayed. Your saved request will retry.' : 'Statement queued for email.';
+            : delivery.error ? 'Your email is delayed. We will try again automatically.' : 'Your statement will be emailed.';
   return <Text accessibilityLiveRegion="polite" style={ui.caption}>{message}</Text>;
 }
 

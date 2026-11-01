@@ -1,4 +1,5 @@
 import { useLoading } from './LoadingOverlay';
+import { useToast } from './Toast';
 import RowGroup from './RowGroup';
 import { animateLayout } from './layoutTransition';
 import { ErrorState } from './UIStates';
@@ -24,6 +25,7 @@ import { SectionHeading, Button, useUI } from './ui';
 
 export type BillAttachmentsProps = { session: Session | null; groupId: string; expenseId: string; revision?: number; readOnly?: boolean; busy: boolean; onBusyChange: (busy: boolean) => void; onChanged?: () => Promise<void> };
 export default function BillAttachments({ session, groupId, expenseId, revision, readOnly = false, busy, onBusyChange, onChanged }: BillAttachmentsProps) {
+  const notify = useToast();
   const { ui, motion } = useUI(), [items, setItems] = useState<MediaMetadata[]>([]), [canModify, setCanModify] = useState(false), [loading, setLoading] = useState(true), [working, setWorking] = useState(false), [error, setError] = useState('');
   useScreenRemovalLock(working);
   const [optionsId, setOptionsId] = useState<string | null>(null);
@@ -88,7 +90,7 @@ export default function BillAttachments({ session, groupId, expenseId, revision,
     const db = await getDatabase();
     try {
       const accepted = await retryMediaUpload(db, session, path);
-      if (current()) { setItems(previous => [...previous.filter(item => item.id !== accepted.id), accepted]); setPending(null); }
+      if (current()) { setItems(previous => [...previous.filter(item => item.id !== accepted.id), accepted]); setPending(null); notify('Attachment uploaded.'); }
       refreshAccepted('Attachment saved.');
     } catch (cause) {
       try { const saved = await pendingMediaUpload(db, session, path); if (current()) setPending(saved); } catch { /* Keep the current pending upload visible. */ }
@@ -115,11 +117,16 @@ export default function BillAttachments({ session, groupId, expenseId, revision,
       <RowGroup>{items.map(item => <AttachmentRow key={item.id} title={item.name} label={`Open ${item.name}`} subtitle={`${item.content_type === 'application/pdf' ? 'PDF' : 'Image'} · ${mediaSize(item.size)}`} thumbnail={<PrivateMediaImage session={session} media={item} />} disabled={disabled}
         onOpen={() => void run(() => openPrivateMedia(session, item))} options={editable && <RemoveMediaMenu open={optionsId === item.id} disabled={disabled || !!pending} label={`Options for ${item.name}`} removeLabel="Remove attachment"
           onOpen={() => setOptionsId(item.id)} onClose={() => setOptionsId(null)} onRemove={() => remove(item)} />} />)}</RowGroup>
-      {pending && <><LocalAttachment file={pending.file} disabled={disabled} onError={setError} /><NoticeBanner tone="warning">Upload not confirmed: {pending.file.name}.</NoticeBanner><Button title="Retry upload" icon="refresh" disabled={disabled || readOnly} onPress={() => void run(finishUpload)} /><Button title="Remove file" icon="remove" kind="text" disabled={disabled || readOnly} onPress={() => void run(async () => { await removePendingMediaUpload(await getDatabase(), session, path); if (current()) setPending(null); await load(); await onChanged?.(); })} /></>}
+      {pending && <><LocalAttachment file={pending.file} disabled={disabled} onError={setError} />
+        {!working && <NoticeBanner tone={pending.rejection ? 'error' : 'warning'}>{pending.rejection
+          ? `File not uploaded. ${pending.rejection} Your file is saved on this device. Remove it to choose another file.`
+          : 'Upload not confirmed. Your file is saved on this device. Retry when online.'}</NoticeBanner>}
+        {!pending.rejection && <Button title="Retry upload" icon="refresh" disabled={disabled || readOnly} onPress={() => void run(finishUpload)} />}
+        <Button title="Remove file" icon="remove" kind="text" disabled={disabled || readOnly} onPress={() => void run(async () => { await removePendingMediaUpload(await getDatabase(), session, path); if (current()) setPending(null); await load(); await onChanged?.(); })} /></>}
       {editable && !pending && items.length < 10 && <AttachmentPicker disabled={disabled} onPick={photo => void run(() => add(photo))} />}
       {!loading && readOnly && <Text style={ui.caption}>Read-only while archived or waiting to sync.</Text>}
       {items.length >= 10 && <Text style={ui.caption}>This bill has the maximum of 10 attachments.</Text>}
-      {!!error && <ErrorState error={error} retryLabel="Refresh attachments" disabled={busy || working || loading} onRetry={!pending ? () => void refresh() : undefined} />}
+      {!!error && error !== pending?.rejection && <ErrorState error={error} retryLabel="Refresh attachments" disabled={busy || working || loading} onRetry={!pending ? () => void refresh() : undefined} />}
     </>}
   </View>;
 }
