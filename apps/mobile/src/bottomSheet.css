@@ -1,0 +1,19 @@
+/* Snap offset and content compensation follow Base UI's snap-point example. */
+.mero-sheet-overlay { position:fixed; inset:0; z-index:10000; min-height:100dvh; background:rgb(0 0 0 / .45); opacity:max(.5,calc(1 - var(--drawer-swipe-progress,0))); transition:opacity .2s ease; }
+.mero-sheet-overlay[data-starting-style], .mero-sheet-overlay[data-ending-style] { opacity:0; }
+.mero-sheet-viewport { position:fixed; inset:0; z-index:10001; display:flex; align-items:flex-end; justify-content:center; touch-action:none; }
+.mero-sheet-popup { box-sizing:border-box; position:relative; display:flex; flex-direction:column; width:100%; max-width:560px; height:calc(100dvh - max(12px,env(safe-area-inset-top,0px))); max-height:calc(100dvh - max(12px,env(safe-area-inset-top,0px))); min-height:0; border-radius:24px 24px 0 0; outline:0; touch-action:none; padding-bottom:max(0px,calc(var(--drawer-snap-point-offset,0px) + var(--drawer-swipe-movement-y,0px))); transform:translateY(calc(var(--drawer-snap-point-offset,0px) + var(--drawer-swipe-movement-y,0px))); transition:transform .2s cubic-bezier(.32,.72,0,1); }
+.mero-sheet-popup::after { content:''; position:absolute; top:100%; inset-inline:0; height:48px; background:inherit; pointer-events:none; }
+.mero-sheet-popup[data-starting-style], .mero-sheet-popup[data-ending-style] { transform:translateY(calc(100% + 2px)); padding-bottom:0; }
+.mero-sheet-popup[data-swiping], .mero-sheet-overlay[data-swiping] { transition:none; user-select:none; }
+.mero-sheet-header { flex-shrink:0; padding:0 20px 16px; }
+.mero-sheet-handle { display:flex; align-items:center; justify-content:center; width:100%; height:28px; padding:0; margin:0; border:0; background:transparent; cursor:grab; touch-action:none; }
+.mero-sheet-handle span { width:36px; height:4px; border-radius:2px; background:var(--sheet-outline); }
+.mero-sheet-handle:focus-visible { outline:2px solid var(--sheet-accent); outline-offset:-2px; }
+.mero-sheet-heading { display:flex; align-items:center; gap:10px; }
+.mero-sheet-title { flex:1; min-width:0; margin:0; font-family:inherit; font-size:18px; line-height:24px; font-weight:600; }
+.mero-sheet-summary { margin:6px 0 0; font-size:14px; line-height:20px; }
+.mero-sheet-body { flex:1 1 auto; min-height:0; overflow-y:auto; overscroll-behavior:contain; touch-action:auto; padding:0 20px calc(12px + env(safe-area-inset-bottom,0px)); }
+.mero-sheet-popup[data-motion=off], .mero-sheet-overlay[data-motion=off] { transition:none; }
+@supports (-webkit-touch-callout:none) { .mero-sheet-overlay { position:absolute; } }
+@media (prefers-reduced-motion:reduce) { .mero-sheet-popup, .mero-sheet-overlay { transition:none; } }
