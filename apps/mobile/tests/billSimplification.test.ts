@@ -1370,3 +1370,46 @@ test('sheet triggers and share controls do not start an implicit global layout t
   Button({title:'Done',disabled:true,onPress:()=>presses++}).props.onPress({});
   assert.equal(presses,3);assert.equal(animations,0,'Button must not animate mounting or reparenting controls in the native sheet');
 });
+
+
+test('Record screen reminders use current incoming debt, guard eligibility and block duplicate taps', async () => {
+  const debt = { sender: 'other', recipient: 'self', amount: '50000' };
+  const paymentGroup = { ...group, archived: false, transfers: [debt], participants: [
+    { id: 'self', name: 'Riya', user_id: 1 }, { id: 'other', name: 'Asha', user_id: 2 },
+  ] };
+  const env = { useMemo: (fn: () => unknown) => fn(), useUI: () => ({ ui: {}, palette: {} }), isPersonalPayment, paymentReturnNeedsConfirmation,
+    PaymentAddress: 'PaymentAddress', PaymentHelpDialog: 'PaymentHelpDialog', UPIAppChooser: 'UPIAppChooser', WebPaymentQuote: 'WebPaymentQuote' };
+  const calls: unknown[] = []; let finish!: () => void;
+  const props = { group: paymentGroup, initial: debt, selfId: 'self', busy: false, returnPayment: null,
+    onRemind: (value: unknown) => { calls.push(value); return new Promise<void>(resolve => { finish = resolve; }); } };
+  const app = harness('src/SettleForm.tsx', 'SettleForm', env);
+  let tree = app.render(props);
+  nodes(tree).find(node => node.type === 'AmountField')!.props.onChangeText('1.00');
+  tree = app.render(props);
+  const remind = find(tree, 'title', 'Remind');
+  assert.equal(remind.props.icon, 'notifications');
+  remind.props.onPress(); remind.props.onPress();
+  assert.deepEqual(calls, [debt], 'edited payment amount never changes the canonical reminder');
+  tree = app.render(props);
+  assert.equal(find(tree, 'title', 'Sending…').props.disabled, true);
+  assert.equal(nodes(tree).find(node => node.props.title?.startsWith('Record '))!.props.disabled, true);
+  finish(); await tick();
+  assert.equal(find(app.render(props), 'title', 'Remind').props.disabled, false);
+  for (const changes of [
+    { onRemind: undefined }, { group: { ...paymentGroup, archived: true } },
+    { group: { ...paymentGroup, transfers: [] } },
+    { group: { ...paymentGroup, participants: paymentGroup.participants.map(p => p.id === 'other' ? { ...p, removed: true } : p) } },
+    { group: { ...paymentGroup, participants: paymentGroup.participants.map(p => p.id === 'other' ? { ...p, user_id: null } : p) } },
+    { initial: { ...debt, sender: 'self', recipient: 'other' }, group: { ...paymentGroup, transfers: [{ ...debt, sender: 'self', recipient: 'other' }] } },
+  ]) {
+    const tree = harness('src/SettleForm.tsx', 'SettleForm', env).render({ ...props, ...changes });
+    assert.equal(find(tree, 'title', 'Remind'), undefined);
+  }
+  tree = app.render({ ...props, busy: true });
+  find(tree, 'title', 'Remind').props.onPress(); assert.equal(calls.length, 1);
+  tree = app.render({ ...props, onRemind: async () => { throw Error('Reconnect and sync before sending a reminder.'); } });
+  find(tree, 'title', 'Remind').props.onPress(); await tick();
+  tree = app.render(props);
+  assert.ok(nodes(tree).some(node => node.type === 'ErrorText' && node.children.includes('Reconnect and sync before sending a reminder.')));
+  assert.equal(find(tree, 'title', 'Remind').props.disabled, false);
+});

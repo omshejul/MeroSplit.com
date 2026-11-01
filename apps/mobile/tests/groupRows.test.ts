@@ -457,21 +457,19 @@ test('manual payment details omit an unconfirmed label and dangling separator', 
 });
 
 
-test('Remind is available only for an active linked person who owes you', async () => {
+test('balance rows have just one Record or Pay action', () => {
   const render = production('PersonalTransferRow');
-  const linked = { ...group, participants: [{ id: 'self', name: 'You', user_id: 1 }, { id: 'other', name: 'Noor', user_id: 2 }] };
-  const calls: unknown[] = [];
-  const props = { transfer: { sender: 'other', recipient: 'self', amount: '50000' }, group: linked, selfId: 'self', disabled: false,
-    onSettle() {}, onExplain() {}, onRemind: async (value: unknown) => { calls.push(value); } };
-  const button = (tree: unknown) => elements(tree).find(node => node.props.title === 'Remind');
-  const reminder = button(render(props))!;
-  assert.equal(reminder.props.disabled, false);
-  reminder.props.onPress(); await Promise.resolve();
-  assert.deepEqual(calls, [props.transfer]);
-  assert.equal(button(render({ ...props, disabled: true }))!.props.disabled, true);
-  assert.equal(button(render({ ...props, transfer: { sender: 'self', recipient: 'other', amount: '50000' } })), undefined);
-  assert.equal(button(render({ ...props, onRemind: undefined })), undefined);
-  assert.equal(button(render({ ...props, group })) , undefined);
+  const linked = { ...group, participants: [{ id: 'self', name: 'You', user_id: 1 }, { id: 'other', name: 'Noor', user_id: 2, payment_profile: { vpa: 'noor@example' } }] };
+  for (const outgoing of [false, true]) {
+    const transfer = { sender: outgoing ? 'self' : 'other', recipient: outgoing ? 'other' : 'self', amount: '50000' };
+    let opened = false;
+    const tree = render({ transfer, group: linked, selfId: 'self', disabled: false,
+      onSettle: (value: unknown) => { assert.equal(value, transfer); opened = true; }, onExplain() {} });
+    const buttons = elements(tree).filter(node => node.type === 'Button' && node.props.title);
+    assert.equal(buttons.length, 1);
+    assert.equal(buttons[0].props.title, outgoing ? 'Pay with UPI' : 'Record payment');
+    buttons[0].props.onPress(); assert.equal(opened, true);
+  }
 });
 
 test('balance explanation target and Record remain independent siblings with unchanged payment guards', () => {
