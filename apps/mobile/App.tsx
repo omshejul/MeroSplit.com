@@ -1033,7 +1033,7 @@ function AppContent() {
       });
       if (reminderRetry.current?.key === key) reminderRetry.current = null;
       if (activeSessionRef.current?.token === active.token) {
-        setNotice('Reminder queued.', 'success');
+        setNotice('Your reminder will be sent.', 'success');
       }
     });
   }

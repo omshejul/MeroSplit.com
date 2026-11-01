@@ -131,8 +131,14 @@ def process_file(upload, *, avatar: bool) -> dict:
                 with warnings.catch_warnings():
                     warnings.simplefilter("error", Image.DecompressionBombWarning)
                     with Image.open(io.BytesIO(data)) as original:
-                        if original.format not in {"JPEG", "PNG", "WEBP"} or getattr(original, "n_frames", 1) != 1:
-                            raise AccountingError("Choose a single JPEG, PNG or WebP image, or a plain PDF for a bill")
+                        # Camera JPEGs can contain auxiliary pictures (for example a
+                        # gain map). Keep only their primary photo, never the extra layers.
+                        if original.format not in {"JPEG", "MPO", "PNG", "WEBP", "GIF"}:
+                            raise AccountingError("This image format is not supported. Save it as JPEG, PNG or WebP and choose it again")
+                        if original.format != "MPO" and getattr(original, "n_frames", 1) != 1:
+                            raise AccountingError("Animated images cannot be attached. Save a still image as JPEG, PNG or WebP and choose it again")
+                        if original.format == "GIF":
+                            raise AccountingError("GIF images cannot be attached. Save it as JPEG, PNG or WebP and choose it again")
                         if original.width * original.height > 40_000_000:
                             raise AccountingError("Image exceeds 40 megapixels; choose a smaller photo")
                         edge = 512 if avatar else 2400

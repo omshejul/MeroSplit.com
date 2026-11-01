@@ -60,7 +60,7 @@ test('Reminder retry reuses its command after a lost response and offline never 
   await assert.rejects(remind(transfer), /Response lost/);
   await remind(transfer);
   assert.deepEqual(sent[0], sent[1]); assert.equal(ids, 1);
-  assert.equal(env.reminderRetry.current, null); assert.deepEqual(notices, ['Reminder queued.']);
+  assert.equal(env.reminderRetry.current, null); assert.deepEqual(notices, ['Your reminder will be sent.']);
   connected = false;
   await assert.rejects(remind(transfer), /Reconnect/); assert.equal(sent.length, 2);
 });

@@ -99,7 +99,9 @@ test('Deterministic input rejection retains the draft and staged bytes for previ
       await migrate(db); await saveMediaUpload(db, session, pending);
       const post: typeof uploadMedia = async <T>(): Promise<T> => { throw new ApiError(status, 'Invalid input'); };
       await assert.rejects(retryMediaUpload(db, session, path, emptyList, post, async () => { cleanup++; }), error => error instanceof ApiError && error.status === status);
-      assert.deepEqual(await pendingMediaUpload(db, session, path), pending); assert.equal(cleanup, 0);
+      assert.deepEqual(await pendingMediaUpload(db, session, path), { ...pending, rejection: 'Invalid input' }); assert.equal(cleanup, 0);
+      let retries = 0; await retryAccountMediaUploads(db, session, async () => { retries++; return metadata; });
+      assert.equal(retries, 0, 'Rejected files must not be retried in the background');
     } finally { raw.close(); }
   }
 });

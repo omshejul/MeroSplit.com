@@ -617,11 +617,11 @@ test('uncertain statement send retries the same command and blocks double taps',
   app.unmount();
 });
 
-test('statement feedback distinguishes queued, accepted, oversized and uncertain delivery', () => {
+test('statement feedback uses plain language for scheduled, sent and failed email', () => {
   const app = harness('src/BalanceStatements.tsx', 'StatementDelivery');
   const text = (tree: any): string => nodes(tree).flatMap(node => node.children).filter(child => typeof child === 'string').join(' ');
-  assert.match(text(app.render({ delivery: { state: 'pending', error: '' } })), /queued/);
-  assert.match(text(app.render({ delivery: { state: 'accepted', error: '' } })), /accepted for email delivery/);
+  assert.match(text(app.render({ delivery: { state: 'pending', error: '' } })), /will be emailed/);
+  assert.match(text(app.render({ delivery: { state: 'accepted', error: '' } })), /has been emailed/);
   assert.match(text(app.render({ delivery: { state: 'failed', error: 'too_big' } })), /too large/);
   assert.match(text(app.render({ delivery: { state: 'held', error: 'delivery_unknown' } })), /Check your inbox/);
 });
@@ -1443,4 +1443,23 @@ test('direct breakdown uses signed expandable contributions and labels payments 
   row = disclosure.render({ ...rows[1].props, children: rows[1].children });
   assert.equal(find(row, 'accessibilityRole', 'button').props.accessibilityState.expanded, true);
   assert.ok(nodes(row).some(node => node.children.includes('Reduces this payment by')));
+});
+
+
+test('rejected attachments explain recovery and suppress a futile retry after reopening', async () => {
+  for (const rejection of [undefined, 'Animated images cannot be attached. Save a still image.']) {
+    const saved = { id: 'file', path: '/groups/g/expenses/e/attachments', file: { name: 'IMG_1340.jpeg' }, rejection };
+    const app = harness('src/BillAttachments.tsx', 'BillAttachments', {
+      accountOwner: () => 'owner', pendingMediaUpload: async () => saved,
+      request: async () => ({ attachments: [], can_modify: true }),
+    });
+    const props = { session: { token: 'owner' }, groupId: 'g', expenseId: 'e', busy: false, onBusyChange() {} };
+    app.render(props); app.commit(); await tick(); const tree = app.render(props);
+    const message = nodes(tree).flatMap(node => node.children).filter(value => typeof value === 'string').join(' ');
+    assert.match(message, /saved on this device/);
+    assert.ok(find(tree, 'title', 'Remove file'));
+    assert.equal(!!find(tree, 'title', 'Retry upload'), !rejection);
+    assert.match(message, rejection ? /still image.*Remove it to choose another file/ : /Retry when online/);
+    app.unmount();
+  }
 });
