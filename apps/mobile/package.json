@@ -21,6 +21,7 @@
     "expo-file-system": "~58.0.9",
     "expo-font": "~58.0.8",
     "expo-glass-effect": "~58.0.4",
+    "expo-haptics": "58.0.7",
     "expo-image-picker": "~58.0.10",
     "expo-notifications": "~58.1.5",
     "expo-secure-store": "~58.0.2",
@@ -41,7 +42,8 @@
     "react-native-safe-area-context": "~5.10.1",
     "react-native-screens": "4.30.0",
     "react-native-svg": "15.16.0",
-    "react-native-web": "^0.21.4"
+    "react-native-web": "^0.21.4",
+    "web-haptics": "0.0.6"
   },
   "devDependencies": {
     "@types/node": "^24.19.2",
