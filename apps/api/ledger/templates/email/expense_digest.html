@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{{ heading|default:"Unread bills" }} in MeroSplit</title></head>
-<body style="margin:0;padding:32px 20px;background:#fff;color:#202024;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif">
+<body style="margin:0;padding:0;background:#fff;color:#202024;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif">
 <div style="display:none;max-height:0;overflow:hidden;opacity:0">See who paid and your share of each bill.</div>
-<table role="presentation" style="max-width:520px;width:100%;margin:auto;border-collapse:collapse;table-layout:fixed;word-wrap:break-word"><tr><td>
+<table role="presentation" style="max-width:560px;width:100%;margin:auto;border-collapse:collapse;table-layout:fixed;word-wrap:break-word"><tr><td style="padding:32px 20px">
 <img src="{{ logo_url }}" width="40" height="40" alt="MeroSplit" style="display:block;border:0">
 <h1 style="font-size:24px;line-height:32px;margin:28px 0 12px">{{ heading|default:"Unread bills" }}</h1>
 {% for bill in bills %}
