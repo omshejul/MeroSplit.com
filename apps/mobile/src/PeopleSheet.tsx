@@ -20,7 +20,7 @@ export default function PeopleSheet({ visible, onDismiss, title, icon, total, co
       <ScrollView style={{ flex: 1, marginTop: headerHeight }} nestedScrollEnabled keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 12 + insets.bottom }}><RowGroup>{children}</RowGroup></ScrollView>
       <View onLayout={event => setHeaderHeight(event.nativeEvent.layout.height)} style={{ position: 'absolute', top: 0, left: 0, right: 0, paddingHorizontal: 20, paddingTop: 20, paddingBottom: 16, gap: 6 }}>
         <View accessible={false} pointerEvents="none" style={{ position: 'absolute', top: 8, width: 36, height: 4, borderRadius: 2, backgroundColor: palette.outline, alignSelf: 'center' }} />
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}><Icon name={icon} /><Text accessibilityRole="header" style={[ui.section, { flex: 1 }]}>{title}</Text><Button title="Done" icon="tick" kind="text" compact accessibilityLabel={icon === 'people' ? 'Apply split' : 'Apply payers'} disabled={disabled || count === 0} onPress={close} /></View>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}><Icon name={icon} /><Text accessibilityRole="header" style={[ui.section, { flex: 1 }]}>{title}</Text><Button title="Done" icon="tick" kind="outlined" compact accessibilityLabel={icon === 'people' ? 'Apply split' : 'Apply payers'} disabled={disabled || count === 0} onPress={close} /></View>
         {(total || count !== undefined) && <Text style={ui.caption}>{[total, count === undefined ? '' : `${count} selected`].filter(Boolean).join(' · ')}</Text>}
       </View>
     </KeyboardAvoidingView>
