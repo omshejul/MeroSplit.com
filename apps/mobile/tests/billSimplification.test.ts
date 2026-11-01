@@ -1332,3 +1332,26 @@ test('attachment reveal commits the loaded layout in one animated update and res
     app.unmount();
   }
 });
+
+for (const section of ['PayerFields','SplitFields']) test(`${section} bulk selection switches only all-selected to Clear All`,()=>{
+ const participants=[{id:'a',name:'Asha'},{id:'b',name:'Bharat'},{id:'c',name:'Charu'}];
+ let draft:any={amount:'120',payerIds:['a'],payerAmounts:{},participantIds:['a'],splitValues:{},mode:'equal'};
+ const render=()=>{
+  const tree=harness('src/ExpenseForm.tsx',section).render({participants,draft,disabled:false,preserveRemoved:false,label:(id:string)=>id,onChange:(patch:any)=>{draft={...draft,...patch};},onToggle:()=>{},onAdjust:()=>{},status:''});
+  const selection=nodes(tree).find(node=>typeof node.type==='function'&&node.type.name==='SelectionButton')!;
+  return selection.type(selection.props);
+ };
+ let toggle=render();assert.equal(toggle.props.title,'Select All');toggle.props.onPress();
+ const key=section==='PayerFields'?'payerIds':'participantIds';assert.deepEqual(draft[key],['a','b','c']);
+ if(section==='PayerFields')assert.equal(draft.payerAmounts.a,'120','keep the sole payer contribution before showing multiple payers');
+ toggle=render();assert.equal(toggle.props.title,'Clear All');toggle.props.onPress();assert.deepEqual(draft[key],[]);
+ toggle=render();assert.equal(toggle.props.title,'Select All');toggle.props.onPress();assert.deepEqual(draft[key],['a','b','c']);
+});
+
+test('bulk actions preserve locked removed members and saved amounts',()=>{
+ const app=harness('src/ExpenseForm.tsx','SelectionButton');let selected=['a','b','removed'];
+ const props={participants:[{id:'a'},{id:'b'},{id:'removed',removed:true}],selected,disabled:false,label:'payers',onChange:(ids:string[])=>{selected=ids;}};
+ let button=app.render(props);assert.equal(button.props.title,'Clear All');button.props.onPress();assert.deepEqual(selected,['removed']);
+ button=app.render({...props,selected});assert.equal(button.props.title,'Select All');button.props.onPress();assert.deepEqual(selected,['removed','a','b']);
+ button=app.render({...props,selected,disabled:true});button.props.onPress();assert.deepEqual(selected,['removed','a','b']);
+});

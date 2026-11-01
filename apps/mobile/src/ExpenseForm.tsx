@@ -74,10 +74,25 @@ function PayerAdjustment({ difference, name, onPress }: { difference: bigint; na
   </Button>;
 }
 
+function SelectionButton({ participants, selected, disabled, label, onChange }: {
+  participants: Group['participants']; selected: string[]; disabled: boolean; label: string; onChange: (ids: string[]) => void;
+}) {
+  const selectable = participants.filter(person => !person.removed).map(person => person.id);
+  const all = selectable.length > 0 && selectable.every(id => selected.includes(id));
+  const title = all ? 'Clear All' : 'Select All';
+  return <Button title={title} accessibilityLabel={`${title} ${label}`} kind="text" compact disabled={disabled || !selectable.length} style={{ alignSelf: 'flex-end' }} onPress={() => {
+    if (disabled) return;
+    const locked = selected.filter(id => participants.some(person => person.id === id && person.removed));
+    onChange([...locked, ...(all ? [] : selectable)]);
+  }} />;
+}
+
 function PayerFields({ participants, draft, disabled, preserveRemoved, label, onChange, status, onToggle, onAdjust }: ExpenseSelectionProps & { onToggle: (id: string) => void; onAdjust: (id: string) => void }) {
   const { ui, motion } = useUI();
   const difference = payerDifference(draft);
   return <RowGroup style={styles.reveal}>
+    <SelectionButton participants={participants} selected={draft.payerIds} disabled={disabled} label="payers" onChange={payerIds => onChange({ payerIds,
+      payerAmounts: draft.payerIds.length === 1 ? { ...draft.payerAmounts, [draft.payerIds[0]]: draft.amount } : draft.payerAmounts })} />
     {participants.filter(person => !person.removed || draft.payerIds.includes(person.id)).map(person => <View key={`payer-${person.id}`} style={styles.field}>
       <PersonChoice person={person} title={label(person.id)} amount={draft.payerIds.length === 1 && draft.payerIds.includes(person.id) ? (() => { try { return formatMoney(rupeesToPaise(draft.amount)); } catch { return undefined; } })() : undefined} selected={draft.payerIds.includes(person.id)} disabled={disabled || (preserveRemoved && !!person.removed)} onPress={() => { animateLayout(!!motion?.enabled); onToggle(person.id); }} />
       {draft.payerIds.length > 1 && draft.payerIds.includes(person.id) && <TextField autoCorrect={false} label={`Paid by ${label(person.id)} (${currencySymbol()})`} value={draft.payerAmounts[person.id] ?? ''}
@@ -108,6 +123,7 @@ function SplitFields({ participants, draft, disabled, preserveRemoved, label, on
       </Button>)}
     </View>
     <Text style={ui.caption}>{!draft.participantIds.length ? 'Choose who to include.' : draft.mode === 'equal' ? `Split equally between ${draft.participantIds.length} ${draft.participantIds.length === 1 ? 'person' : 'people'}.` : draft.mode === 'exact' ? 'Enter what each person owes.' : draft.mode === 'percent' ? 'Enter each person’s percentage.' : 'Enter each person’s number of shares.'}</Text>
+    <SelectionButton participants={participants} selected={draft.participantIds} disabled={disabled} label="people to split" onChange={participantIds => onChange({ participantIds })} />
     {participants.filter(person => !person.removed || draft.participantIds.includes(person.id)).map(person => <View key={`share-${person.id}`} style={styles.field}>
       <PersonChoice person={person} amount={!draft.participantIds.includes(person.id) ? 'Not included' : shares[person.id] !== undefined ? formatMoney(shares[person.id]) : undefined} title={label(person.id)} selected={draft.participantIds.includes(person.id)} disabled={disabled || (preserveRemoved && !!person.removed)}
         onPress={() => { animateLayout(!!motion?.enabled); onChange({ participantIds: draft.participantIds.includes(person.id) ? draft.participantIds.filter(id => id !== person.id) : [...draft.participantIds, person.id] }); }} />
