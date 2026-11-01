@@ -1414,7 +1414,14 @@ function AppContent() {
     return <>
     {screen !== 'login' && <ScreenHeader title={title} showTitle={screen !== 'expenseDetail'} brand={!session} busy={busyRoutes.length > 0 || reading > 0} onFeedback={session && !authHeld && !expired && screen === 'home' && ['Groups', 'Friends', 'Activity'].includes(tab) ? () => setFeedbackOpen(true) : undefined} onBack={screen === 'home' && tab === 'Groups' && (showArchived || showHidden) || screen !== 'home' ? back : undefined} status={session ? <SyncStatus key={owner} confirmedAt={lastConfirmed} commands={commands} pendingFiles={pendingFiles} drafts={hasDrafts} durable={storageIsDurable()} syncing={syncing} problem={syncProblem} online={online} reviewRequired={expired || authHeld || !!unavailable.length} updatesAvailable={screen === 'group' && ledgerUpdates} onShowUpdates={() => setLedgerRevision(value => value + 1)} onExport={() => open(exportData)} onRetry={() => launch(sync)} onPress={() => navigate('savedChanges')} /> : undefined}>
 
-      {screen === 'group' && selected && <IconAction name="settings" label="Group settings" disabled={busy} onPress={() => navigate('members')} />}
+      {screen === 'group' && selected && <IconAction name="settings" label="Group settings" disabled={busy} onPress={() => open(() => browse(`members:${selected.group.id}`, async current => {
+        if (session && isOnline()) {
+          const group = await fetchGroup(session, selected.group.id);
+          if (!current() || !await saveReadGroup(session, group, current) || !current()) return;
+          showReadGroup(group);
+        }
+        navigate('members');
+      }))} />}
       {screen === 'members' && selected && !selected.group.is_direct && !selected.group.archived && selected.group.participants.some(person => person.id === selfId && !person.removed && person.user_id === selected.group.owner_id) && <IconAction name="personAdd" label="Add person" disabled={busy} onPress={() => setAddPersonRequest(value => value + 1)} />}
     </ScreenHeader>}
     <SceneTransition changeKey={`${screen}|${tab}|${groupId ?? ''}|${expenseId ?? ''}|${settlementId ?? ''}|${screen === 'login' && challenge ? 'code' : 'entry'}`} active={focused}>
