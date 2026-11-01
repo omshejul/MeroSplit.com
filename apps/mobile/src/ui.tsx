@@ -2,7 +2,6 @@ import Briefcase01Icon from '@hugeicons/core-free-icons/Briefcase01Icon';
 import ShoppingBasket03Icon from '@hugeicons/core-free-icons/ShoppingBasket03Icon';
 import TrashIcon from '@hugeicons/core-free-icons/TrashIcon';
 import { useRowDivider } from './rowDividers';
-import { animateLayout } from './layoutTransition';
 import Tick02Icon from '@hugeicons/core-free-icons/Tick02Icon';
 import AppleIcon from '@hugeicons/core-free-icons/AppleIcon';
 import Unlink01Icon from '@hugeicons/core-free-icons/Unlink01Icon';
@@ -181,7 +180,7 @@ export const Button = React.forwardRef<React.ComponentRef<typeof View>, ButtonPr
   maxFontSizeMultiplier, style, labelStyle, accessibilityLabel, accessibilityRole = 'button',
   accessibilityState, onFocus, onBlur, hitSlop, ...props
 }, ref) {
-  const { palette, ui, dark, motion } = useUI();
+  const { palette, ui, dark } = useUI();
   const [focused, setFocused] = useState(false);
   const feedback = usePressFeedback(disabled);
   const plain = kind === 'plain', menu = kind === 'menu';
@@ -191,7 +190,7 @@ export const Button = React.forwardRef<React.ComponentRef<typeof View>, ButtonPr
   icon ??= ({ Done: 'check', Close: 'close', Cancel: 'close', Save: 'check', Refresh: 'refresh', Retry: 'refresh' } as Record<string, IconName>)[title ?? ''];
   const glyph = typeof icon === 'function' ? icon({ size, color }) : icon ? <Icon name={icon} size={size} color={color} /> : null;
   return <Pressable {...props} ref={ref} disabled={disabled} accessibilityRole={accessibilityRole}
-    onPress={event => { if (!disabled) { animateLayout(!!motion?.enabled); props.onPress?.(event); } }}
+    onPress={event => { if (!disabled) props.onPress?.(event); }}
     accessibilityLabel={accessibilityLabel ?? title} accessibilityState={{ ...accessibilityState, disabled }}
     onPressIn={event => { feedback.onPressIn(); props.onPressIn?.(event); }} onPressOut={event => { feedback.onPressOut(); props.onPressOut?.(event); }}
     onPointerDown={event => { if (Platform.OS === 'web') setFocused(false); props.onPointerDown?.(event); }}

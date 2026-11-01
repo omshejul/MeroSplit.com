@@ -1355,3 +1355,18 @@ test('bulk actions preserve locked removed members and saved amounts',()=>{
  button=app.render({...props,selected});assert.equal(button.props.title,'Select All');button.props.onPress();assert.deepEqual(selected,['removed','a','b']);
  button=app.render({...props,selected,disabled:true});button.props.onPress();assert.deepEqual(selected,['removed','a','b']);
 });
+
+test('sheet triggers and share controls do not start an implicit global layout transaction', () => {
+  const source=ts.createSourceFile('ui.tsx',readFileSync(new URL('../src/ui.tsx',import.meta.url),'utf8'),ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
+  const declaration=source.statements.find(node=>ts.isVariableStatement(node)&&node.declarationList.declarations.some(value=>value.name.getText(source)==='Button'))!;
+  const code=ts.transpile(declaration.getText(source).replace(/^export /,''),{target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.React});
+  let animations=0,presses=0;
+  const env={React:{...React,forwardRef:(render:any)=>render},useState:()=>[false,()=>{}],View:'View',Text:'Text',Pressable:'Pressable',Icon:'Icon',Platform:{OS:'ios'},
+    useUI:()=>({palette:{},ui:{},motion:{enabled:true,active:true}}),usePressFeedback:()=>({}),animateLayout:()=>animations++};
+  const Button=new Function('env',`with(env){${code};return Button;}`)(env);
+  for(const title of ['Split between','Clear All','Increase shares for Anishk']) {
+    Button({title,kind:'plain',onPress:()=>presses++}).props.onPress({});
+  }
+  Button({title:'Done',disabled:true,onPress:()=>presses++}).props.onPress({});
+  assert.equal(presses,3);assert.equal(animations,0,'Button must not animate mounting or reparenting controls in the native sheet');
+});
