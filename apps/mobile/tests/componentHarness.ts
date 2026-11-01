@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import ts from 'typescript';
 
-const files = ['ListRow', 'PersonRow', 'PersonChoice', 'ChoiceGroup', 'UIStates', 'PaginationFooter', 'AttachmentPicker', 'AttachmentRow', 'MediaPreviewFrame', 'OverflowMenu', 'AppLogo', 'ResendControls', 'FallbackTabLayout', 'BillSummary', 'FloatingActionContainer', 'FieldDialog'];
+const files = ['ListRow', 'PersonRow', 'PersonChoice', 'SplitPersonRow', 'ChoiceGroup', 'UIStates', 'PaginationFooter', 'AttachmentPicker', 'AttachmentRow', 'MediaPreviewFrame', 'OverflowMenu', 'AppLogo', 'ResendControls', 'FallbackTabLayout', 'BillSummary', 'FloatingActionContainer', 'FieldDialog'];
 const programs = [...files, 'SignInMethods'].map(name => {
   const source = ts.createSourceFile(name + '.tsx', readFileSync(new URL(`../src/${name}.tsx`, import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   const statements = source.statements.filter(n => !ts.isImportDeclaration(n) && !ts.isExportDeclaration(n) && (name !== 'SignInMethods' || ts.isFunctionDeclaration(n) && n.name?.text === 'ConnectedProviderRow'));
@@ -18,9 +18,11 @@ export function withSharedUI<T extends Record<string, any>>(input: T): T & Recor
   const env: Record<string, any> = input; env.__sharedUI = true;
   for (const name of ['RowGroup', 'PeopleSheet', 'View', 'Text', 'Switch', 'Button', 'ErrorText', 'Avatar', 'Icon', 'TextField', 'EmailField', 'RadioChoice', 'SectionHeading', 'DialogScrollBody', 'CancelDialogActions', 'BottomSafeArea', 'ScrollBottomInset', 'ActivityIndicator']) env[name] ??= name;
   if (env.TextField === 'TextField' && input.TextInput) env.TextField = input.TextInput;
+  env.useWindowDimensions ??= () => ({ width: 390, height: 844, fontScale: 1 });
   env.useLoading ??= () => () => {}; env.startLoading ??= () => () => {}; env.LoadingOverlay ??= 'LoadingOverlay';
   env.useRowDivider ??= (divider?: boolean) => divider ?? true; env.animateLayout ??= () => {};
   env.StyleSheet ??= { hairlineWidth: 1, create: (value: any) => value };
+  env.StyleSheet.create ??= (value: any) => value;
   env.pageWidthStyle ??= {}; env.radii ??= { control: 12, surface: 16 }; env.Platform ??= { OS: 'native' };
   const shared = new Set<Function>(), original = input.React.createElement;
   env.React = { ...input.React, Fragment: input.React.Fragment ?? 'Fragment', createElement(type: any, props: any, ...children: any[]) {
