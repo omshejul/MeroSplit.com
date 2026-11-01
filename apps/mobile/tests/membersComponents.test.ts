@@ -623,7 +623,7 @@ test('automatic launch checks and downloads, then asks once before a safe restar
  const app=updatesApp(),lock={current:false};let flushed=0;
  app.render({onRestart:(reload:()=>Promise<void>)=>restartForUpdate({lock,safe:()=>true,flushWrites:async()=>{flushed++;},reload})});await app.commit();
  let update=app.render();assert.deepEqual(app.native.calls,['check','download']);assert.equal(update.promptVisible,true);
- const prompt=component(app.prompt(),'KeyboardDialog');assert.equal(prompt.props.visible,true);assert.equal(prompt.props.blocksAppRestart,false);assert.ok(JSON.stringify(app.prompt()).includes('Restart MeroSplit to finish updating.'));
+ const prompt=component(app.prompt(),'KeyboardDialog');assert.equal(prompt.props.visible,true);assert.equal(prompt.props.blocksAppRestart,false);assert.equal(prompt.props.placement,'bottom');assert.ok(JSON.stringify(app.prompt()).includes('MeroSplit will reopen with the update.'));assert.equal(button(app.prompt(),'Later').props.icon,'history');
  button(app.prompt(),'Restart now').props.onPress();button(app.prompt(),'Restart now').props.onPress();await tick();update=app.render();
  assert.equal(flushed,1);assert.deepEqual(app.native.calls,['check','download','reload']);assert.equal(update.label,'Restarting…');assert.equal(button(app.prompt(),'Restarting…').props.disabled,true);assert.equal(lock.current,true);app.unmount();
 });

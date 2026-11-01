@@ -4,7 +4,7 @@ import { Text } from 'react-native-paper';
 import Constants from 'expo-constants';
 import { requireOptionalNativeModule } from 'expo';
 import KeyboardDialog from './KeyboardDialog';
-import { Dialog } from './DialogParts';
+import { Dialog, DialogScrollBody } from './DialogParts';
 import type { AppUpdateState } from './useAppUpdates';
 import LoadingSpinner from './LoadingSpinner';
 import { Button, ErrorText, useUI } from './ui';
@@ -32,10 +32,10 @@ export default function AppUpdates({ update }: { update: AppUpdateState }) {
 
 export function AppUpdatePrompt({ update }: { update: AppUpdateState }) {
   const { ui } = useUI();
-  return <KeyboardDialog visible={update.promptVisible} label="Update ready" onDismiss={update.later} dismissable={!update.applying} blocksAppRestart={false}>
-    <Dialog.Title>Update ready</Dialog.Title>
-    <Dialog.Content><Text style={ui.body}>Restart MeroSplit to finish updating.</Text>{!!update.error && <ErrorText live>{update.error}</ErrorText>}</Dialog.Content>
-    <Dialog.Actions><Button title="Later" kind="text" disabled={update.applying} onPress={update.later} />
+  return <KeyboardDialog visible={update.promptVisible} label="Restart to update" placement="bottom" onDismiss={update.later} dismissable={!update.applying} blocksAppRestart={false}>
+    <Dialog.Title icon="refresh">Restart to update</Dialog.Title>
+    <DialogScrollBody gap={8}><Text style={ui.body}>MeroSplit will reopen with the update.</Text><Text style={ui.caption}>You can also restart from Me.</Text>{!!update.error && <ErrorText live>{update.error}</ErrorText>}</DialogScrollBody>
+    <Dialog.Actions style={{ flexWrap: 'wrap' }}><Button title="Later" icon="history" kind="text" disabled={update.applying} onPress={update.later} />
       <Button title={update.applying ? 'Restarting…' : 'Restart now'} icon="refresh" kind="primary" disabled={update.applying} onPress={update.restart} /></Dialog.Actions>
   </KeyboardDialog>;
 }
