@@ -7,7 +7,7 @@ import ts from 'typescript';
 type Element = { type: unknown; props: Record<string, any>; children: unknown[] };
 const React = { createElement: (type: unknown, props: Record<string, any> | null, ...children: unknown[]): Element => ({ type, props: props ?? {}, children }) };
 const Dialog = Object.assign(() => {}, { Title: 'Title', Content: 'Content', ScrollArea: 'ScrollArea', Actions: 'Actions' });
-let windowWidth = 375;
+let windowWidth = 375, safeBottom = 0;
 const env = { DialogContext: { Provider: 'DialogProvider' }, DialogFocus: 'DialogFocus', useContext: () => ({ bodyHeight: 440 }), motionDuration: { paperScale: 0.75 }, useWindowDimensions: () => ({ width: windowWidth, height: 667 }), Platform: { OS: 'native' }, DialogScrollBody: undefined as any, CancelDialogActions: undefined as any, React, Dialog, useEffect() {}, View: 'View', TouchableRipple: 'TouchableRipple', radii: { button: 8 }, Icon: 'Icon', UPIAppIcon: 'UPIAppIcon', CopyLinkIcon: 'CopyLinkIcon', Portal: 'Portal', KeyboardAvoidingView: 'KeyboardAvoidingView', KeyboardDialog: 'KeyboardDialog', ScrollView: 'ScrollView', Button: 'Button', Field: 'Field', FeedbackNote: 'FeedbackNote', Text: 'Text', s: { field: {} }, useUI: () => ({ ui: {}, palette: { surface: '#fff', line: '#ddd' }, motion: { enabled: true } }) };
 function production(file: string, name: string) {
   const source = ts.createSourceFile(file, readFileSync(new URL(`../src/${file}`, import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
@@ -15,7 +15,7 @@ function production(file: string, name: string) {
   assert.ok(declaration, name);
   const code = declaration.getText(source).replace(/^export (default )?/, '');
   let cursor = 0; const states: any[] = [];
-  const scope = { ...env, useSafeAreaInsets: () => ({ top: 20, bottom: 0 }),
+  const scope = { ...env, Modal: 'Modal', useSafeAreaInsets: () => ({ top: 20, bottom: safeBottom }),
     useState: (initial: any) => { const i = cursor++; if (!(i in states)) states[i] = initial; return [states[i], (value: any) => { states[i] = value; }]; } };
   const render = new Function('env', `with(env) { ${ts.transpile(code, { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React })}; return ${name}; }`)(withSharedUI(scope));
   return (props: any) => { cursor = 0; return render(props); };
@@ -52,6 +52,24 @@ test('hidden dialogs retain the height-measuring ancestor and keep scrolling con
     assert.equal(elements(dialog).find(node => node.type === Dialog.ScrollArea), body);
     assert.equal(elements(dialog).find(node => node.type === Dialog.Actions), footer);
   }
+});
+
+test('bottom sheets keep dismissal guards and place their actions above the bottom safe area', () => {
+  safeBottom = 24;
+  try {
+    const render = production('KeyboardDialog.tsx', 'KeyboardDialog'), onDismiss = () => {};
+    const tree = render({ visible: true, placement: 'bottom', label: 'Restart to update', blocksAppRestart: false, dismissable: false, onDismiss, children: 'Restart actions' });
+    const modal = one(tree, 'Modal');
+    assert.equal(modal.props.style.justifyContent, 'flex-end');
+    assert.equal(modal.props.style.marginBottom, 0);
+    assert.equal(modal.props.contentContainerStyle.paddingBottom, 24);
+    assert.equal(modal.props.contentContainerStyle.width, 375);
+    assert.equal(modal.props.contentContainerStyle.borderBottomLeftRadius, 0);
+    assert.equal(modal.props.dismissable, false);
+    assert.equal(modal.props.dismissableBackButton, false);
+    assert.equal(modal.props.onDismiss, onDismiss);
+    assert.equal(one(tree, 'DialogFocus').props.modal, false);
+  } finally { safeBottom = 0; }
 });
 
 test('opted-in dialog cards track the measured keyboard viewport, safe area, rotation and a smaller caller cap', () => {
