@@ -171,6 +171,28 @@ test('virtualized timeline and legacy bill/payment lists preserve server order',
   assert.ok(!elements(history).some(node => node.type === 'HistoryPages'));
 });
 
+test('balances group canonical transfers by direction, sum exact paise, and preserve each payment target', () => {
+  const transfers = [
+    { sender: 'other', recipient: 'self', amount: '82834' },
+    { sender: 'self', recipient: 'other', amount: '41666' },
+    { sender: 'self', recipient: 'third', amount: '109081' },
+    { sender: 'third', recipient: 'self', amount: '123533' },
+  ];
+  const value = { ...group, name: 'Trip', version: 1, participants: [...group.participants, { id: 'third', name: 'Asha' }], transfers, expenses: [], settlements: [], balances: { self: '55620', other: '-41168', third: '-14452' }, activity: [] };
+  const original = structuredClone(value);
+  const nodes = elements(production('GroupScreen')({ group: value, accepted: value, selfId: 'self', pending: [], busy: false }));
+  const sections = nodes.filter(node => ['You owe', 'Owed to you'].includes(node.props.accessibilityLabel));
+  assert.deepEqual(sections.map(node => node.props.accessibilityLabel), ['You owe', 'Owed to you']);
+  assert.ok(text(sections[0]).includes(`${formatMoney('150747')} in 2 transfers`));
+  assert.ok(text(sections[1]).includes(`${formatMoney('206367')} in 2 transfers`));
+  assert.deepEqual(sections.flatMap(section => elements(section).filter(node => node.type === 'PersonalTransferRow').map(node => node.props.transfer)), [transfers[1], transfers[2], transfers[0], transfers[3]]);
+  assert.deepEqual(value, original);
+  const incoming = { ...value, transfers: [transfers[0]] };
+  const incomingNodes = elements(production('GroupScreen')({ group: incoming, accepted: incoming, selfId: 'self', pending: [], busy: false }));
+  assert.equal(incomingNodes.filter(node => node.props.accessibilityLabel === 'You owe').length, 0);
+  assert.ok(incomingNodes.some(node => node.type === 'Text' && text(node) === `${formatMoney('82834')} in 1 transfer`));
+});
+
 test('complete offline caches keep every payment in the dated bill timeline and preserve detail actions', () => {
   const bill = billRow({ id: 'newer', date: '2026-10-28' }), old = billRow({ id: 'older', date: '2026-10-25' });
   const payment = { id: 'received', sender: 'other', recipient: 'self', amount: '500', date: '2026-10-27', reversed: true };
@@ -457,13 +479,14 @@ test('balance explanation target and Record remain independent siblings with unc
   let explanations = 0, records = 0;
   const props = { transfer, group, selfId: 'self', disabled: false, onSettle: (row: unknown) => { assert.equal(row, transfer); records++; }, onExplain: (row: unknown, focus: unknown) => { assert.equal(row, transfer); assert.equal(typeof focus, 'function'); explanations++; } };
   const tree = render(props), direct = tree.children.filter(Boolean) as Element[];
-  assert.deepEqual(direct.map(node => node.type), ['Button', 'Button']);
+  assert.deepEqual(direct.map(node => node.type), ['Button', 'View']);
+  const record = (tree: unknown) => elements(tree).find(node => node.props.title === 'Record payment')!;
   direct[0].props.onPress(); assert.equal(explanations, 1); assert.equal(records, 0);
-  direct[1].props.onPress(); assert.equal(explanations, 1); assert.equal(records, 1);
-  assert.equal(direct[1].props.title, 'Record'); assert.equal(direct[1].props.disabled, false);
-  assert.equal((render({ ...props, disabled: true }).children[1] as Element).props.disabled, true);
+  record(tree).props.onPress(); assert.equal(explanations, 1); assert.equal(records, 1);
+  assert.equal(record(tree).props.disabled, false);
+  assert.equal(record(render({ ...props, disabled: true })).props.disabled, true);
   const removed = { ...group, participants: group.participants.map(person => ({ ...person, removed: person.id === 'other' })) };
-  assert.equal((render({ ...props, group: removed }).children[1] as Element).props.disabled, true);
+  assert.equal(record(render({ ...props, group: removed })).props.disabled, true);
 });
 
 
@@ -483,16 +506,16 @@ test('local full-history search remains editable and clearable after filtering b
   }
 });
 
-test('group and direct-person Pay use the same outlined icon button without changing guards', () => {
+test('group and direct-person UPI actions use the same primary button without changing guards', () => {
   const render = production('PersonalTransferRow'), transfer = { sender: 'self', recipient: 'other', amount: '501' };
   const payable = { ...group, participants: group.participants.map(person => person.id === 'other' ? { ...person, user_id: 2, payment_profile: { vpa: 'other@bank' } } : person) };
   for (const direct of [false, true]) {
     let calls = 0;
     const props = { group: { ...payable, is_direct: direct }, transfer, selfId: 'self', disabled: false, onSettle: (value: unknown) => { assert.equal(value, transfer); calls++; }, onExplain() {} };
-    const button = render(props).children[1] as Element;
-    assert.equal(button.props.title, 'Pay'); assert.equal(button.props.kind, 'outlined'); assert.equal(button.props.icon, 'pay'); assert.equal(button.props.compact, true);
+    const button = elements(render(props)).find(node => node.props.title === 'Pay with UPI')!;
+    assert.equal(button.props.title, 'Pay with UPI'); assert.equal(button.props.kind, 'primary'); assert.equal(button.props.compact, true);
     button.props.onPress(); assert.equal(calls, 1);
-    assert.equal((render({ ...props, disabled: true }).children[1] as Element).props.disabled, true);
+    assert.equal(elements(render({ ...props, disabled: true })).find(node => node.props.title === 'Pay with UPI')!.props.disabled, true);
   }
 });
 

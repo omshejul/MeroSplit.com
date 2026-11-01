@@ -31,7 +31,7 @@ import { paymentPresentation } from './activityPresentation';
 import { VisibleExpense } from './useExpenseNotices';
 import type { NoticeVisibility } from './useExpenseNotices';
 import type { BillRow, Command, Expense, Group, GroupTransaction, Participant, Settlement, HistoryResource } from './types';
-import { SectionHeading, AmountText, balanceColor, Button, Icon, useUI } from './ui';
+import { SectionHeading, AmountText, balanceColor, Button, Icon, radii, useUI } from './ui';
 
 type Transfer = { sender: string; recipient: string; amount: string };
 type Props = {
@@ -76,13 +76,16 @@ function PersonalTransferRow({ transfer, group, selfId, disabled, onSettle, onRe
   const outgoing = transfer.sender === selfId, counterpart = outgoing ? transfer.recipient : transfer.sender;
   const person = group.participants.find(person => person.id === counterpart), removed = person?.removed;
   const name = participantName(group.participants, selfId, counterpart);
-  const action = outgoing && person?.user_id != null && !!person.payment_profile?.vpa ? 'Pay' : 'Record';
-  return <View style={[ui.row, { flexWrap: 'wrap', justifyContent: 'flex-end', rowGap: 4, borderBottomWidth: divider ? StyleSheet.hairlineWidth : 0 }]}>
-    <PersonRow divider={false} name={name} photo={person?.profile_photo} titleStyle={[s.logTitle]} ref={row} accessibilityRole="button" accessibilityLabel={`Why ${outgoing ? 'you owe' : 'you are owed'} ${formatMoney(transfer.amount)} ${outgoing ? 'to' : 'by'} ${name}`} onPress={() => onExplain(transfer, () => row.current?.focus())} style={{ flexBasis: '100%', gap: 10, minHeight: 44, borderBottomWidth: 0, paddingVertical: 0 }} trailing={<AmountText amount={transfer.amount} style={[s.balanceAmount, { color: outgoing ? colors.negative : colors.positive }]} />}>
+  const canPay = outgoing && person?.user_id != null && !!person.payment_profile?.vpa;
+  const action = canPay ? 'Pay with UPI' : 'Record payment';
+  return <View style={[ui.row, s.transferRow, { borderBottomWidth: divider ? StyleSheet.hairlineWidth : 0 }]}>
+    <PersonRow divider={false} name={name} photo={person?.profile_photo} titleStyle={s.transferName} ref={row} accessibilityRole="button" accessibilityLabel={`Why ${outgoing ? 'you owe' : 'you are owed'} ${formatMoney(transfer.amount)} ${outgoing ? 'to' : 'by'} ${name}`} onPress={() => onExplain(transfer, () => row.current?.focus())} style={s.transferIdentity} trailing={<View style={s.transferAmount}><AmountText amount={transfer.amount} style={[s.balanceAmount, { color: outgoing ? colors.negative : colors.positive }]} /><Icon name="next" size={16} color={colors.muted} /></View>}>
       <Text style={[ui.rowSub, s.logCaption]}>{outgoing ? 'You owe' : 'Owes you'}{removed ? ' · Removed' : ''}</Text>
     </PersonRow>
-    <Button title={action} kind={action === 'Pay' ? 'outlined' : 'text'} icon={action === 'Pay' ? 'pay' : undefined} compact accessibilityLabel={`${action} payment ${outgoing ? 'to' : 'from'} ${name}, ${formatMoney(transfer.amount)}`} disabled={disabled || !!removed} onPress={() => onSettle(transfer)} />
-    {!outgoing && person?.user_id != null && onRemind && <Button title="Remind" kind="text" compact accessibilityLabel={`Remind ${name} about ${formatMoney(transfer.amount)}`} disabled={disabled || !!removed || reminding} onPress={() => { if (reminding) return; setReminding(true); void onRemind(transfer).catch(() => {}).finally(() => setReminding(false)); }} />}
+    <View style={s.transferActions}>
+    <Button title={action} kind={canPay ? 'primary' : 'secondary'} compact style={s.transferAction} accessibilityLabel={`${action} ${outgoing ? 'to' : 'from'} ${name}, ${formatMoney(transfer.amount)}`} disabled={disabled || !!removed} onPress={() => onSettle(transfer)} />
+    {!outgoing && person?.user_id != null && onRemind && <Button title="Remind" kind="secondary" compact style={s.transferAction} accessibilityLabel={`Remind ${name} about ${formatMoney(transfer.amount)}`} disabled={disabled || !!removed || reminding} onPress={() => { if (reminding) return; setReminding(true); void onRemind(transfer).catch(() => {}).finally(() => setReminding(false)); }} />}
+    </View>
   </View>;
 }
 
@@ -168,7 +171,7 @@ function BillSearch({ value, onChange, onSearch, onClose, showSubmit, autoFocus 
 }
 
 export default function GroupScreen({ bottomClearance = 120, categoryIcons, header, noticeVisibility, group: incoming, accepted: incomingAccepted, previewError: incomingPreviewError = '', revision = 0, onUpdatesAvailable, pending, busy, selfId, pagingScope = incoming.id, active = true, online = true, onRefresh, refreshing = false, onVisibleBills, onPrefetchBill, onPrefetchPayment, onLoadBalanceGroup, onHistoryPage, onExpense, onPayment, onSettle, onRemind }: Props) {
-  const { ui, motion } = useUI();
+  const { ui, motion, palette: colors } = useUI();
   // Background cache updates must not replace a page while someone is reading it.
   // Adopt both views together only for an explicit read or the user's saved changes.
   const [shown, setShown] = useState({ group: incoming, accepted: incomingAccepted, previewError: incomingPreviewError });
@@ -258,7 +261,19 @@ export default function GroupScreen({ bottomClearance = 120, categoryIcons, head
     {group !== accepted && <Text style={ui.caption}>Balances show a pending preview.</Text>}
     {group.archived && <NoticeBanner>Archived. Reopen in settings to make changes.</NoticeBanner>}
     {!transfers.length && <Text style={celebrateSettled ? [ui.numeric, s.settled] : ui.caption}>{celebrateSettled ? '🎉 All settled' : 'All settled'}</Text>}
-    <RowGroup>{transfers.map(transfer => <PersonalTransferRow key={`${transfer.sender}:${transfer.recipient}`} transfer={transfer} group={group} selfId={selfId} disabled={busy || !!group.archived || pending.length > 0} onSettle={onSettle} onRemind={online ? onRemind : undefined} onExplain={(transfer, restoreFocus) => setExplanation({ group, accepted, commands: pending, selfId, transfer, restoreFocus, load: onLoadBalanceGroup })} />)}</RowGroup>
+    {!!transfers.length && <View style={s.balances}>
+      <SectionHeading>Your balances</SectionHeading>
+      {[true, false].map(outgoing => {
+        const rows = transfers.filter(transfer => (transfer.sender === selfId) === outgoing);
+        if (!rows.length) return null;
+        const total = rows.reduce((sum, transfer) => sum + BigInt(transfer.amount), 0n).toString();
+        const title = outgoing ? 'You owe' : 'Owed to you';
+        return <View key={title} role="region" accessibilityLabel={title} style={s.balanceSection}>
+          <View style={s.balanceHeading}><SectionHeading style={s.balanceSectionTitle}>{title}</SectionHeading><Text style={[ui.caption, s.balanceTotal]}>{formatMoney(total)} in {rows.length} {rows.length === 1 ? 'transfer' : 'transfers'}</Text></View>
+          <RowGroup style={[s.balancePanel, { backgroundColor: colors.surface }]}>{rows.map(transfer => <PersonalTransferRow key={`${transfer.sender}:${transfer.recipient}`} transfer={transfer} group={group} selfId={selfId} disabled={busy || !!group.archived || pending.length > 0} onSettle={onSettle} onRemind={online ? onRemind : undefined} onExplain={(transfer, restoreFocus) => setExplanation({ group, accepted, commands: pending, selfId, transfer, restoreFocus, load: onLoadBalanceGroup })} />)}</RowGroup>
+        </View>;
+      })}
+    </View>}
     <View style={s.logHeading}>
       <SectionHeading style={[ui.caption, s.logCaption, s.flex]}>Bills and payments</SectionHeading>
       {searchable && !showSearch && <Button title="Search" icon="search" compact small accessibilityLabel="Search bills" onPress={() => setSearching(true)} />}
@@ -329,6 +344,18 @@ export function ExpenseDetail({ categoryIcons = {}, noticeVisibility, expense, g
   </View>;
 }
 const s = StyleSheet.create({
+  balances: { gap: 16 },
+  balanceSection: { gap: 8 },
+  balanceHeading: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 },
+  balanceSectionTitle: { fontSize: 16, lineHeight: 22 },
+  balanceTotal: { fontSize: 12, lineHeight: 18, fontVariant: ['tabular-nums'] },
+  balancePanel: { borderRadius: radii.surface },
+  transferRow: { flexWrap: 'wrap', justifyContent: 'flex-start', columnGap: 8, rowGap: 2, paddingHorizontal: 12, paddingVertical: 6 },
+  transferIdentity: { flexBasis: '100%', gap: 10, minHeight: 44, borderBottomWidth: 0, paddingVertical: 0, paddingHorizontal: 0 },
+  transferName: { fontSize: 16, lineHeight: 22 },
+  transferAmount: { flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 0 },
+  transferActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginLeft: 46, flex: 1 },
+  transferAction: { minHeight: 44, paddingVertical: 8, paddingHorizontal: 10, borderRadius: 10, borderWidth: 0 },
   content: { gap: 10 },
   summary: { gap: 4, paddingVertical: 8 },
   section: { gap: 10, paddingVertical: 4 },
