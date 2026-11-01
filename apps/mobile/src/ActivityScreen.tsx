@@ -6,6 +6,7 @@ import { categoryIcon, categoryMeaning, expenseCategory } from './categoryIcons'
 import type { ExpenseIcons, ExpenseIconRef } from './categoryIcons';
 import React, { useRef } from 'react';
 import Mascot from './Mascot';
+import { useHomeTabScrollInsets } from './HomeScrollView';
 import { useScrollPagination } from './useScrollPagination';
 import { pageContentStyle } from './AppNavigation';
 import { FlatList, StyleSheet, View } from 'react-native';
@@ -24,14 +25,15 @@ type Props = {
 /** This is an event feed. Only canonical bill content in its destination can mark a bill seen. */
 export default function ActivityScreen({ categoryIcons = {}, onVisibleExpenses, header, footer, items, busy, error, hasMore, cursor, pagingScope = 'activity', active = true, online = true, emptyVerified = false, showEmpty = true, onRefresh, onLoadMore, onOpen }: Props) {
   const { ui } = useUI();
+  const { bottom, ...insets } = useHomeTabScrollInsets();
   const list = useRef<FlatList<ActivityItem>>(null);
   const visible = useRef(onVisibleExpenses); visible.current = onVisibleExpenses;
   const viewable = useRef(({ viewableItems }: { viewableItems: { isViewable: boolean; item: ActivityItem }[] }) => visible.current?.(viewableItems.filter(row => row.isViewable && row.item.bill && !row.item.bill.deleted).map(({ item }) => ({ ...item.bill!, id: item.bill!.id, title: item.bill!.description, groupId: item.group.id }))));
   const paging = useScrollPagination({ scope: pagingScope, cursor, enabled: active && online && !busy && !error,
     load: signal => onLoadMore?.(signal) ?? Promise.resolve(false) });
   return <FlatList onViewableItemsChanged={viewable.current} ref={list} data={items} keyExtractor={item => item.id} scrollEventThrottle={100} onEndReachedThreshold={0.3}
-    contentInsetAdjustmentBehavior="automatic"
-    contentContainerStyle={[pageContentStyle, { gap: 0 }]} onRefresh={onRefresh} refreshing={false}
+    contentInsetAdjustmentBehavior="automatic" {...insets}
+    contentContainerStyle={[pageContentStyle, { gap: 0, paddingBottom: pageContentStyle.paddingBottom + bottom }]} onRefresh={onRefresh} refreshing={false}
     ListHeaderComponent={<>{header}{error ? <ErrorState error={error} retryLabel="Try again" disabled={busy} onRetry={onRefresh} style={s.message} /> : null}</>}
     ListEmptyComponent={showEmpty && !hasMore && !error ? <EmptyState message="No activity yet" illustration={<Mascot size="empty" visible={emptyVerified && !busy} />} style={s.empty} /> : undefined}
     renderItem={({ item, index }) => <ActivityRow categoryIcons={categoryIcons} item={item} busy={busy} onOpen={onOpen} showDay={index === 0 || activityDay(items[index - 1].created_at) !== activityDay(item.created_at)} />}

@@ -12,18 +12,21 @@ const React={Fragment:'Fragment',createElement:(type:any,props:any,...children:a
 function evaluate(expression:string,env:Record<string,any>){const program=ts.transpile(`function render(){return (${expression});}`,{jsx:ts.JsxEmit.React,target:ts.ScriptTarget.ES2022});return new Function('env',`with(env){${program};return render();}`)({React,ScrollBottomInset:'PhysicalInset',...env});}
 function count(value:any):number{return Array.isArray(value)?value.reduce((n,v)=>n+count(v),0):value&&typeof value==='object'?(value.type==='PhysicalInset'?1:0)+count(value.children):0;}
 
-test('home bodies leave bottom insets to navigation while stack pages keep their physical inset',()=>{
+test('home scrollers own tab clearance while stack pages keep their physical inset',()=>{
  for(const tab of ['Groups','Friends','Account'])for(const showCreate of [false,true]){
   const result=evaluate(`<>${footers.join('')}</>`,{screen:'home',tab,showCreate});
-  assert.equal(count(result),0,`${tab}, create=${showCreate}: safe area belongs to the parent tab layout`);
+  assert.equal(count(result),0,`${tab}, create=${showCreate}: safe area belongs to the shared home scroller`);
  }
  assert.equal(count(evaluate(`<>${footers.join('')}</>`,{screen:'expenseDetail',showCreate:false})),1,'stack pages still own their physical home-indicator inset');
 });
 
-test('Activity leaves the bottom safe area to its parent tab layout',()=>{
+test('Activity consumes its native tab inset inside the list content',()=>{
  const source=parse('src/ActivityScreen.tsx');const attribute=find(source,node=>ts.isJsxAttribute(node)&&node.name.getText(source)==='ListFooterComponent') as ts.JsxAttribute;
  const expression=(attribute.initializer as ts.JsxExpression).expression!.getText(source);
  assert.equal(count(evaluate(expression,{footer:'Inbox',PaginationFooter:'PaginationFooter',paging:{},s:{message:{}}})),0);
+ const content=find(source,node=>ts.isJsxAttribute(node)&&node.name.getText(source)==='contentContainerStyle') as ts.JsxAttribute;
+ const style=evaluate((content.initializer as ts.JsxExpression).expression!.getText(source),{pageContentStyle:{paddingBottom:24},bottom:83});
+ assert.equal(Object.assign({},...style).paddingBottom,107,'the viewport stays full height while the last row clears native navigation');
 });
 
 test('bill list bottom spacing grows with the measured floating action',()=>{

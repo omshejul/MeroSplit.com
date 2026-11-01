@@ -90,7 +90,7 @@ test('native tab changes keep routes authoritative and never mount four account 
   });
   const props = { selected: 'Groups', busy: false, onSelect: (value: string) => selected.push(value), render: (value: string) => { rendered.push(value); return value; } };
   const tree = render(props); assert.equal(tree.type, 'NativeTabs'); assert.deepEqual(rendered, ['Groups']);
-  for(const screen of tree.children[0]){const provider=screen.children[0];assert.equal(provider?.type,'SafeAreaProvider','native tab owns its safe-area context from first mount');const boundary=provider.children[0];assert.equal(boundary.type,'SafeAreaView');assert.deepEqual(boundary.props.edges,['bottom']);assert.equal(boundary.props.style.flex,1);}
+  for(const screen of tree.children[0]){const provider=screen.children[0];assert.equal(provider?.type,'SafeAreaProvider','native tab owns its safe-area context from first mount');assert.equal(provider.children[0]?.type,screen.props.screenKey==='Groups'?'AnimatedView':undefined,'viewport stays full height inside the local provider');assert.equal(screen.props.ios.overrideScrollViewContentInsetAdjustmentBehavior,false,'manual clearance must not be doubled by automatic insets');}
   tree.props.onTabSelected({ nativeEvent: { provenance: 4, selectedScreenKey: 'Friends', actionOrigin: 'user' } });
   assert.deepEqual(selected, ['Friends']); assert.equal(refs.current, 4);
   tree.props.onTabSelected({ nativeEvent: { provenance: 5, selectedScreenKey: 'Activity', actionOrigin: 'programmatic-js' } });
