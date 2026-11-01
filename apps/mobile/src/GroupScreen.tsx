@@ -44,7 +44,6 @@ type Props = {
   pagingScope?: string; active?: boolean; online?: boolean; onRefresh?: () => void; refreshing?: boolean; onVisibleBills?: (ids: string[]) => void; onPrefetchBill?: (bill: BillRow) => void; onPrefetchPayment?: (payment: Settlement) => void;
   onExpense: (expense: BillRow) => void; onPayment: (payment: Settlement) => void; onSettle: (transfer?: Transfer) => void;
   onReverse: (settlement: Settlement) => void;
-  onRemind?: (transfer: Transfer) => Promise<void>;
 };
 export const position = (name: string, value: string) => BigInt(value) > 0n ? `${name} ${name === 'You' ? 'are' : 'is'} owed ${formatMoney(value)}` : BigInt(value) < 0n ? `${name} ${name === 'You' ? 'owe' : 'owes'} ${formatMoney((-BigInt(value)).toString())}` : `${name} ${name === 'You' ? 'are' : 'is'} settled up`;
 const displayDate = (value?: string | null) => {
@@ -67,10 +66,8 @@ function LegacyPayments({ group, selfId, accepted, busy, onPayment, onPrefetchPa
   </ScrollView>;
 }
 
-function PersonalTransferRow({ transfer, group, selfId, disabled, onSettle, onRemind, onExplain }: { transfer: Transfer; group: Group; selfId: string; disabled: boolean; onSettle: Props['onSettle']; onRemind?: Props['onRemind']; onExplain: (transfer: Transfer, restoreFocus: () => void) => void }) {
+function PersonalTransferRow({ transfer, group, selfId, disabled, onSettle, onExplain }: { transfer: Transfer; group: Group; selfId: string; disabled: boolean; onSettle: Props['onSettle']; onExplain: (transfer: Transfer, restoreFocus: () => void) => void }) {
   const { palette: colors, ui } = useUI();
-  const [reminding, setReminding] = useState(false);
-  useLoading(reminding);
   const row = useRef<React.ComponentRef<typeof View>>(null);
   const divider = useRowDivider();
   const outgoing = transfer.sender === selfId, counterpart = outgoing ? transfer.recipient : transfer.sender;
@@ -84,7 +81,6 @@ function PersonalTransferRow({ transfer, group, selfId, disabled, onSettle, onRe
     </PersonRow>
     <View style={s.transferActions}>
     <Button title={action} kind={canPay ? 'primary' : 'secondary'} icon={canPay ? 'pay' : 'payment'} compact accessibilityLabel={`${action} ${outgoing ? 'to' : 'from'} ${name}, ${formatMoney(transfer.amount)}`} disabled={disabled || !!removed} onPress={() => onSettle(transfer)} />
-    {!outgoing && person?.user_id != null && onRemind && <Button title="Remind" kind="secondary" icon="notifications" compact accessibilityLabel={`Remind ${name} about ${formatMoney(transfer.amount)}`} disabled={disabled || !!removed || reminding} onPress={() => { if (reminding) return; setReminding(true); void onRemind(transfer).catch(() => {}).finally(() => setReminding(false)); }} />}
     </View>
   </View>;
 }
@@ -170,7 +166,7 @@ function BillSearch({ value, onChange, onSearch, onClose, showSubmit, autoFocus 
   </View>;
 }
 
-export default function GroupScreen({ bottomClearance = 120, categoryIcons, header, noticeVisibility, group: incoming, accepted: incomingAccepted, previewError: incomingPreviewError = '', revision = 0, onUpdatesAvailable, pending, busy, selfId, pagingScope = incoming.id, active = true, online = true, onRefresh, refreshing = false, onVisibleBills, onPrefetchBill, onPrefetchPayment, onLoadBalanceGroup, onHistoryPage, onExpense, onPayment, onSettle, onRemind }: Props) {
+export default function GroupScreen({ bottomClearance = 120, categoryIcons, header, noticeVisibility, group: incoming, accepted: incomingAccepted, previewError: incomingPreviewError = '', revision = 0, onUpdatesAvailable, pending, busy, selfId, pagingScope = incoming.id, active = true, online = true, onRefresh, refreshing = false, onVisibleBills, onPrefetchBill, onPrefetchPayment, onLoadBalanceGroup, onHistoryPage, onExpense, onPayment, onSettle }: Props) {
   const { ui, motion, palette: colors } = useUI();
   // Background cache updates must not replace a page while someone is reading it.
   // Adopt both views together only for an explicit read or the user's saved changes.
@@ -270,7 +266,7 @@ export default function GroupScreen({ bottomClearance = 120, categoryIcons, head
         const title = outgoing ? 'You owe' : 'Owed to you';
         return <View key={title} role="region" accessibilityLabel={title} style={s.balanceSection}>
           <View style={s.balanceHeading}><SectionHeading style={s.balanceSectionTitle}>{title}</SectionHeading><Text style={[ui.caption, s.balanceTotal]}>{formatMoney(total)} in {rows.length} {rows.length === 1 ? 'transfer' : 'transfers'}</Text></View>
-          <RowGroup style={[s.balancePanel, { backgroundColor: colors.surface }]}>{rows.map(transfer => <PersonalTransferRow key={`${transfer.sender}:${transfer.recipient}`} transfer={transfer} group={group} selfId={selfId} disabled={busy || !!group.archived || pending.length > 0} onSettle={onSettle} onRemind={online ? onRemind : undefined} onExplain={(transfer, restoreFocus) => setExplanation({ group, accepted, commands: pending, selfId, transfer, restoreFocus, load: onLoadBalanceGroup })} />)}</RowGroup>
+          <RowGroup style={[s.balancePanel, { backgroundColor: colors.surface }]}>{rows.map(transfer => <PersonalTransferRow key={`${transfer.sender}:${transfer.recipient}`} transfer={transfer} group={group} selfId={selfId} disabled={busy || !!group.archived || pending.length > 0} onSettle={onSettle} onExplain={(transfer, restoreFocus) => setExplanation({ group, accepted, commands: pending, selfId, transfer, restoreFocus, load: onLoadBalanceGroup })} />)}</RowGroup>
         </View>;
       })}
     </View>}
