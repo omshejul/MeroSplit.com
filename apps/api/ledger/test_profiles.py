@@ -170,7 +170,7 @@ def test_new_membership_waits_for_profile_name_update(client, group, mailbox, jo
 
 
 @pytest.mark.django_db(transaction=True)
-def test_approval_retries_if_claim_appears_while_waiting_for_group_lock(client, group):
+def test_legacy_approval_retries_if_direct_join_finishes_while_waiting_for_group_lock(client, group):
     group_id, ids, _ = group
     invitation, token = invite(client, group_id, ids[1])
     member = account()
@@ -203,5 +203,5 @@ def test_approval_retries_if_claim_appears_while_waiting_for_group_lock(client, 
                 sleep(0.01)
             claim_invite(member.actor, token, {"command_id": uid()})
         assert future.result(timeout=5) == 409
-    assert Participant.objects.get(pk=ids[1]).user_id is None
+    assert Participant.objects.get(pk=ids[1]).user_id == member.actor.pk
     assert send(client, "post", f"/groups/{group_id}/invites/{invitation}/approve", {"command_id": uid()}).status_code == 200
