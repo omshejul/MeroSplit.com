@@ -66,7 +66,7 @@ def prepare(owner, recipient, group_id, ids):
     return attempt
 
 
-def test_guest_scope_requires_explicit_claim_approval_and_revocation(client, group):
+def test_shared_link_joins_directly_and_keeps_guest_scope_and_revocation(client, group):
     group_id, ids, _ = group
     relevant = expense(ids, payer=0, beneficiaries=[1], total="10000")
     private = expense(ids, payer=2, beneficiaries=[0, 2], total="7000")
@@ -92,15 +92,19 @@ def test_guest_scope_requires_explicit_claim_approval_and_revocation(client, gro
     assert send(member, "post", f"/invites/{token}/claim", claim).status_code == 200
     assert send(member, "post", f"/invites/{token}/claim", claim).status_code == 200
     assert send(stranger, "post", f"/invites/{token}/claim", {"command_id": uid()}).status_code == 409
-    assert send(member, "get", f"/groups/{group_id}").status_code == 404
+    assert send(member, "get", f"/groups/{group_id}").status_code == 200
     owner_invite = next(row for row in state(client, group_id)["invites"] if row["id"] == invitation)
     assert owner_invite["claimant_email"] == member.actor.email
     assert owner_invite["claimant_id"] == member.actor.pk
+    assert owner_invite["approved"]
+    assert not send(Client(), "get", f"/invites/{token}").json()["claim_pending"]
+    version = state(member, group_id)["version"]
+    assert send(member, "post", f"/invites/{token}/claim", {"command_id": uid()}).json()["version"] == version
     assert (
         send(
             member, "post", f"/groups/{group_id}/invites/{invitation}/approve", {"command_id": uid()}
         ).status_code
-        == 404
+        == 403
     )
     approval = {"command_id": uid()}
     assert (
@@ -110,6 +114,7 @@ def test_guest_scope_requires_explicit_claim_approval_and_revocation(client, gro
         send(client, "post", f"/groups/{group_id}/invites/{invitation}/approve", approval).status_code == 200
     )
     member_state = state(member, group_id)
+    assert member_state["version"] == version, "legacy approval does not duplicate membership"
     assert next(p for p in member_state["participants"] if p["id"] == ids[1])["user_id"] == member.actor.pk
     assert member_state["invites"] == []
     assert (

@@ -185,7 +185,7 @@ test('Member rows have one Invite action regardless of delivery state, with a se
   }
   assert.equal(opens, 3);
   group.invites = [{ id: 'claim', participant_id: person.id, approved: false, revoked: false, claimant_id: 2, claimant_email: 'noor@example.invalid' }];
-  assert.equal(button(app.render('MemberRow', { group, person, selfId: 'self', organizer: true, disabled: true }), 'Review').props.disabled, true);
+  assert.equal(button(app.render('MemberRow', { group, person, selfId: 'self', organizer: true, disabled: true }), 'Invite').props.disabled, true);
 });
 
 
@@ -792,4 +792,21 @@ test('Simplify is group-wide, available to active members and disabled only for 
   app.group.participants[0].removed=false; app.group.participants[0].user_id=null;
   assert.equal(component(app.render(),'Switch').props.disabled,true);
   app.unmount();
+});
+
+
+test('personal shared-link invitations have no approval step, including old pending claims', () => {
+  const app = production('PersonInviteDialog.tsx', { CloseDialogActions: 'CloseDialogActions' });
+  const invitation = { id: 'pending', participant_id: 'friend', claimant_id: 2, claimant_email: 'friend@example.invalid', approved: false, revoked: false };
+  let revoked = false;
+  const props = { person: { id: 'friend', name: 'Harshit' }, invites: [invitation], busy: false, canInvite: true,
+    canEditContact: false, canRename: true, canRemove: true, onRevoke: (value: unknown) => { assert.equal(value, invitation); revoked = true; } };
+  const tree = app.render('PersonInviteDialog', props);
+  assert.equal(component(tree, 'Dialog.Title').children[0], 'Invite Harshit');
+  assert.equal(button(tree, 'Approve request'), undefined);
+  assert.ok(nodes(tree).some(node => node.type === 'SettingsRow' && node.props.label === 'Share invite link'));
+  button(tree, 'Revoke invitation').props.onPress(); assert.equal(revoked, true);
+  const joined = app.render('PersonInviteDialog', { ...props, person: { ...props.person, user_id: 2 }, invites: [{ ...invitation, approved: true }] });
+  assert.equal(component(joined, 'Dialog.Title').children[0], 'Manage Harshit');
+  assert.equal(button(joined, 'Approve request'), undefined);
 });

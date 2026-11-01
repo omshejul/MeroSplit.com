@@ -323,7 +323,7 @@ Restore into a private local recovery space first. Validate hashes, schema, coun
 
 Local mode uses a local identity. Django/allauth owns shared accounts and sessions. The current source accepts exactly four-digit email codes and preserves existing allauth identities and sessions. Store only keyed challenge digests, enforce atomic attempts/expiry/single-use and shared email/network limits. Typed contact emails are metadata, never proof of identity or a reason to merge accounts. Live inbox and invitation acceptance remain release gates. Phone number is optional; do not require contacts permission or assume a phone number remains owned forever. Follow current Apple sign-in requirements if third-party login is offered.
 
-Guest placeholders and authenticated users are separate entities. A claim requires a valid invitation plus organizer/recipient approval as appropriate. Show outstanding allocations and history before linking. Preserve an audit event and allow administrative correction with consent. Names and VPAs are never identity credentials.
+Guest placeholders and authenticated users are separate entities. An authenticated recipient joins the exact participant immediately through a valid shared invitation. Email-bound invitations require the exact invited verified address. Show outstanding allocations and history before linking. Preserve an audit event and allow administrative correction with consent. Names and VPAs are never identity credentials.
 
 | Actor | Allowed access |
 |---|---|
@@ -407,7 +407,7 @@ The table covers the planned product. Create only entities needed by the current
 | User | Account identity, verification state, locale, timezone, account state; email is verified by code; no implicit account merges; no VPA in analytics |
 | Participant | Group ID, stable participant ID, optional linked user, display name, claim state |
 | Group | Currency, type, owner, state, settlement policy version, accepted sequence |
-| Membership/invitation | Role, scope, hashed token, expiry, revocation and claim approvals |
+| Membership/invitation | Role, scope, hashed token, expiry, revocation and direct invitation acceptance |
 | Expense/revision | Stable ID, total paise string, payer vector, allocation vector, date, category, revision and actor |
 | Ledger event/postings | Group sequence, event type, zero-sum signed participant deltas, source, reversal reference |
 | Settlement | Sender, receiver, amount, date, provenance, receiver acknowledgment and linked attempt |

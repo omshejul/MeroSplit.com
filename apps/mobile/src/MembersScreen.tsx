@@ -64,12 +64,11 @@ function MemberRow({ group, person, selfId, organizer, disabled, onInvite }: {
   onInvite: () => void;
 }) {
   const { ui } = useUI();
-  const request = (group.invites ?? []).some(invite => invite.participant_id === person.id && !invite.revoked && !invite.approved && invite.claimant_id != null && !invite.intended_email);
   const self = person.id === selfId, joined = person.user_id != null;
-  const status = person.user_id === group.owner_id ? 'Organizer' : joined ? 'Joined' : request ? 'Join request' : 'Not joined';
+  const status = person.user_id === group.owner_id ? 'Organizer' : joined ? 'Joined' : 'Not joined';
   const title = `${person.name}${self && person.name.toLowerCase() !== 'you' ? ' (you)' : ''}`;
   return <PersonRow name={person.name} title={title} photo={person.profile_photo} trailing={organizer && !self && (joined ? <IconAction name="more" label={`Manage ${person.name}`} disabled={disabled} onPress={onInvite} />
-      : <Button title={request ? 'Review' : 'Invite'} icon={request ? 'privacy' : 'mail'} compact accessibilityLabel={`${request ? 'Review invite for' : 'Invite'} ${person.name}`} disabled={disabled || !!group.archived} onPress={onInvite} />)}>
+      : <Button title="Invite" icon="mail" compact accessibilityLabel={`Invite ${person.name}`} disabled={disabled || !!group.archived} onPress={onInvite} />)}>
       {!!person.account_email && joined && !person.removed && <Text accessibilityLabel={person.account_email} style={ui.rowSub}>{person.account_email}</Text>}
       <Text style={ui.rowSub}>{status}</Text>
   </PersonRow>;
@@ -336,12 +335,8 @@ function MemberSettings({ group, selfId, busy, addPersonRequest = 0, onAction, o
       await Share.share({ message: `Join ${group.name} as ${link.name}: ${publicAppUrl(link.url)}` });
     });
   }
-  function approveInvite(invite: Invite) {
-    confirm(`Approve this account for ${name(invite.participant_id)}?`, `${invite.claimant_email}\nConfirm that this is the person you invited. They will be able to see and change this group's records.`,
-      () => void perform('invites', async () => { await onAction(`/invites/${invite.id}/approve`, {}); }, 'Account approved.'), 'Approve account');
-  }
   function revokeInvite(invite: Invite) {
-    confirm('Revoke this invitation?', `This link will stop opening ${group.name}. An already approved account will keep its group membership.`,
+    confirm('Revoke this invitation?', `This link will stop opening ${group.name}. Someone who has already joined will keep their group membership.`,
       () => void perform('invites', async () => { await onAction(`/invites/${invite.id}/revoke`, {}); if (inviteLink?.participantId === invite.participant_id) setInviteLink(null); }, 'Invitation revoked.'), 'Revoke invitation');
   }
 
@@ -368,7 +363,7 @@ function MemberSettings({ group, selfId, busy, addPersonRequest = 0, onAction, o
         else setInvitePerson(managedPerson);
       }} onContact={() => setContactOpen(true)} onShare={() => void sharePersonInvite()}
       onRename={() => { if (managedPerson) editName(managedPerson); }} onRemove={removeManagedPerson}
-      onApprove={approveInvite} onRevoke={revokeInvite} />
+      onRevoke={revokeInvite} />
     {directPerson && <KeyboardDialog visible={contactOpen} dismissable={!disabled} onDismiss={() => { if (!disabled) setContactOpen(false); }}>
       <Dialog.Title icon="mail">Contact email</Dialog.Title><DialogScrollBody maxHeight={280} gap={12}>
       <Field label="Email (optional)" value={email} onChange={value => { setContactEmail(value); setFeedback(null); }} disabled={disabled || !!group.archived} keyboardType="email-address" maxLength={254} />

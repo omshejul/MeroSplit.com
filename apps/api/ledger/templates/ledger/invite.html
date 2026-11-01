@@ -37,8 +37,8 @@ details { margin-top: .75rem; } summary { cursor: pointer; } #actions { display:
 <label>Password<input id="password" type="password" autocomplete="current-password" required></label>
 <button id="login-submit" class="primary" type="submit">Sign in to join</button><button id="signup" class="link" type="button">Create account</button></form>
 {% else %}
-<p id="join-state" class="muted">{% if data.approved %}This person has joined.{% elif data.claim_pending %}Waiting for the organizer to approve the request.{% else %}The organizer will approve the account you use.{% endif %}</p>
-{% if not data.approved and not data.claim_pending %}<button id="claim" class="primary" type="button">Request to join</button>{% endif %}
+<p id="join-state" class="muted">{% if data.approved %}This person has joined.{% else %}Use this link to join the group.{% endif %}</p>
+{% if not data.approved %}<button id="claim" class="primary" type="button">Join group</button>{% endif %}
 {% endif %}
 <p id="status" role="status" aria-live="polite"></p>
 </section>
@@ -105,11 +105,6 @@ async function memberActions() {
   const member=group.participants.find(person=>person.id===data.participant.id), own=member?.user_id===viewerId&&!member.removed;
   document.getElementById('join-title').textContent=own?`Joined as ${member.name}`:'Group membership';
   document.getElementById('join-state').textContent=own?'Your account is linked to this person.':'You already belong to this group.';
-  if(group.owner_id===viewerId)for(const invitation of group.invites||[]){
-    if(invitation.participant_id!==data.participant.id||invitation.revoked||invitation.approved||!invitation.claimant_id||new Date(invitation.expires_at)<=new Date())continue;
-    button(`Approve ${invitation.claimant_email} as ${member.name}`,async()=>{if(!confirm(`Let ${invitation.claimant_email} join as ${member.name}? Email addresses are not verified. This account will have access to the group.`))return false;await call('/api/v1/groups/'+group.id+'/invites/'+invitation.id+'/approve','POST',command());});
-    button('Decline request',()=>call('/api/v1/groups/'+group.id+'/invites/'+invitation.id+'/revoke','POST',command()));
-  }
   const opening=group.opening_balance;
   if(opening){
     const list=document.createElement('ul');for(const person of group.participants){const row=document.createElement('li');row.textContent=position(person.name,opening.balances[person.id]||'0');list.appendChild(row);}document.getElementById('opening-people')?.appendChild(list);
