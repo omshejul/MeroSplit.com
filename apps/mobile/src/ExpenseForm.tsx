@@ -80,7 +80,7 @@ function SelectionButton({ participants, selected, disabled, label, onChange }: 
   const selectable = participants.filter(person => !person.removed).map(person => person.id);
   const all = selectable.length > 0 && selectable.every(id => selected.includes(id));
   const title = all ? 'Clear All' : 'Select All';
-  return <Button title={title} accessibilityLabel={`${title} ${label}`} kind="text" compact disabled={disabled || !selectable.length} style={{ alignSelf: 'flex-end' }} onPress={() => {
+  return <Button title={title} accessibilityLabel={`${title} ${label}`} kind="outlined" compact disabled={disabled || !selectable.length} style={{ alignSelf: 'flex-end' }} onPress={() => {
     if (disabled) return;
     const locked = selected.filter(id => participants.some(person => person.id === id && person.removed));
     onChange([...locked, ...(all ? [] : selectable)]);
