@@ -1,3 +1,4 @@
+import { tapHaptic } from './haptics';
 import Briefcase01Icon from '@hugeicons/core-free-icons/Briefcase01Icon';
 import ShoppingBasket03Icon from '@hugeicons/core-free-icons/ShoppingBasket03Icon';
 import TrashIcon from '@hugeicons/core-free-icons/TrashIcon';
@@ -190,7 +191,7 @@ export const Button = React.forwardRef<React.ComponentRef<typeof View>, ButtonPr
   icon ??= ({ Done: 'check', Close: 'close', Cancel: 'close', Save: 'check', Refresh: 'refresh', Retry: 'refresh' } as Record<string, IconName>)[title ?? ''];
   const glyph = typeof icon === 'function' ? icon({ size, color }) : icon ? <Icon name={icon} size={size} color={color} /> : null;
   return <Pressable {...props} ref={ref} disabled={disabled} accessibilityRole={accessibilityRole}
-    onPress={event => { if (!disabled) props.onPress?.(event); }}
+    onPress={event => { if (!disabled && props.onPress) { tapHaptic(); props.onPress(event); } }}
     accessibilityLabel={accessibilityLabel ?? title} accessibilityState={{ ...accessibilityState, disabled }}
     onPressIn={event => { feedback.onPressIn(); props.onPressIn?.(event); }} onPressOut={event => { feedback.onPressOut(); props.onPressOut?.(event); }}
     onPointerDown={event => { if (Platform.OS === 'web') setFocused(false); props.onPointerDown?.(event); }}

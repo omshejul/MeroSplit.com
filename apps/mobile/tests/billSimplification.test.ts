@@ -1007,7 +1007,7 @@ test('Shared Button forwards Paper dialog spacing without changing disabled or p
   const source = ts.createSourceFile('ui.tsx', readFileSync(new URL('../src/ui.tsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   const declaration = source.statements.find(node => ts.isVariableStatement(node) && node.declarationList.declarations.some(value => value.name.getText(source) === 'Button'))!;
   const code = ts.transpile(declaration.getText(source).replace(/^export /, ''), { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React });
-  const env = { animateLayout() {}, React: { ...React, forwardRef: (render: any) => render }, useState: () => [false, () => {}], View: 'View', Text: 'Text', Pressable: 'Pressable', useUI: () => ({ palette: {}, ui: {} }), usePressFeedback: () => ({ pressedStyle: {} }), PaperButton: 'PaperButton', Icon: 'Icon', radii: { button: 8 }, Platform: { OS: 'ios' } };
+  const env = { tapHaptic() {}, animateLayout() {}, React: { ...React, forwardRef: (render: any) => render }, useState: () => [false, () => {}], View: 'View', Text: 'Text', Pressable: 'Pressable', useUI: () => ({ palette: {}, ui: {} }), usePressFeedback: () => ({ pressedStyle: {} }), PaperButton: 'PaperButton', Icon: 'Icon', radii: { button: 8 }, Platform: { OS: 'ios' } };
   const Button = new Function('env', `with(env){ const StaggerItem = 'StaggerItem';${code};return Button;}`)(withSharedUI(env));
   const injected = [{ marginRight: 8 }], onPress = () => {};
   for (const disabled of [false, true]) {
@@ -1361,7 +1361,7 @@ test('sheet triggers and share controls do not start an implicit global layout t
   const declaration=source.statements.find(node=>ts.isVariableStatement(node)&&node.declarationList.declarations.some(value=>value.name.getText(source)==='Button'))!;
   const code=ts.transpile(declaration.getText(source).replace(/^export /,''),{target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.React});
   let animations=0,presses=0;
-  const env={React:{...React,forwardRef:(render:any)=>render},useState:()=>[false,()=>{}],View:'View',Text:'Text',Pressable:'Pressable',Icon:'Icon',Platform:{OS:'ios'},
+  const env={tapHaptic(){},React:{...React,forwardRef:(render:any)=>render},useState:()=>[false,()=>{}],View:'View',Text:'Text',Pressable:'Pressable',Icon:'Icon',Platform:{OS:'ios'},
     useUI:()=>({palette:{},ui:{},motion:{enabled:true,active:true}}),usePressFeedback:()=>({}),animateLayout:()=>animations++};
   const Button=new Function('env',`with(env){${code};return Button;}`)(env);
   for(const title of ['Split between','Clear All','Increase shares for Anishk']) {
