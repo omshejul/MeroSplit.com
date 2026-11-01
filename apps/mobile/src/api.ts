@@ -17,8 +17,8 @@ export class ApiError extends Error {
 export function accountOwner(session: Session): string { return `${session.baseUrl}|${session.userId}`; }
 
 export function expensePayload(expense: Expense, updating = false): Record<string, unknown> {
-  const { id, description, total, paid, split, date, category, category_auto, notes } = expense;
-  return { id, description, total, paid, split, date, category, notes, ...(typeof category_auto === 'boolean' ? { category_auto } : {}), ...(updating ? { version: expense.version } : {}) };
+  const { id, description, total, paid, split, date, time, category, category_auto, notes } = expense;
+  return { id, description, total, paid, split, date, ...(time !== undefined ? { time } : {}), category, notes, ...(typeof category_auto === 'boolean' ? { category_auto } : {}), ...(updating ? { version: expense.version } : {}) };
 }
 
 export function cachedRead<T>(session: Session, path: string): T | undefined { return readPrefetch.peek<T>(readScope(session), path); }

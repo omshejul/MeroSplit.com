@@ -1,6 +1,6 @@
 import hashlib
 import json
-from datetime import date
+from datetime import date, time
 
 from django.db import transaction
 from django.db.models import Q
@@ -105,6 +105,7 @@ def expense_dict(expense):
         "shares": expense.shares,
         "split": expense.split,
         "date": expense.date.isoformat(),
+        "time": expense.time.strftime("%H:%M") if expense.time else None,
         "created_at": expense.created_at.isoformat(timespec="microseconds"),
         "category": expense.category,
         "category_auto": expense.category_auto,
@@ -376,6 +377,8 @@ def save_expense(actor, group_id, payload, expense_id=None, *, category_supplied
     fields.update(
         total=int(payload["total"]), paid=paid, shares=shares, date=date.fromisoformat(payload["date"])
     )
+    if "time" in payload:
+        fields["time"] = time.fromisoformat(payload["time"]) if payload["time"] else None
     before = None
     if expense_id:
         expense = group.expenses.filter(id=expense_id).first()

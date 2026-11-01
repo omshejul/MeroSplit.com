@@ -24,7 +24,7 @@ import { getDatabase } from './native';
 
 export type ExpenseFormDraft = {
   schemaVersion: 1; groupId: string; expenseId: string | null; id: string; expenseVersion: number;
-  description: string; amount: string; date: string; notes: string;
+  description: string; amount: string; date: string; time?: string | null; notes: string;
   payerIds: string[]; payerAmounts: Record<string, string>; mode: Split['mode'];
   attachment?: PendingMediaUpload; participantIds: string[]; splitValues: Record<string, string>;
 };
@@ -51,7 +51,7 @@ function startingDraft(group: Group, expense: Expense | undefined, selfId: strin
   const payer = activeIds.includes(selfId) ? selfId : activeIds[0];
   return {
     schemaVersion: 1, groupId: group.id, expenseId: expense?.id ?? null, id: expense?.id ?? Crypto.randomUUID(), expenseVersion: expense?.version ?? 0,
-    description: expense?.description ?? '', amount: expense ? rupees(expense.total) : '', date: expense?.date ?? today(), notes: expense?.notes ?? '',
+    description: expense?.description ?? '', amount: expense ? rupees(expense.total) : '', date: expense?.date ?? today(), time: expense ? expense.time : null, notes: expense?.notes ?? '',
     payerIds: expense ? ids.filter(id => integer(expense.paid[id] ?? '0') > 0n) : payer ? [payer] : [],
     payerAmounts: expense ? Object.fromEntries(ids.map(id => [id, rupees(expense.paid[id] ?? '0')])) : {},
     mode: expense?.split.mode ?? 'equal', participantIds: expense ? Object.keys(expense.split.values) : activeIds,
@@ -201,7 +201,7 @@ export default function ExpenseForm({ group, expense, selfId, busy, onSave, owne
       }
       lock.current = true; setSaving(true);
       pendingSave.current = Promise.resolve().then(() => onSave({ id: draft.id, version: draft.expenseVersion, description: draft.description.trim(), total, ...vectors, split,
-        date: draft.date, notes: draft.notes, category: expense?.category ?? 'general', category_auto: expense?.category_auto ?? ['', 'general', 'other'].includes((expense?.category ?? '').trim().toLowerCase()), deleted: false }, draft.attachment, () => { handedOff.current = true; void store.write(null).catch(() => {}); }));
+        date: draft.date, ...(draft.time !== undefined ? {time: draft.time} : {}), notes: draft.notes, category: expense?.category ?? 'general', category_auto: expense?.category_auto ?? ['', 'general', 'other'].includes((expense?.category ?? '').trim().toLowerCase()), deleted: false }, draft.attachment, () => { handedOff.current = true; void store.write(null).catch(() => {}); }));
       await pendingSave.current;
       handedOff.current = true;
       await store.write(null);
@@ -242,7 +242,7 @@ export default function ExpenseForm({ group, expense, selfId, busy, onSave, owne
       <SplitFields participants={group.participants} draft={draft} disabled={disabled} preserveRemoved={!!acceptedExpense}
         label={label} onChange={change} status={splitStatus} />
     </BillPeople>
-    <DateField label="Date" value={draft.date} onChange={date => change({ date })} disabled={disabled} />
+    <DateField label="Date" value={draft.date} time={draft.time} onChange={(date, time) => change({ date, time })} disabled={disabled} />
     <TextField autoCorrect={false} label="Notes (optional)" value={draft.notes} onChangeText={notes => change({ notes })} multiline style={styles.notes} maxLength={2000} editable={!disabled} />
     {!expense && <DraftAttachment value={draft.attachment} path={`/groups/${group.id}/expenses/${draft.id}/attachments`} disabled={disabled || !!group.archived} onChange={async attachment => { await change({ attachment }); }} onBusy={setFileBusy} onError={setError} />}
     {!!error && <ErrorText live>{error}</ErrorText>}

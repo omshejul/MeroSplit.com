@@ -66,6 +66,7 @@ def csv_export(export):
             "net_paise",
             "provenance",
             "reversed_or_deleted",
+            "time",
         ]
     )
 
@@ -89,6 +90,7 @@ def csv_export(export):
                     net,
                     "recorded_expense",
                     expense["deleted"],
+                    expense.get("time") or "",
                 ]
             )
     for payment in group["settlements"]:
@@ -106,6 +108,7 @@ def csv_export(export):
                     net,
                     payment["method"],
                     payment["reversed"],
+                    "",
                 ]
             )
     opening = group["opening_balance"]
@@ -123,6 +126,7 @@ def csv_export(export):
                     amount,
                     "acknowledged_opening",
                     False,
+                    "",
                 ]
             )
     return stream.getvalue()

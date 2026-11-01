@@ -269,7 +269,7 @@ def transaction_page(actor, group, limit=50, cursor=None, q=""):
     for key in keys:
         if key["kind_order"] == 0:
             bill = expense_dict(bills[key["id"]])
-            items.append({"kind": "bill", "date": bill["date"], "bill": {field: bill[field] for field in ("id", "version", "description", "total", "paid", "shares", "date", "created_at", "category", "category_auto", "deleted", "added_by")}})
+            items.append({"kind": "bill", "date": bill["date"], "bill": {field: bill[field] for field in ("id", "version", "description", "total", "paid", "shares", "date", "time", "created_at", "category", "category_auto", "deleted", "added_by")}})
         else:
             payment = settlement_dict(payments[key["id"]])
             items.append({"kind": "payment", "date": payment["date"], "payment": payment})

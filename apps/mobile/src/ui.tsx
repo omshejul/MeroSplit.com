@@ -36,9 +36,7 @@ import { useSavedChoice } from './savedChoice';
 import { initialBrowserAppearance, initialBrowserColorFamily, syncBrowserTheme } from './browserTheme';
 import { useFonts } from 'expo-font';
 import { appFontFamily, appFontFaces } from './typography';
-import FieldLabel from './FieldLabel';
 import { useWebInteractions } from './useWebInteractions';
-import DateTimePicker from '@react-native-community/datetimepicker';
 import { HugeiconsIcon } from '@hugeicons/react-native';
 import Cancel01Icon from '@hugeicons/core-free-icons/Cancel01Icon';
 import MoreVerticalIcon from '@hugeicons/core-free-icons/MoreVerticalIcon';
@@ -60,7 +58,6 @@ import UserGroupIcon from '@hugeicons/core-free-icons/UserGroupIcon';
 import UserMultipleIcon from '@hugeicons/core-free-icons/UserMultipleIcon';
 import Wallet01Icon from '@hugeicons/core-free-icons/Wallet01Icon';
 import MoneyExchange03Icon from '@hugeicons/core-free-icons/MoneyExchange03Icon';
-import Calendar03Icon from '@hugeicons/core-free-icons/Calendar03Icon';
 import WifiDisconnected01Icon from '@hugeicons/core-free-icons/WifiDisconnected01Icon';
 import Refresh01Icon from '@hugeicons/core-free-icons/Refresh01Icon';
 import Delete02Icon from '@hugeicons/core-free-icons/Delete02Icon';
@@ -229,19 +226,7 @@ export function SettingsRow({ icon, label, value, description, disabled = false,
     {chevron && <Icon name={external ? 'external' : 'next'} size={16} color={palette.muted} />}
   </Button>;
 }
-const dateText = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-export function DateField({ label, value, onChange, disabled = false }: { label: string; value: string; onChange: (value: string) => void; disabled?: boolean }) {
-  const { palette: colors, ui, dark } = useUI();
-  const [open, setOpen] = useState(false);
-  const fieldID = React.useId();
-  const parsed = new Date(`${value}T12:00:00`), valid = !Number.isNaN(parsed.getTime()) && dateText(parsed) === value;
-  if (Platform.OS === 'web') return <View style={{ gap: 4 }}><FieldLabel nativeID={fieldID} style={ui.label}>{label}</FieldLabel>{React.createElement('input', { id: fieldID, type: 'date', 'aria-label': label, value, disabled, onChange: (event: React.ChangeEvent<HTMLInputElement>) => onChange(event.target.value), style: { minHeight: 44, padding: '0 12px', borderRadius: radii.control, border: `1px solid ${colors.outline}`, backgroundColor: colors.surface, color: colors.text, fontFamily: ui.input.fontFamily ?? 'inherit', fontSize: 17, colorScheme: dark ? 'dark' : 'light' } })}</View>;
-  return <View style={{ gap: 8 }}><Text style={ui.label}>{label}</Text>
-    <Button kind="outlined" accessibilityLabel={`${label}: ${value || 'Choose date'}`} disabled={disabled} onPress={() => setOpen(true)} icon={({ color, size }) => <HugeiconsIcon icon={Calendar03Icon} color={color} size={size} />} title={valid ? parsed.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Choose date'} style={{ minHeight: 44, borderRadius: radii.control }} />
-    {open && !disabled && <><DateTimePicker disabled={disabled} value={valid ? parsed : new Date()} mode="date" accentColor={colors.accent} themeVariant={dark ? 'dark' : 'light'} display={Platform.OS === 'ios' ? 'inline' : 'default'} onChange={(event, date) => { if (disabled) return; if (Platform.OS !== 'ios') setOpen(false); if (event.type === 'set' && date) onChange(dateText(date)); }} />
-      {Platform.OS === 'ios' && <Button title="Close calendar" kind="text" onPress={() => setOpen(false)} />}</>}
-  </View>;
-}
+export { default as DateField } from './DateField';
 export function Avatar({ name, photo, size = 36 }: { name: string; photo?: ProfilePhoto | null; size?: number }) {
   const { ui, palette } = useUI();
   return <PersonAvatar size={size} photo={photo} backgroundColor={palette.soft}><Text style={ui.initials}>{name.trim().split(/\s+/).map(word => word[0]).join('').slice(0, 2).toUpperCase()}</Text></PersonAvatar>;

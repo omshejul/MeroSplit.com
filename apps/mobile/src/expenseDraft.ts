@@ -14,6 +14,7 @@ export function expenseDraftStore(owner: string, groupId: string, expenseId: str
       if (saved.schemaVersion !== 1 || saved.groupId !== groupId || saved.expenseId !== expenseId ||
           typeof saved.id !== 'string' || !saved.id || typeof saved.expenseVersion !== 'number' ||
           !['description', 'amount', 'date', 'notes'].every(field => typeof saved[field as keyof ExpenseFormDraft] === 'string') ||
+          saved.time != null && (typeof saved.time !== 'string' || !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(saved.time)) ||
           !['equal', 'exact', 'percent', 'shares'].includes(saved.mode) ||
           ![saved.payerIds, saved.participantIds].every(ids => Array.isArray(ids) && ids.every(id => typeof id === 'string')) ||
           ![saved.payerAmounts, saved.splitValues].every(values => values && typeof values === 'object' && !Array.isArray(values) && Object.values(values).every(value => typeof value === 'string')) ||

@@ -89,6 +89,7 @@ class ExpenseIn(Command):
     paid: dict[str, StrictStr]
     split: Split
     date: Date
+    time: Annotated[StrictStr, Field(pattern=r"^(?:[01][0-9]|2[0-3]):[0-5][0-9]$")] | None = None
     category: Annotated[str, Field(max_length=40)] = "other"
     category_auto: bool | None = None
     notes: Annotated[str, Field(max_length=2000)] = ""

@@ -11,7 +11,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   const notify = useCallback((message: string) => setToast(previous => ({ id: (previous?.id ?? 0) + 1, message })), []);
   return <ToastContext.Provider value={notify}>{children}<Portal>
     {toast && <Snackbar key={toast.id} visible duration={2800} onDismiss={() => setToast(null)}
-      wrapperStyle={{ bottom: bottom + 12, left: 12, right: 12 }}
-      style={{ borderRadius: 8, maxWidth: 520, alignSelf: 'center' }} accessibilityLiveRegion="polite">{toast.message}</Snackbar>}
+      wrapperStyle={{ bottom: bottom + 12, left: 12, right: 12, width: 'auto' }}
+      style={{ borderRadius: 8, width: '100%', maxWidth: 520, marginHorizontal: 0, alignSelf: 'center' }} accessibilityLiveRegion="polite">{toast.message}</Snackbar>}
   </Portal></ToastContext.Provider>;
 }

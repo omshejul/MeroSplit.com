@@ -5,8 +5,8 @@ export type ExpenseVersion = { id: string; sequence: number; created_at: string;
 export type ExpenseHistoryPage = { group_id: string; expense_id: string; items: ExpenseVersion[]; next_before: number | null; legacy_gap: boolean; version: number };
 const object = (value: unknown): Record<string, any> => value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, any> : {};
 const modes: Record<string, string> = { equal: 'Equal split', exact: 'Custom amounts', percent: 'By percentage', shares: 'By shares' };
-export const historyLabels: Record<string, string> = { description: 'Name', total: 'Amount', paid: 'Paid by', split: 'Split', date: 'Date', category: 'Category', notes: 'Note', deleted: 'Record' };
-export const historyActions: Record<string, string> = { description: 'renamed the expense', total: 'changed the amount', paid: 'changed who paid', split: 'changed the split', date: 'changed the date', category: 'changed the category', notes: 'changed the note', deleted: 'reversed the bill record' };
+export const historyLabels: Record<string, string> = { description: 'Name', total: 'Amount', paid: 'Paid by', split: 'Split', date: 'Date', time: 'Time', category: 'Category', notes: 'Note', deleted: 'Record' };
+export const historyActions: Record<string, string> = { description: 'renamed the expense', total: 'changed the amount', paid: 'changed who paid', split: 'changed the split', date: 'changed the date', time: 'changed the time', category: 'changed the category', notes: 'changed the note', deleted: 'reversed the bill record' };
 
 export function historyValue(field: string, value: unknown, names: Record<string, string>, currency: string) {
   if (value === null || value === undefined) return 'Not recorded';
