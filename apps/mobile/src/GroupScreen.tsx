@@ -83,8 +83,8 @@ function PersonalTransferRow({ transfer, group, selfId, disabled, onSettle, onRe
       <Text style={[ui.rowSub, s.logCaption]}>{outgoing ? 'You owe' : 'Owes you'}{removed ? ' · Removed' : ''}</Text>
     </PersonRow>
     <View style={s.transferActions}>
-    <Button title={action} kind={canPay ? 'primary' : 'secondary'} compact accessibilityLabel={`${action} ${outgoing ? 'to' : 'from'} ${name}, ${formatMoney(transfer.amount)}`} disabled={disabled || !!removed} onPress={() => onSettle(transfer)} />
-    {!outgoing && person?.user_id != null && onRemind && <Button title="Remind" kind="secondary" compact accessibilityLabel={`Remind ${name} about ${formatMoney(transfer.amount)}`} disabled={disabled || !!removed || reminding} onPress={() => { if (reminding) return; setReminding(true); void onRemind(transfer).catch(() => {}).finally(() => setReminding(false)); }} />}
+    <Button title={action} kind={canPay ? 'primary' : 'secondary'} icon={canPay ? 'pay' : 'payment'} compact accessibilityLabel={`${action} ${outgoing ? 'to' : 'from'} ${name}, ${formatMoney(transfer.amount)}`} disabled={disabled || !!removed} onPress={() => onSettle(transfer)} />
+    {!outgoing && person?.user_id != null && onRemind && <Button title="Remind" kind="secondary" icon="notifications" compact accessibilityLabel={`Remind ${name} about ${formatMoney(transfer.amount)}`} disabled={disabled || !!removed || reminding} onPress={() => { if (reminding) return; setReminding(true); void onRemind(transfer).catch(() => {}).finally(() => setReminding(false)); }} />}
     </View>
   </View>;
 }
