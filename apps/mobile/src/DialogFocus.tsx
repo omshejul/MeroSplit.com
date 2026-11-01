@@ -9,17 +9,21 @@ const visibleDialogs = new Set<object>();
 const dialogListeners = new Set<() => void>();
 export function hasOpenDialogs() { return visibleDialogs.size > 0; }
 export function subscribeDialogs(listener: () => void) { dialogListeners.add(listener); return () => { dialogListeners.delete(listener); }; }
+// Share restart safety with primitives that already own browser focus.
+export function useDialogRegistration(active: boolean, modal = true) {
+  useLayoutEffect(() => {
+    if (!active || !modal) return;
+    const dialog = {}; visibleDialogs.add(dialog); dialogListeners.forEach(listener => listener());
+    return () => { visibleDialogs.delete(dialog); dialogListeners.forEach(listener => listener()); };
+  }, [active, modal]);
+}
 export default function DialogFocus({ active = true, busy = false, onEscape, children, style, label, modal = true }: {
   modal?: boolean; label?: string; active?: boolean; busy?: boolean; onEscape?: () => void; children: React.ReactNode; style?: StyleProp<ViewStyle>;
 }) {
   const body = useRef<React.ComponentRef<typeof View>>(null), actions = useRef({ busy, onEscape });
   actions.current = { busy, onEscape };
   useDialogMotion(body, active);
-  useLayoutEffect(() => {
-    if (!active || !modal) return;
-    const dialog = {}; visibleDialogs.add(dialog); dialogListeners.forEach(listener => listener());
-    return () => { visibleDialogs.delete(dialog); dialogListeners.forEach(listener => listener()); };
-  }, [active, modal]);
+  useDialogRegistration(active, modal);
   useEffect(() => {
     if (Platform.OS !== 'web' || !active) return;
     let root: HTMLElement | null = null;

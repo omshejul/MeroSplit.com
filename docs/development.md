@@ -49,3 +49,9 @@ Use `TextField` and its variants for forms, or `KeyboardInput` for custom inputs
 Device requests expire after ten minutes. Store only hashes of the device secret and user code. Bind approval to the browser session and displayed account. Deliver a PKCE authorization code once, under a database lock. Preserve state, exact redirect, resource and existing disconnect behavior. Keep secrets and callback URLs out of terminal output and HTTP logs. The public setup page has current remote installation commands.
 
 Run `apps/api/.venv/bin/python -m pytest apps/api/ledger/test_mcp_device.py apps/api/ledger/test_mcp_remote_login.py apps/api/ledger/test_mcp_oauth.py -q` against a disposable PostgreSQL database. For interactive QA, run the helper against a local test server and approve in a separate phone-sized browser. Confirm the phone never leaves the device/consent pages and the CLI reports saved login. Use synthetic accounts only.
+
+## Web sheets and typography
+
+`BottomSheet.web.tsx` uses the [shadcn Base UI Drawer composition](https://ui.shadcn.com/docs/components/base/drawer) with `@base-ui/react` 1.9.0, MIT licensed. The web sheet snaps between 65% and full available height, with swipe dismissal, a fixed header and scrollable content. Arrow keys on the resize handle provide the same resizing action. Base UI owns browser focus, gestures and keyboard-aware scrolling; the shared dialog registration still prevents application restarts during a sheet. Native sheets retain their existing presentation.
+
+HTML field labels and radio labels use the shared typography token, including its sans-serif fallback before custom fonts load. `tests/web/SheetGallery.tsx` provides a synthetic expense form for browser checks without a real account.
