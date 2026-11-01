@@ -645,7 +645,7 @@ test('statement polling stops when hidden/unmounted and makes no native backgrou
 test('shared radio keeps Paper on native and a labelled standard input on web', () => {
   let choices = 0;
   const props = { label: 'Weekly', value: 'weekly', group: 'statement-frequency', selected: true, disabled: false, onPress: () => choices++ };
-  const web = harness('src/RadioChoice.web.tsx', 'RadioChoice', { useUI: () => ({ palette: {} }) }).render(props);
+  const web = harness('src/RadioChoice.web.tsx', 'RadioChoice', { appFontFamily: '"Stack Sans Text", system-ui, sans-serif', useUI: () => ({ palette: {} }) }).render(props);
   const input = nodes(web).find(node => node.type === 'input')!;
   assert.equal(web.type, 'label'); assert.equal(input.props.type, 'radio'); assert.equal(input.props.checked, true); assert.equal(input.props.name, props.group);
   input.props.onChange(); assert.equal(choices, 1);
