@@ -16,7 +16,7 @@ import { enqueueExpenseWithMedia, pendingMediaUpload, saveMediaUpload } from '..
 import { sqliteAdapter } from './sqlite.ts';
 import ts from 'typescript';
 import * as members from '../src/members.ts';
-import { formatMoney, integer, rupeesToPaise, validateExpense } from '../src/accounting.ts';
+import { adjustmentToPaise, formatMoney, integer, rupeesToPaise, validateExpense } from '../src/accounting.ts';
 import { isPersonalPayment } from '../src/personalBalances.ts';
 import { validUPIAddress } from '../src/upi.ts';
 import { paymentReturnNeedsConfirmation } from '../src/paymentReturn.ts';
@@ -26,12 +26,13 @@ const React = { createElement: (type: any, props: any, ...children: any[]): Elem
 const Dialog = Object.assign(() => {}, { Title: 'Title', Content: 'Content', Actions: 'Actions' });
 const nodes = (value: any): Element[] => Array.isArray(value) ? value.flatMap(nodes) : value && typeof value === 'object' && 'children' in value ? [value, ...value.children.flatMap(nodes)] : [];
 const find = (tree: any, prop: string, value: string) => nodes(tree).find(node => node.props[prop] === value)!;
+const payerContent = (tree: any) => { const child = find(tree, 'title', 'Who paid?').children[0]; return typeof child === 'function' ? child(() => {}) : child; };
 const tick = async () => { for (let i = 0; i < 15; i++) await Promise.resolve(); };
 function harness(file: string, name: string, extra: Record<string, any> = {}) {
   let cursor = 0, states: any[] = [], effects: (() => void)[] = [], cleanups: Record<number, () => void> = {};
   const deps: Record<number, any[]> = {};
   const draftDiscard = { current: null as null | (() => Promise<boolean>) };
-  const env: Record<string, any> = { animateLayout() {}, PeopleSheet: 'PeopleSheet', currencySymbol, cachedRead: () => undefined, rememberRead() {}, invalidateRead() {}, getDatabase: async () => ({}), draftDiscard, ScreenDraftDiscard: {}, useContext: () => draftDiscard, expenseDraftStore: () => ({ read: () => ({ then: (done: (value: null) => void) => { done(null); return { catch() {} }; } }), write: async () => {} }), React, Dialog, PersonInviteDialog: 'PersonInviteDialog', useToast: () => () => {}, DetailDialog: 'DetailDialog', useScreenRemovalLock() {}, validUPIAddress, View: 'View', ScrollView: 'ScrollView', KeyboardDialog: 'KeyboardDialog', BottomSheet: 'BottomSheet', Pressable: 'Pressable', Text: 'Text', LoadingSpinner: 'LoadingSpinner', NotificationSwitch: 'NotificationSwitch', PushSettings: 'PushSettings', BalanceStatements: 'BalanceStatements', DialogScrollBody: 'DialogScrollBody', Form: 'Form', SectionHeading: 'SectionHeading', Button: 'Button', Icon: 'Icon', SettingsRow: 'SettingsRow', BillPeople: 'BillPeople', DraftAttachment: 'DraftAttachment', LocalAttachment: 'LocalAttachment', AmountField: 'AmountField', TextField: 'TextField', DateField: 'DateField', ErrorText: 'ErrorText', Checkbox: { Item: 'Checkbox' }, RadioChoice: 'RadioChoice', Crypto: { randomUUID: () => 'bill-id' }, StyleSheet: { create: (value: any) => value }, Keyboard: { dismiss() {} }, useWindowDimensions: () => ({ height: 667 }), useSafeAreaInsets: () => ({ top: 20, bottom: 0 }), Platform: { OS: 'native' }, requestAnimationFrame: (fn: () => void) => fn(), useUI: () => ({ ui: {} }), formatMoney, integer, rupeesToPaise, validateExpense, ...extra,
+  const env: Record<string, any> = { animateLayout() {}, PeopleSheet: 'PeopleSheet', currencySymbol, cachedRead: () => undefined, rememberRead() {}, invalidateRead() {}, getDatabase: async () => ({}), draftDiscard, ScreenDraftDiscard: {}, useContext: () => draftDiscard, expenseDraftStore: () => ({ read: () => ({ then: (done: (value: null) => void) => { done(null); return { catch() {} }; } }), write: async () => {} }), React, Dialog, PersonInviteDialog: 'PersonInviteDialog', useToast: () => () => {}, DetailDialog: 'DetailDialog', useScreenRemovalLock() {}, validUPIAddress, View: 'View', ScrollView: 'ScrollView', KeyboardDialog: 'KeyboardDialog', BottomSheet: 'BottomSheet', Pressable: 'Pressable', Text: 'Text', LoadingSpinner: 'LoadingSpinner', NotificationSwitch: 'NotificationSwitch', PushSettings: 'PushSettings', BalanceStatements: 'BalanceStatements', DialogScrollBody: 'DialogScrollBody', Form: 'Form', SectionHeading: 'SectionHeading', Button: 'Button', Icon: 'Icon', SettingsRow: 'SettingsRow', BillPeople: 'BillPeople', DraftAttachment: 'DraftAttachment', LocalAttachment: 'LocalAttachment', AmountField: 'AmountField', TextField: 'TextField', DateField: 'DateField', ErrorText: 'ErrorText', Checkbox: { Item: 'Checkbox' }, RadioChoice: 'RadioChoice', Crypto: { randomUUID: () => 'bill-id' }, StyleSheet: { create: (value: any) => value }, Keyboard: { dismiss() {} }, useWindowDimensions: () => ({ height: 667 }), useSafeAreaInsets: () => ({ top: 20, bottom: 0 }), Platform: { OS: 'native' }, requestAnimationFrame: (fn: () => void) => fn(), useUI: () => ({ ui: {} }), adjustmentToPaise, formatMoney, integer, rupeesToPaise, validateExpense, ...extra,
     useState: (initial: any) => { const id = cursor++; if (!(id in states)) states[id] = typeof initial === 'function' ? initial() : initial; return [states[id], (value: any) => { states[id] = typeof value === 'function' ? value(states[id]) : value; }]; },
     useRef: (initial: any) => { const id = cursor++; return states[id] ??= { current: initial }; },
     useEffect: (fn: () => any, values: any[]) => { const id = cursor++; if (!deps[id] || values.some((value, i) => value !== deps[id][i])) { effects.push(() => { cleanups[id]?.(); cleanups[id] = fn(); }); deps[id] = values; } },
@@ -88,10 +89,10 @@ test('form keeps one selected payer changeable when other people are eligible an
   const props = { group, selfId: 'self', busy: false, onSave: async (value: any) => saves.push(value), onDraftChange: (value: any) => drafts.push(value) };
   let tree = app.render(props);
   let paid = find(tree, 'title', 'Who paid?'); assert.equal(paid.props.inline, false);
-  const fields = paid.children[0]; fields.props.onToggle('other');
+  const fields = payerContent(tree); fields.props.onChange({ multiplePayers: true }); payerContent(app.render(props)).props.onToggle('other');
   tree = app.render(props); paid = find(tree, 'title', 'Who paid?'); assert.equal(paid.props.summary, '2 people');
-  paid.children[0].props.onChange({ payerAmounts: { self: '6.00', other: '4.00' }, amount: '10.00', description: 'Lunch' });
-  tree = app.render(props); assert.deepEqual(find(tree, 'title', 'Who paid?').children[0].props.draft.payerAmounts, { self: '6.00', other: '4.00' });
+  payerContent(tree).props.onChange({ payerAmounts: { self: '6.00', other: '4.00' }, amount: '10.00', description: 'Lunch' });
+  tree = app.render(props); assert.deepEqual(payerContent(tree).props.draft.payerAmounts, { self: '6.00', other: '4.00' });
   assert.equal(saves.length, 0); find(tree, 'title', 'Save bill').props.onPress(); await tick();
   assert.equal(saves.length, 1); assert.deepEqual(saves[0].paid, { self: '600', other: '400' });
   assert.equal(drafts.length, 0, 'typing and saving never autosave a form draft');
@@ -117,7 +118,7 @@ test('all split modes still validate through the actual form and preserve draft-
 });
 
 function payerFields(app: ReturnType<typeof harness>, props: any) {
-  const selection = find(app.render(props), 'title', 'Who paid?').children[0];
+  const selection = payerContent(app.render(props));
   const tree = harness('src/ExpenseForm.tsx', 'PayerFields').render(selection.props);
   return { ...selection.props, fields: nodes(tree).filter(node => node.type === 'TextField') };
 }
@@ -328,9 +329,10 @@ test('removed payer controls stay locked and changing historical amounts is stil
   const editedGroup = { ...group, participants: [group.participants[0], { ...group.participants[1], removed: true }], expenses: [existing] };
   let saved = 0; const app = harness('src/ExpenseForm.tsx', 'ExpenseForm');
   const props = { group: editedGroup, expense: existing, selfId: 'self', busy: false, onSave: async () => saved++ };
-  let tree = app.render(props); const fields = find(tree, 'title', 'Who paid?').children[0];
+  let tree = app.render(props); const fields = payerContent(tree);
   const controls = fields.type(fields.props);
   assert.equal(find(controls, 'accessibilityLabel', 'Jordan (removed)').props.disabled, true);
+  assert.equal(find(controls, 'label', 'One person').props.disabled, true);
   fields.props.onChange({ payerAmounts: { self: '6.00', other: '4.00' } });
   tree = app.render(props); find(tree, 'title', 'Save bill').props.onPress(); await tick(); assert.equal(saved, 0);
   const error = nodes(app.render(props)).find(node => node.type === 'ErrorText')!;
@@ -754,8 +756,8 @@ test('payment address stays selectable, copies the full ID and recovers from cli
 
 test('payment page shows the other person’s address in both directions and the frozen payee on return', () => {
   const paymentGroup = { ...group, transfers: [], participants: [
-    { id: 'self', name: 'Riya', payment_profile: { vpa: 'own@example' } },
-    { id: 'other', name: 'Asha', payment_profile: { vpa: 'asha@example' } },
+    { id: 'self', name: 'Riya', profile_photo: { id: 'self-photo' }, payment_profile: { vpa: 'own@example' } },
+    { id: 'other', name: 'Asha', profile_photo: { id: 'other-photo' }, payment_profile: { vpa: 'asha@example' } },
   ] };
   const env = { useMemo: (fn: () => unknown) => fn(), useUI: () => ({ ui: {}, palette: {} }), isPersonalPayment, paymentReturnNeedsConfirmation,
     PaymentAddress: 'PaymentAddress', PaymentHelpDialog: 'PaymentHelpDialog', LoadingSpinner: 'LoadingSpinner', UPIAppChooser: 'UPIAppChooser', WebPaymentQuote: 'WebPaymentQuote' };
@@ -763,6 +765,10 @@ test('payment page shows the other person’s address in both directions and the
     const props = { group: paymentGroup, selfId: 'self', busy: true, returnPayment: null,
       initial: { sender: incoming ? 'other' : 'self', recipient: incoming ? 'self' : 'other', amount: '500' } };
     const tree = harness('src/SettleForm.tsx', 'SettleForm', env).render(props);
+    const portraits = nodes(tree).filter(node => node.type === 'Avatar');
+    assert.deepEqual(portraits.map(node => node.props.name), incoming ? ['Asha', 'Riya'] : ['Riya', 'Asha']);
+    assert.deepEqual(portraits.map(node => node.props.photo.id), incoming ? ['other-photo', 'self-photo'] : ['self-photo', 'other-photo']);
+    assert.ok(nodes(tree).some(node => node.type === 'Icon' && node.props.name === 'direction'));
     const address = nodes(tree).find(node => node.type === 'PaymentAddress')!;
     assert.equal(address.props.name, 'Asha'); assert.equal(address.props.vpa, 'asha@example');
     assert.equal(address.props.disabled, undefined, 'copy remains available while financial actions are busy');
@@ -1337,7 +1343,7 @@ test('attachment reveal commits the loaded layout in one animated update and res
 
 for (const section of ['PayerFields','SplitFields']) test(`${section} bulk selection switches only all-selected to Clear All`,()=>{
  const participants=[{id:'a',name:'Asha'},{id:'b',name:'Bharat'},{id:'c',name:'Charu'}];
- let draft:any={amount:'120',payerIds:['a'],payerAmounts:{},participantIds:['a'],splitValues:{},mode:'equal'};
+ let draft:any={amount:'120',payerIds:['a'],multiplePayers:true,payerAmounts:{a:'120'},participantIds:['a'],splitValues:{},mode:'equal'};
  const render=()=>{
   const tree=harness('src/ExpenseForm.tsx',section).render({participants,draft,disabled:false,preserveRemoved:false,label:(id:string)=>id,onChange:(patch:any)=>{draft={...draft,...patch};},onToggle:()=>{},onAdjust:()=>{},status:''});
   const selection=nodes(tree).find(node=>typeof node.type==='function'&&node.type.name==='SelectionButton')!;
@@ -1462,4 +1468,47 @@ test('rejected attachments explain recovery and suppress a futile retry after re
     assert.match(message, rejection ? /still image.*Remove it to choose another file/ : /Retry when online/);
     app.unmount();
   }
+});
+
+
+test('new bills replace the sole payer and expose multiple people only as an explicit option', async () => {
+  const saves: any[] = [], app = harness('src/ExpenseForm.tsx', 'ExpenseForm');
+  const props = { group, selfId: 'self', busy: false, onSave: async (value: any) => saves.push(value) };
+  let fields = payerContent(app.render(props)); fields.props.onChange({ amount: '100', description: 'Lunch' });
+  fields = payerContent(app.render(props));
+  let closed = 0;
+  let tree = harness('src/ExpenseForm.tsx', 'PayerFields').render({ ...fields.props, onDone: () => closed++ });
+  assert.equal(nodes(tree).filter(node => node.props.accessibilityRole === 'radio').length, 2);
+  assert.equal(nodes(tree).filter(node => node.type === 'TextField').length, 0);
+  assert.ok(find(tree, 'label', 'Multiple people'));
+  find(tree, 'accessibilityLabel', 'Jordan').props.onPress();
+  fields = payerContent(app.render(props)); assert.deepEqual(fields.props.draft.payerIds, ['other']); assert.equal(closed, 1);
+  find(app.render(props), 'title', 'Save bill').props.onPress(); await tick();
+  assert.equal(saves.length, 1); assert.equal(saves[0].paid.other, '10000'); assert.equal(saves[0].paid.self ?? '0', '0');
+});
+
+test('multiple payer mode preserves entered amounts even with one selected and validates their sum', async () => {
+  const saves: any[] = [], app = harness('src/ExpenseForm.tsx', 'ExpenseForm');
+  const props = { group, selfId: 'self', busy: false, onSave: async (value: any) => saves.push(value) };
+  payerContent(app.render(props)).props.onChange({ amount: '100', description: 'Lunch' });
+  const renderFields = () => harness('src/ExpenseForm.tsx', 'PayerFields').render(payerContent(app.render(props)).props);
+  find(renderFields(), 'label', 'Multiple people').props.onPress();
+  assert.equal(payerContent(app.render(props)).props.draft.payerAmounts.self, '100');
+  assert.equal(nodes(renderFields()).filter(node => node.type === 'TextField').length, 1);
+  payerContent(app.render(props)).props.onChange({ payerAmounts: { self: '60' } });
+  find(app.render(props), 'title', 'Save bill').props.onPress(); await tick(); assert.equal(saves.length, 0);
+  payerContent(app.render(props)).props.onToggle('other');
+  assert.equal(payerContent(app.render(props)).props.draft.payerAmounts.self, '60');
+  payerContent(app.render(props)).props.onChange({ payerAmounts: { self: '60', other: '40' } });
+  find(app.render(props), 'title', 'Save bill').props.onPress(); await tick();
+  assert.equal(saves.length, 1); assert.deepEqual(saves[0].paid, { self: '6000', other: '4000' });
+});
+
+test('single payer selection closes its actual shared people sheet', () => {
+  let choose!: () => void;
+  const app = harness('src/BillPeople.tsx', 'BillPeople');
+  const props = { title: 'Who paid?', sheetTitle: 'Choose payer', icon: 'pay', summary: 'Jordan', inline: false, disabled: false, children: (close: () => void) => { choose = close; return React.createElement('Input', {}); } };
+  let tree = app.render(props); find(tree, 'accessibilityLabel', 'Who paid?. Jordan').props.onPress();
+  tree = app.render(props); assert.equal(nodes(tree).find(node => node.type === 'PeopleSheet')!.props.visible, true);
+  choose(); tree = app.render(props); assert.equal(nodes(tree).find(node => node.type === 'PeopleSheet')!.props.visible, false);
 });

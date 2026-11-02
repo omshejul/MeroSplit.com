@@ -123,3 +123,21 @@ test('a stale discard callback cannot remove a file after its durable queue hand
   assert.equal(await app.discard.current?.(),true); assert.equal(app.media.length,0,'the durable queue now owns the bytes');
   app.unmount(); raw.close();
 });
+
+
+test('multiple payer mode survives a draft reload with one selected payer', async () => {
+ const {raw,db}=await memory(),writes={current:Promise.resolve()};
+ const store=persistence.expenseDraftStore('a',group.id,null,writes,async()=>db);
+ const saved=snapshot({multiplePayers:true,payerIds:['self'],payerAmounts:{self:'12.50'}});
+ await store.write(saved);assert.deepEqual(await store.read(),saved);
+ await saveDraft(db,'a',group.id,snapshot({multiplePayers:'invalid'}));
+ await assert.rejects(store.read(),/Could not restore/);raw.close();
+});
+
+test('adjustment draft restores signed inputs and saves canonical paise with exact shares', async () => {
+ const {raw,db}=await memory();
+ await saveDraft(db,'account-a',group.id,snapshot({amount:'31',mode:'adjustment',splitValues:{self:'1',other:'-2'}}));
+ const app=form(db);const tree=await app.settle();button(tree,'Save bill').props.onPress();await tick();await app.writes.current;
+ assert.equal(app.saves.length,1);assert.deepEqual(app.saves[0][0].split,{mode:'adjustment',values:{self:'100',other:'-200'}});
+ assert.equal(await readDraft(db,'account-a',group.id),null);app.unmount();raw.close();
+});

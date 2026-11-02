@@ -74,13 +74,13 @@ function PersonalTransferRow({ transfer, group, selfId, disabled, onSettle, onEx
   const person = group.participants.find(person => person.id === counterpart), removed = person?.removed;
   const name = participantName(group.participants, selfId, counterpart);
   const canPay = outgoing && person?.user_id != null && !!person.payment_profile?.vpa;
-  const action = canPay ? 'Pay with UPI' : 'Record payment';
+  const action = canPay ? 'Pay with UPI to' : 'Settle balance with';
   return <View style={[ui.row, s.transferRow, { borderBottomWidth: divider ? StyleSheet.hairlineWidth : 0 }]}>
     <PersonRow divider={false} name={name} avatar={false} titleStyle={s.transferName} ref={row} accessibilityRole="button" accessibilityLabel={`Why ${outgoing ? 'you owe' : 'you are owed'} ${formatMoney(transfer.amount)} ${outgoing ? 'to' : 'by'} ${name}`} onPress={() => onExplain(transfer, () => row.current?.focus())} style={s.transferIdentity} trailing={<View style={s.transferAmount}><AmountText amount={transfer.amount} style={[s.balanceAmount, { color: outgoing ? colors.negative : colors.positive }]} /></View>}>
       {removed && <Text style={[ui.rowSub, s.logCaption]}>Removed</Text>}
     </PersonRow>
     <View style={s.transferActions}>
-    <Button title={canPay ? 'Pay' : 'Record'} kind={canPay ? 'primary' : 'secondary'} icon={canPay ? 'pay' : 'payment'} compact accessibilityLabel={`${action} ${outgoing ? 'to' : 'from'} ${name}, ${formatMoney(transfer.amount)}`} disabled={disabled || !!removed} onPress={() => onSettle(transfer)} />
+    <Button title={canPay ? 'Pay' : 'Settle'} kind={canPay ? 'primary' : 'secondary'} icon={canPay ? 'pay' : 'payment'} compact accessibilityLabel={`${action} ${name}, ${formatMoney(transfer.amount)}`} disabled={disabled || !!removed} onPress={() => onSettle(transfer)} />
     </View>
   </View>;
 }
@@ -328,7 +328,7 @@ export function ExpenseDetail({ categoryIcons = {}, noticeVisibility, expense, g
       {payers.map(person => <PersonAmountRow key={person.id} name={person.name} photo={person.profile_photo} amount={expense.paid[person.id] ?? '0'} />)}
     </BillPeople>
     <BillPeople icon="people" title="Split between" summary={`${sharing.length} people`} inline={sharing.length <= 1} disabled={busy}>
-      <Text style={ui.caption}>{expense.split.mode === 'equal' ? 'Shared equally' : expense.split.mode === 'exact' ? 'Exact amounts' : expense.split.mode === 'percent' ? 'By percentage' : 'By shares'}</Text>
+      <Text style={ui.caption}>{expense.split.mode === 'equal' ? 'Shared equally' : expense.split.mode === 'exact' ? 'Exact amounts' : expense.split.mode === 'percent' ? 'By percentage' : expense.split.mode === 'adjustment' ? 'By adjustment' : 'By shares'}</Text>
       {sharing.map(person => <PersonAmountRow key={person.id} name={person.name} photo={person.profile_photo} amount={expense.shares[person.id] ?? '0'} />)}
     </BillPeople>
     {!!expense.notes && <View style={s.section}>

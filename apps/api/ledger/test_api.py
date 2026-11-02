@@ -305,3 +305,24 @@ def test_new_participant_does_not_change_old_splits_or_spending(client, group):
     payment = {"command_id": uid(), "id": uid(), "sender": ids[1], "recipient": ids[0], "amount": "1000"}
     assert send(client, "post", f"/groups/{group_id}/settlements", payment).status_code == 200
     assert send(client, "get", f"/groups/{group_id}").json()["totals"]["spending"] == "10000"
+
+
+def test_adjustment_split_round_trip_and_validation(client, group):
+    group_id, ids, _ = group
+    body = expense(ids, total="10000")
+    body["split"] = {"mode": "adjustment", "values": {ids[0]: "1000", ids[1]: "-2000", ids[2]: "0"}}
+    response = send(client, "post", f"/groups/{group_id}/expenses", body)
+    assert response.status_code == 200, response.content
+    saved = Expense.objects.get(pk=body["id"])
+    assert saved.split == body["split"]
+    base, extra = divmod(11000, 3)
+    expected = {person: str(base + (person in sorted(ids)[:extra]) + int(body["split"]["values"][person])) for person in ids}
+    assert saved.shares == expected
+    state = send(client, "get", f"/groups/{group_id}").json()
+    assert next(row for row in state["expenses"] if row["id"] == body["id"])["split"] == body["split"]
+    before = state["balances"]
+    invalid = expense(ids, total="10000")
+    invalid["split"] = {"mode": "adjustment", "values": {ids[0]: "-20000", ids[1]: "0", ids[2]: "0"}}
+    assert send(client, "post", f"/groups/{group_id}/expenses", invalid).status_code == 422
+    assert not Expense.objects.filter(pk=invalid["id"]).exists()
+    assert send(client, "get", f"/groups/{group_id}").json()["balances"] == before

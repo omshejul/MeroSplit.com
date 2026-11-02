@@ -71,7 +71,7 @@ function ExplanationBody({ value, selfId }: { value: Explanation; selfId: string
   </View>;
   if (group.simplify_debts === false) return <>
     {summary}
-    <Text style={ui.caption}>Simplify debts is off. Bills and payments are combined between the same two people.</Text>
+    <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}><Icon name="simplify" size={20} /><Text style={[ui.caption, { flex: 1 }]}>Simplify debts is off. Bills and payments are combined between the same two people.</Text></View>
     <SectionHeading>What makes up this amount</SectionHeading>
     {value.directItems.map(row => {
       const bill = row.id.startsWith('bill:') ? group.expenses.find(bill => `bill:${bill.id}` === row.id) : undefined;
@@ -111,7 +111,7 @@ function ExplanationBody({ value, selfId }: { value: Explanation; selfId: string
       {group.opening_balance && !group.opening_balance.accepted && <Text style={ui.caption}>The proposed starting balance is waiting for agreement and is not included.</Text>}
     </InlineDetails>
     {!!history.excluded.length && <InlineDetails title={`${history.excluded.length} reversed record${history.excluded.length === 1 ? '' : 's'} excluded`} icon="refresh"><HistoryRecords rows={history.excluded} group={group} selfId={selfId} /></InlineDetails>}
-    {!direct && <InlineDetails title="Group payment plan" icon="payment">
+    {!direct && <InlineDetails title="Group payment plan" icon="simplify">
       {people.map(person => <Text key={person.id} style={ui.body}>{netText(person.name, person.balance)}</Text>)}
       <SectionHeading>Suggested payments</SectionHeading>
       {plan.map((row, step) => <Text key={`${row.sender}:${row.recipient}`} style={ui.body}>{nameFor(group, selfId, row.sender)} to {nameFor(group, selfId, row.recipient)} · {formatMoney(row.amount)}{step === index ? ' · This payment' : ''}</Text>)}

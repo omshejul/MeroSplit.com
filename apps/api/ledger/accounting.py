@@ -80,6 +80,17 @@ def validate_expense(
         shares = {person: _integer(value, maximum=MAX_AMOUNT) for person, value in values.items()}
         if sum(shares.values()) != amount:
             raise AccountingError("Exact shares must equal the expense total.")
+    elif mode == "adjustment":
+        adjustments = {person: _integer(value, signed=True) for person, value in values.items()}
+        if any(abs(value) > MAX_AMOUNT for value in adjustments.values()):
+            raise AccountingError("Adjustment is outside the supported range.")
+        remainder = amount - sum(adjustments.values())
+        if remainder < 0:
+            raise AccountingError("Adjustments cannot exceed the bill total.")
+        shares = _allocate(remainder, dict.fromkeys(values, 1))
+        shares = {person: shares[person] + value for person, value in adjustments.items()}
+        if any(value < 0 for value in shares.values()):
+            raise AccountingError("An adjustment makes someone's share negative. Reduce the subtraction.")
     elif mode == "percent":
         weights = {person: _weight(value, 2) for person, value in values.items()}
         if sum(weights.values()) != 10_000:
@@ -88,7 +99,7 @@ def validate_expense(
     elif mode == "shares":
         shares = _allocate(amount, {person: _weight(value, 4) for person, value in values.items()})
     else:
-        raise AccountingError("Split mode must be equal, exact, percent, or shares.")
+        raise AccountingError("Split mode must be equal, exact, percent, shares, or adjustment.")
     return (
         {person: str(contributions[person]) for person in people},
         {person: str(shares.get(person, 0)) for person in people},

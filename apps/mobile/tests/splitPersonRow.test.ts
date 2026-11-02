@@ -63,3 +63,15 @@ test('stepping shares feeds existing exact accounting and accepts individual zer
   assert.deepEqual(shares(),{a:'80000',b:'40000'});
   value=stepShare(stepShare(value,-1),-1);assert.deepEqual(shares(),{a:'0',b:'120000'});
 });
+
+test('adjustment sign control works with the decimal keyboard and respects edit locks', () => {
+  let value = '20';
+  const render = (extra = {}) => SplitPersonRow({ ...props, mode: 'adjustment', value, onChange: (next: string) => value = next, ...extra });
+  action(render(), 'Switch to subtract for Anishk').props.onPress(); assert.equal(value, '-20');
+  let input = nodes(render()).find(node => node.type === 'TextField')!;
+  assert.equal(input.props.value, '20'); assert.equal(input.props.label, 'Adjustment for Anishk (₹)');
+  input.props.onChangeText('25.50'); assert.equal(value, '-25.50');
+  action(render(), 'Switch to add for Anishk').props.onPress(); assert.equal(value, '25.50');
+  const locked = action(render({ editable: false }), 'Switch to subtract for Anishk');
+  assert.equal(locked.props.disabled, true); locked.props.onPress(); assert.equal(value, '25.50');
+});
