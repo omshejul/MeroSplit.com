@@ -23,7 +23,7 @@ function form(db: any, options: any = {}) {
     useRef:(initial:any)=>{const id=cursor++;return state[id]??={current:initial}},
     useContext:()=>discard, ScreenDraftDiscard:{},
     useEffect:(fn:()=>any, values:any[])=>{const id=cursor++;if(!deps[id]||values.some((v,i)=>v!==deps[id][i])){effects.push(()=>{cleanup[id]?.();cleanup[id]=fn()});deps[id]=values}},
-    StyleSheet:{create:(v:any)=>v},View:'View',Text:'Text',Form:'Form',AmountField:'AmountField',TextField:'TextField',DateField:'DateField',Button:'Button',ErrorText:'ErrorText',BillPeople:'BillPeople',DraftAttachment:'DraftAttachment',Checkbox:{Item:'Checkbox'},RadioChoice:'RadioChoice',
+    StyleSheet:{create:(v:any)=>v},View:'View',Text:'Text',Form:'Form',AmountField:'AmountField',TextField:'TextField',DateField:'DateField',Button:'Button',ErrorText:'ErrorText',BillPeople:'BillPeople',DraftAttachment:'DraftAttachment',NotesField:'NotesField',Checkbox:{Item:'Checkbox'},RadioChoice:'RadioChoice',
     useUI:()=>({ui:{}}),Crypto:{randomUUID:()=> 'draft-fixed-id'},useScreenRemovalLock:()=>{}, getDatabase:async()=>db,readDraft,saveDraft,
     clearStagedMedia:async(f:any)=>{media.push(f)},
   };
@@ -35,13 +35,13 @@ function form(db: any, options: any = {}) {
   const settle=async()=>{for(let i=0;i<5;i++){render();effects.splice(0).forEach(fn=>fn());await tick()}return render()};
   return {render,settle,writes,discard,media,saves,unmount:()=>cleanup.forEach(fn=>fn?.())};
 }
-function field(tree:any,type:string,label:string):any {if(tree?.type===type&&tree.props.label===label)return tree;if(Array.isArray(tree)){for(const x of tree){const r=field(x,type,label);if(r)return r}}else for(const x of tree?.children??[]){const r=field(x,type,label);if(r)return r}return null;}
+function field(tree:any,type:string,label:string|null):any {if(tree?.type===type&&(label===null||tree.props.label===label))return tree;if(Array.isArray(tree)){for(const x of tree){const r=field(x,type,label);if(r)return r}}else for(const x of tree?.children??[]){const r=field(x,type,label);if(r)return r}return null;}
 
 test('actual new bill field callbacks survive background/unmount and real SQLite cold remount',async()=>{
   const dir=mkdtempSync(join(tmpdir(),'merosplit-draft-')),file=join(dir,'draft.sqlite');let raw=new DatabaseSync(file);let db=sqliteAdapter(raw);await migrate(db);
-  const app=form(db);let tree=await app.settle();field(tree,'AmountField','Amount (₹)').props.onChangeText('31');tree=app.render();field(tree,'TextField','Description').props.onChangeText('Cold launch draft');tree=app.render();field(tree,'DateField','Date').props.onChange('2026-11-01','14:09');await app.writes.current;
+  const app=form(db);let tree=await app.settle();field(tree,'AmountField','Amount (₹)').props.onChangeText('31');tree=app.render();field(tree,'TextField','Description').props.onChangeText('Cold launch draft');tree=app.render();field(tree,'DateField','Date').props.onChange('2026-11-01','14:09');tree=app.render();field(tree,'NotesField',null).props.onChange('**Raw notes**\n\n| Item | Amount |\n| --- | ---: |\n| Dinner | ₹500 |');await app.writes.current;
   const stored=await readDraft<any>(db,'account-a','group-one');assert.equal(stored?.amount,'31','unsaved bill must reach SQLite before background or process death');assert.equal(stored?.description,'Cold launch draft');assert.equal(stored?.time,'14:09');app.unmount();raw.close();
-  raw=new DatabaseSync(file);db=sqliteAdapter(raw);const cold=form(db);tree=await cold.settle();assert.equal(field(tree,'AmountField','Amount (₹)').props.value,'31');assert.equal(field(tree,'TextField','Description').props.value,'Cold launch draft');assert.equal(field(tree,'DateField','Date').props.time,'14:09');assert.equal(cold.saves.length,0,'restoring must not enqueue financial writes');cold.unmount();raw.close();rmSync(dir,{recursive:true,force:true});
+  raw=new DatabaseSync(file);db=sqliteAdapter(raw);const cold=form(db);tree=await cold.settle();assert.equal(field(tree,'AmountField','Amount (₹)').props.value,'31');assert.equal(field(tree,'TextField','Description').props.value,'Cold launch draft');assert.equal(field(tree,'DateField','Date').props.time,'14:09');assert.equal(field(tree,'NotesField',null).props.value,'**Raw notes**\n\n| Item | Amount |\n| --- | ---: |\n| Dinner | ₹500 |');assert.equal(cold.saves.length,0,'restoring must not enqueue financial writes');cold.unmount();raw.close();rmSync(dir,{recursive:true,force:true});
 });
 
 const snapshot = (changes:any={}) => ({schemaVersion:1,groupId:group.id,expenseId:null,id:'draft-fixed-id',expenseVersion:0,description:'Draft',amount:'31',date:'2026-10-27',notes:'Keep these notes',payerIds:['self'],payerAmounts:{self:'31'},mode:'shares',participantIds:['self','other'],splitValues:{self:'2',other:'1'},...changes});

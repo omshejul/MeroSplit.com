@@ -98,7 +98,7 @@ test('form keeps one selected payer changeable when other people are eligible an
   assert.equal(drafts.length, 0, 'typing and saving never autosave a form draft');
   const single = harness('src/ExpenseForm.tsx', 'ExpenseForm').render({ ...props, group: { ...group, participants: [group.participants[0]] } });
   assert.equal(find(single, 'title', 'Who paid?').props.inline, true); assert.equal(find(single, 'title', 'Split between').props.inline, true);
-  assert.ok(find(single, 'label', 'Notes (optional)'));
+  assert.ok(nodes(single).some(node => node.type === 'NotesField' && node.props.value === ''));
 });
 
 test('all split modes still validate through the actual form and preserve draft-shaped amounts', async () => {

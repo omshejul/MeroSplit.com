@@ -17,6 +17,7 @@ import type { Expense, Group } from './types';
 import { Button, DateField, ErrorText, Icon, SettingsRow, useUI } from './ui';
 import { AmountField, TextField } from './FormFields';
 import DraftAttachment from './DraftAttachment';
+import NotesField from './NotesField';
 import type { PendingMediaUpload } from './media';
 import { clearStagedMedia } from './media';
 import BillPeople from './BillPeople';
@@ -285,7 +286,7 @@ export default function ExpenseForm({ group, expense, selfId, busy, onSave, owne
         label={label} onChange={change} status={splitStatus} />
     </BillPeople>
     <DateField label="Date" value={draft.date} time={draft.time} onChange={(date, time) => change({ date, time })} disabled={disabled} />
-    <TextField autoCorrect={false} label="Notes (optional)" value={draft.notes} onChangeText={notes => change({ notes })} multiline style={styles.notes} maxLength={2000} editable={!disabled} />
+    <NotesField value={draft.notes} disabled={disabled} onChange={notes => void change({ notes })} />
     {!!error && <ErrorText live>{error}</ErrorText>}
     <Button title={saving ? 'Saving…' : 'Save bill'} onPress={() => void save()} disabled={disabled || group.archived} kind="primary" icon="check" />
   </Form>;
@@ -295,7 +296,7 @@ const styles = StyleSheet.create({
   form: { gap: 12 }, field: { gap: 7 },
   methods: { flexDirection: 'row', borderWidth: 1, borderRadius: 12, overflow: 'hidden' },
   method: { flex: 1, minWidth: 0, minHeight: 64, paddingVertical: 8, paddingHorizontal: 2, alignItems: 'center', justifyContent: 'center', gap: 4 },
-  notes: { minHeight: 100, textAlignVertical: 'top' }, reveal: { gap: 8, paddingBottom: 4 },
+  reveal: { gap: 8, paddingBottom: 4 },
   adjustTouch: { minWidth: 44, minHeight: 44, justifyContent: 'center', borderRadius: 8, flexShrink: 1 },
   adjustChip: { borderRadius: 8, paddingHorizontal: 12, paddingVertical: 5 },
   adjustText: { fontSize: 14, lineHeight: 20, fontWeight: '700', fontVariant: ['tabular-nums'], textAlign: 'center' },
