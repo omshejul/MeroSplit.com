@@ -15,7 +15,7 @@ test('only a confirmed shared bill or joined group with bills on the current acc
   for (const state of ['pending', 'conflict']) assert.equal(ready(opportunity, value, [{ group_id: 'g', state }]), false);
   assert.equal(ready(opportunity, value, [{ group_id: 'unrelated' }]), true);
 });
-function harness(options: { os?: string; first?: boolean; failure?: boolean; keyboard?: boolean; deferred?: Promise<boolean>; updates?: boolean; readFailure?: boolean } = {}) {
+function harness(options: { os?: string; first?: boolean; failure?: boolean; keyboard?: boolean; deferred?: Promise<boolean>; updates?: boolean; readFailure?: boolean; denied?: boolean; modal?: boolean } = {}) {
   let cursor = 0, dirty = false, keyboard = options.keyboard ?? false, focused = false, timerId = 0, claims = 0, enables = 0;
   const slots: any[] = [], effects: any[] = [], timers = new Map<number, () => void>(), listeners: Record<string, () => void> = {}, notices: string[] = [];
   const React = { createElement: (type: any, props: any, ...children: any[]) => ({ type, props: props ?? {}, children }) };
@@ -28,12 +28,13 @@ function harness(options: { os?: string; first?: boolean; failure?: boolean; key
     Platform: { OS: options.os ?? 'ios' }, Keyboard: { isVisible: () => keyboard, addListener: (key: string, fn: () => void) => { listeners[key] = fn; return { remove() { delete listeners[key]; } }; } }, TextInput: { State: { currentlyFocusedInput: () => focused ? {} : null } },
     request: async (_session: any, path: string) => { assert.equal(path, '/me/notifications/preferences'); if (options.readFailure) throw Error('Offline'); return { expense_updates: options.updates !== false }; },
     claimPushInvitation: async () => { claims++; return options.deferred ?? options.first !== false; },
-    setTimeout: (fn: () => void, ms: number) => { assert.equal(ms, 400); timers.set(++timerId, fn); return timerId; }, clearTimeout: (id: number) => timers.delete(id),
+    setTimeout: (fn: () => void, ms: number) => { assert.equal(ms, 1000); timers.set(++timerId, fn); return timerId; }, clearTimeout: (id: number) => timers.delete(id),
+    hasOpenDialogs: () => options.modal === true,
     useUI: () => ({ ui: { body: {} } }), useToast: () => (message: string) => notices.push(message),
     KeyboardDialog: 'KeyboardDialog', Dialog: { Title: 'Title', Content: 'Content', Actions: 'Actions' }, Text: 'Text', Button: 'Button',
   };
   new Function('env', 'exports', `with(env){ const useLoading = env.useLoading ?? (() => {}), LoadingOverlay = env.LoadingOverlay ?? 'LoadingOverlay';${code}}`)(env, exports);
-  const props: any = { owner: 'server|one', session: { token: 'session', baseUrl: 'https://server.invalid' }, eligible: true, onVisibility() {}, push: { state: { ready: true, enabled: false, optedIn: false, pendingOff: false, working: false, permission: 'ask' }, enable: async () => { enables++; if (options.failure) throw Error('Offline'); return true; } } };
+  const props: any = { owner: 'server|one', session: { token: 'session', baseUrl: 'https://server.invalid' }, eligible: true, onVisibility() {}, push: { state: { ready: true, enabled: false, optedIn: false, pendingOff: false, working: false, permission: 'ask' }, enable: async () => { enables++; if (options.failure) throw Error('Offline'); return !options.denied; } } };
   let tree: any;
   function render() { do { dirty = false; cursor = 0; tree = exports.default(props); effects.splice(0).forEach(fn => fn()); } while (dirty); return tree; }
   render();
@@ -112,4 +113,21 @@ test('the production invitation stays out of forms, loading, auth and other dial
 
 test('account-level notification opt-out and unavailable preferences prevent education without changing consent', async () => {
   for (const options of [{ updates: false }, { readFailure: true }]) { const h = harness(options); await h.advance(); assert.equal(h.render().props.visible, false); assert.equal(h.claims, 0); assert.equal(h.enables, 0); h.unmount(); }
+});
+
+test('another open dialog prevents the invitation without consuming its one-time choice', async () => {
+ const h=harness({modal:true});await h.advance();assert.equal(h.claims,0);assert.equal(h.enables,0);assert.equal(h.render().props.visible,false);h.unmount();
+});
+test('declining phone permission explains where to enable notifications without asking again', async () => {
+ const h=harness({denied:true});await h.advance();h.buttons().find((b:any)=>b.props.title==='Turn on notifications').props.onPress();await tick();
+ assert.equal(h.enables,1);assert.equal(h.render().props.visible,false);assert.match(h.notices[0],/Notifications are off.*Me → Notifications/);await h.advance();assert.equal(h.enables,1);h.unmount();
+});
+test('opening a shared group offers education only after the current route is accepted', async () => {
+ const file=ts.createSourceFile('App.tsx',readFileSync(new URL('../App.tsx',import.meta.url),'utf8'),ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);let fn!:ts.FunctionDeclaration;
+ function visit(n:ts.Node){if(ts.isFunctionDeclaration(n)&&n.name?.text==='openGroup')fn=n;ts.forEachChild(n,visit);}visit(file);assert.ok(fn);
+ async function run(kind:string,current=true,signedIn=true){const events:string[]=[],offers:any[]=[];
+  const env={browse:async(_key:string,action:any)=>action(()=>current),draftWrites:{current:Promise.resolve()},isOnline:()=>true,owner:'server|one',session:signedIn?{token:'current'}:null,setGroups(){},navigate:()=>events.push('opened'),setPushOpportunity:(o:any)=>{offers.push(o);events.push('offer');}};
+  const open=new Function('env',`with(env){${ts.transpile(fn.getText(file),{target:ts.ScriptTarget.ES2022})};return openGroup;}`)(env);await open({kind,group:{id:'g',version:1}});return {events,offers};}
+ const shared=await run('shared');assert.deepEqual(shared.events,['opened','offer']);assert.deepEqual(shared.offers,[{owner:'server|one',token:'current',groupId:'g'}]);
+ assert.deepEqual((await run('private')).offers,[]);assert.deepEqual((await run('shared',false)).events,[]);assert.deepEqual((await run('shared',true,false)).offers,[]);
 });

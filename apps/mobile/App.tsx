@@ -927,7 +927,16 @@ function AppContent() {
       finally { if (ownerRef.current === owner) setSyncing(false); }
     }
   }
-  async function openGroup(row: CachedGroup) { await browse(`group:${row.group.id}`, async current => { await draftWrites.current; const full = !isOnline() ? await readGroup(await getDatabase(), owner, row.group.id) : null; if (!current()) return; if (full?.kind === 'shared' && full.group.version === row.group.version) setGroups(rows => rows.map(value => value.group.id === row.group.id ? full : value)); navigate('group', { groupId: row.group.id, expenseId: null }); }); }
+  async function openGroup(row: CachedGroup) {
+    await browse(`group:${row.group.id}`, async current => {
+      await draftWrites.current;
+      const full = !isOnline() ? await readGroup(await getDatabase(), owner, row.group.id) : null;
+      if (!current()) return;
+      if (full?.kind === 'shared' && full.group.version === row.group.version) setGroups(rows => rows.map(value => value.group.id === row.group.id ? full : value));
+      navigate('group', { groupId: row.group.id, expenseId: null });
+      if (session && row.kind === 'shared') setPushOpportunity({ owner, token: session.token, groupId: row.group.id });
+    });
+  }
   async function openExpense(value?: Expense) {
     await browse(`edit:${groupId}:${value?.id ?? 'new'}`, async current => {
       await draftWrites.current;
