@@ -268,8 +268,13 @@ export default function ExpenseForm({ group, expense, selfId, busy, onSave, owne
     <Text style={ui.caption}>{group.name}</Text>
     {group.archived && <NoticeBanner>Reopen this group in settings before saving a bill.</NoticeBanner>}
     {expense && expense.version !== draft.expenseVersion && <NoticeBanner>A newer edit exists. Review it before saving this older draft.</NoticeBanner>}
-    <AmountField autoCorrect={false} label={`Amount (${currencySymbol()})`} value={draft.amount} onChangeText={amount => change({ amount })} placeholder="0" editable={!disabled} />
-    <TextField autoCorrect={false} label="Description" value={draft.description} onChangeText={description => change({ description })} placeholder="What was it for?" maxLength={200} editable={!disabled} />
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 12 }}>
+      <View style={{ flex: 1, minWidth: 180, gap: 12 }}>
+        <AmountField autoCorrect={false} label={`Amount (${currencySymbol()})`} value={draft.amount} onChangeText={amount => change({ amount })} placeholder="0" editable={!disabled} />
+        <TextField autoCorrect={false} label="Description" value={draft.description} onChangeText={description => change({ description })} placeholder="What was it for?" maxLength={200} editable={!disabled} />
+      </View>
+      {!expense && <DraftAttachment value={draft.attachment} path={`/groups/${group.id}/expenses/${draft.id}/attachments`} disabled={disabled || !!group.archived} onChange={async attachment => { await change({ attachment }); }} onBusy={setFileBusy} onError={setError} />}
+    </View>
     <BillPeople total={formattedTotal} count={draft.payerIds.length} icon="pay" title="Who paid?" sheetTitle={usesPayerAmounts(draft) ? 'Enter paid amounts' : 'Choose payer'} summary={draft.payerIds.length === 1 ? label(draft.payerIds[0]) : draft.payerIds.length ? `${draft.payerIds.length} people` : 'Choose who paid'}
       inline={group.participants.filter(person => !person.removed || draft.payerIds.includes(person.id)).length === 1} disabled={disabled}>
       {close => <PayerFields participants={group.participants} draft={draft} disabled={disabled || !!group.archived} preserveRemoved={!!acceptedExpense}
@@ -281,7 +286,6 @@ export default function ExpenseForm({ group, expense, selfId, busy, onSave, owne
     </BillPeople>
     <DateField label="Date" value={draft.date} time={draft.time} onChange={(date, time) => change({ date, time })} disabled={disabled} />
     <TextField autoCorrect={false} label="Notes (optional)" value={draft.notes} onChangeText={notes => change({ notes })} multiline style={styles.notes} maxLength={2000} editable={!disabled} />
-    {!expense && <DraftAttachment value={draft.attachment} path={`/groups/${group.id}/expenses/${draft.id}/attachments`} disabled={disabled || !!group.archived} onChange={async attachment => { await change({ attachment }); }} onBusy={setFileBusy} onError={setError} />}
     {!!error && <ErrorText live>{error}</ErrorText>}
     <Button title={saving ? 'Saving…' : 'Save bill'} onPress={() => void save()} disabled={disabled || group.archived} kind="primary" icon="check" />
   </Form>;

@@ -6,7 +6,10 @@ import { ErrorState } from './UIStates';
 import { LoadingState } from './UIStates';
 import { NoticeBanner } from './UIStates';
 
-import AttachmentPicker from './AttachmentPicker';
+import AttachmentPicker, { chooseAttachment } from './AttachmentPicker';
+import AttachmentTile from './AttachmentTile';
+import KeyboardDialog from './KeyboardDialog';
+import { Dialog, DialogScrollBody, CloseDialogActions } from './DialogParts';
 import AttachmentRow from './AttachmentRow';
 import React, { useEffect, useRef, useState } from 'react';
 import { useScreenRemovalLock } from './screenRemoval';
@@ -21,20 +24,22 @@ import LocalAttachment from './LocalAttachment';
 import PrivateMediaImage from './PrivateMediaImage';
 import RemoveMediaMenu from './RemoveMediaMenu';
 import type { Session } from './types';
-import { SectionHeading, Button, useUI } from './ui';
+import { Button, useUI } from './ui';
 
 export type BillAttachmentsProps = { session: Session | null; groupId: string; expenseId: string; revision?: number; readOnly?: boolean; busy: boolean; onBusyChange: (busy: boolean) => void; onChanged?: () => Promise<void> };
 export default function BillAttachments({ session, groupId, expenseId, revision, readOnly = false, busy, onBusyChange, onChanged }: BillAttachmentsProps) {
   const notify = useToast();
   const { ui, motion } = useUI(), [items, setItems] = useState<MediaMetadata[]>([]), [canModify, setCanModify] = useState(false), [loading, setLoading] = useState(true), [working, setWorking] = useState(false), [error, setError] = useState('');
   useScreenRemovalLock(working);
+  const [open, setOpen] = useState(false), trigger = useRef<React.ComponentRef<typeof View>>(null);
+  const close = () => { if (!busy && !working) { setOpen(false); setOptionsId(null); requestAnimationFrame(() => trigger.current?.focus()); } };
   const [optionsId, setOptionsId] = useState<string | null>(null);
   const [pending, setPending] = useState<PendingMediaUpload | null>(null);
   const path = `/groups/${encodeURIComponent(groupId)}/expenses/${encodeURIComponent(expenseId)}/attachments`;
   const owner = session ? accountOwner(session) : '', identity = `${owner}|${path}`, identityRef = useRef(identity); identityRef.current = identity;
   const lock = useRef(false), mounted = useRef(true), current = () => mounted.current && identityRef.current === identity;
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
-  useEffect(() => { setItems([]); setCanModify(false); setPending(null); setOptionsId(null); setError(''); }, [identity]);
+  useEffect(() => { setItems([]); setCanModify(false); setPending(null); setOptionsId(null); setError(''); setOpen(false); }, [identity]);
   useEffect(() => {
     let active = true; setLoading(true);
     if (!session) { setLoading(false); return; }
@@ -55,7 +60,7 @@ export default function BillAttachments({ session, groupId, expenseId, revision,
     if (lock.current || busy || !session) return;
     lock.current = true; setWorking(true); setError(''); onBusyChange(true);
     try { await action(); }
-    catch (cause) { if (current()) setError(cause instanceof Error ? cause.message : 'Could not update attachments. Refresh and try again.'); }
+    catch (cause) { if (current()) { setError(cause instanceof Error ? cause.message : 'Could not update attachments. Refresh and try again.'); setOpen(true); } }
     finally { lock.current = false; if (current()) setWorking(false); onBusyChange(false); }
   }
   async function refresh() {
@@ -71,6 +76,7 @@ export default function BillAttachments({ session, groupId, expenseId, revision,
   async function add(photo: boolean) {
     if (!session || readOnly || !canModify || pending || items.length >= 10) return;
     const file = await pickMedia(photo); if (!file) return;
+    if (current()) setOpen(true);
     if (!current()) { await clearPickedMedia(file); return; }
     const id = Crypto.randomUUID(); let staged: PickedMedia | undefined, stored = false;
     try {
@@ -109,8 +115,15 @@ export default function BillAttachments({ session, groupId, expenseId, revision,
   }
   const disabled = busy || loading || working, editable = !readOnly && canModify;
   useLoading(working);
-  return <View role="region" accessibilityLabel="Attachments" style={{ gap: 10 }}>
-    <SectionHeading>Attachments{items.length ? ` (${items.length})` : ''}</SectionHeading>
+  const preview = session && items[0] ? <PrivateMediaImage session={session} media={items[0]} size={80} interactive={false} /> : pending ? <LocalAttachment file={pending.file} disabled={disabled} onError={setError} thumbnailOnly size={80} /> : undefined;
+  const needsAttention = !!(pending || error), hasFiles = !!(items.length || pending);
+  return <>
+    <AttachmentTile triggerRef={trigger} thumbnail={preview} count={items.length} loading={loading || working} warning={needsAttention} canAdd={editable && !hasFiles} disabled={disabled}
+      label={loading ? 'Loading attachments' : working ? 'Processing file' : needsAttention ? `Attachments, ${items.length} saved ${items.length === 1 ? 'file' : 'files'}, needs attention` : hasFiles ? `Attachments, ${items.length} ${items.length === 1 ? 'file' : 'files'}` : editable ? 'Add photo or PDF' : 'View attachments'}
+      onPress={() => { if (disabled) return; if (!hasFiles && editable && !error) chooseAttachment(photo => void run(() => add(photo))); else setOpen(true); }} />
+    <KeyboardDialog visible={open} label="Attachments" placement="bottom" dismissable={!busy && !working} onDismiss={close}>
+    <Dialog.Title icon="attachment">Attachments{items.length ? ` (${items.length})` : ''}</Dialog.Title>
+    <DialogScrollBody gap={10}>
     {!session ? <Text style={ui.caption}>Sign in to view attachments.</Text> : <>
       {loading && <LoadingState label="Loading attachments…" />}
       {working && <LoadingState label="Processing file…" />}
@@ -128,5 +141,7 @@ export default function BillAttachments({ session, groupId, expenseId, revision,
       {items.length >= 10 && <Text style={ui.caption}>This bill has the maximum of 10 attachments.</Text>}
       {!!error && error !== pending?.rejection && <ErrorState error={error} retryLabel="Refresh attachments" disabled={busy || working || loading} onRetry={!pending ? () => void refresh() : undefined} />}
     </>}
-  </View>;
+    </DialogScrollBody><CloseDialogActions title="Done" disabled={busy || working} onClose={close} />
+    </KeyboardDialog>
+  </>;
 }

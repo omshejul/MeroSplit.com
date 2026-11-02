@@ -254,7 +254,7 @@ test('accepted attachment action reuses one load/picker path and preserves permi
     app.render(props); app.commit(); await tick(); return app;
   };
   const app = await make(); let tree = app.render(props); app.commit();
-  assert.equal(reads, 1); assert.ok(nodes(tree).some(node => node.type === 'SectionHeading' && node.children.includes('Attachments')));
+  assert.equal(reads, 1); assert.equal(nodes(tree).find(node => node.type === 'KeyboardDialog' && node.props.label === 'Attachments')!.props.visible, false);
   find(tree, 'label', 'Add photo or PDF').props.onPress(); await tick(); assert.equal(picks, 1); assert.equal(uploads, 0); assert.equal(reads, 1);
   tree = app.render({ ...props, busy: true }); find(tree, 'label', 'Add photo or PDF').props.onPress(); await tick(); assert.equal(picks, 1);
   assert.ok(!find(app.render({ ...props, readOnly: true }), 'label', 'Add photo or PDF'));
@@ -1511,4 +1511,36 @@ test('single payer selection closes its actual shared people sheet', () => {
   let tree = app.render(props); find(tree, 'accessibilityLabel', 'Who paid?. Jordan').props.onPress();
   tree = app.render(props); assert.equal(nodes(tree).find(node => node.type === 'PeopleSheet')!.props.visible, true);
   choose(); tree = app.render(props); assert.equal(nodes(tree).find(node => node.type === 'PeopleSheet')!.props.visible, false);
+});
+
+test('receipt tile opens the attachment sheet and keeps confirmed counts separate from pending files', async () => {
+ for (const pending of [null, { id:'pending',file:{name:'Pending.jpg',uri:'file:///pending.jpg'} }]) {
+  const app=harness('src/BillAttachments.tsx','BillAttachments',{accountOwner:()=> 'owner',pendingMediaUpload:async()=>pending,request:async()=>({attachments:[{id:'receipt',name:'Receipt.jpg',content_type:'image/jpeg',size:1000}],can_modify:true}),PrivateMediaImage:'PrivateMediaImage',RemoveMediaMenu:'RemoveMediaMenu',mediaSize:()=> '1 KB'});
+  const props={session:{token:'owner'},groupId:'g',expenseId:'e',busy:false,onBusyChange(){}};
+  app.render(props);app.commit();await tick();let tree=app.render(props);
+  const action=find(tree,'accessibilityLabel',pending?'Attachments, 1 saved file, needs attention':'Attachments, 1 file');
+  assert.ok(action);assert.equal(action.props.disabled,false);assert.equal(nodes(tree).find(n=>n.type==='PrivateMediaImage'&&n.props.size===80)!.props.interactive,false);
+  assert.equal(nodes(tree).find(n=>n.type==='KeyboardDialog')!.props.visible,false);
+  action.props.onPress();tree=app.render(props);assert.equal(nodes(tree).find(n=>n.type==='KeyboardDialog')!.props.visible,true);
+  assert.ok(find(tree,'accessibilityLabel','Open Receipt.jpg'));
+  if(pending)assert.ok(nodes(tree).some(n=>n.type==='Text'&&n.children.includes('!')));
+  find(tree,'title','Done').props.onPress();assert.equal(nodes(app.render(props)).find(n=>n.type==='KeyboardDialog')!.props.visible,false);app.unmount();
+ }
+});
+
+test('empty receipt tile opens the existing picker directly; cancellation and busy states do not reveal a sheet', async () => {
+ let picks=0;
+ const app=harness('src/BillAttachments.tsx','BillAttachments',{Platform:{OS:'web'},accountOwner:()=> 'owner',pendingMediaUpload:async()=>null,request:async()=>({attachments:[],can_modify:true}),pickMedia:async()=>{picks++;return null;}});
+ const props={session:{token:'owner'},groupId:'g',expenseId:'e',busy:false,onBusyChange(){}};
+ app.render(props);app.commit();await tick();let tree=app.render(props);
+ find(tree,'accessibilityLabel','Add photo or PDF').props.onPress();await tick();tree=app.render(props);assert.equal(picks,1);assert.equal(nodes(tree).find(n=>n.type==='KeyboardDialog')!.props.visible,false);
+ find(app.render({...props,busy:true}),'accessibilityLabel','Add photo or PDF').props.onPress();await tick();assert.equal(picks,1);app.unmount();
+});
+
+test('rejected picker input opens recovery feedback without increasing the confirmed attachment count', async () => {
+ const app=harness('src/BillAttachments.tsx','BillAttachments',{Platform:{OS:'web'},accountOwner:()=> 'owner',pendingMediaUpload:async()=>null,request:async()=>({attachments:[],can_modify:true}),pickMedia:async()=>{throw Error('Choose a still image.');}});
+ const props={session:{token:'owner'},groupId:'g',expenseId:'e',busy:false,onBusyChange(){}};
+ app.render(props);app.commit();await tick();find(app.render(props),'accessibilityLabel','Add photo or PDF').props.onPress();await tick();const tree=app.render(props);
+ assert.equal(nodes(tree).find(n=>n.type==='KeyboardDialog')!.props.visible,true);assert.ok(find(tree,'accessibilityLabel','Attachments, 0 saved files, needs attention'));
+ assert.ok(nodes(tree).some(n=>n.children.includes('Choose a still image.')));app.unmount();
 });

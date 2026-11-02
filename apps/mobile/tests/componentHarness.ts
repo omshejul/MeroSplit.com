@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import ts from 'typescript';
 
-const files = ['ListRow', 'PersonRow', 'PersonChoice', 'SplitPersonRow', 'ChoiceGroup', 'UIStates', 'PaginationFooter', 'AttachmentPicker', 'AttachmentRow', 'MediaPreviewFrame', 'OverflowMenu', 'AppLogo', 'ResendControls', 'FallbackTabLayout', 'BillSummary', 'FloatingActionContainer', 'FieldDialog'];
+const files = ['AttachmentTile', 'ListRow', 'PersonRow', 'PersonChoice', 'SplitPersonRow', 'ChoiceGroup', 'UIStates', 'PaginationFooter', 'AttachmentPicker', 'AttachmentRow', 'MediaPreviewFrame', 'OverflowMenu', 'AppLogo', 'ResendControls', 'FallbackTabLayout', 'BillSummary', 'FloatingActionContainer', 'FieldDialog'];
 const programs = [...files, 'SignInMethods'].map(name => {
   const source = ts.createSourceFile(name + '.tsx', readFileSync(new URL(`../src/${name}.tsx`, import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   const statements = source.statements.filter(n => !ts.isImportDeclaration(n) && !ts.isExportDeclaration(n) && (name !== 'SignInMethods' || ts.isFunctionDeclaration(n) && n.name?.text === 'ConnectedProviderRow'));
