@@ -75,10 +75,12 @@ function ExplanationBody({ value, selfId }: { value: Explanation; selfId: string
     <SectionHeading>What makes up this amount</SectionHeading>
     {value.directItems.map(row => {
       const bill = row.id.startsWith('bill:') ? group.expenses.find(bill => `bill:${bill.id}` === row.id) : undefined;
+      const debtor = BigInt(row.amount) < 0n ? chosen.recipient : chosen.sender, creditor = debtor === chosen.sender ? chosen.recipient : chosen.sender;
+      const from = nameFor(group, selfId, debtor), to = creditor === selfId ? 'you' : nameFor(group, selfId, creditor);
       return <InlineDetails key={row.id} title={row.title} icon={bill ? categoryIcon(bill.category) : row.id.startsWith('payment:') ? 'payment' : 'history'} amount={row.amount}>
         {bill && <Text style={ui.caption}>{Object.entries(bill.paid).filter(([, amount]) => BigInt(amount) > 0n).map(([id, amount]) => `${nameFor(group, selfId, id)} paid ${formatMoney(amount)}`).join(', ')}</Text>}
-        {row.share !== undefined && <Text style={ui.caption}>Your share: {formatMoney(row.share)}</Text>}
-        <Text style={ui.caption}>{BigInt(row.amount) < 0n ? 'Reduces this payment by' : 'Adds to this payment:'} {formatMoney(absolute(row.amount))}</Text>
+        {bill && <Text style={ui.caption}>{debtor === selfId ? 'Your share' : `${from}'s share`}: {formatMoney(bill.shares[debtor] ?? '0')}</Text>}
+        <Text style={ui.caption}>{bill ? `${from} ${debtor === selfId ? 'owe' : 'owes'} ${to} ${formatMoney(absolute(row.amount))} for this bill` : `${BigInt(row.amount) < 0n ? 'Reduces this payment by' : 'Adds to this payment:'} ${formatMoney(absolute(row.amount))}`}</Text>
       </InlineDetails>;
     })}
     <Text style={ui.caption}>Positive amounts add to this payment. Negative amounts reduce it. Each bill keeps its original shares.</Text>

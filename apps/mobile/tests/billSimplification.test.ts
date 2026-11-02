@@ -1440,15 +1440,15 @@ test('direct breakdown uses signed expandable contributions and labels payments 
   assert.equal(rows[0].props.icon, categoryIcon('food'));
   assert.equal(rows[2].props.title, 'Recorded payment');
   assert.ok(!nodes(rows[2]).some(node => node.children.includes('Your share: ')));
-  assert.ok(nodes(rows[1]).some(node => node.children.includes('Reduces this payment by')));
+  assert.ok(nodes(rows[1]).some(node => node.children.includes('You owe Asha ₹2.00 for this bill')));
   const disclosure = harness('src/BalanceExplanationDialog.tsx', 'InlineDetails', { useUI: () => ({ ui: {}, palette: {} }) });
   let row = disclosure.render({ ...rows[1].props, children: rows[1].children });
   assert.ok(nodes(row).some(node => node.children.includes('−')));
-  assert.ok(!nodes(row).some(node => node.children.includes('Reduces this payment by')));
+  assert.ok(!nodes(row).some(node => node.children.includes('You owe Asha ₹2.00 for this bill')));
   find(row, 'accessibilityRole', 'button').props.onPress();
   row = disclosure.render({ ...rows[1].props, children: rows[1].children });
   assert.equal(find(row, 'accessibilityRole', 'button').props.accessibilityState.expanded, true);
-  assert.ok(nodes(row).some(node => node.children.includes('Reduces this payment by')));
+  assert.ok(nodes(row).some(node => node.children.includes('You owe Asha ₹2.00 for this bill')));
 });
 
 
@@ -1543,4 +1543,27 @@ test('rejected picker input opens recovery feedback without increasing the confi
  app.render(props);app.commit();await tick();find(app.render(props),'accessibilityLabel','Add photo or PDF').props.onPress();await tick();const tree=app.render(props);
  assert.equal(nodes(tree).find(n=>n.type==='KeyboardDialog')!.props.visible,true);assert.ok(find(tree,'accessibilityLabel','Attachments, 0 saved files, needs attention'));
  assert.ok(nodes(tree).some(n=>n.children.includes('Choose a still image.')));app.unmount();
+});
+
+
+test('direct bill breakdown shows the actual debtor share in both directions and keeps net debt separate', () => {
+  const expenses: any[] = [
+    { id: 'wine', description: 'Wine', total: '221500', paid: { A: '221500' }, shares: { A: '73833', B: '73834', C: '73833' }, split: {mode:'equal',values:{A:'1',B:'1',C:'1'}}, date:'2026-11-02', deleted:false },
+    { id: 'offset', description: 'Offset', total: '10000', paid: { B:'10000' }, shares: { A:'10000' }, split:{mode:'exact',values:{A:'10000'}}, date:'2026-11-02', deleted:false },
+  ];
+  const group:any = {id:'pair',version:1,name:'Trip',simplify_debts:false,participants:[{id:'A',name:'Om'},{id:'B',name:'Anishk'},{id:'C',name:'Dev'}],expenses,settlements:[],balances:{A:'137667',B:'-63834',C:'-73833'},transfers:directTransfers(expenses,[]),activity:[]};
+  for (const selfId of ['A','B']) {
+    const value=explainTransfer(group,group,selfId,group.transfers.find((t:any)=>t.sender==='B'));
+    const tree=harness('src/BalanceExplanationDialog.tsx','ExplanationBody',{categoryIcon,useUI:()=>({ui:{},palette:{}})}).render({value,selfId});
+    const rows=nodes(tree).filter(n=>typeof n.type==='function'&&n.type.name==='InlineDetails');
+    assert.ok(nodes(rows[0]).some(n=>n.children.includes(selfId==='A'?"Anishk's share":'Your share')&&n.children.includes('₹738.34')));
+    assert.ok(nodes(rows[0]).some(n=>n.children.includes(selfId==='A'?'Anishk owes you ₹738.34 for this bill':'You owe Om ₹738.34 for this bill')));
+    assert.ok(nodes(rows[1]).some(n=>n.children.includes(selfId==='A'?'Your share':"Om's share")&&n.children.includes('₹100.00')));
+    assert.ok(nodes(rows[1]).some(n=>n.children.includes(selfId==='A'?'You owe Anishk ₹100.00 for this bill':'Om owes you ₹100.00 for this bill')));
+  }
+  const partial={...expenses[0],total:'20000',paid:{A:'10000',B:'10000'},shares:{A:'5000',B:'15000'}};
+  const mixed:any={...group,expenses:[partial],balances:{A:'5000',B:'-5000',C:'0'},transfers:directTransfers([partial],[])};
+  const tree=harness('src/BalanceExplanationDialog.tsx','ExplanationBody',{categoryIcon,useUI:()=>({ui:{},palette:{}})}).render({value:explainTransfer(mixed,mixed,'A',mixed.transfers[0]),selfId:'A'});
+  assert.ok(nodes(tree).some(n=>n.children.includes("Anishk's share")&&n.children.includes('₹150.00')));
+  assert.ok(nodes(tree).some(n=>n.children.includes('Anishk owes you ₹50.00 for this bill')));
 });
