@@ -145,9 +145,9 @@ function BillTimelineRow({ expense, group, selfId, busy, onExpense, onPrefetchBi
   </VisibleExpense>;
 }
 
-function RecordSummary({ title, amount, amountColor, children, category, categoryText = false, reversed, onIconPress, iconDisabled }: { onIconPress?: () => void; iconDisabled?: boolean; categoryText?: boolean; reversed?: boolean; category?: string | null; title: string; amount: string; amountColor?: string; children: React.ReactNode }) {
+function RecordSummary({ title, amount, amountColor, children, category, categoryText = false, reversed, onIconPress, iconDisabled, trailing }: { trailing?: React.ReactNode; onIconPress?: () => void; iconDisabled?: boolean; categoryText?: boolean; reversed?: boolean; category?: string | null; title: string; amount: string; amountColor?: string; children: React.ReactNode }) {
   const { ui } = useUI();
-  return <BillSummary title={title} amount={amount} amountColor={amountColor} prominent={category !== undefined}
+  return <BillSummary trailing={trailing} title={title} amount={amount} amountColor={amountColor} prominent={category !== undefined}
     leading={category !== undefined ? <BillIconButton category={category} reversed={reversed} disabled={iconDisabled} onPress={onIconPress} /> : undefined}
     heading={<SectionHeading level={category !== undefined ? 1 : 2} style={category !== undefined ? { fontSize: 22, lineHeight: 28, flexShrink: 1, paddingTop: 2 } : undefined} accessibilityLabel={!categoryText && categoryMeaning(category) ? `${title}, ${categoryMeaning(category)}` : title}>{title}</SectionHeading>}>
     {children}
@@ -314,7 +314,7 @@ export function ExpenseDetail({ categoryIcons = {}, noticeVisibility, expense, g
   const payers = group.participants.filter(person => BigInt(expense.paid[person.id] ?? '0') > 0n);
   const sharing = group.participants.filter(person => Object.hasOwn(expense.split.values, person.id));
   return <View role="region" accessibilityLabel={group.name} style={s.content}>
-    <VisibleExpense groupId={group.id} expense={expense} visibility={(group.expenses.find(value => value.id === expense.id) ?? group.focused_expense) === expense ? noticeVisibility : undefined}><RecordSummary key={expense.id} onIconPress={onIconPress} iconDisabled={busy || !canEdit || !!expense.deleted} categoryText={hasCategory} category={expense.deleted ? null : expenseCategory({ ...expense, groupId: group.id, title: expense.description }, categoryIcons) ?? null} reversed={!!expense.deleted} title={expense.description} amount={expense.total}>
+    <VisibleExpense groupId={group.id} expense={expense} visibility={(group.expenses.find(value => value.id === expense.id) ?? group.focused_expense) === expense ? noticeVisibility : undefined}><RecordSummary trailing={attachments} key={expense.id} onIconPress={onIconPress} iconDisabled={busy || !canEdit || !!expense.deleted} categoryText={hasCategory} category={expense.deleted ? null : expenseCategory({ ...expense, groupId: group.id, title: expense.description }, categoryIcons) ?? null} reversed={!!expense.deleted} title={expense.description} amount={expense.total}>
       <Text style={[ui.body, { color: balanceColor(change, colors) }]}>{billImpact(change)}</Text>
       <Text style={ui.caption}>{group.name} · {displayDate(expense.date)}{expense.time ? ` · ${expense.time}` : ''}</Text>
       {pending ? <Text style={ui.caption}>Saved on device. Pending sync.</Text> : <RecordAttribution action="Added" name={expense.added_by} />}
@@ -323,7 +323,6 @@ export function ExpenseDetail({ categoryIcons = {}, noticeVisibility, expense, g
     {expense.deleted ? <NoticeBanner>Bill record reversed. The original and its reversal are kept in history.</NoticeBanner>
       : <Button title="Edit bill" icon="bill" kind="primary" disabled={busy || !canEdit} onPress={onEdit} />}
     {chat}
-    {attachments}
     <BillPeople icon="pay" title="Who paid?" summary={`${payers.length} people`} inline={payers.length <= 1} disabled={busy}>
       {payers.map(person => <PersonAmountRow key={person.id} name={person.name} photo={person.profile_photo} amount={expense.paid[person.id] ?? '0'} />)}
     </BillPeople>
