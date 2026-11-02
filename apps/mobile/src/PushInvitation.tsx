@@ -2,6 +2,7 @@ import { useLoading } from './LoadingOverlay';
 import React, { useEffect, useRef, useState } from 'react';
 import { Keyboard, Platform, TextInput } from 'react-native';
 import { Text } from 'react-native-paper';
+import { hasOpenDialogs } from './DialogFocus';
 import { claimPushInvitation } from './native';
 import { request } from './api';
 import type { Session } from './types';
@@ -31,13 +32,13 @@ export default function PushInvitation({ owner, session, eligible, push, onVisib
     let stopped = false;
     const controller = new AbortController();
     const timer = setTimeout(() => {
-      if (Keyboard.isVisible() || TextInput.State.currentlyFocusedInput()) return;
+      if (hasOpenDialogs() || Keyboard.isVisible() || TextInput.State.currentlyFocusedInput()) return;
       void request<{ expense_updates: boolean }>(session, '/me/notifications/preferences', 'GET', undefined, 'json', controller.signal).then(async preferences => {
-        if (stopped || preferences.expense_updates !== true || Keyboard.isVisible() || TextInput.State.currentlyFocusedInput()) return;
+        if (stopped || preferences.expense_updates !== true || hasOpenDialogs() || Keyboard.isVisible() || TextInput.State.currentlyFocusedInput()) return;
         const first = await claimPushInvitation(owner);
         if (!stopped) { offered.current = true; if (first) setVisible(true); }
       }).catch(() => {});
-    }, 400);
+    }, 1000);
     return () => { stopped = true; clearTimeout(timer); controller.abort(); };
   }, [allowed, owner, session.token, session.baseUrl]);
   const show = allowed && visible;
@@ -47,13 +48,13 @@ export default function PushInvitation({ owner, session, eligible, push, onVisib
   async function enable() {
     if (!mounted.current || !show || requesting.current) return;
     requesting.current = true; setEnabling(true); setVisible(false);
-    try { await push.enable(); }
+    try { if (!await push.enable() && mounted.current) toast('Notifications are off. You can turn them on in Me → Notifications.'); }
     catch { if (mounted.current) toast('Could not enable notifications. Try again in Me → Notifications.'); }
     finally { requesting.current = false; if (mounted.current) setEnabling(false); }
   }
-  return <KeyboardDialog visible={show} onDismiss={() => setVisible(false)}>
-    <Dialog.Title>Stay updated on shared bills?</Dialog.Title>
-    <Dialog.Content><Text style={ui.body}>Get notified when someone adds a shared bill or messages you.</Text></Dialog.Content>
+  return <KeyboardDialog label="Push notifications" visible={show} onDismiss={() => setVisible(false)}>
+    <Dialog.Title>Get notified about shared bills?</Dialog.Title>
+    <Dialog.Content><Text style={ui.body}>Get alerts when someone adds a shared bill or sends you a message.</Text></Dialog.Content>
     <Dialog.Actions style={{ flexWrap: 'wrap' }}><Button title="Not now" kind="text" onPress={() => setVisible(false)} /><Button title="Turn on notifications" kind="primary" style={{ flexShrink: 1 }} onPress={() => { void enable(); }} /></Dialog.Actions>
   </KeyboardDialog>;
 }
