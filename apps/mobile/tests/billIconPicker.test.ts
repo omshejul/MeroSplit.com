@@ -17,7 +17,7 @@ function picker(props: Record<string, any>, name = 'BillIconPicker') {
  const source=readFileSync(new URL('../src/BillIconPicker.tsx',import.meta.url),'utf8').replace(/^import .*;\n/gm,'').replace(/^export (?:default )?/gm,'');
  const slots:any[]=[];let cursor=0,blocked=false;const cleanups:(()=>void)[]=[];
  const React={createElement:(type:string,props:any,...children:any[]):Element=>({type,props:props??{},children})};
- const env={React,Platform:{OS:'ios'},View:'View',FlatList:'FlatList',Pressable:'Pressable',Icon:'Icon',Text:'Text',Button:'Button',ErrorText:'ErrorText',DialogFocus:'DialogFocus',StyleSheet:{absoluteFill:{}},requestAnimationFrame:(call:()=>void)=>call(),categoryIcon,expenseIconChoices,manualCategory,useWindowDimensions:()=>({width:393,height:852,fontScale:props.fontScale??1}),useSafeAreaInsets:()=>({top:44,bottom:34}),useScreenRemovalLock:(value:boolean)=>{blocked=value;},useUI:()=>({ui:{caption:{}},palette:{text:'white',muted:'gray',accent:'purple',soft:'soft',surface:'surface',outline:'line'},motion:{enabled:false}}),useEffect(effect:()=>void|(()=>void)){const index=cursor++;if(!(index in slots)){slots[index]=true;const cleanup=effect();if(cleanup)cleanups.push(cleanup);}},useState(initial:any){const index=cursor++;if(!(index in slots))slots[index]=initial;return [slots[index],(value:any)=>{slots[index]=typeof value==='function'?value(slots[index]):value;}];},useRef(initial:any){const index=cursor++;if(!(index in slots))slots[index]={current:initial};return slots[index];}};
+ const env={React,Platform:{OS:'ios'},View:'View',FlatList:'FlatList',Pressable:'Pressable',Icon:'Icon',Text:'Text',TextField:'TextField',Button:'Button',ErrorText:'ErrorText',DialogFocus:'DialogFocus',StyleSheet:{absoluteFill:{}},requestAnimationFrame:(call:()=>void)=>call(),categoryIcon,expenseIconChoices,manualCategory,useWindowDimensions:()=>({width:393,height:852,fontScale:props.fontScale??1}),useSafeAreaInsets:()=>({top:44,bottom:34}),useScreenRemovalLock:(value:boolean)=>{blocked=value;},useUI:()=>({ui:{caption:{}},palette:{text:'white',muted:'gray',accent:'purple',soft:'soft',surface:'surface',outline:'line'},motion:{enabled:false}}),useEffect(effect:()=>void|(()=>void)){const index=cursor++;if(!(index in slots)){slots[index]=true;const cleanup=effect();if(cleanup)cleanups.push(cleanup);}},useState(initial:any){const index=cursor++;if(!(index in slots))slots[index]=initial;return [slots[index],(value:any)=>{slots[index]=typeof value==='function'?value(slots[index]):value;}];},useRef(initial:any){const index=cursor++;if(!(index in slots))slots[index]={current:initial};return slots[index];}};
  const component=new Function('env',`with(env){ const useLoading = env.useLoading ?? (() => {}), LoadingOverlay = env.LoadingOverlay ?? 'LoadingOverlay';${ts.transpile(source,{target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.React})};return ${name};}`)(env);
  const render=()=>{cursor=0;return component(props);};return Object.assign(render,{unmount:()=>cleanups.forEach(fn=>fn()),blocked:()=>blocked});
 }
@@ -25,10 +25,10 @@ function nodes(tree:any):Element[]{return Array.isArray(tree)?tree.flatMap(nodes
 const find=(tree:any,type:string)=>nodes(tree).find(node=>node.type===type)!;
 const settle=()=>new Promise(resolve=>setImmediate(resolve));
 
-test('native picker has 20 labeled radio cells, and waits for durable acceptance before dismissing',async()=>{
+test('native picker has 62 labeled radio cells, and waits for durable acceptance before dismissing',async()=>{
  let queued:()=>void=()=>{},release:()=>void=()=>{},calls=0,closed=0;
  const render=picker({category:'wastecollection',onClose:()=>{closed++;},onSelect:async(category:string,onQueued:()=>void)=>{assert.equal(category,'food');calls++;queued=onQueued;await new Promise<void>(resolve=>{release=resolve;});}});
- const grid=find(render(),'FlatList');assert.equal(grid.props.numColumns,4);assert.equal(grid.props.data.length,20);assert.equal(grid.props.nestedScrollEnabled,true);
+ const grid=find(render(),'FlatList');assert.equal(grid.props.numColumns,4);assert.equal(grid.props.data.length,62);assert.equal(grid.props.nestedScrollEnabled,true);
  assert.equal(find(render(),'Modal'),undefined,'native stack owns the sheet');
  const all=grid.props.data.map((item:any)=>grid.props.renderItem({item}));assert.ok(all.every((item:any)=>item.props.accessibilityLabel&&item.props.accessibilityRole==='radio'&&item.children[0].type==='Icon'&&item.children[1].type==='Text'));
  assert.equal(all.find((item:any)=>item.props.accessibilityLabel==='Waste').props.accessibilityState.checked,true,'legacy manual category selects its broad icon');
@@ -91,5 +91,17 @@ test('icon saves reject unavailable, archived and reversed choices and skip an u
 
 test('large text uses fewer columns so labels fit without shrinking text',()=>{
  const render=picker({fontScale:1.3,category:'food',onClose(){},onSelect:async()=>{}});
- assert.equal(find(render(),'FlatList').props.numColumns,3);assert.equal(find(render(),'FlatList').props.data.length,20);render.unmount();
+ assert.equal(find(render(),'FlatList').props.numColumns,3);assert.equal(find(render(),'FlatList').props.data.length,62);render.unmount();
+});
+
+
+test('category search filters specific choices and clearing restores the full catalog',()=>{
+ const render=picker({category:'general',onClose(){},onSelect:async()=>{}});
+ find(render(),'TextField').props.onChangeText('mortgage');
+ assert.deepEqual(find(render(),'FlatList').props.data.map((item:any)=>item.category),['mortgage']);
+ find(render(),'TextField').props.onChangeText('no such category');
+ assert.equal(find(render(),'FlatList').props.data.length,0);
+ assert.equal(find(render(),'FlatList').props.ListEmptyComponent.children[0],'No matching categories');
+ find(render(),'TextField').props.onChangeText('');assert.equal(find(render(),'FlatList').props.data.length,62);
+ render.unmount();
 });

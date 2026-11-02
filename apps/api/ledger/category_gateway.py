@@ -15,7 +15,7 @@ CATEGORIES = {key: option[1] for key, option in OPTIONS.items()}
 ICONS = {option[1]: f"{option[0]}: {option[2]}" for option in OPTIONS.values()}
 ICON_CATEGORIES = {icon: category for category, icon in CATEGORIES.items()}
 
-INSTRUCTIONS = "Pick the one broad bill icon that best represents the title. Use the supplied meanings rather than inventing a more specific icon."
+INSTRUCTIONS = "Pick the one bill icon that best represents the title. Prefer a specific category when supported by the title; use a broad category or Other when unclear. Follow the supplied meanings."
 
 def definition_revision():
     return hashlib.sha256(json.dumps({

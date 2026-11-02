@@ -13,7 +13,7 @@
     "drinks": [
       "Drinks",
       "TeaIcon",
-      "Coffee, tea, soft drinks and alcoholic drinks."
+      "Other non-alcoholic drinks, juices and soft drinks; use Coffee & tea or Liquor when clear."
     ],
     "groceries": [
       "Groceries",
@@ -23,12 +23,12 @@
     "utilities": [
       "Utilities",
       "FlashIcon",
-      "Electricity, water, gas, internet and mobile bills."
+      "Other utility bills; use Electricity, Heating & gas, Water or TV, phone & internet when clear."
     ],
     "transport": [
       "Transport",
       "Car01Icon",
-      "Taxis, driving, fuel, parking, tolls, cycling and vehicle maintenance."
+      "Other transport expenses when no specific vehicle, transit, taxi, fuel, parking or toll category fits."
     ],
     "transit": [
       "Transit",
@@ -38,17 +38,17 @@
     "travel": [
       "Travel",
       "Airplane01Icon",
-      "Flights, accommodation and trips."
+      "Other trip and travel expenses; use Flights and Hotel when clear."
     ],
     "home": [
       "Home & family",
       "Home01Icon",
-      "Rent, household goods, furniture, appliances and childcare."
+      "Other home and family expenses; use rent, mortgage, supplies, furniture, maintenance or childcare when clear."
     ],
     "shopping": [
       "Shopping",
       "ShoppingBag01Icon",
-      "Clothes, shoes, electronics, beauty and personal care."
+      "Other shopping purchases; use Clothing, Electronics, Appliances or Personal care when clear."
     ],
     "health": [
       "Health",
@@ -63,7 +63,7 @@
     "entertainment": [
       "Leisure",
       "Ticket01Icon",
-      "Movies, music, games, events and leisure activities."
+      "Other entertainment and leisure activities; use Movies, Music, Games or Sports when clear."
     ],
     "fitness": [
       "Fitness",
@@ -88,17 +88,227 @@
     "fees": [
       "Fees & taxes",
       "CreditCardIcon",
-      "Bank fees, insurance, taxes and general recurring fees."
+      "Other financial and recurring fees; use Bank fees, Insurance, Taxes or Subscriptions when clear."
     ],
     "services": [
       "Services",
       "RepairIcon",
-      "Cleaning, laundry, repairs, maintenance and delivery services."
+      "Other services, general repairs and delivery services; use Home maintenance, Cleaning, Laundry or Moving when clear."
     ],
     "waste": [
       "Waste",
       "TrashIcon",
       "Refuse collection, rubbish disposal and recycling services."
+    ],
+    "coffee": [
+      "Coffee & tea",
+      "Coffee01Icon",
+      "Coffee, tea and cafe drinks; not alcoholic drinks."
+    ],
+    "alcohol": [
+      "Liquor",
+      "BeerIcon",
+      "Beer, wine, spirits and other alcoholic drinks."
+    ],
+    "takeaway": [
+      "Takeaway",
+      "DeliveryBox01Icon",
+      "Takeaway meals and food delivery, including delivery charges on the meal."
+    ],
+    "movies": [
+      "Movies",
+      "Film02Icon",
+      "Cinema tickets and movie rentals; not recurring streaming subscriptions."
+    ],
+    "music": [
+      "Music",
+      "MusicNote01Icon",
+      "Music purchases, instruments and concerts; not recurring subscriptions."
+    ],
+    "gaming": [
+      "Games",
+      "GameController02Icon",
+      "Video games, board games and gaming purchases."
+    ],
+    "sports": [
+      "Sports",
+      "FootballIcon",
+      "Sports matches, equipment and participation; use Fitness for gym and exercise."
+    ],
+    "electronics": [
+      "Electronics",
+      "LaptopIcon",
+      "Computers, phones and electronic devices; not household appliances."
+    ],
+    "furniture": [
+      "Furniture",
+      "Sofa01Icon",
+      "Furniture such as beds, sofas, desks and chairs."
+    ],
+    "household": [
+      "Household supplies",
+      "BodySoapIcon",
+      "Household consumables, toiletries, kitchenware and cleaning products; not cleaning services."
+    ],
+    "maintenance": [
+      "Home maintenance",
+      "ToolsIcon",
+      "Home repairs, plumbing, electrical work and property maintenance; not vehicle repairs."
+    ],
+    "mortgage": [
+      "Mortgage",
+      "House03Icon",
+      "Mortgage instalments and home loan payments; not rent or security deposits."
+    ],
+    "rent": [
+      "Rent",
+      "House01Icon",
+      "Rent for a home, room or apartment; not mortgage or refundable deposits."
+    ],
+    "appliances": [
+      "Appliances",
+      "FridgeIcon",
+      "Household appliances such as fridges, washing machines and ovens."
+    ],
+    "childcare": [
+      "Childcare",
+      "Baby01Icon",
+      "Babysitting, daycare and childcare expenses."
+    ],
+    "clothing": [
+      "Clothing",
+      "TShirtIcon",
+      "Clothes, shoes and clothing accessories."
+    ],
+    "beauty": [
+      "Personal care",
+      "HairDryerIcon",
+      "Haircuts, salon, skincare, cosmetics and personal grooming services."
+    ],
+    "insurance": [
+      "Insurance",
+      "Shield01Icon",
+      "Insurance premiums for health, life, home, travel or vehicles."
+    ],
+    "taxes": [
+      "Taxes",
+      "TaxesIcon",
+      "Government taxes and tax payments; not bank fees or insurance."
+    ],
+    "cycling": [
+      "Bicycle",
+      "BicycleIcon",
+      "Bicycle purchases, cycle hire, bike accessories and bicycle repairs."
+    ],
+    "car": [
+      "Car",
+      "Car03Icon",
+      "Car purchases and general vehicle expenses; use specific fuel, rental, parking or repair choices when clear."
+    ],
+    "fuel": [
+      "Gas & fuel",
+      "FuelIcon",
+      "Petrol, diesel, vehicle charging and other vehicle fuel; not home heating gas."
+    ],
+    "hotel": [
+      "Hotel",
+      "Hotel02Icon",
+      "Hotels, hostels, resorts and holiday accommodation."
+    ],
+    "parking": [
+      "Parking",
+      "CarParking01Icon",
+      "Vehicle parking charges and parking permits."
+    ],
+    "flights": [
+      "Flights",
+      "AirplaneTakeOff01Icon",
+      "Airline tickets, flight baggage and airline fees."
+    ],
+    "taxi": [
+      "Taxi & rideshare",
+      "Taxi02Icon",
+      "Taxis, cabs and rideshare trips such as Uber or Ola."
+    ],
+    "tolls": [
+      "Tolls",
+      "TrafficLightIcon",
+      "Road, bridge and motorway tolls, including FASTag."
+    ],
+    "carrental": [
+      "Car rental",
+      "CarTimeIcon",
+      "Car and motor vehicle rental or hire; not taxis or bicycle hire."
+    ],
+    "carmaintenance": [
+      "Car repair",
+      "Wrench01Icon",
+      "Motor vehicle repairs, servicing, tyres and maintenance; not home repairs."
+    ],
+    "cleaning": [
+      "Cleaning",
+      "CleanIcon",
+      "House cleaning services, housekeepers and maids; not cleaning supplies or laundry."
+    ],
+    "electricity": [
+      "Electricity",
+      "BulbIcon",
+      "Electricity bills and power charges; not vehicle charging."
+    ],
+    "gas": [
+      "Heating & gas",
+      "FireIcon",
+      "Home heating, cooking gas, LPG cylinders and gas utility bills; not vehicle fuel."
+    ],
+    "connectivity": [
+      "TV, phone & internet",
+      "Wifi01Icon",
+      "Broadband, internet, mobile, landline and cable or satellite TV bills."
+    ],
+    "water": [
+      "Water",
+      "WaterEnergyIcon",
+      "Water supply bills and drinking water delivery."
+    ],
+    "laundry": [
+      "Laundry",
+      "WashingMachineIcon",
+      "Laundry, dry cleaning and ironing services."
+    ],
+    "subscriptions": [
+      "Subscriptions",
+      "RepeatIcon",
+      "Recurring memberships, streaming and personal app subscriptions; not utility bills, insurance or work software."
+    ],
+    "charity": [
+      "Donations",
+      "CharityIcon",
+      "Charitable donations, fundraising and religious giving; not personal gifts."
+    ],
+    "medicine": [
+      "Pharmacy",
+      "MedicineBottle01Icon",
+      "Medicines, prescriptions and pharmacy purchases; not doctor visits."
+    ],
+    "dental": [
+      "Dental",
+      "DentalToothIcon",
+      "Dentist appointments, dental treatment and dental care."
+    ],
+    "moving": [
+      "Moving",
+      "DeliveryTruck01Icon",
+      "Moving home, movers, packing and relocation services."
+    ],
+    "deposit": [
+      "Security deposit",
+      "SafeIcon",
+      "Refundable rental or property security deposits; not rent or mortgage."
+    ],
+    "bankfees": [
+      "Bank fees",
+      "BankIcon",
+      "Bank account charges, card fees, transfer fees and ATM fees."
     ]
   },
   "aliases": {
@@ -108,9 +318,9 @@
     "bakery": "food",
     "dessert": "food",
     "fastfood": "food",
-    "coffee": "drinks",
-    "tea": "drinks",
-    "alcohol": "drinks",
+    "coffee": "coffee",
+    "tea": "coffee",
+    "alcohol": "alcohol",
     "groceries": "groceries",
     "produce": "groceries",
     "meat": "groceries",
@@ -118,62 +328,62 @@
     "dairy": "groceries",
     "snacks": "groceries",
     "utilities": "utilities",
-    "water": "utilities",
-    "electricity": "utilities",
-    "gas": "utilities",
-    "internet": "utilities",
-    "mobile": "utilities",
+    "water": "water",
+    "electricity": "electricity",
+    "gas": "gas",
+    "internet": "connectivity",
+    "mobile": "connectivity",
     "transport": "transport",
-    "taxi": "transport",
-    "fuel": "transport",
-    "parking": "transport",
-    "tolls": "transport",
-    "cycling": "transport",
-    "carmaintenance": "transport",
+    "taxi": "taxi",
+    "fuel": "fuel",
+    "parking": "parking",
+    "tolls": "tolls",
+    "cycling": "cycling",
+    "carmaintenance": "carmaintenance",
     "bus": "transit",
     "train": "transit",
     "metro": "transit",
     "travel": "travel",
-    "flights": "travel",
-    "hotel": "travel",
-    "rent": "home",
-    "household": "home",
-    "furniture": "home",
-    "appliances": "home",
-    "childcare": "home",
+    "flights": "flights",
+    "hotel": "hotel",
+    "rent": "rent",
+    "household": "household",
+    "furniture": "furniture",
+    "appliances": "appliances",
+    "childcare": "childcare",
     "shopping": "shopping",
-    "electronics": "shopping",
-    "clothing": "shopping",
-    "footwear": "shopping",
-    "beauty": "shopping",
-    "haircut": "shopping",
+    "electronics": "electronics",
+    "clothing": "clothing",
+    "footwear": "clothing",
+    "beauty": "beauty",
+    "haircut": "beauty",
     "health": "health",
-    "medicine": "health",
-    "dental": "health",
+    "medicine": "medicine",
+    "dental": "dental",
     "education": "education",
     "books": "education",
     "stationery": "education",
     "tuition": "education",
     "entertainment": "entertainment",
-    "movies": "entertainment",
-    "music": "entertainment",
-    "gaming": "entertainment",
+    "movies": "movies",
+    "music": "music",
+    "gaming": "gaming",
     "photography": "entertainment",
-    "sports": "fitness",
+    "sports": "sports",
     "fitness": "fitness",
     "office": "work",
     "software": "work",
     "gifts": "gifts",
-    "charity": "gifts",
+    "charity": "charity",
     "flowers": "gifts",
     "pets": "pets",
-    "insurance": "fees",
-    "taxes": "fees",
-    "bankfees": "fees",
-    "subscriptions": "fees",
-    "cleaning": "services",
-    "laundry": "services",
-    "repairs": "services",
+    "insurance": "insurance",
+    "taxes": "taxes",
+    "bankfees": "bankfees",
+    "subscriptions": "subscriptions",
+    "cleaning": "cleaning",
+    "laundry": "laundry",
+    "repairs": "maintenance",
     "shipping": "services",
     "garbage": "waste",
     "wastecollection": "waste",
@@ -181,6 +391,41 @@
     "foodanddrink": "food",
     "diningout": "food",
     "transportation": "transport",
-    "medical": "health"
+    "medical": "health",
+    "drinks": "drinks",
+    "transit": "transit",
+    "home": "home",
+    "work": "work",
+    "fees": "fees",
+    "services": "services",
+    "waste": "waste",
+    "takeaway": "takeaway",
+    "maintenance": "maintenance",
+    "mortgage": "mortgage",
+    "car": "car",
+    "carrental": "carrental",
+    "connectivity": "connectivity",
+    "moving": "moving",
+    "deposit": "deposit",
+    "liquor": "alcohol",
+    "beer": "alcohol",
+    "wine": "alcohol",
+    "games": "gaming",
+    "bicycle": "cycling",
+    "plane": "flights",
+    "carrepair": "carmaintenance",
+    "homemaintenance": "maintenance",
+    "householdsupplies": "household",
+    "medicalexpenses": "health",
+    "tvphoneinternet": "connectivity",
+    "phone": "connectivity",
+    "heating": "gas",
+    "heatgas": "gas",
+    "gasfuel": "fuel",
+    "trash": "waste",
+    "bankfee": "bankfees",
+    "donations": "charity",
+    "pharmacy": "medicine",
+    "securitydeposit": "deposit"
   }
 }

@@ -4,6 +4,7 @@ import { FlatList, Platform, StyleSheet, View, useWindowDimensions } from 'react
 import { Text } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import DialogFocus from './DialogFocus';
+import { TextField } from './FormFields';
 import { categoryIcon, manualCategory, expenseIconChoices } from './categoryIcons';
 import { useScreenRemovalLock } from './screenRemoval';
 import { Button, ErrorText, Icon, useUI } from './ui';
@@ -24,6 +25,8 @@ export default function BillIconPicker({ category, disabled = false, active = tr
   onSelect: (category: string, onQueued: () => void) => Promise<void>; onClose: () => void;
 }) {
   const { palette, ui } = useUI(), { width, height, fontScale } = useWindowDimensions(), insets = useSafeAreaInsets();
+  const [query, setQuery] = useState('');
+  const choices = expenseIconChoices.filter(item => `${item.label} ${item.category}`.toLowerCase().includes(query.trim().toLowerCase()));
   const [saving, setSaving] = useState(false), [queued, setQueued] = useState(false), [error, setError] = useState('');
   const [picked, setPicked] = useState<string | null>(null), [sheetWidth, setSheetWidth] = useState(Math.min(width, 560));
   const list = useRef<FlatList<(typeof expenseIconChoices)[number]>>(null);
@@ -49,8 +52,12 @@ export default function BillIconPicker({ category, disabled = false, active = tr
     } finally { lock.current = false; if (live.current) setSaving(false); }
   }
   const content = <DialogFocus active={active} busy={blocked} label="Choose bill icon" onEscape={close} style={{ flex: 1 }}>
-    <FlatList ref={list} accessibilityRole="radiogroup" data={expenseIconChoices} key={columns} numColumns={columns} keyExtractor={item => item.category} initialNumToRender={20} nestedScrollEnabled
-      style={{ flex: 1, marginTop: 44, width: '100%', maxWidth: 560, alignSelf: 'center' }} onLayout={event => setSheetWidth(event.nativeEvent.layout.width)}
+    <View style={{ marginTop: 44, paddingHorizontal: 20, width: '100%', maxWidth: 560, alignSelf: 'center' }}>
+      <TextField label="Search categories" hideLabel placeholder="Search categories" value={query} onChangeText={setQuery} autoCorrect={false} autoCapitalize="none" />
+    </View>
+    <FlatList ref={list} accessibilityRole="radiogroup" data={choices} keyboardShouldPersistTaps="handled" key={columns} numColumns={columns} keyExtractor={item => item.category} initialNumToRender={20} nestedScrollEnabled
+      style={{ flex: 1, marginTop: 10, width: '100%', maxWidth: 560, alignSelf: 'center' }} onLayout={event => setSheetWidth(event.nativeEvent.layout.width)}
+      ListEmptyComponent={<Text accessibilityLiveRegion="polite" style={[ui.caption, { paddingVertical: 20 }]}>No matching categories</Text>}
       ListHeaderComponent={<View>
         {!!error && <View style={{ paddingBottom: 12 }}><ErrorText live>{error}</ErrorText></View>}
       </View>}
