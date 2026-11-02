@@ -76,7 +76,7 @@ class SimplifyIn(Command):
 
 
 class Split(Input):
-    mode: Literal["equal", "exact", "percent", "shares"]
+    mode: Literal["equal", "exact", "percent", "shares", "adjustment"]
     values: dict[str, StrictStr]
 
 

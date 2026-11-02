@@ -12,7 +12,7 @@ import { Alert } from './alerts';
 import { isPersonalPayment } from './personalBalances';
 import { addSettlement, formatMoney, integer, rupeesToPaise } from './accounting';
 import type { Group } from './types';
-import { Button, ErrorText, useUI } from './ui';
+import { Avatar, Button, ErrorText, Icon, useUI } from './ui';
 import type { Palette } from './ui';
 import { AmountField } from './FormFields';
 import { PaymentAddress, PaymentHelpDialog, UPIAppChooser, WebPaymentQuote } from './PaymentPanels';
@@ -259,10 +259,14 @@ export default function SettleForm({ group, initial, busy, selfId, onSave, onRem
   }
   return <View style={styles.form}>
     <Text style={ui.caption}>{group.name}</Text>
-    {!webQuote && <View style={styles.field}><Text style={ui.rowTitle}>From {label(sender)}</Text><Text style={ui.rowTitle}>To {label(recipient)}</Text></View>}
+    {!webQuote && <View style={styles.paymentPeople}>
+      <View style={styles.paymentPerson}><Avatar size={72} name={label(sender)} photo={group.participants.find(person => person.id === sender)?.profile_photo} /><Text style={[ui.rowTitle, styles.personName]}>From {label(sender)}</Text></View>
+      <View style={{ height: 72, justifyContent: 'center' }}><Icon name="direction" size={32} color={colors.muted} /></View>
+      <View style={styles.paymentPerson}><Avatar size={72} name={label(recipient)} photo={group.participants.find(person => person.id === recipient)?.profile_photo} /><Text style={[ui.rowTitle, styles.personName]}>To {label(recipient)}</Text></View>
+    </View>}
     {group.archived && <NoticeBanner>Reopen this group in settings before recording a payment.</NoticeBanner>}
     {!webQuote && <><AmountField label={`Amount (${currencySymbol()})`} value={amount}
-      onChangeText={value => { setAmount(value); setError(''); setWebQuote(null); }} editable={!disabled && !webQuote} placeholder="0" />
+      onChangeText={value => { setAmount(value); setError(''); setWebQuote(null); }} editable={!disabled && !webQuote} placeholder="0" style={styles.paymentAmount} containerStyle={{ width: '100%', maxWidth: 360, alignSelf: 'center' }} />
     <DetailDialog busy={disabled} title="Change people" icon="people">
         <PaymentPersonChoices direction="From" people={group.participants.filter(person => !person.removed)} selected={sender} label={label} disabled={disabled}
           onSelect={id => { setSender(id); if (id !== selfId) setRecipient(selfId); else if (recipient === selfId) setRecipient(''); setError(''); setWebQuote(null); }} />
@@ -279,7 +283,9 @@ export default function SettleForm({ group, initial, busy, selfId, onSave, onRem
     {activeAttempt?.state === 'prepared' && sender === selfId && <Button title={savingAction === 'cancel' ? 'Cancelling…' : 'Cancel unpaid attempt'} kind="text" disabled={disabled} onPress={() => Alert.alert('Cancel unpaid attempt?', 'Cancel this unpaid attempt?', [{ text: 'Keep attempt', style: 'cancel' }, { text: 'Cancel attempt', onPress: () => void cancelAttempt(activeAttempt.id) }])} />}
     {!!notice && <Text accessibilityLiveRegion="polite" style={ui.caption}>{notice}</Text>}
     {!!error && <ErrorText live>{error}</ErrorText>}
-    {!webQuote && <Button title={savingAction === 'record' ? 'Recording…' : amountLabel ? `Record ${amountLabel} already paid` : 'Record a payment already made'} accessibilityLabel={amountLabel ? `Record ${amountLabel} to ${label(recipient)}` : 'Record payment'} onPress={confirm} disabled={disabled || group.archived || !isPersonalPayment(group, selfId, sender, recipient)} kind={canPay ? 'secondary' : 'primary'} icon="check" />}
+    {!webQuote && <View style={{ gap: 10 }}><NoticeBanner>Recording a payment only updates your balance. No money will be moved.</NoticeBanner>
+      <Button title={savingAction === 'record' ? 'Recording…' : amountLabel ? `Record ${amountLabel} already paid` : 'Record a payment already made'} accessibilityLabel={amountLabel ? `Record ${amountLabel} to ${label(recipient)}` : 'Record payment'} onPress={confirm} disabled={disabled || group.archived || !isPersonalPayment(group, selfId, sender, recipient)} kind={canPay ? 'secondary' : 'primary'} icon="check" />
+    </View>}
     {canRemind && !webQuote && <Button title={savingAction === 'remind' ? 'Sending…' : 'Remind'} kind="text" icon="notifications" accessibilityLabel={`Remind ${label(sender)} about ${formatMoney(debt!.amount)}`} disabled={disabled} onPress={() => void remind()} />}
     <UPIAppChooser apps={chooser?.apps ?? null} recipient={chooser?.target ?? null} disabled={busy || saving} onChoose={app => void pay(app)} onDismiss={() => { if (!busy && !saving) setChooser(null); }} />
   </View>;
@@ -288,6 +294,10 @@ export default function SettleForm({ group, initial, busy, selfId, onSave, onRem
 const makeStyles = (colors: Palette) => StyleSheet.create({
   returnTitle: { fontSize: 24, lineHeight: 31 },
   form: { gap: 12 }, field: { gap: 7 },
+  paymentPeople: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'center', gap: 16, paddingVertical: 20 },
+  paymentPerson: { flex: 1, maxWidth: 160, minWidth: 0, alignItems: 'center', gap: 12 },
+  personName: { textAlign: 'center', flexShrink: 1 },
+  paymentAmount: { fontSize: 32, lineHeight: 42, textAlign: 'center', minHeight: 68 },
   people: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
   summary: { minHeight: 52, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 }, reveal: { gap: 12, paddingBottom: 12 },
 });

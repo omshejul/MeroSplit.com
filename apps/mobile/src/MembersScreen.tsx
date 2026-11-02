@@ -26,7 +26,7 @@ import type { Group, Participant } from './types';
 import { addPerson, currentEmailInvite, emailInvitationRequest, personRequest, saveContact, sendInvitation } from './members';
 import type { AddPersonRequest, EmailInviteRequest } from './members';
 import { EmailField, TextField } from './FormFields';
-import { Button, IconAction, SettingsRow, useUI } from './ui';
+import { Button, Icon, IconAction, SettingsRow, useUI } from './ui';
 
 type Props = {
   group: Group;
@@ -387,7 +387,7 @@ function MemberSettings({ group, selfId, busy, addPersonRequest = 0, onAction, o
     <FeedbackNote section="members" feedback={feedback} />
 
     {!group.is_direct && <View style={s.section}>
-      <View style={ui.row}><Text style={[ui.rowTitle, { flex: 1 }]}>Simplify debts</Text><Switch accessibilityLabel="Simplify debts" value={group.simplify_debts !== false}
+      <View style={ui.row}><Icon name="simplify" /><Text style={[ui.rowTitle, { flex: 1 }]}>Simplify debts</Text><Switch accessibilityLabel="Simplify debts" value={group.simplify_debts !== false}
         disabled={disabled || !self || !!self.removed || self.user_id == null || !!group.archived || group.can_change_simplify !== true}
         onValueChange={simplify_debts => void perform('simplify', async () => { await onAction('/simplify', { simplify_debts, version: group.version }); }, 'Repayment setting saved.')} /></View>
       <Text style={ui.caption}>{group.simplify_debts !== false ? "Reduces payments using everyone's net balance." : 'Each person repays the member who paid for them.'}</Text>

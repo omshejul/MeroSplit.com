@@ -100,3 +100,11 @@ test('Reversed records have no cashflow and direction does not claim receipt con
   assert.equal(settlementCashflow({ sender: 'A', recipient: 'B', amount: '0' }, 'A'), '0');
   assert.equal(settlementCashflow({ sender: 'A', recipient: 'B', amount: '9007199254740993' }, 'A'), '-9007199254740993');
 });
+
+test('adjustments parse signed decimal money without rounding or negative zero', async () => {
+  const { adjustmentToPaise } = await import('../src/accounting.ts');
+  assert.equal(adjustmentToPaise('-20.05'), '-2005');
+  assert.equal(adjustmentToPaise('0'), '0');
+  assert.equal(adjustmentToPaise('-0.00'), '0');
+  for (const raw of ['1.001', '-01', '1e2', '--1', '10000000.01', '-10000000.01']) assert.throws(() => adjustmentToPaise(raw));
+});

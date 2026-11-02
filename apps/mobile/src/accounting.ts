@@ -1,7 +1,7 @@
 import { currencySymbol } from './currency.ts';
 export const MAX_AMOUNT = 1_000_000_000n;
 export type Amounts = Record<string, string>;
-export type Split = { mode: 'equal' | 'exact' | 'percent' | 'shares'; values: Amounts };
+export type Split = { mode: 'equal' | 'exact' | 'percent' | 'shares' | 'adjustment'; values: Amounts };
 export type Transfer = { sender: string; recipient: string; amount: string };
 
 export function integer(value: string, signed = false): bigint {
@@ -25,6 +25,13 @@ export function rupeesToPaise(value: string): string {
   const amount = scaled(value, 2);
   if (amount <= 0n || amount > MAX_AMOUNT) throw new Error(`Amount must be above zero and at most ${currencySymbol()}1,00,00,000.`);
   return amount.toString();
+}
+
+export function adjustmentToPaise(value: string): string {
+  const negative = value.startsWith('-');
+  const amount = scaled(negative ? value.slice(1) : value, 2);
+  if (amount > MAX_AMOUNT) throw new Error('Adjustment is outside the supported range.');
+  return (negative ? -amount : amount).toString();
 }
 
 export function formatMoney(value: string, currency?: string): string {
@@ -57,6 +64,15 @@ export function validateExpense(
   if (split.mode === 'exact') {
     shares = Object.fromEntries(ids.map(id => [id, integer(split.values[id] ?? '0')]));
     if (Object.values(shares).reduce((a, b) => a + b, 0n) !== amount) throw new Error('Exact shares must add up to the bill.');
+  } else if (split.mode === 'adjustment') {
+    const adjustments = Object.fromEntries(selected.map(id => [id, integer(split.values[id], true)]));
+    if (Object.values(adjustments).some(value => value < -MAX_AMOUNT || value > MAX_AMOUNT)) throw new Error('Adjustment is outside the supported range.');
+    const remainder = amount - Object.values(adjustments).reduce((sum, value) => sum + value, 0n);
+    if (remainder < 0n) throw new Error('Adjustments cannot exceed the bill total.');
+    const count = BigInt(selected.length), base = remainder / count, extra = remainder % count;
+    shares = Object.fromEntries(ids.map(id => [id, 0n]));
+    selected.forEach((id, index) => { shares[id] = base + (BigInt(index) < extra ? 1n : 0n) + adjustments[id]; });
+    if (Object.values(shares).some(value => value < 0n)) throw new Error('An adjustment makes someone’s share negative. Reduce the subtraction.');
   } else {
     let weights: Record<string, bigint>;
     if (split.mode === 'equal') {

@@ -24,11 +24,11 @@ export default function SplitPersonRow({ person, title, selected, disabled, edit
   onToggle: () => void; onChange: (value: string) => void;
 }) {
   const { ui, palette, dark } = useUI(), { fontScale = 1 } = useWindowDimensions();
-  const shares = mode === 'shares', canEdit = selected && editable;
+  const shares = mode === 'shares', adjustment = mode === 'adjustment', negative = value.startsWith('-'), canEdit = selected && editable;
   const minus = shares ? stepShare(value, -1) : null, plus = shares ? stepShare(value, 1) : null;
   const atZero = /^0(?:\.0*)?$/.test(value || '0');
-  const controlWidth = (shares ? 90 + Math.max(44, Math.min(112, value.length * 10 + 8)) : 96) * Math.min(fontScale, 1.5);
-  const name = `${title} ${mode === 'exact' ? `(${currencySymbol()})` : mode === 'percent' ? '(%)' : '(shares)'}`;
+  const controlWidth = (shares ? 90 + Math.max(44, Math.min(112, value.length * 10 + 8)) : adjustment ? 120 : 96) * Math.min(fontScale, 1.5);
+  const name = `${adjustment ? 'Adjustment for ' : ''}${title} ${mode === 'exact' || adjustment ? `(${currencySymbol()})` : mode === 'percent' ? '(%)' : '(shares)'}`;
   return <View style={[styles.row, { borderBottomColor: palette.line }]}>
     <Button kind="plain" accessibilityRole="checkbox" accessibilityLabel={`${title}${amount ? `, ${amount}` : ''}`}
       accessibilityState={{ checked: selected, disabled }} disabled={disabled} onPress={onToggle}
@@ -46,9 +46,10 @@ export default function SplitPersonRow({ person, title, selected, disabled, edit
         onPress={() => { if (canEdit && minus !== null) onChange(minus); }} style={styles.step}>
         <Icon name="subtract" size={18} color={!canEdit || minus === null || atZero ? palette.muted : palette.accent} />
       </Button>}
+      {adjustment && <Button kind="plain" accessibilityLabel={`${negative ? 'Switch to add' : 'Switch to subtract'} for ${title}`} disabled={!canEdit} onPress={() => { if (canEdit) onChange(negative ? value.slice(1) : `-${value || '0'}`); }} style={styles.step}><Icon name={negative ? 'subtract' : 'add'} size={18} /></Button>}
       {mode === 'exact' && <Text accessible={false} style={ui.caption}>{currencySymbol()}</Text>}
-      <TextField hideLabel label={name} autoCorrect={false} keyboardType="decimal-pad" value={value} editable={canEdit}
-        onChangeText={onChange} containerStyle={styles.inputContainer}
+      <TextField hideLabel label={name} autoCorrect={false} keyboardType="decimal-pad" value={adjustment && negative ? value.slice(1) : value} editable={canEdit}
+        onChangeText={text => onChange(adjustment && negative && text && !text.startsWith('-') ? `-${text}` : text)} containerStyle={styles.inputContainer}
         style={[styles.input, { textAlign: shares ? 'center' : 'right' }]} />
       {mode === 'percent' && <Text accessible={false} style={ui.caption}>%</Text>}
       {shares && <Button kind="plain" accessibilityLabel={`Increase shares for ${title}`} disabled={!canEdit || plus === null}

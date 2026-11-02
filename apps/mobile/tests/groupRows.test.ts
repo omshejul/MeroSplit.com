@@ -467,7 +467,7 @@ test('balance rows have just one Record or Pay action', () => {
       onSettle: (value: unknown) => { assert.equal(value, transfer); opened = true; }, onExplain() {} });
     const buttons = elements(tree).filter(node => node.type === 'Button' && node.props.title);
     assert.equal(buttons.length, 1);
-    assert.equal(buttons[0].props.title, outgoing ? 'Pay' : 'Record');
+    assert.equal(buttons[0].props.title, outgoing ? 'Pay' : 'Settle');
     buttons[0].props.onPress(); assert.equal(opened, true);
   }
 });
@@ -478,7 +478,7 @@ test('balance explanation target and Record remain independent siblings with unc
   const props = { transfer, group, selfId: 'self', disabled: false, onSettle: (row: unknown) => { assert.equal(row, transfer); records++; }, onExplain: (row: unknown, focus: unknown) => { assert.equal(row, transfer); assert.equal(typeof focus, 'function'); explanations++; } };
   const tree = render(props), direct = tree.children.filter(Boolean) as Element[];
   assert.deepEqual(direct.map(node => node.type), ['Button', 'View']);
-  const record = (tree: unknown) => elements(tree).find(node => node.props.title === 'Record')!;
+  const record = (tree: unknown) => elements(tree).find(node => node.props.title === 'Settle')!;
   direct[0].props.onPress(); assert.equal(explanations, 1); assert.equal(records, 0);
   record(tree).props.onPress(); assert.equal(explanations, 1); assert.equal(records, 1);
   assert.equal(record(tree).props.disabled, false);

@@ -15,7 +15,8 @@ export function expenseDraftStore(owner: string, groupId: string, expenseId: str
           typeof saved.id !== 'string' || !saved.id || typeof saved.expenseVersion !== 'number' ||
           !['description', 'amount', 'date', 'notes'].every(field => typeof saved[field as keyof ExpenseFormDraft] === 'string') ||
           saved.time != null && (typeof saved.time !== 'string' || !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(saved.time)) ||
-          !['equal', 'exact', 'percent', 'shares'].includes(saved.mode) ||
+          !['equal', 'exact', 'percent', 'shares', 'adjustment'].includes(saved.mode) ||
+          saved.multiplePayers !== undefined && typeof saved.multiplePayers !== 'boolean' ||
           ![saved.payerIds, saved.participantIds].every(ids => Array.isArray(ids) && ids.every(id => typeof id === 'string')) ||
           ![saved.payerAmounts, saved.splitValues].every(values => values && typeof values === 'object' && !Array.isArray(values) && Object.values(values).every(value => typeof value === 'string')) ||
           saved.attachment && (saved.attachment.path !== `/groups/${groupId}/expenses/${saved.id}/attachments` || typeof saved.attachment.file?.uri !== 'string')) {
