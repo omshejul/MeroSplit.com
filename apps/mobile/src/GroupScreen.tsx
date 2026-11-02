@@ -1,3 +1,4 @@
+import MarkdownNotes from './MarkdownNotes';
 import KeyboardScrollView from './KeyboardScrollView';
 import TextInput from './KeyboardInput';
 import { useLoading } from './LoadingOverlay';
@@ -331,7 +332,7 @@ export function ExpenseDetail({ categoryIcons = {}, noticeVisibility, expense, g
       {sharing.map(person => <PersonAmountRow key={person.id} name={person.name} photo={person.profile_photo} amount={expense.shares[person.id] ?? '0'} />)}
     </BillPeople>
     {!!expense.notes && <View style={s.section}>
-      {!!expense.notes && <Text style={ui.body}>{expense.notes}</Text>}
+      <MarkdownNotes source={expense.notes} />
     </View>}
     {onHistory && <Button title="Version history" icon="history" kind="outlined" disabled={busy || pending} onPress={onHistory} />}
     {!expense.deleted && <Button title="Reverse record" kind="danger" disabled={busy || !canEdit || pending} onPress={onReverse} />}

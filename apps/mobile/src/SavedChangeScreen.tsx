@@ -1,3 +1,4 @@
+import MarkdownNotes from './MarkdownNotes';
 import BillSummary from './BillSummary';
 import { PersonAmountRow } from './PersonRow';
 import { NoticeBanner } from './UIStates';
@@ -25,7 +26,7 @@ function SavedBillSummary({ expense, participants }: { expense: Expense; partici
     {participants.filter(person => (expense.paid[person.id] ?? '0') !== '0').map(person => <PersonAmountRow divider={false} avatar={false} style={s.person} titleStyle={s.name} amountStyle={s.amount} key={person.id} name={person.name} amount={expense.paid[person.id]} />)}
     <Text style={ui.label}>Split between</Text>
     {participants.filter(person => Object.hasOwn(expense.split.values, person.id)).map(person => <PersonAmountRow divider={false} avatar={false} style={s.person} titleStyle={s.name} amountStyle={s.amount} key={person.id} name={person.name} amount={expense.shares[person.id] ?? '0'} />)}
-    {!!expense.notes && <Text style={ui.caption}>{expense.notes}</Text>}
+    {!!expense.notes && <MarkdownNotes source={expense.notes} />}
   </BillSummary>;
 }
 
