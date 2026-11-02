@@ -53,6 +53,8 @@ def _target(target):
         return {"kind": "invite", "invite_id": str(UUID(str(target["invite_id"])))}
     if isinstance(target, dict) and set(target) == {"kind", "notice_id"} and target["kind"] == "notice":
         return {"kind": "notice", "notice_id": str(UUID(str(target["notice_id"])))}
+    if isinstance(target, dict) and set(target) == {"kind", "digest_id"} and target["kind"] == "digest":
+        return {"kind": "digest", "digest_id": str(UUID(str(target["digest_id"])))}
     raise ValueError("Unsupported email destination")
 
 
@@ -67,6 +69,8 @@ def issue_email_link(email, *, purpose, target, source_key, expires_at=None, ema
     if purpose not in {"login", "invite", "digest", "notice"} or (target["kind"] == "invite" and purpose != "invite"):
         raise ValueError("Unsupported email purpose")
     if (purpose == "notice") != (target["kind"] == "notice"):
+        raise ValueError("Unsupported email purpose")
+    if target["kind"] == "digest" and purpose != "digest":
         raise ValueError("Unsupported email purpose")
     if target["kind"] == "notice":
         from .bill_email_models import BillEmailNotice
@@ -193,6 +197,10 @@ def _recipient_before_login(grant):
 
 
 def _inspect_destination(grant, user):
+    if grant.purpose == "digest" and (grant.target.get("kind") == "digest" or grant.source_key.startswith("expense-digest/")):
+        from .expense_notifications import digest_destination
+        digest_destination(grant, user)
+        return
     if grant.purpose == "notice" and grant.target.get("kind") == "notice":
         from .bill_email import validate_notification_entry
         validate_notification_entry(grant, user)
@@ -234,6 +242,9 @@ def _require_switch(actor, target_user_id, switch_from_user_id):
 
 
 def _destination(grant, user, *, claim):
+    if grant.purpose == "digest" and (grant.target.get("kind") == "digest" or grant.source_key.startswith("expense-digest/")):
+        from .expense_notifications import digest_destination
+        return digest_destination(grant, user)
     if grant.purpose == "notice" and grant.target.get("kind") == "notice":
         from .bill_email import validate_notification_entry
         return validate_notification_entry(grant, user)
@@ -355,6 +366,9 @@ def renew_email_link(grant_id, network):
                                        intended_email=grant.email, participant__removed=False, participant__group__archived=False).first()
         if invite:
             target, purpose = grant.target, "invite"
+    elif grant.purpose == "digest" and (grant.target.get("kind") == "digest" or grant.source_key.startswith("expense-digest/")):
+        target = {"kind": "digest", "digest_id": grant.target.get("digest_id") or grant.source_key.removeprefix("expense-digest/")}
+        purpose = "digest"
     request_email_code(grant.email, network, link_target=target, link_purpose=purpose, renewal_of=grant.id,
                        email_reminders_disclosed=grant.purpose == "login" and grant.email_reminders_disclosed)
     return True

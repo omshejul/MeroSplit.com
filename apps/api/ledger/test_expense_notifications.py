@@ -814,5 +814,94 @@ def test_summary_user_text_cannot_materialize_authentication_markers(client, gro
     assert payload["text"].count(LINK_PLACEHOLDER) == 1
     assert CODE_PLACEHOLDER not in payload["text"] and EXPIRY_PLACEHOLDER not in payload["text"]
     resolved = email_delivery.materialize_payload(payload)
-    assert "_expense_summary" not in resolved
+    assert "_expense_summary" not in resolved and "_review_notice_ids" not in resolved
     assert "?code=MeroSplit EMAIL_LOGIN_CODE" in resolved["text"]
+
+
+@pytest.mark.parametrize('legacy', [False, True])
+def test_review_bills_email_link_resolves_the_bill_instead_of_home(client, group, recipient, clock, providers, configured, legacy):
+    from .email_links import delivery_url
+    from .models import EmailLoginGrant
+    from .test_email_links import exchange
+
+    enable(recipient)
+    bill = add_bill(client, group)
+    clock[0] += timedelta(minutes=11)
+    assert notifications.send_pending_digests() == 1
+    digest = ExpenseDigest.objects.get()
+    grant = EmailLoginGrant.objects.get(pk=digest.payload['_email_link_id'])
+    if legacy:
+        from .email_links import _stored_digest
+        grant.target = {'kind': 'home'}
+        grant.proof_digest = _stored_digest(grant)
+        grant.save(update_fields=['target', 'proof_digest'])
+        digest.payload.pop('_review_notice_ids', None)
+        digest.save(update_fields=['payload'])
+    assert '/app/sign-in/' in delivery_url(grant.id)
+    response = exchange(Client(), grant)
+    assert response.status_code == 200, response.content
+    assert response.json()['data']['target'] == {'kind': 'group', 'group_id': group[0], 'expense_id': bill['id']}
+
+
+@pytest.mark.parametrize('change', ['seen', 'edited', 'removed', 'deleted'])
+def test_review_email_keeps_bill_identity_but_rechecks_current_access(client, group, recipient, clock, providers, configured, change):
+    from .models import EmailLoginGrant
+    from .test_email_links import exchange
+    enable(recipient)
+    bill = add_bill(client, group)
+    clock[0] += timedelta(minutes=11)
+    notifications.send_pending_digests()
+    digest = ExpenseDigest.objects.get()
+    grant = EmailLoginGrant.objects.get(pk=digest.payload['_email_link_id'])
+    if change == 'seen':
+        ExpenseNotice.objects.update(seen_at=clock[0])
+    elif change == 'edited':
+        ExpenseNotice.objects.update(digest=None, expense_version=2)
+        Expense.objects.filter(pk=bill['id']).update(version=2)
+    elif change == 'removed':
+        Participant.objects.filter(pk=group[1][1]).update(removed=True)
+    else:
+        Expense.objects.filter(pk=bill['id']).update(deleted=True)
+    response = exchange(Client(), grant)
+    if change in ['seen', 'edited']:
+        assert response.status_code == 200, response.content
+        assert response.json()['data']['target']['expense_id'] == bill['id']
+    else:
+        assert response.status_code == 400
+        grant.refresh_from_db()
+        assert grant.consumed_at is None
+
+
+def test_renewed_review_email_retains_the_original_digest(client, group, recipient, clock, providers, configured):
+    from .email_links import renew_email_link
+    from .models import EmailLoginGrant
+    from .test_email_links import exchange
+    enable(recipient)
+    bill = add_bill(client, group)
+    clock[0] += timedelta(minutes=11)
+    notifications.send_pending_digests()
+    digest = ExpenseDigest.objects.get()
+    original = EmailLoginGrant.objects.get(pk=digest.payload['_email_link_id'])
+    clock[0] += timedelta(days=2)
+    assert renew_email_link(original.id, '192.0.2.0/24')
+    renewed = EmailLoginGrant.objects.get(renewal_of=original)
+    response = exchange(Client(), renewed)
+    assert response.status_code == 200, response.content
+    assert response.json()['data']['target'] == {'kind': 'group', 'group_id': group[0], 'expense_id': bill['id']}
+
+
+def test_review_email_opens_first_displayed_bill_even_if_another_notice_changes(client, group, recipient, clock, providers, configured):
+    from .models import EmailLoginGrant
+    from .test_email_links import exchange
+    enable(recipient)
+    older = add_bill(client, group)
+    clock[0] += timedelta(seconds=1)
+    displayed_first = add_bill(client, group)
+    clock[0] += timedelta(minutes=11)
+    notifications.send_pending_digests()
+    digest = ExpenseDigest.objects.get()
+    grant = EmailLoginGrant.objects.get(pk=digest.payload['_email_link_id'])
+    ExpenseNotice.objects.filter(expense_id=older['id']).update(created_at=clock[0], digest=None)
+    response = exchange(Client(), grant)
+    assert response.status_code == 200, response.content
+    assert response.json()['data']['target']['expense_id'] == displayed_first['id']

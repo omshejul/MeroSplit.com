@@ -240,7 +240,33 @@ def _digest_message(rows, user_id):
     text, html = email_delivery.render_message("expense_digest", {
         "heading": heading, "bills": bills, "remaining": max(0, len(rows) - len(bills)), "app_url": LINK_PLACEHOLDER,
     })
-    return {"subject": f"{heading} in MeroSplit", "text": text, "html": html, "_expense_summary": _summary_versions(rows)}
+    return {"subject": f"{heading} in MeroSplit", "text": text, "html": html, "_expense_summary": _summary_versions(rows),
+            "_review_notice_ids": [str(row.id) for row in displayed]}
+
+
+def digest_destination(grant, actor):
+    """Resolve the frozen email's bills, including emails issued before bill routing."""
+    from .otp import EmailCodeInvalid
+
+    identifier = grant.target.get("digest_id") or grant.source_key.removeprefix("expense-digest/")
+    try:
+        digest = ExpenseDigest.objects.filter(pk=UUID(identifier), recipient=actor, recipient_email=grant.email).first()
+    except (ValueError, TypeError):
+        raise EmailCodeInvalid()
+    if not digest:
+        raise EmailCodeInvalid()
+    # A later edit can move a notice to another digest. The frozen notice IDs
+    # still identify this email; seen status must not make an opened link fail.
+    identifiers = digest.payload.get("_review_notice_ids") or list(digest.payload.get("_expense_summary", {}))
+    groups = groups_for_actor(Group.objects.filter(participants__user=actor, participants__removed=False), actor)
+    rows = list(ExpenseNotice.objects.filter(pk__in=identifiers, recipient=actor, expense__deleted=False,
+                expense__group_id__in=groups).select_related("expense").order_by("-created_at", "-id"))
+    if digest.payload.get("_review_notice_ids"):
+        by_id = {str(row.id): row for row in rows}
+        rows = [by_id[value] for value in identifiers if value in by_id]
+    if not rows:
+        raise EmailCodeInvalid()
+    return {"kind": "group", "group_id": str(rows[0].expense.group_id), "expense_id": str(rows[0].expense_id)}
 
 
 def create_due_digest():
@@ -269,10 +295,11 @@ def create_due_digest():
                 or origin.query or origin.fragment or origin.path not in {"", "/"}):
             return None
         identifier = uuid4()
-        grant = issue_email_link(email, purpose="digest", target={"kind": "home"}, source_key=f"expense-digest/{identifier}")
+        grant = issue_email_link(email, purpose="digest", target={"kind": "digest", "digest_id": str(identifier)}, source_key=f"expense-digest/{identifier}")
         content = _digest_message([row for row in rows if row.id in allowed], pref.user_id)
         payload = email_delivery.message_payload(email, content["subject"], content["text"], content["html"])
         payload["_expense_summary"] = content["_expense_summary"]
+        payload["_review_notice_ids"] = content["_review_notice_ids"]
         payload["_email_link_id"] = str(grant.id)
         digest = ExpenseDigest.objects.create(id=identifier, recipient=pref.user, recipient_email=email, due_at=now, payload=payload)
         ExpenseNotice.objects.filter(id__in=eligible).update(digest=digest)
