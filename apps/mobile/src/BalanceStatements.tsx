@@ -77,9 +77,9 @@ export default function BalanceStatements({ session, visible, emailEnabled, busy
         <Text style={ui.caption}>{!emailEnabled ? 'Turn on email notifications for scheduled statements.' : preferences.next_at ? `Next statement: ${new Date(preferences.next_at).toLocaleDateString('en-IN')}` : 'Scheduled statements are paused.'}</Text>
       </>}
       <Button title="Email statement now" icon="mail" disabled={disabled || ["pending", "sending"].includes(preferences.delivery?.state ?? "")} onPress={() => void run(send)} />
-      <StatementDelivery delivery={preferences.delivery} />
+      <View style={{ minHeight: 24 }}><StatementDelivery delivery={preferences.delivery} /></View>
     </>}
     {!!error && <ErrorState error={error} retryLabel="Retry balance statements" disabled={busy || working} onRetry={!preferences ? () => void load() : undefined} />}
-    {!preferences && !error && <LoadingState label="Loading balance statements…" />}
+    {!preferences && !error && <LoadingState label="Loading balance statements…" style={{ minHeight: 120, justifyContent: 'center' }} />}
   </View>;
 }

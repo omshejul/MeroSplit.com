@@ -47,7 +47,7 @@ test('hidden dialogs retain the height-measuring ancestor and keep scrolling con
       continue;
     }
     const dialog = one(tree, Dialog);
-    assert.equal(dialog.props.visible, visible); assert.equal(dialog.props.onDismiss, dismiss); assert.equal(dialog.props.dismissable, false); assert.equal(dialog.props.theme.animation.scale, visible ? 0.75 : 0, 'closing content is removed without an exit delay');
+    assert.equal(dialog.props.visible, visible); assert.equal(dialog.props.onDismiss, dismiss); assert.equal(dialog.props.dismissable, false); assert.equal(dialog.props.theme.animation.scale, 0, 'the local transition owns animation while Paper mounts opaque');
     assert.equal(dialog.props.style.flexShrink, 1); assert.equal(dialog.props.style.marginVertical, 0);
     assert.equal(elements(dialog).find(node => node.type === Dialog.ScrollArea), body);
     assert.equal(elements(dialog).find(node => node.type === Dialog.Actions), footer);
@@ -220,7 +220,7 @@ test('shared web dialog is centered and compact on desktop while retaining phone
   const props = { visible: true, onDismiss() {}, children: 'unchanged fields' };
   try {
     env.Platform.OS = 'web';
-    assert.equal(one(render({ ...props, visible: false }), Dialog).props.visible, false, 'web retains its existing mounted dialog/focus lifecycle');
+    assert.equal(elements(render({ ...props, visible: false })).filter(node => node.type === Dialog).length, 0, 'fully closed web dialogs release their modal and focus lifecycle');
     for (const [width, expected] of [[1440, 480], [2000, 480], [540, 480], [375, 343]]) {
       windowWidth = width; const dialog = one(render(props), Dialog);
       assert.equal(dialog.props.style.width, expected); assert.equal(dialog.props.style.alignSelf, 'center');

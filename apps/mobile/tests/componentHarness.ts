@@ -18,6 +18,10 @@ export function withSharedUI<T extends Record<string, any>>(input: T): T & Recor
   const env: Record<string, any> = input; env.__sharedUI = true;
   for (const name of ['RowGroup', 'PeopleSheet', 'View', 'Text', 'Switch', 'Button', 'ErrorText', 'Avatar', 'Icon', 'TextField', 'EmailField', 'RadioChoice', 'SectionHeading', 'DialogScrollBody', 'CancelDialogActions', 'BottomSafeArea', 'ScrollBottomInset', 'ActivityIndicator']) env[name] ??= name;
   if (env.TextField === 'TextField' && input.TextInput) env.TextField = input.TextInput;
+  env.Animated ??= { View: 'Animated.View' };
+  env.useRef ??= (initial: any) => ({ current: initial });
+  env.useDialogTransition ??= (visible: boolean) => ({ present: visible, opacity: 1, translateY: 0 });
+  env.useDialogBodySize ??= () => ({ height: undefined, onContentSizeChange() {} });
   env.useWindowDimensions ??= () => ({ width: 390, height: 844, fontScale: 1 });
   env.useLoading ??= () => () => {}; env.startLoading ??= () => () => {}; env.LoadingOverlay ??= 'LoadingOverlay';
   env.useRowDivider ??= (divider?: boolean) => divider ?? true; env.animateLayout ??= () => {};

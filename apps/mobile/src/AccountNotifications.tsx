@@ -1,16 +1,16 @@
 import { useLoading } from './LoadingOverlay';
-import { ErrorState } from './UIStates';
-import { CloseDialogActions } from './DialogParts';
+import { ErrorState, LoadingState } from './UIStates';
 import { Dialog } from './DialogParts';
 import { DialogScrollBody } from './DialogParts';
 import KeyboardDialog from './KeyboardDialog';
 import React, { useEffect, useRef, useState } from 'react';
-import { AppState, Platform, useWindowDimensions, View } from 'react-native';
+import { AppState, Platform, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { Text } from 'react-native-paper';
 
 import { request, cachedRead, rememberRead } from './api';
 import PushSettings, { type PushControls } from './PushSettings';
 import type { Session } from './types';
-import { SettingsRow } from './ui';
+import { SettingsRow, useUI } from './ui';
 import NotificationSwitch from './NotificationSwitch';
 import BalanceStatements from './BalanceStatements';
 
@@ -24,6 +24,7 @@ function confirmed(value: Preferences) {
 }
 export default function AccountNotifications({ session, push, busy, onBusyChange }: { session: Session; push: PushControls; busy: boolean; onBusyChange: (value: boolean) => void }) {
   const { height } = useWindowDimensions();
+  const { ui, palette } = useUI();
   const [open, setOpen] = useState(false), [preferences, setPreferences] = useState<Preferences | null>(() => cachedRead<Preferences>(session, '/me/notifications/preferences') ?? null), [error, setError] = useState(''), [working, setWorking] = useState(false), [pendingEnabled, setPendingEnabled] = useState<boolean | null>(null), [loading, setLoading] = useState(false);
   const activeToken = useRef(session.token); activeToken.current = session.token;
   const row = useRef<React.ComponentRef<typeof View>>(null), mounted = useRef(true), inFlight = useRef(false), revision = useRef(0);
@@ -65,7 +66,7 @@ export default function AccountNotifications({ session, push, busy, onBusyChange
   const disabled = busy || working || push.state.working || !preferences;
   const rowEnabled = pendingEnabled ?? (!!preferences?.expense_updates && preferences.notifications_enabled !== false);
   const value = preferences ? rowEnabled ? 'On' : 'Off' : undefined;
-  useLoading(open && (working || loading && !preferences));
+  useLoading(open && working);
   function close() { setOpen(false); requestAnimationFrame(() => row.current?.focus()); }
   useEffect(() => {
     if (Platform.OS !== 'web' || !open) return;
@@ -74,15 +75,17 @@ export default function AccountNotifications({ session, push, busy, onBusyChange
     return () => document.removeEventListener('keydown', escape, true);
   }, [open, busy, working]);
   return <><SettingsRow rowRef={row} icon="notifications" label="Notifications" value={value} disabled={busy} onPress={() => { setOpen(true); void load(); }} />
-    <KeyboardDialog visible={open} dismissable={!busy} onDismiss={() => { if (!busy) close(); }}><Dialog.Title aria-level={2}>Notifications</Dialog.Title>
-      <DialogScrollBody maxHeight={Platform.OS === 'web' ? Math.min(560, Math.max(0, height - 224)) : 440} gap={12}>
-        {preferences && <><NotificationSwitch icon="notifications" label="Notifications" checked={enabled} disabled={!!disabled} onChange={expense_updates => void update({ ...preferences, expense_updates, email_reminders: expense_updates ? true : preferences.email_reminders }, expense_updates)} />
-            {enabled && <><PushSettings push={{ ...push, state: { ...push.state, enabled: currentPushEnabled } }} busy={!!disabled} onBusyChange={onBusyChange} onChanged={async enabled => { await update({ ...preferences, expense_updates: enabled || emailAvailable }); }} />
+    <KeyboardDialog label="Notifications" visible={open} dismissable={!busy} onDismiss={() => { if (!busy) close(); }}><Dialog.Title aria-level={2}>Notifications</Dialog.Title>
+      <DialogScrollBody maxHeight={Platform.OS === 'web' ? Math.min(560, Math.max(0, height - 224)) : 440} gap={8} paddingHorizontal={16} paddingVertical={8}>
+        <Text style={[ui.caption, { fontSize: 12 }]}>Changes save automatically</Text>
+        {preferences && <><View style={{ borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: palette.line, paddingBottom: 8 }}><NotificationSwitch icon="notifications" label="Notifications" checked={enabled} disabled={!!disabled} onChange={expense_updates => void update({ ...preferences, expense_updates, email_reminders: expense_updates ? true : preferences.email_reminders }, expense_updates)} /></View>
+            {enabled && <><View style={{ gap: 4 }}><PushSettings push={{ ...push, state: { ...push.state, enabled: currentPushEnabled } }} busy={!!disabled} onBusyChange={onBusyChange} onChanged={async enabled => { await update({ ...preferences, expense_updates: enabled || emailAvailable }); }} />
             <NotificationSwitch icon="mail" label="Email notifications" checked={preferences.email_reminders} disabled={!!disabled} onChange={email_reminders => void update({ ...preferences, expense_updates: email_reminders || currentPushEnabled, email_reminders })} />
-            {open && enabled && <BalanceStatements session={session} visible={open} emailEnabled={preferences.email_reminders} busy={!!disabled} onBusyChange={onBusyChange} />}
+            </View>{open && enabled && <View style={{ borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.line, paddingTop: 8 }}><BalanceStatements session={session} visible={open} emailEnabled={preferences.email_reminders} busy={!!disabled} onBusyChange={onBusyChange} /></View>}
             </>}
         </>}
         {!!error && <ErrorState error={error} disabled={busy || working} onRetry={!preferences ? () => void load() : undefined} />}
-      </DialogScrollBody><CloseDialogActions title="Close notifications" kind="text" disabled={busy} onClose={close} /></KeyboardDialog>
+        {!preferences && !error && <LoadingState spinner label="Loading notifications…" style={{ minHeight: 280, justifyContent: 'center' }} />}
+      </DialogScrollBody></KeyboardDialog>
   </>;
 }
