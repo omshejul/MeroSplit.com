@@ -1,6 +1,6 @@
 # Expense icons
 
-MeroSplit uses 62 bill categories. The shared catalog and legacy aliases live in `apps/api/ledger/assets/expense-icons.json`. The app picker, Jev and MCP use this vocabulary. The picker supports category search.
+MeroSplit uses 62 bill categories. The shared catalog and legacy aliases live in `apps/api/ledger/assets/expense-icons.json`. The app picker, Jev and MCP use this vocabulary. The picker groups these choices into Food & drink, Entertainment, Home, Life, Transport, Travel, Utilities, Work & money and Other. Search matches category and group names.
 
 Jev receives only the raw title and fixed category meanings. It prefers specific categories when the title supports them, with broad categories and Other for unclear titles. Highest probability wins without a confidence cutoff. Normalized titles share results across accounts; access and manual-choice checks remain per bill.
 

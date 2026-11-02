@@ -263,3 +263,19 @@ export function expenseCategory(ref: ExpenseIconRef, icons: ExpenseIcons) {
 }
 
 export const expenseIconChoices = Object.entries(categoryIcons).map(([category, icon]) => ({ category, icon, label: labels[category] }));
+
+
+const groups: { title: string; categories: (keyof typeof categoryIcons)[] }[] = [
+  { title: 'Food & drink', categories: ['food', 'groceries', 'takeaway', 'drinks', 'coffee', 'alcohol'] },
+  { title: 'Entertainment', categories: ['entertainment', 'gaming', 'movies', 'music', 'sports', 'fitness', 'subscriptions'] },
+  { title: 'Home', categories: ['home', 'rent', 'mortgage', 'deposit', 'furniture', 'household', 'electronics', 'appliances', 'maintenance', 'moving', 'pets', 'services', 'cleaning', 'laundry'] },
+  { title: 'Life', categories: ['childcare', 'shopping', 'clothing', 'beauty', 'health', 'medicine', 'dental', 'education', 'gifts', 'charity'] },
+  { title: 'Transport', categories: ['transport', 'transit', 'cycling', 'car', 'carrental', 'taxi', 'fuel', 'parking', 'tolls', 'carmaintenance'] },
+  { title: 'Travel', categories: ['travel', 'flights', 'hotel'] },
+  { title: 'Utilities', categories: ['utilities', 'electricity', 'gas', 'connectivity', 'water', 'waste'] },
+  { title: 'Work & money', categories: ['work', 'fees', 'bankfees', 'insurance', 'taxes'] },
+  { title: 'Other', categories: ['general'] },
+];
+export const expenseIconGroups = groups.map(group => ({ title: group.title,
+  choices: group.categories.map(category => expenseIconChoices.find(choice => choice.category === category)!),
+}));

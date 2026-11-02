@@ -5,3 +5,5 @@
 - If work would break existing OTA compatibility, explain the affected builds and obtain approval first. Never override or falsify a runtime/fingerprint to force delivery, or silently create a replacement native release.
 
 - Simulator occupancy 2026-11-02: codex-macmini thread 01a19ce8-874e-7c70-8d69-fe3f10f5462e finished Android AVD Codex_Stagger_QA expanded category picker checks. Emulator stopped, display settings restored and ownership released.
+
+- Simulator occupancy 2026-11-03: codex-macmini thread 01a19ce8-874e-7c70-8d69-fe3f10f5462e finished Android AVD Codex_Stagger_QA grouped category picker checks. Emulator stopped, display settings restored and ownership released.
