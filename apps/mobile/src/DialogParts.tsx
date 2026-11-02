@@ -1,10 +1,11 @@
 import ScrollView from './KeyboardScrollView';
 import RowGroup from './RowGroup';
 import React, { useContext } from 'react';
-import { Platform, StyleSheet, View } from 'react-native';
+import { Animated, Platform, StyleSheet, View } from 'react-native';
 import { Dialog as PaperDialog, Text } from 'react-native-paper';
 import { Button, Icon, useUI, type IconName } from './ui';
 import { DialogContext } from './DialogContext';
+import { useDialogBodySize } from './dialogTransition';
 
 function titleIcon(title: React.ReactNode): IconName {
   if (typeof title !== 'string') return 'info';
@@ -22,10 +23,10 @@ function titleIcon(title: React.ReactNode): IconName {
 
 function Title({ children, icon, style, ...props }: Omit<React.ComponentProps<typeof PaperDialog.Title>, 'ref'> & { icon?: IconName }) {
   const { ui, palette } = useUI(), { onDismiss, dismissable } = useContext(DialogContext);
-  return <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 20, paddingBottom: 16 }}>
+  return <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8 }}>
     {typeof children === 'string' && <Icon name={icon ?? titleIcon(children)} size={20} color={palette.muted} />}
     <Text {...props} accessibilityRole="header" style={[ui.section, { flex: 1, fontSize: 18, lineHeight: 24 }, style]}>{children}</Text>
-    <Button kind="text" iconOnly icon="close" accessibilityLabel="Close dialog" disabled={!dismissable} onPress={onDismiss} style={{ width: 32, height: 32, minWidth: 32, paddingHorizontal: 6 }} />
+    <Button kind="text" iconOnly icon="close" accessibilityLabel="Close dialog" disabled={!dismissable} onPress={onDismiss} style={{ width: 44, height: 44, minWidth: 44, paddingHorizontal: 12 }} />
   </View>;
 }
 function Content({ style, ...props }: React.ComponentProps<typeof PaperDialog.Content>) {
@@ -42,8 +43,11 @@ export function DialogScrollBody({ maxHeight = 520, gap = 12, paddingVertical = 
   maxHeight?: number; gap?: number; paddingVertical?: number; paddingHorizontal?: number; children: React.ReactNode;
 }) {
   const { bodyHeight } = useContext(DialogContext);
-  return <Dialog.ScrollArea style={{ flexShrink: 1, maxHeight: Math.min(maxHeight, bodyHeight), paddingHorizontal: paddingHorizontal ?? 20, borderTopWidth: 0, borderBottomWidth: 0 }}>
-    <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingVertical, gap, paddingRight: Platform.OS === 'web' ? 16 : 0 }}><RowGroup style={{ gap }}>{children}</RowGroup></ScrollView>
+  const { motion } = useUI(), limit = Math.min(maxHeight, bodyHeight), size = useDialogBodySize(limit, !!motion?.enabled);
+  return <Dialog.ScrollArea style={{ flexShrink: 1, maxHeight: limit, paddingHorizontal: paddingHorizontal ?? 20, borderTopWidth: 0, borderBottomWidth: 0 }}>
+    <Animated.View style={{ height: size.height, maxHeight: limit, overflow: 'hidden', flexShrink: 1 }}>
+    <ScrollView keyboardShouldPersistTaps="handled" onContentSizeChange={size.onContentSizeChange} style={{ maxHeight: limit }} contentContainerStyle={{ paddingVertical, gap, paddingRight: Platform.OS === 'web' ? 16 : 0 }}><RowGroup style={{ gap }}>{children}</RowGroup></ScrollView>
+    </Animated.View>
   </Dialog.ScrollArea>;
 }
 

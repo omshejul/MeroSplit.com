@@ -429,7 +429,7 @@ test('Notifications updates immediately, rolls back failures and prevents duplic
   assert.equal(notificationToggle(tree, 'Notifications').props.checked, false);
   assert.equal(notificationToggle(tree, 'Notifications').props.disabled, true);
   assert.equal(notificationToggle(tree, 'Email notifications'), undefined);
-  assert.equal(find(tree, 'title', 'Close notifications').props.disabled, false);
+  assert.equal(nodes(tree).find(node => node.type === 'KeyboardDialog')!.props.dismissable, true);
   assert.deepEqual(panel.changes, []);
   panel.pending[0].reject(Error('offline')); await tick(); tree = app.render(props);
   assert.equal(notificationToggle(tree, 'Notifications').props.checked, true);
