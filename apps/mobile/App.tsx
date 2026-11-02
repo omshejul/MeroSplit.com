@@ -257,7 +257,7 @@ function AppContent() {
       flushWrites: async () => { await draftWrites.current; await flushChatWrites(accountOwner(active!)); },
     });
   }
-  const appUpdates = useAppUpdates({ enabled: ready && !!session && !expired && !authHeld, online, foreground, safe: updateSafe.current, busy, onRestart: restartUpdate });
+  const appUpdates = useAppUpdates({ baseUrl: session?.baseUrl ?? API_URL, enabled: ready && !!session && !expired && !authHeld, online, foreground, safe: updateSafe.current, busy, onRestart: restartUpdate });
   function engage() { appUpdates.engage(); opening.current = null; ++profileRevision.current; notices.engage(); }
   function measureViewport() { scroll.current?.measureInWindow((x, y, width, height) => setViewport({ x, y, width, height })); }
   function navigate(value: Screen, params?: RouteParams) { setNotice(''); navigation.go(value, params); }

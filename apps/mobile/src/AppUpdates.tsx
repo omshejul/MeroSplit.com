@@ -24,7 +24,7 @@ export default function AppUpdates({ update }: { update: AppUpdateState }) {
     <Text style={[ui.caption, { textAlign: 'center' }]}>{installed}</Text>
     {update.supported && <Button title={update.label} maxFontSizeMultiplier={2} disabled={update.disabled} accessibilityLiveRegion="polite" accessibilityState={{ busy: update.working }}
       style={{ marginTop: 8, minWidth: 200, minHeight: 44 }} labelStyle={{ fontVariant: ['tabular-nums'] }}
-      icon={update.working ? ({ color }) => <View style={{ width: 20, height: 20 }}><LoadingSpinner visible color={color} label={update.label} /></View> : update.none ? 'check' : 'refresh'} onPress={update.check} />}
+      icon={update.working ? ({ color }) => <View style={{ width: 20, height: 20 }}><LoadingSpinner visible color={color} label={update.label} /></View> : update.storeAvailable ? 'external' : update.none ? 'check' : 'refresh'} onPress={update.check} />}
     {!!update.error && <ErrorText live>{update.error}</ErrorText>}
     {Platform.OS !== 'web' && !update.supported && <Text style={[ui.caption, { textAlign: 'center' }]}>Updates aren't available in this build.</Text>}
   </View>;

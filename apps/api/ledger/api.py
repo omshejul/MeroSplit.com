@@ -29,6 +29,7 @@ from .collaboration import (
     review_invite,
 )
 from .email_invites import rename_person, send_person_invite, update_contact
+from .app_releases import STORE_RELEASES
 from .expense_history import expense_version_history
 from .expense_notifications import (
     foreground,
@@ -117,6 +118,11 @@ api = NinjaAPI(title="MeroSplit", version="1.0", auth=[x_session_token_auth, dja
 @api.get("/health", auth=None)
 def health(request):
     return {"status": "ok"}
+
+
+@api.get("/app-releases", auth=None)
+def app_releases(request):
+    return JsonResponse(STORE_RELEASES, headers={"Cache-Control": "no-store"})
 
 
 @api.get("/ready", auth=None)

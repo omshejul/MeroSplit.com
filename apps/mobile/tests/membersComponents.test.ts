@@ -610,9 +610,9 @@ test('person invite shares reuse one link after missing, cancelled and successfu
 
 function updatesApp(native = updateModule(), extra: Record<string, any> = {}) {
  const clock = { now: 1_000_000 }, modal = { open: false };
- const host = production('useAppUpdates.ts', { Updates:native.module, Date:{now:()=>clock.now}, hasOpenDialogs:()=>modal.open, subscribeDialogs(){return()=>{};}, useSyncExternalStore:(_subscribe:any,snapshot:any)=>snapshot(), ...extra });
+ const host = production('useAppUpdates.ts', { Updates:native.module, checkStoreUpdate:async()=>false, appStores:{ios:{name:'App Store',native:'itms-apps://itunes.apple.com/app/id6823916128',web:'https://apps.apple.com/app/merosplit/id6823916128'},android:{name:'Google Play',native:'market://details?id=com.omshejul.splitdumb',web:'https://play.google.com/store/apps/details?id=com.omshejul.splitdumb'}}, Date:{now:()=>clock.now}, hasOpenDialogs:()=>modal.open, subscribeDialogs(){return()=>{};}, useSyncExternalStore:(_subscribe:any,snapshot:any)=>snapshot(), ...extra });
  const view = production('AppUpdates.tsx', {Dialog:{Title:'Dialog.Title',Content:'Dialog.Content',Actions:'Dialog.Actions'},...extra});
- const options = {enabled:true,online:true,foreground:true,safe:true,busy:false,onRestart:async(reload:()=>Promise<void>)=>reload()};
+ const options = {baseUrl:'https://merosplit.com',enabled:true,online:true,foreground:true,safe:true,busy:false,onRestart:async(reload:()=>Promise<void>)=>reload()};
  let update:any;
  const render = (changes:Record<string,any>={}) => {Object.assign(options,changes);update=host.render('useAppUpdates',options);return update;};
  return {native,clock,modal,options,render,commit:host.commit,unmount:host.unmount,timer:host.timer,
@@ -631,7 +631,7 @@ test('automatic launch checks and downloads, then asks once before a safe restar
 test('Later suppresses the same update across activity and foreground changes, and the footer can reopen it',async()=>{
  const app=updatesApp();app.render();await app.commit();let update=app.render();update.later();assert.equal(app.render().promptVisible,false);
  app.clock.now+=600_000;app.render().engage();app.render({foreground:false});await app.commit();app.render({foreground:true});await app.commit();assert.equal(app.render().promptVisible,false);assert.deepEqual(app.native.calls,['check','download']);
- app.render().check();assert.equal(app.render().promptVisible,true);assert.deepEqual(app.native.calls,['check','download']);
+ app.render().check();await tick();assert.equal(app.render().promptVisible,true);assert.deepEqual(app.native.calls,['check','download']);
  app.render().later();app.native.state.isUpdatePending=true;app.native.state.downloadedUpdate={updateId:'downloaded-a'};assert.equal(app.render().promptVisible,false);
  app.native.state.downloadedUpdate={updateId:'downloaded-b'};assert.equal(app.render().promptVisible,true);app.unmount();
 });
@@ -809,4 +809,48 @@ test('personal shared-link invitations have no approval step, including old pend
   const joined = app.render('PersonInviteDialog', { ...props, person: { ...props.person, user_id: 2 }, invites: [{ ...invitation, approved: true }] });
   assert.equal(component(joined, 'Dialog.Title').children[0], 'Manage Harshit');
   assert.equal(button(joined, 'Approve request'), undefined);
+});
+
+test('manual checks open the correct store for a newer binary before an already downloaded OTA', async () => {
+ for (const os of ['ios','android']) {
+  const calls:any[] = [], opened:string[] = [];
+  const linking = { async openURL(url:string) { assert.equal(this, linking); opened.push(url); } };
+  const app=updatesApp(undefined,{Platform:{OS:os},Linking:linking,Constants:{expoConfig:{version:'99',ios:{buildNumber:'999'}}},checkStoreUpdate:async(...args:any[])=>{calls.push(args);return true;}});
+  app.native.state.isUpdatePending=true;app.native.state.downloadedUpdate={updateId:'pending-ota'};
+  app.render();await app.commit();assert.equal(calls.length,0,'automatic checks must never open a store');
+  app.render().check();await tick();const update=app.render();
+  assert.equal(calls[0][1],os);assert.equal(calls[0][2],'27','read installed native metadata, not the OTA manifest');
+  assert.equal(opened[0],os==='ios'?'itms-apps://itunes.apple.com/app/id6823916128':'market://details?id=com.omshejul.splitdumb');
+  assert.equal(update.label,os==='ios'?'Update in App Store':'Update in Google Play');assert.equal(update.promptVisible,false);assert.deepEqual(app.native.calls,[]);
+  assert.equal(button(app.tree(),update.label).props.icon,'external');app.unmount();
+ }
+});
+test('store opening falls back to HTTPS and failed opening retains a retry action with plain feedback', async () => {
+ let failAll=false;const opened:string[]=[];
+ const app=updatesApp(undefined,{Platform:{OS:'ios'},checkStoreUpdate:async()=>true,Linking:{async openURL(url:string){opened.push(url);if(!url.startsWith('https:')||failAll)throw Error('private failure');}}});
+ app.native.state.isUpdatePending=true;app.render();await app.commit();app.render().check();await tick();
+ assert.equal(opened.length,2);assert.equal(app.render().error,'');
+ failAll=true;app.render().check();await tick();assert.equal(app.render().error,"Couldn't open the store. Try again.");
+ assert.equal(app.render().label,'Update in App Store');assert.equal(app.render().disabled,false);app.unmount();
+});
+test('a failed store lookup cannot report No new updates but still permits a compatible OTA', async () => {
+ for(const available of [false,true]) {
+  const native=updateModule();native.module.checkForUpdateAsync=async()=>({isAvailable:available,isRollBackToEmbedded:false});
+  const app=updatesApp(native,{checkStoreUpdate:async()=>{throw Error('private lookup failure');}});
+  app.render();await app.commit();
+  if(available){app.native.state.isUpdatePending=false;}
+  app.render().check();await tick();
+  if(available)assert.equal(app.render().promptVisible,true);
+  else{assert.equal(app.render().none,false);assert.equal(app.render().error,"Couldn't check for updates. Try again.");}
+  app.unmount();
+ }
+});
+test('a late store check never opens an external app after background, sign-out or unmount', async () => {
+ for(const change of ['background','signout','unmount']) {
+  let resolve!:(value:boolean)=>void,opened=0;
+  const app=updatesApp(undefined,{checkStoreUpdate:()=>new Promise<boolean>(done=>{resolve=done;}),Linking:{openURL:async()=>{opened++;}}});
+  app.native.state.isUpdatePending=true;app.render();await app.commit();app.render().check();
+  if(change==='unmount')app.unmount();else app.render(change==='background'?{foreground:false}:{enabled:false});
+  resolve(true);await tick();assert.equal(opened,0);app.unmount();
+ }
 });
