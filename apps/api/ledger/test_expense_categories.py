@@ -140,7 +140,7 @@ def test_one_shot_worker_reports_database_errors(settings, monkeypatch):
         ("food", True, "food"),
         ("General", False, "general"),
         ("Other", False, "general"),
-        ("Electricity", False, "utilities"),
+        ("Electricity", False, "electricity"),
         ("A custom manual category", False, "general"),
     ],
 )

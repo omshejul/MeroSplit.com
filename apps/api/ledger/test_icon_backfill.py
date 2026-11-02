@@ -18,10 +18,10 @@ pytestmark = pytest.mark.django_db(transaction=True)
 
 
 def run():
-    migration = importlib.import_module("ledger.migrations.0037_versatile_expense_icons")
+    migration = importlib.import_module("ledger.migrations.0042_expanded_expense_icons")
     assert migration.REVISION == categories.cache_revision()
     with connection.schema_editor() as editor:
-        migration.backfill_versatile_icons(apps, editor)
+        migration.backfill_expanded_icons(apps, editor)
 
 
 def test_backfill_queues_once_across_unrelated_accounts_without_changing_bills(client, group, monkeypatch):
@@ -56,7 +56,7 @@ def test_backfill_queues_once_across_unrelated_accounts_without_changing_bills(c
 def test_new_prompt_rechecks_previous_ready_results_in_backfill_and_on_read(client, group, read_first):
     body = bill(client, group, description="Coffee")
     previous_owner = get_user_model().objects.create_user(username=uid())
-    previous = importlib.import_module("ledger.migrations.0035_top_category_icons")
+    previous = importlib.import_module("ledger.migrations.0037_versatile_expense_icons")
     ExpenseCategoryCache.objects.create(owner=previous_owner, title_digest=categories.normalized_digest("coffee"),
         definition_revision=previous.REVISION, state="ready", category="coffee")
     if read_first:
@@ -73,7 +73,7 @@ def test_new_prompt_rechecks_previous_ready_results_in_backfill_and_on_read(clie
 @pytest.mark.parametrize("old_state", ["pending", "claimed", "uncertain", "failed", "ready"])
 def test_policy_refresh_is_separate_from_old_jobs_and_does_not_repeat_new_calls(client, group, old_state):
     body = bill(client, group, description="Garbage man")
-    previous = importlib.import_module("ledger.migrations.0035_top_category_icons")
+    previous = importlib.import_module("ledger.migrations.0037_versatile_expense_icons")
     old_cache = ExpenseCategoryCache.objects.create(owner=None, title_digest=categories.normalized_digest(body["description"]),
         definition_revision=previous.REVISION, state=old_state, category="utilities" if old_state == "ready" else "")
     old_binding = ExpenseCategoryDecision.objects.create(expense_id=body["id"], requested_by=client.actor, cache=old_cache,
@@ -103,13 +103,15 @@ def test_backfill_repairs_only_untouched_mcp_generic_defaults_and_preserves_fina
     Expense.objects.filter(pk=edited["id"]).update(version=2)
     before = list(Change.objects.values()), list(ExpenseNotice.objects.values())
     financial = list(Expense.objects.order_by("pk").values("id", "version", "description", "total", "paid", "shares", "split", "date", "category", "notes", "deleted"))
-    run()
+    legacy = importlib.import_module("ledger.migrations.0037_versatile_expense_icons")
+    with connection.schema_editor() as editor:
+        legacy.backfill_versatile_icons(apps, editor)
     assert Expense.objects.get(pk=accidental["id"]).category_auto is True
     assert Expense.objects.get(pk=edited["id"]).category_auto is False
     assert Expense.objects.get(pk=manual["id"]).category_auto is False
     assert Expense.objects.get(pk=specific["id"]).category_auto is False
     assert icons(client, accidental).json()["items"][0]["state"] == "pending"
     assert icons(client, manual).json()["items"][0]["state"] == "manual"
-    assert icons(client, specific).json()["items"][0]["category"] == "drinks"
+    assert icons(client, specific).json()["items"][0]["category"] == "coffee"
     assert before == (list(Change.objects.values()), list(ExpenseNotice.objects.values()))
     assert financial == list(Expense.objects.order_by("pk").values("id", "version", "description", "total", "paid", "shares", "split", "date", "category", "notes", "deleted"))

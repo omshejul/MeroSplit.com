@@ -74,8 +74,8 @@ def test_outbound_request_contains_only_title_and_fixed_definitions_without_fall
     assert payload["questions"] == {"icon": {
         "type": "choice", "instructions": INSTRUCTIONS, "criteria": ICONS,
     }}
-    assert "broad bill icon" in INSTRUCTIONS
-    assert len(ICONS) == len(CATEGORIES) == 20
+    assert "Prefer a specific category" in INSTRUCTIONS
+    assert len(ICONS) == len(CATEGORIES) == 62
     assert all(key.endswith("Icon") and value for key, value in ICONS.items())
     assert request.headers["Authorization"] == "Bearer synthetic-key"
 

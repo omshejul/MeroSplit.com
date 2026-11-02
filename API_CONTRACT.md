@@ -192,13 +192,13 @@ Membership email contains only a generic notice and normal protected `/app/` des
 
 `GET /api/v1/expense-icons?ids=...` accepts1–20 visible expense IDs. Manual categories, including explicitly chosen General/Other, always win. Unknown legacy General/Other may infer. Hints never change bill text, categories, financial versions, events or notification outboxes.
 
-The catalog has 20 broad options, defined in `apps/api/ledger/assets/expense-icons.json` and exposed by MCP account context. Legacy specific categories resolve to these options, including coffee/tea/alcohol → drinks, water/electricity → utilities and garbage/recycling → waste. The app picker shows these same 20 labeled icons.
+The catalog has 62 options, defined in `apps/api/ledger/assets/expense-icons.json` and exposed by MCP account context. It includes specific choices such as coffee, liquor, rent, mortgage, fuel, taxi and individual utilities, alongside broad fallbacks. Legacy aliases resolve to the most specific supported choice, including tea → coffee, bus/train → transit and garbage/recycling → waste. The app picker shows the same labeled icons with category search.
 
 Title-only Jev results are shared across accounts. NFC normalization, casefolding and collapsed Unicode whitespace reuse a classification; accents, digits and punctuation remain distinct. HMAC cache keys include normalization, model, rules and catalog revisions. Per-bill bindings retain raw-title, account, access and automatic/manual fences. Every read, claim and finish rechecks eligibility. A manual choice always wins.
 
 API reads queue work. The worker claims one normalized title under a committed PostgreSQL lease and calls the Gateway outside transactions using its worker-only key. Jev chooses the highest-probability option without a confidence cutoff. Terminal failures and uncertain outcomes do not retry on visits. Expired leases become abandoned uncertainty; unresolved dispatch fences survive cleanup. Cleanup examines at most 100 old bindings and 100 unreferenced caches per tick after 90 inactive days, preserving claimed work and dispatch fences.
 
-Migration 0037 queues existing eligible automatic bills under the new catalog revision. It also restores automatic mode for untouched version 1 MCP bills whose old generic default disabled inference. Later manual choices, financial fields, versions, events and notification outboxes remain intact. Specific legacy manual categories retain their stored value and resolve through the compatibility aliases.
+Migration 0042 reclassifies existing eligible automatic bills under the expanded catalog revision, sharing one result per normalized title. Migration 0037 previously repaired untouched version 1 MCP generic defaults. Manual choices, financial fields, versions, events and notification outboxes remain intact. Specific legacy manual categories retain their stored value and resolve through the compatibility aliases.
 
 
 ### Concise financial push updates

@@ -7,10 +7,10 @@ import {categoryIcon,categoryIcons,categoryMeaning} from '../src/categoryIcons.t
 test('only known expense categories select installed icon names',()=>{
  for(const category of Object.keys(categoryIcons))assert.equal(categoryIcon(category),categoryIcons[category as keyof typeof categoryIcons]);
  assert.equal(categoryIcon(' Food '),'food');
- assert.equal(Object.keys(categoryIcons).length, 20);
+ assert.equal(Object.keys(categoryIcons).length, 62);
  for(const key of Object.keys(categoryIcons)) assert.ok(categoryMeaning(key), key);
- assert.equal(categoryIcon('electricity'),'utilities');
- assert.equal(categoryIcon('medicine'),'health');
+ assert.equal(categoryIcon('electricity'),'electricity');
+ assert.equal(categoryIcon('medicine'),'medicine');
  for(const key of ['garbage','wastecollection','recycling'])assert.equal(categoryIcon(key),'garbage');
  for(const value of [null,undefined,'','general','other','pending','uncertain','https://untrusted.invalid/icon','invented'])assert.equal(categoryIcon(value),'bill');
 });
