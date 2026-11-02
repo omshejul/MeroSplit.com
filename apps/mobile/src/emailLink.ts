@@ -1,7 +1,7 @@
 import type { Session } from './types.ts';
 
 export type EmailLink = { id: string | null; proof: string | null };
-export type EmailTarget = { kind: 'home' } | { kind: 'group'; group_id: string };
+export type EmailTarget = { kind: 'home' } | { kind: 'group'; group_id: string; expense_id?: string };
 export type EmailLinkResult = { session: Session; target: EmailTarget; needsName: boolean };
 export type EmailLinkInspection = { email: string; userId: number | null; purpose: string; currentUserId: number | null; currentEmail: string | null };
 export function emailLinkInspection(value: unknown): EmailLinkInspection {
@@ -42,7 +42,10 @@ export function subscribeEmailLinks(onLink: (link: EmailLink) => void): () => vo
 export function emailTarget(value: unknown): EmailTarget {
   if (value && typeof value === 'object' && 'kind' in value) {
     if (value.kind === 'home') return { kind: 'home' };
-    if (value.kind === 'group' && 'group_id' in value && typeof value.group_id === 'string' && uuid.test(value.group_id)) return { kind: 'group', group_id: value.group_id };
+    if (value.kind === 'group' && 'group_id' in value && typeof value.group_id === 'string' && uuid.test(value.group_id)) {
+      if ('expense_id' in value && (typeof value.expense_id !== 'string' || !uuid.test(value.expense_id))) throw new Error('This page is not available.');
+      return { kind: 'group', group_id: value.group_id, ...('expense_id' in value ? { expense_id: value.expense_id as string } : {}) };
+    }
   }
   throw new Error('This page is not available.');
 }

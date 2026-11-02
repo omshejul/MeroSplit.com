@@ -1230,11 +1230,13 @@ function AppContent() {
     await readProfile(active);
     if (epoch !== authEpoch.current) return;
     if (target.kind === 'group') {
-      const group = await fetchGroup(active, target.group_id);
+      let group = await fetchGroup(active, target.group_id);
+      if (epoch !== authEpoch.current || activeSessionRef.current?.token !== active.token) return;
+      group = await withBill(active, group, target.expense_id);
       if (epoch !== authEpoch.current || activeSessionRef.current?.token !== active.token) return;
       if (!await saveReadGroup(active, group, () => epoch === authEpoch.current)) return; await load(accountOwner(active));
       if (epoch !== authEpoch.current || activeSessionRef.current?.token !== active.token) return;
-      navigate('group', { groupId: group.id, expenseId: null, tab: group.is_direct ? 'Friends' : 'Groups' });
+      navigate(target.expense_id ? 'expenseDetail' : 'group', { groupId: group.id, expenseId: target.expense_id ?? null, tab: group.is_direct ? 'Friends' : 'Groups' });
     } else navigate('home', { tab: 'Groups' });
     if (epoch === authEpoch.current) { forgetEmailProof(); emailProof.current = null; emailEntryRef.current = null; setEmailEntry(null); }
   }
