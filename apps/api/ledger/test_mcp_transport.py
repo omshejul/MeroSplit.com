@@ -99,6 +99,11 @@ def test_official_sdk_negotiation_tools_schema_resource_and_no_session_affinity(
                 assert "ask what the expense was for and wait for their answer" in bill_instructions
                 assert "Never invent a description such as Shared expense" in bill_instructions
                 assert "Use a description already supplied without asking again" in bill_instructions
+                assert "GitHub Flavored Markdown, including tables, in payload.notes" in bill_instructions
+                assert "send the current notes unchanged" in bill_instructions
+                notes_schema = by_name["save_expense"].input_schema["$defs"]["ExpenseIn"]["properties"]["notes"]
+                assert notes_schema["maxLength"] == 2000
+                assert "GitHub Flavored Markdown" in notes_schema["description"]
                 assert [tool.name for tool in tools if tool.meta and "ui" in tool.meta] == ["render_group"]
                 payment_schema = by_name["record_external_payment"].input_schema
                 assert {"attempt_id", "expected_group_version"}.isdisjoint(payment_schema["properties"])

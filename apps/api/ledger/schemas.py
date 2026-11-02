@@ -92,7 +92,7 @@ class ExpenseIn(Command):
     time: Annotated[StrictStr, Field(pattern=r"^(?:[01][0-9]|2[0-3]):[0-5][0-9]$")] | None = None
     category: Annotated[str, Field(max_length=40)] = "other"
     category_auto: bool | None = None
-    notes: Annotated[str, Field(max_length=2000)] = ""
+    notes: Annotated[str, Field(max_length=2000, description="GitHub Flavored Markdown notes, including tables. Stored as original text. Preserve existing notes on unrelated edits. HTML displays literally; images display as alt text.")] = ""
     version: int | None = Field(default=None, ge=1)
 
 
