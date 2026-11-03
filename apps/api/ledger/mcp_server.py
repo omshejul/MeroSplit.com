@@ -58,7 +58,10 @@ def tool_failure(status, code, detail, **extra):
 def invoke_tool(raw, function, *args, **kwargs):
     # Authentication is checked again at the transaction boundary, not trusted
     # from the earlier HTTP middleware result or a model-supplied account ID.
-    identity = authenticate_access_token(raw, enforce_limits=False)
+    try:
+        identity = authenticate_access_token(raw)
+    except OAuthError as exc:
+        return tool_failure(exc.status, exc.error, "Too many requests. Try again in a minute.", retry_after_seconds=60)
     if identity is None:
         return tool_failure(401, "unauthorized", "Reconnect MeroSplit to this client")
     marker = verified_mcp_history.set(True)
@@ -99,10 +102,13 @@ class LedgerTokenVerifier:
 
 def authenticate_request(raw, network):
     rate_limit("ingress", network)
-    identity = authenticate_access_token(raw, network=network) if raw is not None else None
+    identity = authenticate_access_token(raw, enforce_limits=False) if raw is not None else None
     if identity is None:
+        rate_limit("invalid-auth", network)
         return None
     actor, grant = identity
+    # Discovery/reconnects must not spend the quota for actual ledger operations.
+    rate_limit("connection", network, user_id=actor.pk, grant_id=grant.id)
     return AccessToken(token=raw, client_id=str(grant.client_id), subject=str(actor.pk),
                        scopes=[grant.scope], resource=resource_url(),  # Exact legacy grant is the same trusted resource.
                        expires_at=int(grant.access_expires_at.timestamp()), claims={"iss": issuer_url()})
@@ -132,7 +138,11 @@ def render_group_data(actor, group_id):
 
 def create_server():
     server = MCPServer(name="merosplit", title="MeroSplit", version="1.0.0", subscriptions=False,
-        instructions=("Verify the connection with get_account_context and no arguments first. Read ledger records only when needed for the user's request. "
+        instructions=("Verify the connection with get_account_context and no arguments first. "
+                      "For HTTP 429, keep pending write IDs and payload, wait Retry-After or retry_after_seconds, then retry once without reconnecting. "
+                      "Missing tools alone do not prove expired login. Discover deferred tools and inspect actual client status; never invent a cause or prescribe repeated restarts. "
+                      "Use OAuth again only for confirmed invalid or expired access. Explain 403 restrictions. Report a bill saved only after confirmation. "
+                      "Read ledger records only when needed for the user's request. "
                       "Before creating a bill, ask what the expense was for if the user has not provided a description, and wait for their answer. "
                       "Never invent a description such as Shared expense. Use a description already supplied without asking again. "
                       "Bill notes support GitHub Flavored Markdown, including tables; descriptions stay plain text. Preserve notes on unrelated edits. "
@@ -277,6 +287,12 @@ class McpRequestBoundary:
             status = 400
         if status:
             return await JSONResponse({"error": "invalid_request"}, status_code=status)(scope, receive, send)
+        # OAuth discovery is public static metadata, not a failed login attempt.
+        # Clients probe /mcp for its challenge before fetching the metadata URL.
+        if scope["method"] in {"GET", "HEAD"} and not headers.get("authorization"):
+            return await JSONResponse({"error": "unauthorized"}, status_code=401, headers={
+                "WWW-Authenticate": f'Bearer resource_metadata="{issuer_url()}/.well-known/oauth-protected-resource/mcp"',
+                "Cache-Control": "no-store"})(scope, receive, send)
         # Match Django's explicitly configured secure-proxy rule at a TLS edge.
         # client_network still requires the Railway opt-in and exact public host,
         # and never trusts X-Forwarded-For. No request body is read here.
@@ -287,7 +303,8 @@ class McpRequestBoundary:
         try:
             access = await sync_to_async(database_call, thread_sensitive=False)(authenticate_request, raw, network)
         except OAuthError as exc:
-            return await JSONResponse({"error": exc.error}, status_code=exc.status,
+            return await JSONResponse({"error": exc.error, "error_description": "Too many requests. Try again in a minute.",
+                                       "retry_after_seconds": 60}, status_code=exc.status,
                                       headers={"Cache-Control": "no-store", "Retry-After": "60"})(scope, receive, send)
         if access is not None and scope["method"] != "POST":
             return await JSONResponse({"error": "method_not_allowed"}, status_code=405,

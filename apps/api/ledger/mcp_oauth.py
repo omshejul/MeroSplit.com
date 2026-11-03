@@ -67,13 +67,15 @@ def _text(value, maximum, *, required=True):
 
 def rate_limit(action, network, *, user_id=None, grant_id=None):
     """Persist abuse budgets separately, including when a later operation fails."""
-    limits = [(f"mcp-{action}-global", "all", 60, 600), (f"mcp-{action}-network", network, 60, 60)]
+    transport = action in {"ingress", "connection"}
+    limits = [(f"mcp-{action}-global", "all", 60, 6000 if transport else 600),
+              (f"mcp-{action}-network", network, 60, 600 if transport else 60)]
     if action == "register":
         limits += [("mcp-register-hour", network, 3600, 20), ("mcp-register-global-hour", "all", 3600, 300)]
     if user_id is not None:
-        limits.append((f"mcp-{action}-user", str(user_id), 60, 120))
+        limits.append((f"mcp-{action}-user", str(user_id), 60, 600 if transport else 120))
     if grant_id is not None:
-        limits.append((f"mcp-{action}-grant", str(grant_id), 60, 120))
+        limits.append((f"mcp-{action}-grant", str(grant_id), 60, 600 if transport else 120))
     try:
         with transaction.atomic():
             consume_limits(limits)
