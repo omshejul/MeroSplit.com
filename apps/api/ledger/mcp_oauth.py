@@ -19,7 +19,13 @@ from django.utils import timezone
 from django.utils.crypto import salted_hmac
 from django.views.decorators.debug import sensitive_variables
 
-from .mcp_models import McpOAuthClient, McpOAuthGrant, McpOAuthPendingAuthorization, McpOAuthRefreshDigest
+from .mcp_models import (
+    McpOAuthClient,
+    McpOAuthGrant,
+    McpOAuthPendingAuthorization,
+    McpOAuthRefreshDigest,
+    McpRateBucket,
+)
 from .otp import EmailCodeLimited, consume_limits
 
 MCP_SCOPE = "merosplit:mcp"
@@ -30,8 +36,9 @@ NATIVE_SCHEMES = {"codex", "cursor", "vscode", "vscode-insiders", "claude"}
 
 
 class OAuthError(Exception):
-    def __init__(self, error="invalid_request", status=400):
+    def __init__(self, error="invalid_request", status=400, *, retry_after_seconds=60):
         self.error, self.status = error, status
+        self.retry_after_seconds = retry_after_seconds
         super().__init__(error)
 
 
@@ -65,17 +72,50 @@ def _text(value, maximum, *, required=True):
     return value
 
 
+def consume_token_buckets(limits):
+    """Atomically debit all budgets, preserving fractional refill across workers."""
+    unit = 1_000_000
+    with transaction.atomic():
+        locked = []
+        for key, capacity, refill in sorted(limits):
+            key = _digest(f"mcp-token-bucket:{key}")
+            McpRateBucket.objects.get_or_create(key=key, defaults={"tokens": capacity * unit, "refilled_at": timezone.now()})
+            locked.append((McpRateBucket.objects.select_for_update().get(pk=key), capacity, refill))
+        now, pending, retry = timezone.now(), [], 0
+        for row, capacity, refill in locked:
+            elapsed = (now - row.refilled_at) // timedelta(microseconds=1)
+            available = min(capacity * unit, row.tokens + max(0, elapsed) * refill)
+            if available < unit:
+                # Include a future timestamp if a worker's clock moves backward.
+                missing = unit - available + max(0, -elapsed) * refill
+                retry = max(retry, (missing + refill * unit - 1) // (refill * unit))
+            pending.append((row, available))
+        if retry:
+            raise OAuthError("temporarily_unavailable", 429, retry_after_seconds=retry)
+        for row, available in pending:
+            row.tokens, row.refilled_at = available - unit, max(now, row.refilled_at)
+            row.save(update_fields=["tokens", "refilled_at"])
+
+
 def rate_limit(action, network, *, user_id=None, grant_id=None):
     """Persist abuse budgets separately, including when a later operation fails."""
-    transport = action in {"ingress", "connection"}
-    limits = [(f"mcp-{action}-global", "all", 60, 6000 if transport else 600),
-              (f"mcp-{action}-network", network, 60, 600 if transport else 60)]
+    if action in {"ingress", "connection", "tool"}:
+        transport = action != "tool"
+        buckets = [(f"{action}:global", 1000 if transport else 200, 100 if transport else 10)]
+        if action == "ingress":
+            buckets.append((f"{action}:network:{network}", 200, 10))
+        if user_id is not None:
+            buckets.append((f"{action}:user:{user_id}", 100 if transport else 40, 10 if transport else 2))
+        if grant_id is not None:
+            buckets.append((f"{action}:grant:{grant_id}", 100 if transport else 20, 10 if transport else 1))
+        return consume_token_buckets(buckets)
+    limits = [(f"mcp-{action}-global", "all", 60, 600), (f"mcp-{action}-network", network, 60, 60)]
     if action == "register":
         limits += [("mcp-register-hour", network, 3600, 20), ("mcp-register-global-hour", "all", 3600, 300)]
     if user_id is not None:
-        limits.append((f"mcp-{action}-user", str(user_id), 60, 600 if transport else 120))
+        limits.append((f"mcp-{action}-user", str(user_id), 60, 120))
     if grant_id is not None:
-        limits.append((f"mcp-{action}-grant", str(grant_id), 60, 600 if transport else 120))
+        limits.append((f"mcp-{action}-grant", str(grant_id), 60, 120))
     try:
         with transaction.atomic():
             consume_limits(limits)
@@ -297,8 +337,7 @@ def authenticate_access_token(raw, *, network=None, enforce_limits=True):
         scope=MCP_SCOPE, resource__in=trusted_resources(), user__is_active=True).first()
     if grant is None:
         return None
-    # SDK ingress supplies its trusted network when available; account/grant
-    # budgets always apply even when called independently of that adapter.
+    # Account/grant budgets survive token rotation and changes of network.
     if enforce_limits:
         rate_limit("tool", network or f"grant:{grant.id}", user_id=grant.user_id, grant_id=grant.id)
     McpOAuthGrant.objects.filter(pk=grant.pk).filter(Q(last_used_at__isnull=True) | Q(last_used_at__lt=now - timedelta(minutes=5))).update(last_used_at=now)

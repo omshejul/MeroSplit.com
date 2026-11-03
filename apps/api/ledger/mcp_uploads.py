@@ -124,7 +124,7 @@ async def upload_app(scope, receive, send):
         response = JSONResponse({"error": {"status": exc.status_code, "detail": str(exc)}}, status_code=exc.status_code)
     except mcp_oauth.OAuthError as exc:
         response = JSONResponse({"error": {"status": exc.status, "detail": "Too many requests; retry shortly"}},
-                                status_code=exc.status, headers={"Retry-After": "60"})
+                                status_code=exc.status, headers={"Retry-After": str(exc.retry_after_seconds)})
     except (AccountingError, ClientDisconnect) as exc:
         response = JSONResponse({"error": {"status": 422, "detail": str(exc) if isinstance(exc, AccountingError) else "Upload interrupted; retry the original file"}}, status_code=422)
     except TimeoutError:

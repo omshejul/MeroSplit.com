@@ -116,6 +116,9 @@ def test_browser_oauth_sdk_ledger_and_disconnect_journey(connections):
             async with Client(streamable_http_client(RESOURCE, http_client=http), cache=None) as client:
                 async def call(name, arguments):
                     result = await client.call_tool(name, arguments)
+                    if result.is_error and result.structured_content.get("error", {}).get("status") == 429:
+                        await asyncio.sleep(result.structured_content["error"]["retry_after_seconds"])
+                        result = await client.call_tool(name, arguments)
                     assert not result.is_error, result.structured_content
                     return result.structured_content
 
@@ -191,6 +194,9 @@ def test_browser_oauth_sdk_ledger_and_disconnect_journey(connections):
         async with running_app(MeroSplitApplication(), rotated["access_token"]) as http:
             async with Client(streamable_http_client(RESOURCE, http_client=http), cache=None) as client:
                 result = await client.call_tool("get_account_context", {})
+                if result.is_error and result.structured_content.get("error", {}).get("status") == 429:
+                    await asyncio.sleep(result.structured_content["error"]["retry_after_seconds"])
+                    result = await client.call_tool("get_account_context", {})
                 assert not result.is_error and result.structured_content["account"]["id"] == account["id"]
 
     asyncio.run(verify_rotated_tokens())

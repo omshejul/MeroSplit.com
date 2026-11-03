@@ -467,6 +467,7 @@ from .mcp_models import (  # noqa: E402,F401
     McpOAuthGrant,
     McpOAuthPendingAuthorization,
     McpOAuthRefreshDigest,
+    McpRateBucket,
 )
 
 

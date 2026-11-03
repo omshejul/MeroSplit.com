@@ -55,3 +55,20 @@ Run `apps/api/.venv/bin/python -m pytest apps/api/ledger/test_mcp_device.py apps
 `BottomSheet.web.tsx` uses the [shadcn Base UI Drawer composition](https://ui.shadcn.com/docs/components/base/drawer) with `@base-ui/react` 1.9.0, MIT licensed. The web sheet snaps between 65% and full available height, with swipe dismissal, a fixed header and scrollable content. Arrow keys on the resize handle provide the same resizing action. Base UI owns browser focus, gestures and keyboard-aware scrolling; the shared dialog registration still prevents application restarts during a sheet. Native sheets retain their existing presentation.
 
 HTML field labels and radio labels use the shared typography token, including its sans-serif fallback before custom fonts load. `tests/web/SheetGallery.tsx` provides a synthetic expense form for browser checks without a real account.
+
+## MCP rate limits
+
+Regular MCP traffic uses shared PostgreSQL token buckets, with capacity and refill rate separate:
+
+| Scope | Burst capacity | Tokens per second |
+| --- | ---: | ---: |
+| Ledger calls per authorization | 20 | 1 |
+| Ledger calls per account | 40 | 2 |
+| Ledger calls across the service | 200 | 10 |
+| Connections per account or authorization | 100 | 10 |
+| Connection ingress per network | 200 | 10 |
+| Connection ingress/discovery across the service, each | 1,000 | 100 |
+
+Each request consumes one token from every applicable bucket in one transaction. Stable row locks prevent concurrent workers from overspending. Millionths preserve fractional refill, idle credit stops at capacity, and rejected requests spend no ledger tokens. HTTP `Retry-After` and tool `retry_after_seconds` round the actual refill delay up to a whole second. Retry an unchanged write with its original IDs and payload.
+
+Login-abuse, registration and upload budgets remain separate fixed-window limits. Public OAuth discovery stays available. Test the refill and concurrency rules with `apps/api/.venv/bin/python -m pytest apps/api/ledger/test_mcp_rate_limits.py -q` against disposable PostgreSQL.

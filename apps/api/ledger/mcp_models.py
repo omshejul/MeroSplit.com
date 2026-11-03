@@ -59,3 +59,10 @@ class McpOAuthRefreshDigest(models.Model):
     digest = models.CharField(primary_key=True, max_length=64)
     grant = models.ForeignKey(McpOAuthGrant, on_delete=models.CASCADE)
     expires_at = models.DateTimeField(db_index=True)
+
+
+class McpRateBucket(models.Model):
+    """Shared continuous-refill budget, with tokens stored in millionths."""
+    key = models.CharField(max_length=64, primary_key=True)
+    tokens = models.PositiveBigIntegerField()
+    refilled_at = models.DateTimeField()
