@@ -41,12 +41,12 @@ test('notes table renders semantic headers, column alignment and horizontal scro
  await nodes(tree).find(n=>n.props.accessibilityRole==='link')!.props.onPress();await Promise.resolve();tree=render({source:''});assert.ok(text(tree).includes('Could not open this link. Try again.'));
 });
 
-test('notes editor preview and formatting help preserve raw Markdown and the existing limit and disabled state',()=>{
+test('notes editor keeps a quiet Markdown hint, raw content, limit and disabled state',()=>{
  const render=component('NotesField.tsx','NotesField');const source='| Item | Amount |\n| --- | ---: |\n| Dinner | ₹500 |';const changed:string[]=[];const props={value:source,disabled:false,onChange:(v:string)=>changed.push(v)};
- let tree=render(props);let input=nodes(tree).find(n=>n.type==='TextField')!;assert.equal(input.props.maxLength,2000);assert.equal(input.props.value,source);assert.equal(input.props.multiline,true);
- nodes(tree).find(n=>n.props.title==='Preview')!.props.onPress();tree=render(props);assert.equal(nodes(tree).find(n=>n.type==='MarkdownNotes')!.props.source,source);assert.deepEqual(changed,[]);assert.ok(text(tree).includes(`${source.length}/2,000`));
- nodes(tree).find(n=>n.props.title==='Write')!.props.onPress();tree=render({...props,disabled:true});input=nodes(tree).find(n=>n.type==='TextField')!;assert.equal(input.props.value,source);assert.equal(input.props.editable,false);assert.equal(nodes(tree).find(n=>n.props.title==='Preview')!.props.disabled,true);
- nodes(tree).find(n=>n.props.title==='Formatting help')!.props.onPress();tree=render(props);assert.equal(nodes(tree).find(n=>n.type==='KeyboardDialog')!.props.visible,true);assert.ok(text(tree).includes('| Item | Amount |'));
+ let tree=render(props);let input=nodes(tree).find(n=>n.type==='TextField')!;assert.equal(input.props.maxLength,2000);assert.equal(input.props.value,source);assert.equal(input.props.multiline,true);assert.equal(input.props.label,'Notes (optional)');assert.equal(input.props.hideLabel,true);
+ assert.ok(text(tree).includes('Markdown'));assert.ok(text(tree).includes(`${source.length}/2,000`));assert.equal(nodes(tree).filter(n=>n.type==='Button'||n.type==='KeyboardDialog').length,0);
+ input.props.onChangeText('**Updated**');assert.deepEqual(changed,['**Updated**']);
+ tree=render({...props,disabled:true});input=nodes(tree).find(n=>n.type==='TextField')!;assert.equal(input.props.value,source);assert.equal(input.props.editable,false);
 });
 
 test('link schemes are restricted to explicit web and email destinations',()=>{
