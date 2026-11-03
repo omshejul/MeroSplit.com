@@ -215,27 +215,31 @@ def test_discovery_cannot_reset_ledger_operation_quota(ledger, bearer, monkeypat
     now = timezone.now()
     monkeypatch.setattr("ledger.otp.timezone.now", lambda: now)
     async def check():
+        nonlocal now
         async with running_app(MeroSplitApplication(), bearer[0]) as http:
             async with sdk(http) as client:
-                for _ in range(60):
+                for _ in range(20):
                     assert not (await client.call_tool("get_account_context", {})).is_error
                 assert "get_account_context" in {tool.name for tool in (await client.list_tools()).tools}
                 limited = await client.call_tool("get_account_context", {})
                 assert limited.is_error and limited.structured_content["error"]["status"] == 429
-                assert limited.structured_content["error"]["retry_after_seconds"] == 60
+                assert limited.structured_content["error"]["retry_after_seconds"] == 1
+                now += timedelta(seconds=1)
+                assert not (await client.call_tool("get_account_context", {})).is_error
     asyncio.run(check())
 
 
 def test_valid_bearer_quota_returns_one_429_response(ledger, bearer, monkeypatch):
     from . import mcp_server
     def limited(*args, **kwargs):
-        raise OAuthError("temporarily_unavailable", 429)
+        raise OAuthError("temporarily_unavailable", 429, retry_after_seconds=3)
     monkeypatch.setattr(mcp_server, "authenticate_access_token", limited)
     async def check():
         async with running_app(MeroSplitApplication(), bearer[0]) as http:
             response = await http.post("/mcp", json={"jsonrpc": "2.0", "id": 1, "method": "ping"})
             assert response.status_code == 429
-            assert response.headers["Retry-After"] == "60"
+            assert response.headers["Retry-After"] == "3"
+            assert response.json()["retry_after_seconds"] == 3
     asyncio.run(check())
 
 

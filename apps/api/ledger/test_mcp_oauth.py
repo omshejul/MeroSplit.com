@@ -16,7 +16,13 @@ from django.utils import timezone
 
 from . import email_delivery, email_links
 from . import mcp_oauth as oauth
-from .mcp_models import McpOAuthClient, McpOAuthGrant, McpOAuthPendingAuthorization, McpOAuthRefreshDigest
+from .mcp_models import (
+    McpOAuthClient,
+    McpOAuthGrant,
+    McpOAuthPendingAuthorization,
+    McpOAuthRefreshDigest,
+    McpRateBucket,
+)
 from .models import EmailRateBucket
 from .test_web_app import exported_app as exported_app
 
@@ -430,18 +436,20 @@ def test_tool_reauthentication_checks_each_time_without_double_charging_and_neve
     cookie = browser(actor).session.session_key
     assert not oauth.authenticate_access_token(cookie)
     assert oauth.authenticate_access_token(tokens["access_token"], network=NETWORK)
-    before = list(EmailRateBucket.objects.order_by("key").values_list("key", "count"))
+    before = list(McpRateBucket.objects.order_by("key").values_list("key", "tokens", "refilled_at"))
     for _ in range(3):
         assert oauth.authenticate_access_token(tokens["access_token"], enforce_limits=False)[0].pk == actor.pk
-    assert list(EmailRateBucket.objects.order_by("key").values_list("key", "count")) == before
+    assert list(McpRateBucket.objects.order_by("key").values_list("key", "tokens", "refilled_at")) == before
     McpOAuthGrant.objects.update(revoked_at=timezone.now())
     assert not oauth.authenticate_access_token(tokens["access_token"], enforce_limits=False)
 
 
 @pytest.mark.django_db(transaction=True)
-def test_tool_grant_rate_is_durable_across_new_database_connections():
+def test_tool_grant_rate_is_durable_across_new_database_connections(monkeypatch):
     _, _, tokens = granted()
-    for _ in range(60):
+    now = timezone.now()
+    monkeypatch.setattr(oauth.timezone, "now", lambda: now)
+    for _ in range(20):
         assert oauth.authenticate_access_token(tokens["access_token"], network=NETWORK)
     connections.close_all()
     with pytest.raises(oauth.OAuthError) as error:

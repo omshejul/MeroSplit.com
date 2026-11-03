@@ -28,7 +28,7 @@ def _response(data, status=200, *, public=False):
 def _error(exc):
     response = _response({"error": exc.error, "error_description": "Too many requests. Try again in a minute." if exc.status == 429 else "Unable to complete this OAuth request. Connect again from your client."}, exc.status)
     if exc.status == 429:
-        response["Retry-After"] = "60"
+        response["Retry-After"] = str(exc.retry_after_seconds)
     return response
 
 

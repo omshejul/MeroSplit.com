@@ -61,7 +61,7 @@ def invoke_tool(raw, function, *args, **kwargs):
     try:
         identity = authenticate_access_token(raw)
     except OAuthError as exc:
-        return tool_failure(exc.status, exc.error, "Too many requests. Try again in a minute.", retry_after_seconds=60)
+        return tool_failure(exc.status, exc.error, "Too many requests. Try again shortly.", retry_after_seconds=exc.retry_after_seconds)
     if identity is None:
         return tool_failure(401, "unauthorized", "Reconnect MeroSplit to this client")
     marker = verified_mcp_history.set(True)
@@ -303,9 +303,9 @@ class McpRequestBoundary:
         try:
             access = await sync_to_async(database_call, thread_sensitive=False)(authenticate_request, raw, network)
         except OAuthError as exc:
-            return await JSONResponse({"error": exc.error, "error_description": "Too many requests. Try again in a minute.",
-                                       "retry_after_seconds": 60}, status_code=exc.status,
-                                      headers={"Cache-Control": "no-store", "Retry-After": "60"})(scope, receive, send)
+            return await JSONResponse({"error": exc.error, "error_description": "Too many requests. Try again shortly.",
+                                       "retry_after_seconds": exc.retry_after_seconds}, status_code=exc.status,
+                                      headers={"Cache-Control": "no-store", "Retry-After": str(exc.retry_after_seconds)})(scope, receive, send)
         if access is not None and scope["method"] != "POST":
             return await JSONResponse({"error": "method_not_allowed"}, status_code=405,
                                       headers={"Allow": "POST", "Cache-Control": "no-store"})(scope, receive, send)
