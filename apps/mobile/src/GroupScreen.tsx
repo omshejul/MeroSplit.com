@@ -343,7 +343,7 @@ export function ExpenseDetail({ categoryIcons = {}, noticeVisibility, expense, g
       {payers.map(person => <PersonAmountRow key={person.id} name={person.name} photo={person.profile_photo} amount={expense.paid[person.id] ?? '0'} />)}
     </BillPeople>
     <BillPeople icon="people" title="Split between" summary={`${sharing.length} people`} inline={sharing.length <= 1} disabled={busy}>
-      <Text style={ui.caption}>{expense.split.mode === 'equal' ? 'Shared equally' : expense.split.mode === 'exact' ? 'Exact amounts' : expense.split.mode === 'percent' ? 'By percentage' : expense.split.mode === 'adjustment' ? 'By adjustment' : 'By shares'}</Text>
+      {sharing.length > 1 && <Text style={ui.caption}>{expense.split.mode === 'equal' ? 'Shared equally' : expense.split.mode === 'exact' ? 'Exact amounts' : expense.split.mode === 'percent' ? 'By percentage' : expense.split.mode === 'adjustment' ? 'By adjustment' : 'By shares'}</Text>}
       {sharing.map(person => <PersonAmountRow key={person.id} name={person.name} photo={person.profile_photo} amount={expense.shares[person.id] ?? '0'} />)}
     </BillPeople>
     {!!expense.notes && <View style={s.section}>

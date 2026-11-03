@@ -120,8 +120,8 @@ test('all split modes still validate through the actual form and preserve draft-
 
 function payerFields(app: ReturnType<typeof harness>, props: any) {
   const selection = payerContent(app.render(props));
-  const tree = harness('src/ExpenseForm.tsx', 'PayerFields').render(selection.props);
-  return { ...selection.props, fields: nodes(tree).filter(node => node.type === 'TextField') };
+  const tree = harness('src/ExpenseForm.tsx', 'PayerFields', { SplitPersonRow: 'SplitPersonRow' }).render(selection.props);
+  return { ...selection.props, fields: nodes(tree).filter(node => node.type === 'SplitPersonRow' && node.props.selected) };
 }
 
 test('payer difference chips keep local values and save through existing validation', async () => {
@@ -1249,7 +1249,7 @@ test('multiple payer mode preserves entered amounts even with one selected and v
   const renderFields = () => harness('src/ExpenseForm.tsx', 'PayerFields').render(payerContent(app.render(props)).props);
   find(renderFields(), 'label', 'Multiple people').props.onPress();
   assert.equal(payerContent(app.render(props)).props.draft.payerAmounts.self, '100');
-  assert.equal(nodes(renderFields()).filter(node => node.type === 'TextField').length, 1);
+  assert.equal(nodes(renderFields()).filter(node => node.type === 'TextField' && node.props.editable).length, 1);
   payerContent(app.render(props)).props.onChange({ payerAmounts: { self: '60' } });
   find(app.render(props), 'title', 'Save bill').props.onPress(); await tick(); assert.equal(saves.length, 0);
   payerContent(app.render(props)).props.onToggle('other');

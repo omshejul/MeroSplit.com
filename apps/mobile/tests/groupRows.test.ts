@@ -665,3 +665,11 @@ test('transaction entrance follows visible batches beyond row eight and never re
   show([0, 1]); assert.equal(entry(0), first); assert.equal(entry(0).played, true, 'scrolling back cannot replay');
   assert.deepEqual(noticed.at(-2), ['40', '41', '42'], 'bill visibility notifications remain intact');
 });
+
+test('a bill for one person omits the shared split method caption', () => {
+ const render=production('ExpenseDetail');
+ const expense={id:'single',version:1,description:'Lunch',total:'1000',paid:{self:'1000'},shares:{other:'1000'},split:{mode:'equal',values:{other:'1'}},date:'2026-11-03',deleted:false};
+ const props={expense,group:{...group,expenses:[expense]},selfId:'self',busy:false,canEdit:true,onEdit(){},onReverse(){}};
+ assert.ok(!text(render(props)).includes('Shared equally'));
+ assert.ok(text(render({...props,expense:{...expense,shares:{self:'500',other:'500'},split:{mode:'equal',values:{self:'1',other:'1'}}}})).includes('Shared equally'));
+});

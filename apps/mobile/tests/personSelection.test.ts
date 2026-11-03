@@ -38,7 +38,8 @@ test('payer rows keep multiple payer fields and removed participant protection',
   const rows = nodes(tree, 'Button');
   assert.equal(rows.find(row => row.props.accessibilityLabel === 'c').props.disabled, true);
   rows[0].props.onPress(); assert.equal(toggled, 'a');
-  assert.equal(nodes(tree, 'TextField').length, 2);
+  assert.equal(nodes(tree, 'TextField').length, 3);
+  assert.equal(nodes(tree, 'TextField').filter(field => field.props.editable).length, 1);
 });
 
 test('person row exposes checkbox semantics and respects disabled state', () => {

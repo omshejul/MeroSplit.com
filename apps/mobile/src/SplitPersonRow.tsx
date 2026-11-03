@@ -18,9 +18,9 @@ export function stepShare(value: string, direction: -1 | 1): string | null {
   return result.length <= 40 ? result : null;
 }
 
-export default function SplitPersonRow({ person, title, selected, disabled, editable, amount, mode, value, onToggle, onChange }: {
+export default function SplitPersonRow({ person, title, selected, disabled, editable, amount, mode, value, onToggle, onChange, inputLabel, right }: {
   person: Participant; title: string; selected: boolean; disabled: boolean; editable: boolean;
-  amount?: string; mode: Exclude<Split['mode'], 'equal'>; value: string;
+  inputLabel?: string; right?: React.ReactNode; amount?: string; mode: Exclude<Split['mode'], 'equal'>; value: string;
   onToggle: () => void; onChange: (value: string) => void;
 }) {
   const { ui, palette, dark } = useUI(), { fontScale = 1 } = useWindowDimensions();
@@ -48,7 +48,7 @@ export default function SplitPersonRow({ person, title, selected, disabled, edit
       </Button>}
       {adjustment && <Button kind="plain" accessibilityLabel={`${negative ? 'Switch to add' : 'Switch to subtract'} for ${title}`} disabled={!canEdit} onPress={() => { if (canEdit) onChange(negative ? value.slice(1) : `-${value || '0'}`); }} style={styles.step}><Icon name={negative ? 'subtract' : 'add'} size={18} /></Button>}
       {mode === 'exact' && <Text accessible={false} style={ui.caption}>{currencySymbol()}</Text>}
-      <TextField hideLabel label={name} autoCorrect={false} keyboardType="decimal-pad" value={adjustment && negative ? value.slice(1) : value} editable={canEdit}
+      <TextField hideLabel label={inputLabel ?? name} autoCorrect={false} keyboardType="decimal-pad" value={adjustment && negative ? value.slice(1) : value} editable={canEdit}
         onChangeText={text => onChange(adjustment && negative && text && !text.startsWith('-') ? `-${text}` : text)} containerStyle={styles.inputContainer}
         style={[styles.input, { textAlign: shares ? 'center' : 'right' }]} />
       {mode === 'percent' && <Text accessible={false} style={ui.caption}>%</Text>}
@@ -57,6 +57,7 @@ export default function SplitPersonRow({ person, title, selected, disabled, edit
         <Icon name="add" size={18} color={!canEdit || plus === null ? palette.muted : palette.accent} />
       </Button>}
     </View>
+    {right}
   </View>;
 }
 

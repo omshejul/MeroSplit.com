@@ -111,13 +111,13 @@ function PayerFields({ participants, draft, disabled, preserveRemoved, label, on
     <SettingsRow icon="me" label="One person" disabled={disabled || locked || !singlePayer} onPress={() => { if (disabled || locked || !singlePayer) return; onChange({ multiplePayers: false, payerIds: [singlePayer] }); }} />
     {locked && <Text style={ui.caption}>Keep removed people's paid amounts unchanged.</Text>}
     <SelectionButton participants={participants} selected={draft.payerIds} disabled={disabled} label="payers" onChange={payerIds => onChange({ payerIds })} />
-    {people.map(person => <View key={`payer-${person.id}`} style={styles.field}>
-      <PersonChoice person={person} title={label(person.id)} selected={draft.payerIds.includes(person.id)} disabled={disabled || (preserveRemoved && !!person.removed)} onPress={() => { animateLayout(!!motion?.enabled); onToggle(person.id); }} />
-      {draft.payerIds.includes(person.id) && <TextField autoCorrect={false} label={`Paid by ${label(person.id)} (${currencySymbol()})`} value={draft.payerAmounts[person.id] ?? ''}
-        onChangeText={value => onChange({ payerAmounts: { ...draft.payerAmounts, [person.id]: value } })} keyboardType="decimal-pad" editable={!disabled && !person.removed}
-        right={!disabled && !person.removed && difference !== null && difference !== 0n && integer(paise(draft.payerAmounts[person.id] || '0')) + difference >= 0n
-          ? <PayerAdjustment difference={difference} name={label(person.id)} onPress={() => onAdjust(person.id)} /> : null} />}
-    </View>)}
+    {people.map(person => <SplitPersonRow key={`payer-${person.id}`} person={person} title={label(person.id)} mode="exact"
+      selected={draft.payerIds.includes(person.id)} disabled={disabled || (preserveRemoved && !!person.removed)} editable={!disabled && !person.removed}
+      inputLabel={`Paid by ${label(person.id)} (${currencySymbol()})`} value={draft.payerAmounts[person.id] ?? ''}
+      onToggle={() => { animateLayout(!!motion?.enabled); onToggle(person.id); }}
+      onChange={value => onChange({ payerAmounts: { ...draft.payerAmounts, [person.id]: value } })}
+      right={draft.payerIds.includes(person.id) && !disabled && !person.removed && difference !== null && difference !== 0n && integer(paise(draft.payerAmounts[person.id] || '0')) + difference >= 0n
+        ? <PayerAdjustment difference={difference} name={label(person.id)} onPress={() => onAdjust(person.id)} /> : null} />)}
     {!!status && <Text accessibilityLiveRegion="polite" style={ui.caption}>{status}</Text>}
   </RowGroup>;
 }
@@ -271,7 +271,7 @@ export default function ExpenseForm({ group, expense, selfId, busy, onSave, owne
     {expense && expense.version !== draft.expenseVersion && <NoticeBanner>A newer edit exists. Review it before saving this older draft.</NoticeBanner>}
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 12 }}>
       <View style={{ flex: 1, minWidth: 180, gap: 12 }}>
-        <AmountField autoCorrect={false} label={`Amount (${currencySymbol()})`} value={draft.amount} onChangeText={amount => change({ amount })} placeholder="0" editable={!disabled} />
+        <AmountField autoCorrect={false} label={`Amount (${currencySymbol()})`} value={draft.amount} onChangeText={amount => change({ amount })} placeholder="0" editable={!disabled} style={{ fontSize: 32, lineHeight: 40, minHeight: 68 }} />
         <TextField autoCorrect={false} label="Description" value={draft.description} onChangeText={description => change({ description })} placeholder="What was it for?" maxLength={200} editable={!disabled} />
       </View>
       {!expense && <DraftAttachment value={draft.attachment} path={`/groups/${group.id}/expenses/${draft.id}/attachments`} disabled={disabled || !!group.archived} onChange={async attachment => { await change({ attachment }); }} onBusy={setFileBusy} onError={setError} />}
