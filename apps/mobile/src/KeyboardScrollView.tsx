@@ -1,5 +1,6 @@
 import React, { createContext, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Keyboard, Platform, ScrollView, StyleSheet, TextInput } from 'react-native';
+import { useUI } from './ui';
 import { keyboardScrollDelta } from './keyboardVisibility';
 
 type Input = React.ComponentRef<typeof TextInput>;
@@ -9,6 +10,8 @@ export const KeyboardVisibility = createContext<Visibility | null>(null);
 // Resize ancestors own keyboard avoidance. This scroller only reveals the focused
 // descendant and adds the overlap that remains in edge-to-edge Android windows.
 export default function KeyboardScrollView({ ref, children, contentContainerStyle, onLayout, onScroll, onScrollBeginDrag, onContentSizeChange, ...props }: React.ComponentPropsWithRef<typeof ScrollView>) {
+  const { motion } = useUI();
+  const animate = useRef(motion.enabled); animate.current = motion.enabled;
   const scroll = useRef<React.ComponentRef<typeof ScrollView>>(null), focused = useRef<Input | null>(null), offset = useRef(0);
   const frame = useRef<number | null>(null), alive = useRef(true), revision = useRef(0);
   const settled = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -35,7 +38,7 @@ export default function KeyboardScrollView({ ref, children, contentContainerStyl
         input.measureInWindow((_ix, y, _iw, inputHeight) => {
           if (!alive.current || version !== revision.current || focused.current !== input || !input.isFocused()) return;
           const delta = keyboardScrollDelta(top, bottom, y, inputHeight);
-          if (delta) container.scrollTo({ y: Math.max(0, offset.current + delta), animated: false });
+          if (delta) container.scrollTo({ y: Math.max(0, offset.current + delta), animated: animate.current });
         });
       });
     });

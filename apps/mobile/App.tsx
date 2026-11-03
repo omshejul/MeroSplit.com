@@ -21,7 +21,7 @@ import type { AlertButton } from 'react-native';
 import { Alert } from './src/alerts';
 import { SafeAreaProvider, SafeAreaView, initialWindowMetrics } from 'react-native-safe-area-context';
 import * as Crypto from 'expo-crypto';
-import { accountOwner, ApiError, requestEmailCode, confirmEmailCode, endSession, claimLegacyGroup, expensePayload, fetchGroup, refreshGroups, request, syncOutbox, cacheOfflineGroups, prefetchRead } from './src/api';
+import { accountOwner, ApiError, requestEmailCode, confirmEmailCode, endSession, claimLegacyGroup, expensePayload, fetchGroup, refreshGroups, retainHistoryWindow, request, syncOutbox, cacheOfflineGroups, prefetchRead } from './src/api';
 import type { EmailCodeChallenge } from './src/api';
 import { readAppLink, type AppLink } from './src/browserLinks';
 import { validateUPIPayment, type UPILaunchQuote } from './src/upi';
@@ -112,7 +112,7 @@ const uuid = () => Crypto.randomUUID();
 type Transfer = { sender: string; recipient: string; amount: string };
 type EmailEntry = { id: string | null; phase: 'opening' | 'switch' | 'target' | 'name' | 'error'; error: string; sent: boolean; target?: EmailTarget; inspection?: EmailLinkInspection; switchFromUserId?: number };
 function AppContent() {
-  const { palette: colors, ui, changeAppearance, changeColorFamily, changeCurrency } = useUI();
+  const { palette: colors, ui, motion, changeAppearance, changeColorFamily, changeCurrency } = useUI();
   const s = makeStyles(colors);
   const [session, setSession] = useState<Session | null>(null), [ready, setReady] = useState(false), [expired, setExpired] = useState(false);
   useEffect(() => {
@@ -174,6 +174,7 @@ function AppContent() {
   const [addPersonRequest, setAddPersonRequest] = useState(0);
   const [newPersonInvite, setNewPersonInvite] = useState<{ owner: string; groupId: string; personId: string; email: string; id: string } | null>(null), [newPersonInviteError, setNewPersonInviteError] = useState('');
   const [foreground, setForeground] = useState(AppState.currentState === 'active' && (Platform.OS !== 'web' || document.visibilityState === 'visible'));
+  const homeGroupOffset = useRef({ owner: '', y: 0 });
   const scroll = useRef<React.ComponentRef<typeof ScrollView>>(null), suppressPush = useRef<(data: unknown) => boolean>(() => false);
   const [viewport, setViewport] = useState<WindowFrame | null>(null), [scrollEpoch, setScrollEpoch] = useState(0);
   const [alertOpen, setAlertOpen] = useState(false);
@@ -510,6 +511,12 @@ function AppContent() {
     const db = await getDatabase(), scope = accountOwner(active), stale = new Error('This account or screen changed.');
     const allowed = () => current() && activeSessionRef.current?.token === active.token;
     let saved = false;
+    if (mergeDetail && group.read_mode === 'summary' && allowed()) {
+      const previous = await readVisibleGroup(db, scope, group.id);
+      if (previous?.group.transactions && previous.group.transactions.length > (group.transactions?.length ?? 0) && previous.group.version < group.version) {
+        group = await retainHistoryWindow(active, group, previous.group, allowed);
+      }
+    }
     try {
       await db.withExclusiveTransactionAsync(async tx => {
         if (!allowed()) return;
@@ -595,9 +602,24 @@ function AppContent() {
       try {
         const cursor = more ? previous?.next_cursor : null;
         if (more && !cursor) return false;
-        const page = await request<ActivityPage>(active, `/activity?limit=50${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`, 'GET', undefined, 'json', signal);
+        let page = await request<ActivityPage>(active, `/activity?limit=50${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`, 'GET', undefined, 'json', signal);
         if (!current() || signal?.aborted || activeSessionRef.current?.token !== active.token || browseCurrent.current !== context) return false;
         if (page.read_mode !== 'activity' || !Array.isArray(page.items) || more && page.revision !== previous?.revision) throw new ApiError(409, 'Activity changed. Refresh to see the latest.');
+        if (!more && previous && previous.items.length > page.items.length) {
+          const rows = [...page.items], cursors = new Set<string>();
+          const last = previous.items.at(-1)?.id, target = previous.items.length;
+          while (page.next_cursor && rows.length < target + 50 && (rows.length < target || !rows.some(item => item.id === last))) {
+            if (cursors.has(page.next_cursor)) throw new ApiError(409, 'Activity changed. Refresh to see the latest.');
+            cursors.add(page.next_cursor);
+            const next = await request<ActivityPage>(active, `/activity?limit=50&cursor=${encodeURIComponent(page.next_cursor)}`, 'GET', undefined, 'json', signal);
+            if (!current() || signal?.aborted || activeSessionRef.current?.token !== active.token || browseCurrent.current !== context) return false;
+            if (next.read_mode !== 'activity' || next.revision !== page.revision || !Array.isArray(next.items)) throw new ApiError(409, 'Activity changed. Refresh to see the latest.');
+            const ids = new Set(rows.map(item => item.id)), added = next.items.filter(item => !ids.has(item.id));
+            rows.push(...added); page = next;
+            if (!added.length) break;
+          }
+          page = { ...page, items: rows };
+        }
         const added = more ? page.items.filter(item => !previous?.items.some(old => old.id === item.id)) : page.items;
         activityOwner.current = accountOwner(active);
         setActivity({ ...page, items: more ? [...(previous?.items ?? []), ...added] : added, firstPage: more ? previous?.firstPage ?? false : true });
@@ -892,7 +914,12 @@ function AppContent() {
     await push.clear(); setPushTarget(null);
   }
   function back() {
-    if (screen === 'home' && tab === 'Groups' && (showArchived || showHidden)) { setShowArchived(false); setShowHidden(false); return; }
+    if (screen === 'home' && tab === 'Groups' && (showArchived || showHidden)) {
+      const y = homeGroupOffset.current.owner === owner ? homeGroupOffset.current.y : 0;
+      setShowArchived(false); setShowHidden(false);
+      requestAnimationFrame(() => { if (ownerRef.current === owner) scroll.current?.scrollTo({ y, animated: motion.enabled }); });
+      return;
+    }
     navigation.back(!!session);
     if (screen === 'signInMethods') requestAnimationFrame(() => methodsRow.current?.focus());
   }
@@ -1437,7 +1464,7 @@ function AppContent() {
       {screen === 'members' && selected && !selected.group.is_direct && !selected.group.archived && selected.group.participants.some(person => person.id === selfId && !person.removed && person.user_id === selected.group.owner_id) && <IconAction name="personAdd" label="Add person" disabled={busy} onPress={() => setAddPersonRequest(value => value + 1)} />}
     </ScreenHeader>}
     <SceneTransition changeKey={`${screen}|${tab}|${groupId ?? ''}|${expenseId ?? ''}|${settlementId ?? ''}|${screen === 'login' && challenge ? 'code' : 'entry'}`} active={focused}>
-    {screen === 'login' ? loginContent : groupView ? groupView : activityView ? activityView : screen === 'billChat' && session && selected && expense ? <BillChatScreen key={`${owner}|${groupId}|${expense.id}`} session={session} groupId={selected.group.id} expenseId={expense.id} billTitle={expense.description} billAmount={formatMoney(expense.total)} onOpenBill={() => navigate('expenseDetail')} active={focused && foreground && !authHeld && !expired} online={online} onRead={() => void push.clearReadPrompts().catch(() => {})} onUnsentChange={unsent => { if (ownerRef.current !== owner) return; if (unsent) { setHasDrafts(true); return; } void flushChatWrites().then(() => getDatabase()).then(db => db.getFirstAsync<{ n: number }>('SELECT count(*) AS n FROM drafts WHERE owner=? AND body<>?', owner, 'null')).then(value => { if (ownerRef.current === owner) setHasDrafts(!!value?.n); }).catch(() => {}); }} /> : screen === 'expenseVersions' && session && selected && expense ? <ExpenseVersionHistory key={`${owner}|${session.token}|${expense.id}`} session={session} groupId={selected.group.id} expenseId={expense.id} groupVersion={selected.group.version} title={expense.description} onInvalidated={() => { if (ownerRef.current === owner && activeSessionRef.current?.token === session.token) { setLastConfirmed(null); setSyncProblem(true); } }} active={focused && foreground && !authHeld && !expired} online={online} /> : <ScrollView role="main" home={screen === 'home'} bottomClearance={showCreate ? createClearance : 0} ref={focused ? scroll : undefined} onLayout={focused ? measureViewport : undefined} onScroll={() => setScrollEpoch(value => value + 1)} scrollEventThrottle={100} key={`${owner}|${screen}|${groupId ?? ''}`} contentContainerStyle={[pageContentStyle, showAddExpense && { paddingBottom: 120 }]} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag"
+    {screen === 'login' ? loginContent : groupView ? groupView : activityView ? activityView : screen === 'billChat' && session && selected && expense ? <BillChatScreen key={`${owner}|${groupId}|${expense.id}`} session={session} groupId={selected.group.id} expenseId={expense.id} billTitle={expense.description} billAmount={formatMoney(expense.total)} onOpenBill={() => navigate('expenseDetail')} active={focused && foreground && !authHeld && !expired} online={online} onRead={() => void push.clearReadPrompts().catch(() => {})} onUnsentChange={unsent => { if (ownerRef.current !== owner) return; if (unsent) { setHasDrafts(true); return; } void flushChatWrites().then(() => getDatabase()).then(db => db.getFirstAsync<{ n: number }>('SELECT count(*) AS n FROM drafts WHERE owner=? AND body<>?', owner, 'null')).then(value => { if (ownerRef.current === owner) setHasDrafts(!!value?.n); }).catch(() => {}); }} /> : screen === 'expenseVersions' && session && selected && expense ? <ExpenseVersionHistory key={`${owner}|${session.token}|${expense.id}`} session={session} groupId={selected.group.id} expenseId={expense.id} groupVersion={selected.group.version} title={expense.description} onInvalidated={() => { if (ownerRef.current === owner && activeSessionRef.current?.token === session.token) { setLastConfirmed(null); setSyncProblem(true); } }} active={focused && foreground && !authHeld && !expired} online={online} /> : <ScrollView role="main" home={screen === 'home'} bottomClearance={showCreate ? createClearance : 0} ref={focused ? scroll : undefined} onLayout={focused ? measureViewport : undefined} onScroll={event => { if (screen === 'home' && tab === 'Groups' && !showArchived && !showHidden) homeGroupOffset.current = { owner, y: event.nativeEvent.contentOffset.y }; setScrollEpoch(value => value + 1); }} scrollEventThrottle={100} key={`${owner}|${screen}|${groupId ?? ''}`} contentContainerStyle={[pageContentStyle, showAddExpense && { paddingBottom: 120 }]} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag"
       contentInsetAdjustmentBehavior={Platform.OS === 'ios' ? 'automatic' : undefined}
       refreshControl={session && !expired && (screen === 'home' || screen === 'group') ? <RefreshControl refreshing={false} tintColor={colors.accent} colors={[colors.accent]} onRefresh={pullToRefresh} /> : undefined}>
       {listNotice}
@@ -1446,8 +1473,8 @@ function AppContent() {
 
       {screen === 'home' && (tab === 'Groups' || tab === 'Friends') && <>
         <GroupList emptyLabel={!direct && showHidden ? 'No removed groups' : !direct && showArchived ? 'No archived groups' : !direct && archivedGroups.length ? 'No active groups' : undefined} emptyVerified={!showArchived && !showHidden && !archivedGroups.length && !hiddenGroups.length && mascotEligible && !!owner && verifiedEmptyOwner === owner} decorated={!showArchived && !showHidden && !archivedGroups.length && !hiddenGroups.length} groups={visibleGroups} commands={commands} userId={session?.userId} busy={busy} direct={direct} onOpen={row => open(() => openGroup(row))} />
-        {!direct && !showArchived && !showHidden && archivedGroups.length > 0 && <Button title="Archived groups" kind="text" disabled={busy} onPress={() => { setShowArchived(true); scroll.current?.scrollTo({ y: 0, animated: false }); }} />}
-        {!direct && !showArchived && !showHidden && hiddenGroups.length > 0 && <Button title="Removed from my list" kind="text" disabled={busy} onPress={() => { setShowHidden(true); scroll.current?.scrollTo({ y: 0, animated: false }); }} />}
+        {!direct && !showArchived && !showHidden && archivedGroups.length > 0 && <Button title="Archived groups" kind="text" disabled={busy} onPress={() => { setShowArchived(true); scroll.current?.scrollTo({ y: 0, animated: motion.enabled }); }} />}
+        {!direct && !showArchived && !showHidden && hiddenGroups.length > 0 && <Button title="Removed from my list" kind="text" disabled={busy} onPress={() => { setShowHidden(true); scroll.current?.scrollTo({ y: 0, animated: motion.enabled }); }} />}
         {!!(legacy.length || unavailable.length) && <Button title="Review saved work" kind="text" onPress={openMe} />}
       </>}
       {paymentReturns}

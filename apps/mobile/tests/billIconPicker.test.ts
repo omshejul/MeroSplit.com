@@ -43,11 +43,9 @@ test('native picker has 62 labeled radio cells, and waits for durable acceptance
 });
 
 test('failed local save retains picker content and error, releases removal lock and permits retry',async()=>{
- let scrolled=false;let calls=0;const render=picker({category:'general',onClose(){assert.fail();},onSelect:async()=>{calls++;throw new Error('Disk is full');}});
- find(render(),'SectionList').props.ref.current={getScrollResponder:()=>({scrollTo:({y}:any)=>{scrolled=y===0;}})};
+ let calls=0;const render=picker({category:'general',onClose(){assert.fail();},onSelect:async()=>{calls++;throw new Error('Disk is full');}});
  cell(render(),expenseIconChoices[1].category).props.onPress();await settle();
- assert.ok(scrolled,'show the failure above all section headers');
- const tree=render();assert.deepEqual(find(tree,'ErrorText').children,['Disk is full']);assert.equal(render.blocked(),false);assert.equal(cell(tree,expenseIconChoices[1].category).props.disabled,false);
+ const tree=render();assert.deepEqual(find(tree,'ErrorText').children,['Disk is full']);assert.equal(find(tree,'SectionList').props.ListHeaderComponent,undefined,'failure stays beside the fixed search field without moving the list');assert.equal(render.blocked(),false);assert.equal(cell(tree,expenseIconChoices[1].category).props.disabled,false);
  cell(tree,expenseIconChoices[1].category).props.onPress();await settle();assert.equal(calls,2);render.unmount();
 });
 

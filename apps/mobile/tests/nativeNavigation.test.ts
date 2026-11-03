@@ -333,3 +333,14 @@ test('late sheet cleanup targets the removed overlay and cannot pop its parent d
  const h=navigationHarness();h.navigation().go('expense',{groupId:'g'});const form=h.state().routes.at(-1);h.apply(StackActions.push('sheet',{sheetId:'id',ownerKey:form.key}));
  const sheet=h.state().routes.at(-1),close={...StackActions.pop(1),source:sheet.key,target:h.state().key};h.apply(close);const before=h.state();h.apply(close);assert.equal(h.state(),before);assert.equal(h.state().routes.at(-1).key,form.key);
 });
+
+test('opening an Activity bill preserves the existing feed route for Back',()=>{
+ const h=navigationHarness();h.navigation().go('home',{tab:'Activity'});const feed=h.state().routes.at(-1);
+ h.navigation().go('expenseDetail',{groupId:'g',expenseId:'bill'});
+ h.navigation().back(true);
+ assert.equal(h.state().routes.at(-1).key,feed.key);assert.equal(h.state().routes.at(-1).params.tab,'Activity');
+});
+
+test('changing home tabs updates the same route without replacing its mounted lists',()=>{
+ const h=navigationHarness(),home=h.state().routes[0];h.navigation().go('home',{tab:'Activity'});assert.equal(h.state().routes.length,1);assert.equal(h.state().routes[0].key,home.key);h.navigation().go('home',{tab:'Groups'});assert.equal(h.state().routes[0].key,home.key);
+});

@@ -88,7 +88,8 @@ async function drainOutbox(db: Database, session: Session, mode: 'full' | 'summa
         }
         await refreshGroups(db, session, mode, { commandId: command.command_id, receipt: receipt as MembershipReceipt });
       } else {
-        const group = await fetchGroup(session, command.group_id, mode);
+        const previous = mode === 'summary' ? await readVisibleGroup(db, owner, command.group_id) : null;
+        const group = await retainHistoryWindow(session, await fetchGroup(session, command.group_id, mode), previous?.group, current);
         await acceptCommand(db, owner, command.command_id, group);
       }
       receipts.push(receipt);
@@ -107,6 +108,32 @@ export async function fetchGroup(session: Session, id: string, mode: 'full' | 's
   const group = await request<Group>(session, `/groups/${encodeURIComponent(id)}${mode === 'summary' ? '/summary' : ''}`);
   if (mode === 'summary' && (group.read_mode !== 'summary' || !group.history || !group.totals)) throw new Error('Could not load the complete group balance. Try again.');
   return group;
+}
+
+// Preserve downloaded browsing depth using fresh authorized rows, never old revision text.
+export async function retainHistoryWindow(session: Session, group: Group, previous?: Group, current = () => true): Promise<Group> {
+  const window = previous?.history?.transactions;
+  if (group.read_mode !== 'summary' || !group.transactions || group.id !== previous?.id || group.version === previous.version
+    || window?.cursor || window?.query || !previous.transactions || previous.transactions.length <= group.transactions.length) return group;
+  const key = (row: NonNullable<Group['transactions']>[number]) => `${row.kind}:${row.kind === 'bill' ? row.bill.id : row.payment.id}`;
+  const last = key(previous.transactions.at(-1)!), target = previous.transactions.length;
+  let rows = [...group.transactions], cursor = group.history?.transactions?.next_cursor;
+  const cursors = new Set<string>();
+  // One extra page covers a shifted boundary without an unbounded background catch-up.
+  while (cursor && rows.length < target + 50 && (rows.length < target || !rows.some(row => key(row) === last))) {
+    if (!current()) throw new Error('The signed-in account changed.');
+    if (cursors.has(cursor)) throw new ApiError(409, 'History changed. Refresh before continuing.');
+    cursors.add(cursor);
+    const params = new URLSearchParams({ version: String(group.version), limit: '50', deleted: 'all', cursor });
+    const page = await request<{ read_mode: string; group_id: string; version: number; items: NonNullable<Group['transactions']>; next_cursor: string | null }>(session, `/groups/${group.id}/history/transactions?${params}`);
+    if (!current()) throw new Error('The signed-in account changed.');
+    if (page.read_mode !== 'page' || page.group_id !== group.id || page.version !== group.version || !Array.isArray(page.items)) throw new ApiError(409, 'History changed. Refresh before continuing.');
+    const keys = new Set(rows.map(key));
+    const added = page.items.filter(row => { const id = key(row); if (keys.has(id)) return false; keys.add(id); return true; });
+    rows.push(...added); cursor = page.next_cursor;
+    if (!added.length) break;
+  }
+  return { ...group, transactions: rows, history: { ...group.history, transactions: { ...group.history?.transactions, next_cursor: cursor ?? null } } };
 }
 
 // The complete authorized index is the pruning boundary. Changed groups still
@@ -130,7 +157,7 @@ export async function refreshGroups(db: Database, session: Session, mode: 'full'
     else {
       const group = await fetchGroup(session, row.id, mode);
       if (!complete(group) || group.id !== row.id || group.version < row.version) throw new Error('The group refresh was incomplete. Try again.');
-      snapshots.push(withVisibility(group, row.hidden === true));
+      snapshots.push(withVisibility(await retainHistoryWindow(session, group, cached?.group, options.current), row.hidden === true));
     }
   }
   if (options.current && !options.current()) throw new Error('The signed-in account changed.');

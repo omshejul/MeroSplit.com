@@ -20,6 +20,7 @@ const tabs = [
 export default function HomeTabs({ selected, busy, onSelect, render }: HomeTabsProps) {
   const { palette, dark } = useUI();
   const provenance = useRef(0);
+  const visited = useRef(new Set<string>()); visited.current.add(selected);
   const swipe = useHomeTabSwipe(selected, busy, onSelect);
   if (!usesNativeHomeTabs) return <FallbackTabLayout selected={selected} busy={busy} onSelect={onSelect} render={render} />;
   return <Tabs.Host
@@ -38,7 +39,7 @@ export default function HomeTabs({ selected, busy, onSelect, render }: HomeTabsP
       style={{ backgroundColor: palette.background }}
       ios={{ overrideScrollViewContentInsetAdjustmentBehavior: false, icon: { type: 'sfSymbol', name: tab.symbol }, selectedIcon: { type: 'sfSymbol', name: tab.selectedSymbol } }}>
       <SafeAreaProvider>
-        {selected === tab.value ? <Animated.View {...swipe}>{render(tab.value)}</Animated.View> : null}
+        {visited.current.has(tab.value) ? <Animated.View {...(selected === tab.value ? swipe : { style: { flex: 1, display: 'none' as const } })}>{render(tab.value)}</Animated.View> : null}
       </SafeAreaProvider>
     </Tabs.Screen>)}
   </Tabs.Host>;

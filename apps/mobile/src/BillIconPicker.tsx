@@ -5,7 +5,7 @@ import { Text } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import DialogFocus from './DialogFocus';
 import { TextField } from './FormFields';
-import { categoryIcon, manualCategory, expenseIconChoices, expenseIconGroups } from './categoryIcons';
+import { categoryIcon, manualCategory, expenseIconGroups } from './categoryIcons';
 import { useScreenRemovalLock } from './screenRemoval';
 import { Button, ErrorText, Icon, useUI } from './ui';
 
@@ -33,7 +33,6 @@ export default function BillIconPicker({ category, disabled = false, active = tr
   }).filter(section => section.data.length);
   const [saving, setSaving] = useState(false), [queued, setQueued] = useState(false), [error, setError] = useState('');
   const [picked, setPicked] = useState<string | null>(null), [sheetWidth, setSheetWidth] = useState(Math.min(width, 560));
-  const list = useRef<SectionList<(typeof expenseIconChoices)[number][]>>(null);
   const lock = useRef(false), live = useRef(true), handedOff = useRef(false);
   useEffect(() => { live.current = true; return () => { live.current = false; }; }, []);
   useScreenRemovalLock(saving && !queued);
@@ -51,19 +50,17 @@ export default function BillIconPicker({ category, disabled = false, active = tr
         setPicked(value); setQueued(true); onClose();
       });
     } catch (cause) {
-      if (live.current && !handedOff.current) { setError(cause instanceof Error ? cause.message : 'Could not save the icon. Try again.'); list.current?.getScrollResponder()?.scrollTo({ y: 0, animated: false }); }
+      if (live.current && !handedOff.current) { setError(cause instanceof Error ? cause.message : 'Could not save the icon. Try again.'); }
     } finally { lock.current = false; if (live.current) setSaving(false); }
   }
   const content = <DialogFocus active={active} busy={blocked} label="Choose bill icon" onEscape={close} style={{ flex: 1 }}>
     <View style={{ marginTop: 44, paddingHorizontal: 20, width: '100%', maxWidth: 560, alignSelf: 'center' }}>
       <TextField label="Search categories" hideLabel placeholder="Search categories" value={query} onChangeText={setQuery} autoCorrect={false} autoCapitalize="none" />
+      {!!error && <ErrorText live>{error}</ErrorText>}
     </View>
-    <SectionList ref={list} accessibilityRole="radiogroup" sections={sections} keyboardShouldPersistTaps="handled" key={columns} keyExtractor={item => item[0].category} initialNumToRender={8} nestedScrollEnabled stickySectionHeadersEnabled={false}
+    <SectionList accessibilityRole="radiogroup" sections={sections} keyboardShouldPersistTaps="handled" key={columns} keyExtractor={item => item[0].category} initialNumToRender={8} nestedScrollEnabled stickySectionHeadersEnabled={false}
       style={{ flex: 1, marginTop: 10, width: '100%', maxWidth: 560, alignSelf: 'center' }} onLayout={event => setSheetWidth(event.nativeEvent.layout.width)}
       ListEmptyComponent={<Text accessibilityLiveRegion="polite" style={[ui.caption, { paddingVertical: 20 }]}>No matching categories</Text>}
-      ListHeaderComponent={<View>
-        {!!error && <View style={{ paddingBottom: 12 }}><ErrorText live>{error}</ErrorText></View>}
-      </View>}
       renderSectionHeader={({ section }) => <Text accessibilityRole="header" style={[ui.section, { paddingTop: 16, paddingBottom: 4 }]}>{section.title}</Text>}
       contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: Math.max(insets.bottom, 16), gap: 10 }}
       renderItem={({ item: row }) => <View style={{ flexDirection: 'row', gap: 10 }}>{row.map(item => <Button key={item.category} kind="plain" accessibilityRole="radio" accessibilityLabel={item.label} accessibilityState={{ checked: current === item.category }} disabled={saving || disabled || !active} onPress={() => void choose(item.category)}

@@ -23,7 +23,7 @@ function elements(tree: unknown): Element[] {
   if (!tree || typeof tree !== 'object' || !('children' in tree)) return [];
   const element = tree as Element; return [element, ...element.children.flatMap(elements), ...elements(element.props.ListHeaderComponent), ...elements(element.props.ListFooterComponent), ...elements(element.props.data?.length ? undefined : element.props.ListEmptyComponent)];
 }
-const uiEnv = { FlatList: 'FlatList', pageContentStyle: {}, useRef: () => ({ current: null }), useScrollPagination: () => ({ events: {}, loading: false, failed: false }), LoadingSpinner: 'LoadingSpinner', Mascot, Text: 'Text', ErrorText: 'ErrorText', View: 'View', ActivityIndicator: 'Spinner', Button: 'Button', GroupListRow: 'GroupListRow', ActivityRow: 'ActivityRow', styles: {}, s: {}, useUI: () => ({ ui: {}, palette: {} }) };
+const uiEnv = { FlatList: 'FlatList', pageContentStyle: {}, useRef: () => ({ current: null }), useScrollPagination: () => ({ events: {}, loading: false, failed: false }), LoadingSpinner: 'LoadingSpinner', Mascot, Text: 'Text', ErrorText: 'ErrorText', View: 'View', ActivityIndicator: 'Spinner', Button: 'Button', GroupListRow: 'GroupListRow', ActivityRow: 'ActivityRow', styles: {}, s: {}, useUI: () => ({ ui: {}, palette: {}, motion: {enabled:true} }) };
 
 test('Groups and Activity decorate only verified true empty states while retaining their existing copy', () => {
   const groups = productionFunction('src/GroupList.tsx', 'GroupList', uiEnv);
