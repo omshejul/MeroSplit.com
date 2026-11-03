@@ -14,94 +14,101 @@ export function validChannels(value: Channels): Channels {
   return value;
 }
 
-// The persisted row contains both the local choice and the changes still owed to
-// the server. Acknowledgements clear only their exact revision.
+// One local snapshot owns the preference. Network responses only acknowledge
+// revisions and update delivery metadata, never replay a switch's old value.
 export function channelPreferences(db: Database, owner: string, uuid: () => string,
   send: (patch?: ChannelPatch & { client_id: string; revision: number }) => Promise<Channels & { revision?: number }>, publish: (state: ChannelState) => void) {
-  let row: Row | null = null, stopped = false, active: Promise<void> | null = null, generation = 0, unsaved: ChannelPatch = {};
+  let row: Row | null = null, stopped = false, active: Promise<void> | null = null;
   let writes: Promise<unknown> = Promise.resolve();
   let state: ChannelState = { value: null, pending: false, saving: false, error: '' };
-  const emit = (patch: Partial<ChannelState>) => { state = { ...state, ...patch }; if (!stopped) publish(state); };
-  const save = (value: Row) => db.runAsync('INSERT OR REPLACE INTO notification_channels(owner,body) VALUES(?,?)', owner, JSON.stringify(value));
-  const read = async () => { const stored = await db.getFirstAsync<{ body: string }>('SELECT body FROM notification_channels WHERE owner=?', owner); return stored ? JSON.parse(stored.body) as Row : null; };
+  const pending = () => !!row && Object.keys(row.pending).length > 0;
+  const emit = (patch: Partial<ChannelState> = {}) => { state = { ...state, value: row?.value ?? null, pending: pending(), ...patch }; if (!stopped) publish(state); };
+  function persist() {
+    const snapshot = JSON.stringify(row);
+    const work = writes.catch(() => {}).then(() => db.runAsync('INSERT OR REPLACE INTO notification_channels(owner,body) VALUES(?,?)', owner, snapshot)).catch(cause => { if (!stopped) emit({ saving: false, error: 'Could not save on this device. Try again.' }); throw cause; });
+    writes = work;
+    return work;
+  }
   async function load() {
-    await db.execAsync(table); row = await read();
+    await db.execAsync(table);
     if (stopped) return;
-    if (row) { validChannels(row.value); emit({ value: row.value, pending: !!Object.keys(row.pending).length }); }
+    const stored = await db.getFirstAsync<{ body: string }>('SELECT body FROM notification_channels WHERE owner=?', owner);
+    if (stopped) return;
+    row = stored ? JSON.parse(stored.body) as Row : null;
+    if (row) { validChannels(row.value); emit(); }
     await sync();
   }
   function sync(): Promise<void> {
     if (stopped) return Promise.resolve();
     if (active) return active;
-    active = flush().finally(() => { active = null; if (!stopped && state.pending && !state.error && !Object.keys(unsaved).length) void sync(); });
+    active = flush().finally(() => { active = null; if (!stopped && pending() && !state.error && !state.saving) void sync(); });
     return active;
   }
   async function flush() {
     try {
       await writes;
-      for (;;) {
+      if (!row) {
+        const remote = validChannels(await send());
         if (stopped) return;
-        const current = await read();
-        if (!current) break;
-        if (!Object.keys(current.pending).length) break;
-        const stamp = generation;
-        const receipt = await send({ ...current.pending, client_id: current.client_id, revision: current.revision });
-        if (!Number.isSafeInteger(receipt.revision) || receipt.revision! < current.revision) throw new Error('Could not confirm notification settings.');
-        const remote = validChannels(receipt);
-        if (stopped) return;
-        await db.withExclusiveTransactionAsync(async tx => {
-          const latest = await tx.getFirstAsync<{ body: string }>('SELECT body FROM notification_channels WHERE owner=?', owner);
-          const stored: Row | null = latest ? JSON.parse(latest.body) : null;
-          if (!stored || stored.revision !== current.revision) return;
-          // A restored database may have an older client revision than the server.
-          if (receipt.revision! > current.revision) {
-            await tx.runAsync('UPDATE notification_channels SET body=? WHERE owner=?', JSON.stringify({ ...stored, revision: receipt.revision! + 1 }), owner); return;
-          }
-          await tx.runAsync('UPDATE notification_channels SET body=? WHERE owner=?', JSON.stringify({ ...stored, value: remote, pending: {} }), owner);
-        });
-        if (generation === stamp) { row = await read(); if (row) emit({ value: row.value, pending: !!Object.keys(row.pending).length, error: '' }); }
-        await writes;
+        row = { client_id: uuid(), revision: 0, value: remote, pending: {} };
+        await persist(); if (!stopped) emit({ error: '' });
       }
-      const stamp = generation, remote = validChannels(await send());
-      if (stopped || stamp !== generation) return;
-      await writes;
-      const current = await read();
-      if (stopped || stamp !== generation || current && Object.keys(current.pending).length) return;
-      row = { client_id: current?.client_id ?? uuid(), revision: current?.revision ?? 0, value: remote, pending: {} };
-      await save(row);
-      if (!stopped && stamp === generation) emit({ value: remote, pending: false, error: '' });
-    } catch (cause) { if (!stopped) emit({ error: cause instanceof ApiError && cause.status === 401 ? 'Sign in again to sync your notification settings.' : cause instanceof ApiError && cause.status === 422 ? cause.message : state.value ? 'Saved on this device. Will sync when connected.' : 'Could not load notification settings. Try again.' }); }
-
+      while (!stopped && row && pending()) {
+        await writes;
+        const sent = row;
+        const receipt = await send({ ...sent.pending, client_id: sent.client_id, revision: sent.revision });
+        const remote = validChannels(receipt);
+        if (!Number.isSafeInteger(receipt.revision) || receipt.revision! < sent.revision) throw new Error('Could not confirm notification settings.');
+        if (stopped) return;
+        // A newer tap already owns both the UI and the next outgoing write.
+        if (row.revision !== sent.revision) continue;
+        if (receipt.revision! > sent.revision) {
+          row = { ...row, revision: receipt.revision! + 1 };
+        } else {
+          row = { ...row, pending: {}, value: { ...row.value, email_available: remote.email_available, legacy_muted: remote.legacy_muted, muted_push_devices: remote.muted_push_devices } };
+        }
+        const stamp = row.revision;
+        await persist();
+        if (!stopped && row.revision === stamp) emit({ error: '' });
+      }
+      // Refresh delivery metadata only. Local choices are loaded once, then
+      // remain authoritative until this device's user changes them.
+      if (!stopped && row && !pending()) {
+        const stamp = row.revision, remote = validChannels(await send());
+        if (stopped || row.revision !== stamp || pending()) return;
+        row = { ...row, value: { ...row.value, ...(row.revision === 0 ? remote : {}), email_available: remote.email_available, legacy_muted: remote.legacy_muted, muted_push_devices: remote.muted_push_devices } };
+        await persist();
+        if (!stopped && row.revision === stamp) emit({ error: '' });
+      }
+    } catch (cause) {
+      if (!stopped) emit({ error: state.error.startsWith('Could not save on this device') ? state.error : cause instanceof ApiError && cause.status === 401 ? 'Sign in again to sync your notification settings.' : cause instanceof ApiError && cause.status === 422 ? cause.message : row ? 'Saved on this device. Will sync when connected.' : 'Could not load notification settings. Try again.' });
+    }
   }
   function change(patch: ChannelPatch) {
-    if (stopped || !state.value) return Promise.reject(new Error('Notification settings are not ready.'));
-    const intent = ++generation;
-    unsaved = { ...unsaved, ...patch };
-    const persistedPatch = { ...unsaved };
-    const { activate_push, ...editable } = patch;
-    const value = { ...state.value, ...editable };
-    if (patch.email_notifications !== undefined) value.statement_enabled = patch.email_notifications;
-    if (patch.statement_frequency) value.statement_enabled = value.email_notifications;
-    emit({ value, pending: true, saving: true, error: '' });
-    const local = writes.catch(() => {}).then(async () => {
-      await db.withExclusiveTransactionAsync(async tx => {
-        const stored = await tx.getFirstAsync<{ body: string }>('SELECT body FROM notification_channels WHERE owner=?', owner);
-        const previous: Row | null = stored ? JSON.parse(stored.body) : null;
-        const { activate_push: activation, ...localPatch } = persistedPatch;
-        const merged = { ...(previous?.value ?? value), ...localPatch };
-        if (localPatch.email_notifications !== undefined) merged.statement_enabled = localPatch.email_notifications;
-        if (localPatch.statement_frequency) merged.statement_enabled = merged.email_notifications;
-        const next: Row = { client_id: previous?.client_id ?? uuid(), revision: (previous?.revision ?? 0) + 1, value: merged, pending: { ...previous?.pending, ...persistedPatch } };
-        await tx.runAsync('INSERT OR REPLACE INTO notification_channels(owner,body) VALUES(?,?)', owner, JSON.stringify(next));
-      });
-      if (!stopped && generation === intent) { unsaved = {}; emit({ saving: false }); }
-    });
-    writes = local;
-    void local.then(() => sync(), () => { if (!stopped && generation === intent) emit({ saving: false, error: 'Could not save on this device. Try again.' }); });
+    if (stopped || !row) return Promise.reject(new Error('Notification settings are not ready.'));
+    const { activate_push: _, ...editable } = patch;
+    const value = { ...row.value, ...editable };
+    if (patch.email_notifications !== undefined || patch.statement_frequency) value.statement_enabled = value.email_notifications;
+    row = { ...row, revision: row.revision + 1, value, pending: { ...row.pending, ...patch } };
+    const stamp = row.revision;
+    emit({ saving: true, error: '' });
+    const local = persist();
+    void local.then(() => {
+      if (stopped) return;
+      if (row?.revision === stamp) emit({ saving: false });
+      void sync();
+    }, () => { if (!stopped && row?.revision === stamp) emit({ saving: false, error: 'Could not save on this device. Try again.' }); });
     return local;
   }
-  async function stop() { stopped = true; ++generation; const owned = controllers.get(owner); owned?.delete(stop); if (!owned?.size) controllers.delete(owner); await Promise.allSettled([writes, active]); }
+  async function retry() {
+    if (!row) await load();
+    if (state.error.startsWith('Could not save on this device')) { await persist(); emit({ saving: false, error: '' }); }
+    await sync();
+    if (pending() && !state.error) await sync();
+    return !state.pending && !state.error;
+  }
+  async function stop() { stopped = true; const owned = controllers.get(owner); owned?.delete(stop); if (!owned?.size) controllers.delete(owner); await Promise.allSettled([writes, active]); }
   if (!controllers.has(owner)) controllers.set(owner, new Set());
   controllers.get(owner)!.add(stop);
-  return { get state() { return state; }, load, sync, change, retry: async () => { if (!state.value) await load(); if (Object.keys(unsaved).length) await change(unsaved); await sync(); if (state.pending && !state.error) await sync(); return !state.pending && !state.error; }, stop };
+  return { get state() { return state; }, load, sync, change, retry, stop };
 }

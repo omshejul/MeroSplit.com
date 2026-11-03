@@ -41,7 +41,7 @@ export default function SignInMethods({ session, busy, connections, onGoogle, on
     ]);
   }
   return <View style={{ gap: 20 }}>
-    {linked && <NotificationSwitch icon="key" label="Auto-link accounts" description="Link sign-ins with the same verified email." checked={linked.autoLink} disabled={disabled} onChange={value => { void connections.setAutoLink(value); }} />}
+    {linked && <NotificationSwitch immediate={false} icon="key" label="Auto-link accounts" description="Link sign-ins with the same verified email." checked={linked.autoLink} disabled={disabled} onChange={value => { void connections.setAutoLink(value); }} />}
     <RowGroup>
       <ListRow leading={<Icon name="mail" />}><Text style={ui.body}>Email</Text><Text selectable style={ui.caption}>{session.email}</Text></ListRow>
       {linked?.accounts.map(account => <ConnectedProviderRow key={account.id} account={account} disabled={disabled} onDisconnect={() => disconnect(account)} leading={account.provider === 'google'

@@ -44,7 +44,7 @@ export function useNotificationChannels(session: Session | null) {
   const controller = () => { const value = current.current; if (!value || value.owner !== owner) throw new Error('Notification settings are still loading.'); return value.controller; };
   const change = (patch: ChannelPatch) => { try { return controller().change(patch); } catch (cause) { return Promise.reject(cause); } };
   return { state: view.owner === owner ? view.state : empty, change,
-    retry: async () => { try { return await controller().retry(); } catch { setReload(value => value + 1); return false; } },
+    retry: async () => { const active = current.current; if (!active || active.owner !== owner) { setReload(value => value + 1); return false; } try { return await active.controller.retry(); } catch { return false; } },
     activatePush: async () => { await change({ activate_push: true }); const value = controller(); await value.retry(); if (value.state.pending || value.state.value?.legacy_muted) throw new Error('Saved on this device. Will sync when connected.'); },
   };
 }

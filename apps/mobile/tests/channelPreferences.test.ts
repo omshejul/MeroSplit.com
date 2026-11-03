@@ -38,3 +38,8 @@ test('account cleanup stops an in-flight preference sync before deleting its dur
 test('a later successful local edit retains an earlier failed local choice before network sync',async()=>{
  const{raw,db}=database();let diskFailure=false,offline=false;const original=db.runAsync;db.runAsync=async(sql,...params)=>{if(diskFailure&&/INSERT OR REPLACE/.test(sql))throw Error('Disk full');return original(sql,...params)};const send=async()=>{if(offline)throw Error('Offline');return{...base}};let c=channelPreferences(db,'recover-local',uuid,send,()=>{});try{await c.load();diskFailure=true;await assert.rejects(c.change({email_notifications:true}));diskFailure=false;offline=true;await c.change({statement_frequency:'weekly'});await c.stop();c=channelPreferences(db,'recover-local',uuid,send,()=>{});await c.load();assert.equal(c.state.value?.email_notifications,true);assert.equal(c.state.value?.statement_frequency,'weekly');assert.equal(c.state.pending,true);}finally{await c.stop();raw.close()}
 });
+
+test('an acknowledged local choice is not undone by a stale server echo or later metadata refresh',async()=>{
+ const{raw,db}=database();const c=channelPreferences(db,'stale-echo',uuid,async patch=>({...base,revision:patch?.revision}),()=>{});
+ try{await c.load();await c.change({email_notifications:true});await tick();await c.retry();assert.equal(c.state.pending,false);assert.equal(c.state.value?.email_notifications,true);await c.sync();assert.equal(c.state.value?.email_notifications,true);const stored=JSON.parse((await db.getFirstAsync<{body:string}>('SELECT body FROM notification_channels WHERE owner=?','stale-echo'))!.body);assert.equal(stored.value.email_notifications,true);}finally{await c.stop();raw.close()}
+});
