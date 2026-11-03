@@ -88,7 +88,7 @@ def test_official_sdk_negotiation_tools_schema_resource_and_no_session_affinity(
         async with running_app(app, bearer[0]) as http:
             async with sdk(http, mode) as client:
                 tools = (await client.list_tools()).tools
-                assert len(tools) == 13
+                assert len(tools) == 15
                 assert all("actor" not in tool.input_schema["properties"] and "user_id" not in tool.input_schema["properties"] for tool in tools)
                 by_name = {tool.name: tool for tool in tools}
                 assert all(tool.annotations.idempotent_hint for tool in tools)
