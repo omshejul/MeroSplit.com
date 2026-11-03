@@ -25,7 +25,7 @@ test('failed photos fall back inside the same frame and decorative avatars remai
 });
 test('rows, profile editor and legacy media previews all use the shared avatar',()=>{
  const read=(name:string)=>readFileSync(new URL('../src/'+name,import.meta.url),'utf8');
- for(const name of ['ui.tsx','ProfilePhoto.tsx','PrivateMediaThumbnail.tsx','PrivateMediaImage.web.tsx']){
+ for(const name of ['ui.tsx','PhotoEditor.tsx','PrivateMediaThumbnail.tsx','PrivateMediaImage.web.tsx']){
   const text=read(name);assert.match(text,/from '\.\/Avatar'/);assert.doesNotMatch(text,/borderRadius: (?:size \/ 2|32)/);
  }
 });

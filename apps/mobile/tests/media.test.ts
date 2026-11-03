@@ -146,3 +146,18 @@ test('avatar upload expires old profile reads while retaining the last confirmed
   const fresh=await readPrefetch.read(scope,'/me',async()=>({avatar:{id:'new'}}));assert.deepEqual(fresh,{avatar:{id:'new'}});
  }finally{globalThis.FormData=previousFormData;readPrefetch.configure('',false)}
 });
+
+
+test('group photo upload invalidates old ledger and photo reads before reconciliation', async () => {
+  const session = { baseUrl: 'https://group-photo.test', userId: '1', token: 'synthetic', email: 'qa@example.invalid' };
+  const scope = readScope(session), path = '/groups/shared/photo';
+  await readPrefetch.read(scope, path, async () => ({ group_photo: null }));
+  await readPrefetch.read(scope, '/groups', async () => ({ groups: [{ id: 'shared', version: 1 }] }));
+  const post: typeof fetch = async () => {
+    assert.equal(readPrefetch.fresh(scope, path), false);
+    assert.equal(readPrefetch.fresh(scope, '/groups'), false);
+    return new Response(JSON.stringify({ group_photo: { id: 'new' }, version: 2 }), { headers: { 'content-type': 'application/json' } });
+  };
+  await uploadMedia(session, path, file, 'new', post);
+  assert.equal(readPrefetch.fresh(scope, path), false);
+});

@@ -61,6 +61,16 @@ class Person(Input):
     email: Annotated[str, Field(max_length=254)] = ""
 
 
+class GroupNicknameIn(Command):
+    version: StrictInt
+    name: Annotated[StrictStr, Field(max_length=120)]
+
+
+class GroupNameIn(Command):
+    version: StrictInt
+    name: Annotated[StrictStr, Field(min_length=1, max_length=120, pattern=r"\S")]
+
+
 class GroupIn(Command):
     id: UUID
     name: Annotated[str, Field(min_length=1, max_length=120, pattern=r"\S")]

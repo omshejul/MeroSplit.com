@@ -1,5 +1,7 @@
 import { useLoading } from './LoadingOverlay';
 import RowGroup from './RowGroup';
+import GroupIdentity from './GroupIdentity';
+import EditableName from './EditableName';
 import { NoticeBanner } from './UIStates';
 import { CloseDialogActions } from './DialogParts';
 import FieldDialog from './FieldDialog';
@@ -22,7 +24,7 @@ import { Text } from 'react-native-paper';
 import * as Crypto from 'expo-crypto';
 import { Alert } from './alerts';
 import { formatMoney } from './accounting';
-import type { Group, Participant } from './types';
+import type { Group, Participant, Session } from './types';
 import { addPerson, currentEmailInvite, emailInvitationRequest, personRequest, saveContact, sendInvitation } from './members';
 import type { AddPersonRequest, EmailInviteRequest } from './members';
 import { EmailField, TextField } from './FormFields';
@@ -30,6 +32,8 @@ import { Button, Icon, IconAction, SettingsRow, useUI } from './ui';
 
 type Props = {
   group: Group;
+  session?: Session | null;
+  onPhotoChanged?: () => void | Promise<void>;
   selfId: string;
   busy: boolean;
   addPersonRequest?: number;
@@ -59,15 +63,15 @@ function FeedbackNote({ section, feedback }: { section: string; feedback: Feedba
     : null;
 }
 
-function MemberRow({ group, person, selfId, organizer, disabled, onInvite }: {
+function MemberRow({ group, person, selfId, organizer, disabled, onInvite, onAction, canEditNickname }: {
   group: Group; person: Participant; selfId: string; organizer: boolean; disabled: boolean;
-  onInvite: () => void;
+  onInvite: () => void; canEditNickname: boolean; onAction: Props["onAction"];
 }) {
   const { ui } = useUI();
   const self = person.id === selfId, joined = person.user_id != null;
   const status = person.user_id === group.owner_id ? 'Organizer' : joined ? 'Joined' : 'Not joined';
   const title = `${person.name}${self && person.name.toLowerCase() !== 'you' ? ' (you)' : ''}`;
-  return <PersonRow name={person.name} title={title} photo={person.profile_photo} trailing={organizer && !self && (joined ? <IconAction name="more" label={`Manage ${person.name}`} disabled={disabled} onPress={onInvite} />
+  return <PersonRow name={person.name} title={title} photo={person.profile_photo} titleContent={!group.is_direct ? <EditableName name={person.name} displayName={title} title="Group nickname" label={`Edit nickname for ${person.name}`} path={`/participants/${person.id}/nickname`} version={group.version} busy={disabled} editable={canEditNickname && !person.removed} onAction={onAction} allowEmpty /> : undefined} trailing={organizer && !self && (joined ? <IconAction name="more" label={`Manage ${person.name}`} disabled={disabled} onPress={onInvite} />
       : <Button title="Invite" icon="mail" compact accessibilityLabel={`Invite ${person.name}`} disabled={disabled || !!group.archived} onPress={onInvite} />)}>
       {!!person.account_email && joined && !person.removed && <Text accessibilityLabel={person.account_email} style={ui.rowSub}>{person.account_email}</Text>}
       <Text style={ui.rowSub}>{status}</Text>
@@ -124,7 +128,7 @@ export default function MembersScreen(props: Props) {
   return <MemberSettings key={`${props.group.id}|${props.selfId}`} {...props} />;
 }
 
-function MemberSettings({ group, selfId, busy, addPersonRequest = 0, onAction, onMembership }: Props) {
+function MemberSettings({ group, session, onPhotoChanged, selfId, busy, addPersonRequest = 0, onAction, onMembership }: Props) {
   const notify = useToast();
   const { ui } = useUI();
   const [showPrevious, setShowPrevious] = useState(false);
@@ -341,12 +345,13 @@ function MemberSettings({ group, selfId, busy, addPersonRequest = 0, onAction, o
   }
 
   return <View style={s.content}>
+    {!group.is_direct && <GroupIdentity group={group} session={session ?? null} busy={disabled} editable={!!self && !self.removed && self.user_id != null && !group.archived} onAction={onAction} onPhotoChanged={onPhotoChanged} />}
     {organizer && !group.is_direct && <View style={s.section}>
       <Button title={feedback?.section === 'group-link' && !feedback.error ? 'Copied' : 'Copy group link'} icon={feedback?.section === 'group-link' && !feedback.error ? 'check' : 'copy'} disabled={disabled || !!group.archived} onPress={() => void createGroupLink()} />
       <FeedbackNote section="group-link" feedback={feedback} />
     </View>}
     <RowGroup>
-      {group.participants.filter(person => !person.removed).map(person => <MemberRow key={person.id} group={group} person={person} selfId={selfId} organizer={organizer} disabled={disabled} onInvite={() => setManagedPersonId(person.id)} />)}
+      {group.participants.filter(person => !person.removed).map(person => <MemberRow key={person.id} group={group} person={person} selfId={selfId} organizer={organizer} disabled={disabled} canEditNickname={!!self && !self.removed && self.user_id != null && !group.archived} onAction={onAction} onInvite={() => setManagedPersonId(person.id)} />)}
     </RowGroup>
     {previousMembers.length > 0 && <SettingsRow icon="people" label="Previous members" value={String(previousMembers.length)} onPress={() => setShowPrevious(true)} />}
     {showPrevious && previousMembers.length > 0 && <PreviousMembersDialog people={previousMembers} onClose={() => setShowPrevious(false)} />}

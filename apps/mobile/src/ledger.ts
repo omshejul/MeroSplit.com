@@ -63,6 +63,12 @@ export function previewPending(accepted: Group, commands: Command[]): Group {
       const id = command.path.split('/').at(-2), person = group.participants.find(person => person.id === id);
       if (!person || person.removed || person.user_id != null) throw new Error('Review this saved person before syncing.');
       person.name = String(body.name).trim();
+    } else if (command.method === 'POST' && command.path === `/groups/${group.id}/name`) {
+      group.name = String(body.name).trim();
+    } else if (command.method === 'POST' && /^\/groups\/[^/]+\/participants\/[^/]+\/nickname$/.test(command.path)) {
+      const person = group.participants.find(person => person.id === command.path.split('/').at(-2));
+      if (!person || person.removed || group.is_direct) throw new Error('Review this nickname before syncing.');
+      person.name = String(body.name).trim() || person.default_name || person.recorded_name || person.name;
     } else if (/\/expenses(?:\/[^/]+)?$/.test(command.path) && command.method !== 'DELETE') {
       const input = body as unknown as Omit<Expense, 'shares'>;
       const before = group.expenses.find(expense => expense.id === input.id);

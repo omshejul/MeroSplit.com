@@ -13,8 +13,8 @@ def display_name(user):
     return user.first_name.strip()
 
 
-def participant_display_name(person):
-    if person.display_name_override:
+def participant_display_name(person, *, use_override=True):
+    if use_override and person.display_name_override:
         return person.display_name_override
     if person.user_id and not person.removed:
         return display_name(person.user) or person.name

@@ -15,7 +15,7 @@ function GroupListRow({ row, waiting, userId, busy, onOpen }: { row: CachedGroup
   const group = row.group, name = groupDisplayName(group, userId), me = userId ? selfParticipant(group, userId) : undefined;
   const attention = waiting.some(value => value.state !== 'pending');
   return <ListRow accessibilityRole="button" disabled={busy} style={[styles.row, { borderBottomColor: palette.line }]} onPress={onOpen}
-    leading={group.is_direct ? <Avatar name={name} photo={group.participants.find(person => !person.removed && person.id !== me?.id)?.profile_photo} /> : <IconBadge name="groups" size={24} />}
+    leading={group.is_direct ? <Avatar name={name} photo={group.participants.find(person => !person.removed && person.id !== me?.id)?.profile_photo} /> : group.group_photo ? <Avatar name={name} photo={group.group_photo} /> : <IconBadge name="groups" size={24} />}
     trailing={<Icon name="next" size={18} color={palette.muted} />}>
       <Text numberOfLines={1} ellipsizeMode="tail" accessibilityLabel={name} style={ui.rowTitle}>{name}{group.archived ? ' · Archived' : ''}</Text>
       <Text style={[ui.rowSub, me && { color: balanceColor(group.balances[me.id] ?? '0', palette) }]}>{me ? group.simplify_debts === false && group.balances[me.id] === '0' && group.transfers.some(row => row.sender === me.id || row.recipient === me.id) ? 'Payments outstanding' : position('You', group.balances[me.id] ?? '0') : 'Pending sync'}</Text>

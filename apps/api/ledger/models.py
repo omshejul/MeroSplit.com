@@ -199,7 +199,8 @@ class Change(models.Model):
         indexes = [models.Index(fields=["-created_at", "-id"], name="human_activity_order", condition=Q(kind__in=[
             "expense_saved", "expense_deleted", "expense_restored", "expense_reversed", "manual_settlement", "payment_confirm",
             "settlement_reversed", "participant_added", "participant_claim_approved", "participant_removed",
-            "group_created", "group_archived", "group_unarchived",
+            "group_created", "group_archived", "group_unarchived", "group_renamed",
+            "group_photo_changed", "group_photo_removed", "participant_nickname_changed",
         ])), models.Index(models.F("group"), Coalesce(KeyTextTransform("settlement_id", "data"), KeyTextTransform("id", "data")), models.F("id"),
             name="payment_activity_identity", condition=Q(kind__in=["manual_settlement", "payment_confirm", "expense_reversed", "settlement_reversed"]))]
 
@@ -221,6 +222,7 @@ class UploadedFile(models.Model):
         settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name="profile_photos"
     )
     expense = models.ForeignKey(Expense, null=True, on_delete=models.SET_NULL, related_name="attachments")
+    icon_group = models.ForeignKey(Group, null=True, on_delete=models.SET_NULL, related_name="photos")
     uploaded_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL)
     object_key = models.CharField(max_length=300, unique=True)
     source_hash = models.CharField(max_length=64)
@@ -235,14 +237,19 @@ class UploadedFile(models.Model):
         constraints = [
             models.CheckConstraint(
                 condition=Q(state="deleted") | (
-                    Q(avatar_owner__isnull=False, expense__isnull=True)
-                    | Q(avatar_owner__isnull=True, expense__isnull=False)
+                    Q(avatar_owner__isnull=False, expense__isnull=True, icon_group__isnull=True)
+                    | Q(avatar_owner__isnull=True, expense__isnull=False, icon_group__isnull=True)
+                    | Q(avatar_owner__isnull=True, expense__isnull=True, icon_group__isnull=False)
                 ),
                 name="uploaded_file_has_one_scope",
             ),
             models.UniqueConstraint(
                 fields=["avatar_owner"], condition=Q(state="active", avatar_owner__isnull=False),
                 name="one_active_profile_photo",
+            ),
+            models.UniqueConstraint(
+                fields=["icon_group"], condition=Q(state="active", icon_group__isnull=False),
+                name="one_active_group_photo",
             ),
             models.CheckConstraint(condition=Q(state__in=["pending", "active", "deleted"]), name="uploaded_file_state"),
         ]
