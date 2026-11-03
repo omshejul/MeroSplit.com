@@ -7,11 +7,11 @@ import type { MediaMetadata } from './media';
 import type { Session } from './types';
 import PrivateMediaThumbnail from './PrivateMediaThumbnail';
 import { useUI } from './ui';
-export default function PrivateMediaImage({ session, media, size = 56, profile = false }: { session: Session; media: MediaMetadata; size?: number; profile?: boolean }) {
+export default function PrivateMediaImage({ session, media, size = 56, profile = false, interactive = true, resizeMode, label }: { interactive?: boolean; resizeMode?: 'contain' | 'cover'; label?: string; session: Session; media: MediaMetadata; size?: number; profile?: boolean }) {
   const { ui, palette } = useUI(), [failed, setFailed] = useState(false);
   const shape = mediaPreviewShape(size);
-  if (media.content_type === 'application/pdf') return <PrivateMediaThumbnail session={session} media={media} size={size} profile={profile} />;
+  if (media.content_type === 'application/pdf') return <PrivateMediaThumbnail session={session} media={media} size={size} profile={profile} interactive={interactive} resizeMode={resizeMode} label={label} />;
   if (profile) return <Avatar size={size} photo={media} backgroundColor={palette.soft} label="Your profile photo"><Text style={ui.caption}>Photo</Text></Avatar>;
   return failed ? <MediaPreviewFrame size={size} label="Photo preview unavailable" text="Photo" />
-    : <Image key={`${session.userId}:${media.id}`} source={{ uri: `${browserMediaUrl(session, media.id)}` }} style={shape} resizeMode="cover" accessibilityLabel={profile ? 'Your profile photo' : media.name} onError={() => setFailed(true)} />;
+    : <Image key={`${session.userId}:${media.id}`} source={{ uri: `${browserMediaUrl(session, media.id)}` }} style={shape} resizeMode={resizeMode ?? 'cover'} accessibilityLabel={label ?? (profile ? 'Your profile photo' : media.name)} onError={() => setFailed(true)} />;
 }
