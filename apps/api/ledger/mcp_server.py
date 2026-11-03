@@ -228,6 +228,11 @@ def create_server():
         if ctx.method == "tools/call" and isinstance(ctx.params, dict):
             arguments = ctx.params.get("arguments", {})
             if isinstance(arguments, dict):
+                if ctx.params.get("name") == "upload_attachment" and "file" in arguments:
+                    try:
+                        AttachmentFile.model_validate(arguments["file"])
+                    except ValidationError:
+                        return tool_failure(422, "invalid_input", "Provide a file reference with download_url and file_id, and optional file_name and mime_type")
                 tool = next((tool for tool in await server.list_tools() if tool.name == ctx.params.get("name")), None)
                 if tool and arguments.keys() - tool.input_schema.get("properties", {}).keys():
                     return tool_failure(422, "invalid_input", "Use only the published fields for this tool")

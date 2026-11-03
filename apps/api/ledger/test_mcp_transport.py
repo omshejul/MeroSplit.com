@@ -642,6 +642,8 @@ def test_authenticated_mcp_upload_roundtrip_retry_and_revoked_access(ledger, bea
                 replay = await client.call_tool("upload_attachment", args)
                 assert not replay.is_error and replay.structured_content == saved.structured_content
                 assert len(storage.puts) == 1
+                invalid = await client.call_tool("upload_attachment", {**args, "file": {**args["file"], "file_name": "x" * 300}})
+                assert invalid.is_error and "files.example.invalid" not in str(invalid) and "file-synthetic" not in str(invalid)
                 denied = await client.call_tool("upload_attachment", {**args, "actor": ledger[2].pk})
                 assert denied.is_error and len(storage.puts) == 1
                 await sync_to_async(lambda: type(bearer[1]).objects.filter(pk=bearer[1].pk).update(revoked_at=timezone.now()))()
