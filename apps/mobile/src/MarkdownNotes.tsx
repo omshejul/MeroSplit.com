@@ -38,7 +38,7 @@ export default function MarkdownNotes({ source }: { source: string }) {
     const rows = [token.header, ...token.rows];
     const widths = token.header.map((_, column) => Math.min(240, Math.max(110, ...rows.map(row => row[column].text.length * 8 + 24))) * fontScale);
     return <ScrollView key={key} horizontal accessibilityLabel="Notes table, scroll horizontally for more columns" showsHorizontalScrollIndicator persistentScrollbar>
-      <View role="table" style={{ borderWidth: 1, borderColor: palette.outline }}>
+      <View role="table" style={{ borderWidth: 1, borderColor: palette.outline, borderRadius: 10, overflow: 'hidden' }}>
         {rows.map((row, r) => <View key={r} role="row" style={{ flexDirection: 'row', backgroundColor: r === 0 ? palette.soft : undefined }}>
           {row.map((cell, c) => <View key={c} role={r === 0 ? 'columnheader' : 'cell'} style={{ width: widths[c], padding: 10, borderTopWidth: r ? 1 : 0, borderLeftWidth: c ? 1 : 0, borderColor: palette.outline }}>
             <Text selectable style={[ui.body, { textAlign: token.align[c] ?? 'left', fontWeight: r === 0 ? '600' : '400' }]}>{inline(cell.tokens)}</Text>

@@ -75,3 +75,10 @@ test('adjustment sign control works with the decimal keyboard and respects edit 
   const locked = action(render({ editable: false }), 'Switch to subtract for Anishk');
   assert.equal(locked.props.disabled, true); locked.props.onPress(); assert.equal(value, '25.50');
 });
+
+test('paid amounts reuse the inline row with a distinct input label and optional remainder action', () => {
+ let amount = '';const right = React.createElement('Button', {title:'Add remainder'});
+ const tree = SplitPersonRow({...props, mode:'exact', inputLabel:'Paid by Anishk (₹)', value:amount, right, onChange:(next:string)=>amount=next});
+ const input=nodes(tree).find(node=>node.type==='TextField')!;assert.equal(input.props.label,'Paid by Anishk (₹)');assert.equal(input.props.hideLabel,true);
+ input.props.onChangeText('45.25');assert.equal(amount,'45.25');assert.ok(nodes(tree).includes(right));
+});
