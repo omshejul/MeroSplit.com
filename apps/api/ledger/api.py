@@ -16,6 +16,7 @@ from pydantic import Field, StrictInt, StrictStr
 
 from . import balance_statements, bill_chat, feedback, group_invites
 from .accounting import AccountingError
+from .app_releases import STORE_RELEASES
 from .collaboration import (
     acknowledge_opening,
     add_participant,
@@ -29,7 +30,6 @@ from .collaboration import (
     review_invite,
 )
 from .email_invites import rename_person, send_person_invite, update_contact
-from .app_releases import STORE_RELEASES
 from .expense_history import expense_version_history
 from .expense_notifications import (
     foreground,
@@ -49,11 +49,14 @@ from .history_reads import (
 from .media import (
     avatar_for,
     download_url,
+    group_photo,
     list_attachments,
+    metadata,
     pdf_thumbnail,
     profile_photos,
     remove_attachment,
     remove_avatar,
+    remove_group_photo,
     upload_file,
 )
 from .models import Group
@@ -78,6 +81,8 @@ from .schemas import (
     FeedbackIn,
     GroupIn,
     GroupLeaveIn,
+    GroupNameIn,
+    GroupNicknameIn,
     Input,
     InviteIn,
     LinkedWriteResult,
@@ -102,6 +107,8 @@ from .services import (
     change_simplify,
     create_group,
     record_settlement,
+    rename_group,
+    rename_group_member,
     reverse_expense,
     reverse_settlement,
     save_expense,
@@ -195,6 +202,10 @@ def groups(request):
         return {"groups": []}
     users = Participant.objects.filter(group_id__in=[row["id"] for row in rows], removed=False,
                                        user__is_active=True).values_list("user_id", flat=True).distinct()
+    from .models import UploadedFile
+    photos = {file.icon_group_id: metadata(file) for file in UploadedFile.objects.filter(icon_group_id__in=[row["id"] for row in rows], state="active")}
+    for row in rows:
+        row["group_photo"] = photos.get(row["id"])
     return {"groups": rows, "profile_photos": profile_photos(users)}
 
 
@@ -721,3 +732,29 @@ def expense_icons_get(request, ids: str):
 @api.post("/groups/{group_id}/simplify", response=WriteResult)
 def simplify_group(request, group_id: UUID, body: SimplifyIn):
     return change_simplify(request.auth, group_id, body.model_dump(mode="json"))
+
+
+@api.post("/groups/{group_id}/name", response=WriteResult)
+def group_name(request, group_id: UUID, body: GroupNameIn):
+    return rename_group(request.auth, group_id, body.model_dump(mode="json"))
+
+
+@api.get("/groups/{group_id}/photo")
+def group_photo_get(request, group_id: UUID):
+    group = visible_group(request.auth, group_id)
+    return {"group_photo": group_photo(group), "version": group.version}
+
+
+@api.post("/groups/{group_id}/photo")
+def group_photo_upload(request, group_id: UUID, id: Form[UUID], file: File[RequestFile]):
+    return upload_file(request.auth, id, file, group_id=group_id)
+
+
+@api.delete("/groups/{group_id}/photo/{file_id}")
+def group_photo_remove(request, group_id: UUID, file_id: UUID):
+    return remove_group_photo(request.auth, group_id, file_id)
+
+
+@api.post("/groups/{group_id}/participants/{participant_id}/nickname", response=WriteResult)
+def group_member_nickname(request, group_id: UUID, participant_id: UUID, body: GroupNicknameIn):
+    return rename_group_member(request.auth, group_id, participant_id, body.model_dump(mode="json"))

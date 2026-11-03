@@ -197,7 +197,7 @@ def finance_state(participant_ids, expense_rows, settlement_rows, opening_balanc
 
 def snapshot(group):
     participants = list(group.participants.select_related("user").order_by("id"))
-    from .media import profile_photos
+    from .media import group_photo, profile_photos
     photos = profile_photos(person.user_id for person in participants if not person.removed and person.user_id and person.user.is_active)
     expenses = list(group.expenses.order_by("date", "created_at", "id"))
     settlements = list(group.settlements.order_by("created_at", "id"))
@@ -214,6 +214,7 @@ def snapshot(group):
         "attribution_version": 1,
         "id": str(group.id),
         "name": group.name,
+        "group_photo": group_photo(group),
         "version": group.version,
         "archived": group.archived,
         "simplify_debts": group.simplify_debts, "debt_checkpoint": group.debt_checkpoint,
@@ -221,7 +222,7 @@ def snapshot(group):
         "is_direct": group.is_direct,
         "owner_id": group.owner_id,
         "participants": [
-            {"id": str(p.id), "name": participant_display_name(p), "recorded_name": p.name,
+            {"id": str(p.id), "name": participant_display_name(p), "recorded_name": p.name, "default_name": participant_display_name(p, use_override=False),
              "user_id": p.user_id, "removed": p.removed, "profile_photo": photos.get(p.user_id) if not p.removed else None}
             for p in participants
         ],
@@ -665,3 +666,40 @@ def change_simplify(actor, group_id, payload):
         group.save(update_fields=["simplify_debts", "debt_checkpoint"])
         keep_removed_balances_zero(group)
     return record_change(group, actor, payload["command_id"], fingerprint, "simplify_debts_changed", {"simplify_debts": group.simplify_debts, "mode_changed": changed})
+
+
+@transaction.atomic
+def rename_group(actor, group_id, payload):
+    group = visible_group(actor, group_id, lock=True)
+    previous, fingerprint = previous_result(actor, payload["command_id"], f"group-name:{group_id}", payload)
+    if previous:
+        return previous
+    writable(group)
+    if group.is_direct:
+        raise HttpError(422, "Change a shared group's name here")
+    if group.version != payload["version"]:
+        raise HttpError(409, "This group changed. Refresh and try again.")
+    before = group.name
+    group.name = payload["name"].strip()
+    group.save(update_fields=["name"])
+    return record_change(group, actor, payload["command_id"], fingerprint, "group_renamed", {"before": before, "after": group.name})
+
+
+@transaction.atomic
+def rename_group_member(actor, group_id, participant_id, payload):
+    group = visible_group(actor, group_id, lock=True)
+    previous, fingerprint = previous_result(actor, payload["command_id"], f"nickname:{group_id}:{participant_id}", payload)
+    if previous:
+        return previous
+    writable(group)
+    if group.is_direct:
+        raise HttpError(422, "Nicknames are only available in shared groups")
+    if group.version != payload["version"]:
+        raise HttpError(409, "This group changed. Refresh and try again.")
+    person = group.participants.filter(id=participant_id, removed=False).first()
+    if not person:
+        raise HttpError(404, "Person not found")
+    before = participant_display_name(person)
+    person.display_name_override = payload["name"].strip()
+    person.save(update_fields=["display_name_override"])
+    return record_change(group, actor, payload["command_id"], fingerprint, "participant_nickname_changed", {"participant_id": str(person.id), "before": before, "after": participant_display_name(person)})

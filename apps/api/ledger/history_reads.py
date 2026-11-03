@@ -281,7 +281,8 @@ def transaction_page(actor, group, limit=50, cursor=None, q=""):
 
 ACTIVITY_KINDS = ["expense_saved", "expense_deleted", "expense_restored", "expense_reversed", "manual_settlement", "payment_confirm",
                   "settlement_reversed", "participant_added", "participant_claim_approved", "participant_removed",
-                  "group_created", "group_archived", "group_unarchived"]
+                  "group_created", "group_archived", "group_unarchived", "group_renamed",
+                  "group_photo_changed", "group_photo_removed", "participant_nickname_changed"]
 
 
 def _activity_groups(actor):
@@ -340,7 +341,7 @@ def account_activity(actor, *, limit=50, cursor=None):
     for row in rows:
         if row.actor_id:
             actors |= Q(group_id=row.group_id, user_id=row.actor_id)
-        value = row.data.get("settlement_id") if row.kind == "payment_confirm" else row.data.get("participant_id") if row.kind == "participant_claim_approved" else row.data.get("id")
+        value = row.data.get("settlement_id") if row.kind == "payment_confirm" else row.data.get("participant_id") if row.kind in ("participant_claim_approved", "participant_nickname_changed") else row.data.get("id")
         try:
             identifier = UUID(value) if isinstance(value, str) else None
         except ValueError:
@@ -383,13 +384,15 @@ def account_activity(actor, *, limit=50, cursor=None):
             item["payment"] = {"id": str(payment.id), "sender": person_view(sender), "recipient": person_view(recipient),
                                "amount": str(payment.amount), "reversed": payment.reversed}
         elif row.kind.startswith("participant_"):
-            person = people.get(row.data.get("participant_id") if row.kind == "participant_claim_approved" else row.data.get("id"))
+            person = people.get(row.data.get("participant_id") if row.kind in ("participant_claim_approved", "participant_nickname_changed") else row.data.get("id"))
             if not person or person.group_id != row.group_id:
                 continue
-            item["kind"] = {"participant_added": "member_added", "participant_claim_approved": "member_joined", "participant_removed": "member_removed"}[row.kind]
+            item["kind"] = {"participant_added": "member_added", "participant_claim_approved": "member_joined", "participant_removed": "member_removed", "participant_nickname_changed": "member_nickname_changed"}[row.kind]
             item["person"] = person_view(person)
         else:
             item["kind"] = row.kind
+        if row.kind in ("group_renamed", "participant_nickname_changed"):
+            item["name_change"] = {"before": row.data.get("before", ""), "after": row.data.get("after", "")}
         items.append(item)
     if _activity_revision(actor) != revision:
         raise HttpError(409, "Activity changed; refresh before loading more")
@@ -418,7 +421,7 @@ def group_summary(actor, group_id, *, limit=50):
     participants = list(group.participants.select_related("user").annotate(
         has_pending_payments=Exists(group.attempts.filter(state__in=["prepared", "reported"])),
     ).order_by("id"))
-    from .media import profile_photos
+    from .media import group_photo, profile_photos
     photos = profile_photos(person.user_id for person in participants if not person.removed and person.user_id and person.user.is_active)
     group._attribution_names = {person.user_id: participant_display_name(person) for person in participants if person.user_id}
     opening = OpeningBalance.objects.filter(group=group).first()
@@ -444,10 +447,10 @@ def group_summary(actor, group_id, *, limit=50):
                                                        participant__user__isnull=True, revoked=False, approved=False, expires_at__gt=timezone.now())
                    .select_related("claimant").order_by("participant_id", "-expires_at", "-id").distinct("participant_id")[:100]]
     return {
-        "read_mode": "summary", "attribution_version": 1, "id": str(group.id), "name": group.name, "version": group.version,
+        "read_mode": "summary", "attribution_version": 1, "id": str(group.id), "name": group.name, "group_photo": group_photo(group), "version": group.version,
         "hidden": next(person.hidden for person in participants if person.user_id == actor.pk and not person.removed),
         "archived": group.archived, "is_direct": group.is_direct, "simplify_debts": group.simplify_debts, "owner_id": group.owner_id,
-        "participants": [{"id": str(person.id), "name": participant_display_name(person), "recorded_name": person.name,
+        "participants": [{"id": str(person.id), "name": participant_display_name(person), "recorded_name": person.name, "default_name": participant_display_name(person, use_override=False),
                           "user_id": person.user_id, "removed": person.removed, "profile_photo": photos.get(person.user_id) if not person.removed else None,
                           "account_email": person.user.email if person.user_id and person.user.is_active and not person.removed else None,
                           "payment_profile": profiles.get(person.user_id), **({"email": person.contact_email} if group.owner_id == actor.pk else {})}
