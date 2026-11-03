@@ -13,7 +13,7 @@ export type PushControls = ReturnType<typeof usePushNotifications>;
 export default function PushSettings(_props: { push: PushControls; busy: boolean; onBusyChange?: (busy: boolean) => void }) {
   return <NotificationSwitch icon="phone" label="Push notifications" checked={false} disabled onChange={() => {}} />;
 }
-export function PushStatus(_props: { push: PushControls; busy: boolean }) {
+export function PushStatus(_props: { push: PushControls; busy: boolean; hideSyncFeedback?: boolean }) {
   const { ui } = useUI();
   return <Text style={ui.caption}>Push notifications are available in the mobile app. This browser refreshes while open.</Text>;
 }

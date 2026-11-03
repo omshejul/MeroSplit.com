@@ -39,7 +39,7 @@ export function usePushNotifications(session: Session | null, callbacks: Callbac
     const write = localWrites.current.catch(() => {}).then(async () => { await SecureStore.setItemAsync(CHOICE_KEY, JSON.stringify(value)); durable.current = value; });
     localWrites.current = write;
     try { await write; if (mounted.current && saved.current === value) setSaving(false); }
-    catch (cause) { if (saved.current === value) { saved.current = durable.current; if (mounted.current) { setPreferences(durable.current); setSaving(false); setError('Could not save on this device. Try again.'); } } throw cause; }
+    catch (cause) { if (mounted.current && saved.current === value) { setSaving(false); setError('Could not save on this device. Try again.'); } throw cause; }
   }
   async function state() {
     if (saved.current) return saved.current;
@@ -67,6 +67,7 @@ export function usePushNotifications(session: Session | null, callbacks: Callbac
   async function refreshNow(token?: Notifications.DevicePushToken) {
     try {
     const current = activeSession.current; let value = await state();
+    if (saved.current && saved.current !== durable.current) await save(saved.current);
     await localWrites.current;
     value = saved.current ?? value;
     const status = pushPermission(await Notifications.getPermissionsAsync()); if (mounted.current) { setPermission(status); if (status !== 'granted') setVerified(false); }
@@ -74,18 +75,20 @@ export function usePushNotifications(session: Session | null, callbacks: Callbac
     if (value.owner !== accountOwner(current)) { await save({ ...emptyPushPreferences(value.installation_id), revision: (value.revision ?? 0) + 1 }); return; }
     const account = channelState.current;
     if (account && !account.state.value) return;
-    if (status !== 'granted' && value.opted_in && !value.pending_on) { value = pushChoice(current, value, false); await save(value); }
     if ((account?.state.value?.legacy_muted || account?.state.value?.muted_push_devices?.some(device => device.id === value.installation_id && device.revision >= (value.revision ?? 0))) && value.opted_in && !value.pending_on) { value = pushChoice(current, value, false); await save(value); }
     if (value.opted_in && value.pending_on) {
       let permission = status;
       if (permission === 'ask') permission = pushPermission(await Notifications.requestPermissionsAsync({ ios: { allowAlert: true, allowBadge: false, allowSound: true } }));
       if (mounted.current) setPermission(permission);
-      if (permission !== 'granted') { value = pushChoice(current, saved.current ?? value, false); await save(value); }
-      else await account?.activatePush();
+      // OS permission and the user's preference are separate. Blocking delivery
+      // must not undo a tap, and the user must always be able to choose Off.
+      if (permission !== 'granted') return;
+      await account?.activatePush();
     }
     value = saved.current ?? value;
     if (activeSession.current?.token !== current.token) return;
     const effectivePermission = value.pending_on ? 'granted' : status;
+    if (value.opted_in && effectivePermission !== 'granted') return;
     await refreshPushDevice(current, value, effectivePermission, async () => {
       await channel();
       const projectId = Constants.expoConfig?.extra?.eas?.projectId;
@@ -157,21 +160,22 @@ export function usePushNotifications(session: Session | null, callbacks: Callbac
     const timer = setInterval(() => { const value = saved.current; if (AppState.currentState === 'active' && !running.current && value?.owner === owner && (value.pending_off || value.pending_on)) void refresh().catch(() => {}); }, 15_000);
     return () => clearInterval(timer);
   }, [owner]);
-  const configured = !!session && preferences?.owner === owner && preferences.opted_in && !preferences.pending_off && permission !== 'denied';
-  const enabled = configured && verified && !!preferences?.binding;
+  const configured = !!session && preferences?.owner === owner && preferences.opted_in && !preferences.pending_off;
+  const enabled = configured && permission === 'granted' && verified && !!preferences?.binding;
   return { state: { ready: !!preferences && (!channels || !!channels.state.value), enabled, configured, optedIn: configured, saving, pending: !!preferences?.pending_off || !!preferences?.pending_on, pendingOff: !!preferences?.owner && preferences.owner === owner && !!preferences.pending_off, installationId: preferences?.installation_id, permission, working, error }, enable, disable, refresh, clear, clearReadPrompts };
 }
 export type PushControls = ReturnType<typeof usePushNotifications>;
 export default function PushSettings({ push, busy }: { push: PushControls; busy: boolean; onBusyChange?: (busy: boolean) => void }) {
   const { state } = push;
-  const disabled = busy || !state.ready || state.permission === 'denied';
+  const disabled = busy || !state.ready;
   return <NotificationSwitch icon="phone" label="Push notifications" checked={state.configured} disabled={disabled} onChange={value => { if (!disabled) void (value ? push.enable() : push.disable()).catch(() => {}); }} />;
 }
-export function PushStatus({ push, busy }: { push: PushControls; busy: boolean }) {
+export function PushStatus({ push, busy, hideSyncFeedback = false }: { push: PushControls; busy: boolean; hideSyncFeedback?: boolean }) {
   const { ui } = useUI(), { state } = push;
+  const localFailure = state.error.startsWith('Could not save on this device');
   return <View style={{ gap: 8 }}>
-    {state.pending && <Text accessibilityLiveRegion="polite" style={ui.caption}>{state.saving ? 'Saving…' : state.error ? 'Saved on this device. Will sync when connected.' : 'Saved on this device. Syncing…'}</Text>}
-    {state.permission === 'denied' && <><Text style={ui.caption}>Notifications are blocked in your phone settings.</Text><Button title="Open phone settings" kind="text" disabled={busy} onPress={() => void Linking.openSettings().catch(() => {})} /></>}
-    {!!state.error && !state.pending && <ErrorState error={state.error} retryLabel="Retry push notifications" disabled={busy} onRetry={() => void push.refresh().catch(() => {})} />}
+    {state.pending && !localFailure && !hideSyncFeedback && state.permission !== 'denied' && <Text accessibilityLiveRegion="polite" style={ui.caption}>{state.saving ? 'Saving…' : state.error ? 'Saved on this device. Will sync when connected.' : 'Saved on this device. Syncing…'}</Text>}
+    {state.permission === 'denied' && state.configured && <><Text style={ui.caption}>Notifications are blocked in your phone settings.</Text><Button title="Open phone settings" kind="text" disabled={busy} onPress={() => void Linking.openSettings().catch(() => {})} /></>}
+    {!!state.error && (!state.pending || localFailure) && <ErrorState error={state.error} retryLabel="Retry push notifications" disabled={busy} onRetry={() => void push.refresh().catch(() => {})} />}
   </View>;
 }

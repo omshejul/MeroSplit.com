@@ -25,7 +25,7 @@ export default function AccountNotifications({ session, push, channels, busy }: 
         {value && <>
           <View style={{ borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: palette.line }}><PushSettings push={push} busy={busy} /></View>
           <View style={{ borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: palette.line }}><NotificationSwitch icon="mail" label="Email notifications" checked={value.email_notifications} disabled={busy || !value.email_available} onChange={email_notifications => { void channels.change({ email_notifications }).catch(() => {}); }} /></View>
-          <PushStatus push={push} busy={busy} />
+          <PushStatus push={push} busy={busy} hideSyncFeedback={pending || saving} />
           {!value.email_available && <Text style={ui.caption}>Add a verified email address to receive emails.</Text>}
           {value.email_notifications ? <View style={{ paddingLeft: 12 }}><BalanceStatements session={session} visible={open} channels={channels} busy={busy} /></View> : <Text style={[ui.caption, { paddingLeft: 12 }]}>Turn on email notifications to receive balance statements.</Text>}
         </>}
