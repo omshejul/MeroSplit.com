@@ -28,6 +28,7 @@ export function withSharedUI<T extends Record<string, any>>(input: T): T & Recor
   env.useRowDivider ??= (divider?: boolean) => divider ?? true; env.animateLayout ??= () => {};
   env.StyleSheet ??= { hairlineWidth: 1, create: (value: any) => value };
   env.StyleSheet.create ??= (value: any) => value;
+  env.StyleSheet.flatten ??= (value: any) => Object.assign({}, ...[value].flat(Infinity).filter(Boolean));
   env.pageWidthStyle ??= {}; env.radii ??= { control: 12, surface: 16 }; env.Platform ??= { OS: 'native' };
   const shared = new Set<Function>(), original = input.React.createElement;
   env.React = { ...input.React, Fragment: input.React.Fragment ?? 'Fragment', createElement(type: any, props: any, ...children: any[]) {

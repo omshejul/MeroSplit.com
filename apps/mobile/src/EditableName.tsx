@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { Keyboard } from 'react-native';
+import { Keyboard, StyleSheet, useWindowDimensions } from 'react-native';
 import { Text } from 'react-native-paper';
 import * as Crypto from 'expo-crypto';
 import FieldDialog from './FieldDialog';
@@ -13,6 +13,10 @@ export default function EditableName({ name, displayName = name, title, label, p
 }) {
   const { ui } = useUI(), [open, setOpen] = useState(false), [value, setValue] = useState(name), [error, setError] = useState(''), [saving, setSaving] = useState(false);
   const pending = useRef<{ command_id: string; version: number; name: string } | null>(null), inFlight = useRef(false), initial = useRef(name), openedVersion = useRef(version);
+  const { fontScale } = useWindowDimensions();
+  const lineHeight = StyleSheet.flatten([ui.rowTitle, textStyle])?.lineHeight ?? 23;
+  // Keep the 44pt tap area without reserving its unused lower inset above the subtitle.
+  const bottomInset = Math.max(0, (44 - lineHeight * fontScale) / 2);
   const disabled = busy || saving || !editable;
   function close() { Keyboard.dismiss(); setOpen(false); }
   async function save() {
@@ -25,7 +29,7 @@ export default function EditableName({ name, displayName = name, title, label, p
     finally { inFlight.current = false; setSaving(false); }
   }
   return <>
-    {editable ? <Button kind="plain" accessibilityLabel={label} disabled={disabled} onPress={() => { initial.current = name; openedVersion.current = version; setValue(name); setError(''); setOpen(true); }} style={{ flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', minHeight: 44, gap: 8, maxWidth: '100%' }}>
+    {editable ? <Button kind="plain" accessibilityLabel={label} disabled={disabled} onPress={() => { initial.current = name; openedVersion.current = version; setValue(name); setError(''); setOpen(true); }} style={{ flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', minHeight: 44, marginBottom: -bottomInset, zIndex: 1, gap: 8, maxWidth: '100%' }}>
       <Text style={[ui.rowTitle, textStyle, { flexShrink: 1 }]} numberOfLines={1}>{displayName}</Text><Icon name="edit" size={16} />
     </Button> : <Text style={[ui.rowTitle, textStyle]} numberOfLines={1}>{displayName}</Text>}
     <FieldDialog visible={open} title={title} disabled={busy || saving} canSave={editable && (allowEmpty || !!value.trim()) && value.trim() !== initial.current} saveLabel={saving ? 'Saving…' : 'Save'} onClose={close} onSave={() => void save()} error={error}>
