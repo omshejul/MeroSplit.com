@@ -31,12 +31,12 @@ import { cachedTimeline } from './groupTimeline';
 import { paymentPresentation } from './activityPresentation';
 import { VisibleExpense } from './useExpenseNotices';
 import type { NoticeVisibility } from './useExpenseNotices';
-import type { BillRow, Command, Expense, Group, GroupTransaction, Participant, Settlement, HistoryResource } from './types';
+import type { BillRow, Command, Expense, Group, GroupTransaction, Participant, Settlement, HistoryResource, Session } from './types';
 import { SectionHeading, AmountText, balanceColor, Button, Icon, radii, useUI } from './ui';
 
 type Transfer = { sender: string; recipient: string; amount: string };
 type Props = {
-  bottomClearance?: number;
+  session?: Session | null; iconsActive?: boolean; bottomClearance?: number;
   categoryIcons?: ExpenseIcons; noticeVisibility?: NoticeVisibility; header?: React.ReactNode;
   revision?: number; onUpdatesAvailable?: (available: boolean) => void; previewError?: string;
   group: Group; accepted: Group; pending: Command[]; busy: boolean; selfId: string;
@@ -167,7 +167,7 @@ function BillSearch({ value, onChange, onSearch, onClose, showSubmit, autoFocus 
   </View>;
 }
 
-export default function GroupScreen({ bottomClearance = 120, categoryIcons, header, noticeVisibility, group: incoming, accepted: incomingAccepted, previewError: incomingPreviewError = '', revision = 0, onUpdatesAvailable, pending, busy, selfId, pagingScope = incoming.id, active = true, online = true, onRefresh, refreshing = false, onVisibleBills, onPrefetchBill, onPrefetchPayment, onLoadBalanceGroup, onHistoryPage, onExpense, onPayment, onSettle }: Props) {
+export default function GroupScreen({ session = null, bottomClearance = 120, categoryIcons, header, noticeVisibility, group: incoming, accepted: incomingAccepted, previewError: incomingPreviewError = '', revision = 0, onUpdatesAvailable, pending, busy, selfId, pagingScope = incoming.id, active = true, iconsActive = active, online = true, onRefresh, refreshing = false, onVisibleBills, onPrefetchBill, onPrefetchPayment, onLoadBalanceGroup, onHistoryPage, onExpense, onPayment, onSettle }: Props) {
   const { ui, motion, palette: colors } = useUI();
   // Background cache updates must not replace a page while someone is reading it.
   // Adopt both views together only for an explicit read or the user's saved changes.
@@ -284,7 +284,7 @@ export default function GroupScreen({ bottomClearance = 120, categoryIcons, head
           <LegacyPayments group={group} accepted={accepted} selfId={selfId} busy={busy} onPayment={onPayment} onPrefetchPayment={onPrefetchPayment} onPage={onHistoryPage} scope={pagingScope} enabled={active && online} />
         </DetailDialog>}
       </>} />
-    <BalanceExplanation selection={explanation} currentKey={balanceKey(incoming, pending)} onClose={() => setExplanation(null)} />
+    <BalanceExplanation session={session} active={iconsActive} online={online} categoryIcons={categoryIcons} selection={explanation} currentKey={balanceKey(incoming, pending)} onClose={() => setExplanation(null)} />
   </Animated.View>;
 }
 function RecordAttribution({ action, name }: { action: string; name?: string | null }) {

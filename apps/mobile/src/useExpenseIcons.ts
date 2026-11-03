@@ -7,8 +7,8 @@ import type { Session } from './types';
 type Hint = { id: string; group_id: string; title: string; category: string | null; state: string };
 const pendingDelays = [5_000, 15_000, 30_000];
 
-export function useExpenseIcons(session: Session | null, visible: ExpenseIconRef[], active: boolean, online: boolean): ExpenseIcons {
-  const refs = [...new Map(visible.map(ref => [ref.id, ref])).values()].sort((a, b) => a.id.localeCompare(b.id)).slice(0, 20);
+export function useExpenseIcons(session: Session | null, visible: ExpenseIconRef[], active: boolean, online: boolean, batchAll = false): ExpenseIcons {
+  const refs = [...new Map(visible.map(ref => [ref.id, ref])).values()].sort((a, b) => a.id.localeCompare(b.id)).slice(0, batchAll ? undefined : 20);
   const account = session ? `${accountOwner(session)}|${session.token}` : '';
   const query = JSON.stringify(refs), scope = `${account}|${active}|${online}|${query}`;
   const current = useRef(scope); current.current = scope;
@@ -20,12 +20,17 @@ export function useExpenseIcons(session: Session | null, visible: ExpenseIconRef
     const valid = () => !stopped && !controller.signal.aborted && current.current === scope;
     async function read() {
       try {
-        const result = await request<{ items: Hint[] }>(session!, `/expense-icons?ids=${encodeURIComponent(refs.map(ref => ref.id).join(','))}`, 'GET', undefined, 'json', controller.signal);
-        if (!valid() || !Array.isArray(result.items)) return;
+        const items: Hint[] = [];
+        for (let offset = 0; offset < refs.length; offset += 20) {
+          const batch = refs.slice(offset, offset + 20);
+          const result = await request<{ items: Hint[] }>(session!, `/expense-icons?ids=${encodeURIComponent(batch.map(ref => ref.id).join(','))}`, 'GET', undefined, 'json', controller.signal);
+          if (!valid() || !Array.isArray(result.items)) return;
+          items.push(...result.items);
+        }
         let pending = false;
         const values: ExpenseIcons = {};
         for (const ref of refs) {
-          const hint = result.items.find(row => row.id === ref.id && row.group_id === ref.groupId && row.title === ref.title);
+          const hint = items.find(row => row.id === ref.id && row.group_id === ref.groupId && row.title === ref.title);
           if (!hint) continue;
           pending ||= hint.state === 'pending';
           if (['ready', 'manual'].includes(hint.state) && hint.category && (categoryIcon(hint.category) !== 'bill' || hint.category === 'general')) values[categoryKey(ref.groupId, ref.id, ref.title)] = hint.category;
@@ -33,7 +38,7 @@ export function useExpenseIcons(session: Session | null, visible: ExpenseIconRef
         setSaved(previous => {
           const icons = previous.account === account ? { ...previous.icons } : {};
           refs.forEach(ref => delete icons[categoryKey(ref.groupId, ref.id, ref.title)]);
-          return { account, icons: Object.fromEntries(Object.entries({ ...icons, ...values }).slice(-200)) };
+          return { account, icons: Object.fromEntries(Object.entries({ ...icons, ...values }).slice(-Math.max(200, refs.length))) };
         });
         if (pending && attempt < pendingDelays.length) timer = setTimeout(() => void read(), pendingDelays[attempt++]);
       } catch (cause) {
