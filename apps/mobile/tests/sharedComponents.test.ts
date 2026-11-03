@@ -95,13 +95,23 @@ test('PaginationFooter never fetches on render, disables duplicate loads and off
   assert.equal(nodes(f.render('PaginationFooter', { paging: { ...paging, canLoadMore: false } })).some(n => n.type === 'Button'), false);
 });
 
-test('AttachmentPicker uses files on web, Photo/Files on native, and never opens when disabled', () => {
-  for (const OS of ['web', 'ios', 'android']) {
-    const f = fixture({ Platform: { OS }, SettingsRow: 'SettingsRow' }), picked: boolean[] = []; const props = { disabled: false, onPick: (photo: boolean) => picked.push(photo) };
-    f.render('AttachmentPicker', props).props.onPress();
-    if (OS === 'web') assert.deepEqual(picked, [false]); else { const buttons = f.events[0][2]; assert.equal(buttons[0].style, 'cancel'); buttons[1].onPress(); buttons[2].onPress(); assert.deepEqual(picked, [true, false]); }
-    picked.length = 0; f.render('AttachmentPicker', { ...props, disabled: true }).props.onPress(); assert.deepEqual(picked, []);
-  }
+test('attachment choices have icons, dispatch the source once, and respect camera capability and disabled state', () => {
+ for (const supported of [false,true]) {
+  const picked:any[]=[];let dismissed=0;const f=fixture({canTakePhoto:()=>supported});
+  const options=f.render('AttachmentOptions',{disabled:false,onPick:(v:any)=>picked.push(v)});
+  const buttons=nodes(options).filter(n=>n.type==='Button');assert.deepEqual(buttons.map(n=>n.props.title),supported?['Take photo','Choose photo','Choose file']:['Choose photo','Choose file']);assert.ok(buttons.every(n=>n.props.icon));
+  buttons.forEach(n=>n.props.onPress());assert.deepEqual(picked,supported?['camera',true,false]:[true,false]);
+  const disabled=f.render('AttachmentOptions',{disabled:true,onPick:(v:any)=>picked.push(v)});picked.length=0;nodes(disabled).filter(n=>n.type==='Button').forEach(n=>n.props.onPress());assert.deepEqual(picked,[]);
+  const menuPicked:any[]=[];const menu=f.render('AttachmentPicker',{visible:true,disabled:false,anchor:'square',onDismiss:()=>dismissed++,onPick:(v:any)=>menuPicked.push(v)});assert.equal(menu.props.anchor,'square');assert.equal(menu.props.anchorPosition,'bottom');assert.equal(menu.props.visible,true);menu.props.onDismiss();assert.equal(dismissed,1);
+ }
+});
+
+test('attachment picker consumes native Back without navigating and removes its listener', () => {
+ let handler:()=>boolean, cleanup:()=>void, removed=0, dismissed=0;
+ const f=fixture({useEffect:(effect:()=>any)=>{cleanup=effect();},BackHandler:{addEventListener:(event:string,fn:()=>boolean)=>{assert.equal(event,'hardwareBackPress');handler=fn;return {remove:()=>removed++};}}});
+ const props={visible:true,disabled:false,anchor:'square',onDismiss:()=>dismissed++,onPick:()=>{}};
+ f.render('AttachmentPicker',props);assert.equal(handler!(),true);assert.equal(dismissed,1);cleanup!();assert.equal(removed,1);
+ handler=undefined!;f.render('AttachmentPicker',{...props,visible:false});assert.equal(handler,undefined);
 });
 
 test('AttachmentRow keeps the thumbnail, filename, metadata, open callback and independent options', () => {

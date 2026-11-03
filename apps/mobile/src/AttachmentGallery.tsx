@@ -38,7 +38,7 @@ export default function AttachmentGallery({ session, items, selectedId, disabled
           <View pointerEvents="none" accessible={false} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" aria-hidden><PrivateMediaImage session={session} media={item} size={62} label={title} interactive={false} /></View>
         </Button>;
       })}
-      {onAdd && <Button kind="plain" accessibilityLabel="Add photo or PDF" disabled={disabled} onPress={onAdd}
+      {onAdd && <Button kind="plain" accessibilityLabel="Add attachment" disabled={disabled} onPress={onAdd}
         style={{ width: 72, minHeight: 72, gap: 4, padding: 5, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderStyle: 'dashed', borderColor: palette.outline, borderRadius: 10 }}>
         <Icon name="add" size={24} color={palette.accent} /><Text style={[ui.caption, { color: palette.accent }]}>Add</Text>
       </Button>}

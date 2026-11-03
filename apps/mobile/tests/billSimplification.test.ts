@@ -25,7 +25,7 @@ import { paymentReturnNeedsConfirmation } from '../src/paymentReturn.ts';
 type Element = { type: any; props: Record<string, any>; children: any[] };
 const React = { createElement: (type: any, props: any, ...children: any[]): Element => ({ type, props: props ?? {}, children }) };
 const Dialog = Object.assign(() => {}, { Title: 'Title', Content: 'Content', Actions: 'Actions' });
-const nodes = (value: any): Element[] => Array.isArray(value) ? value.flatMap(nodes) : value && typeof value === 'object' && 'children' in value ? [value, ...value.children.flatMap(nodes)] : [];
+const nodes = (value: any): Element[] => Array.isArray(value) ? value.flatMap(nodes) : value && typeof value === 'object' && 'children' in value ? [value, ...value.children.flatMap(nodes), ...nodes(value.props?.anchor)] : [];
 const find = (tree: any, prop: string, value: string) => nodes(tree).find(node => node.props[prop] === value)!;
 const payerContent = (tree: any) => { const child = find(tree, 'title', 'Who paid?').children[0]; return typeof child === 'function' ? child(() => {}) : child; };
 const tick = async () => { for (let i = 0; i < 15; i++) await Promise.resolve(); };
@@ -256,11 +256,11 @@ test('accepted attachment action reuses one load/picker path and preserves permi
   };
   const app = await make(); let tree = app.render(props); app.commit();
   assert.equal(reads, 1); assert.equal(nodes(tree).find(node => node.type === 'BottomSheet' && node.props.title === 'Photos & documents')!.props.visible, false);
-  find(tree, 'accessibilityLabel', 'Add photo or PDF').props.onPress(); await tick(); assert.equal(picks, 1); assert.equal(uploads, 0); assert.equal(reads, 1);
-  tree = app.render({ ...props, busy: true }); find(tree, 'accessibilityLabel', 'Add photo or PDF').props.onPress(); await tick(); assert.equal(picks, 1);
-  assert.ok(!find(app.render({ ...props, readOnly: true }), 'accessibilityLabel', 'Add photo or PDF'));
+  find(tree, 'accessibilityLabel', 'Add attachment').props.onPress(); assert.equal(picks, 0); find(app.render(props), 'title', 'Choose file').props.onPress(); await tick(); assert.equal(picks, 1); assert.equal(uploads, 0); assert.equal(reads, 1);
+  tree = app.render({ ...props, busy: true }); find(tree, 'accessibilityLabel', 'Add attachment').props.onPress(); await tick(); assert.equal(picks, 1);
+  assert.ok(!find(app.render({ ...props, readOnly: true }), 'accessibilityLabel', 'Add attachment'));
   for (const [items, canModify, pending] of [[[], false, null], [[], true, { file: { name: 'Retained pending file' } }], [Array.from({ length: 10 }, (_, i) => ({ id: String(i), name: 'Synthetic.pdf', content_type: 'application/pdf' })), true, null]] as any[]) {
-    const guarded = await make(items, canModify, pending); assert.ok(!find(guarded.render(props), 'accessibilityLabel', 'Add photo or PDF'));
+    const guarded = await make(items, canModify, pending); assert.ok(!find(guarded.render(props), 'accessibilityLabel', 'Add attachment'));
   }
   assert.equal(picks, 1); assert.equal(uploads, 0);
 });
@@ -361,7 +361,7 @@ test('pre-save file picker stages privately before the durable draft, previews a
     clearPickedMedia: async () => events.push('clear picker'), clearStagedMedia: async () => events.push('clear staged') });
   let value: any, error = '';
   const props = { path: '/groups/g/expenses/e/attachments', disabled: false, onBusy() {}, onError: (message: string) => { error = message; }, onChange: async (next: any) => { events.push(next ? 'persist file' : 'persist removal'); value = next; } };
-  find(app.render(props), 'label', 'Add photo or PDF').props.onPress(); await tick();
+  find(app.render(props), 'accessibilityLabel', 'Add attachment').props.onPress(); find(app.render(props), 'title', 'Choose file').props.onPress(); await tick();
   assert.deepEqual(events, ['pick', 'stage', 'persist file', 'clear picker']); assert.equal(value.file.uri, staged.uri);
   const tree = app.render({ ...props, value }); assert.equal(nodes(tree).find(node => node.type === 'LocalAttachment')!.props.file, staged);
   find(tree, 'title', 'Remove file').props.onPress(); await tick();
@@ -1090,7 +1090,7 @@ test('attachment reveal commits the loaded layout in one animated update and res
     assert.deepEqual(animations, [enabled]);
     assert.ok(!nodes(tree).some(node => node.children.includes('Loading attachments…')));
     assert.ok(find(tree, 'accessibilityLabel', 'Open PDF 1 of 1'));
-    assert.ok(find(tree, 'accessibilityLabel', 'Add photo or PDF'));
+    assert.ok(find(tree, 'accessibilityLabel', 'Add attachment'));
     app.unmount();
   }
 });
@@ -1283,19 +1283,19 @@ test('receipt tile opens the attachment sheet and keeps confirmed counts separat
  }
 });
 
-test('empty receipt tile opens the existing picker directly; cancellation and busy states do not reveal a sheet', async () => {
+test('empty receipt tile opens source choices before the file picker; cancellation and busy states do not reveal a sheet', async () => {
  let picks=0;
  const app=harness('src/BillAttachments.tsx','BillAttachments',{Platform:{OS:'web'},accountOwner:()=> 'owner',pendingMediaUpload:async()=>null,request:async()=>({attachments:[],can_modify:true}),pickMedia:async()=>{picks++;return null;}});
  const props={session:{token:'owner'},groupId:'g',expenseId:'e',busy:false,onBusyChange(){}};
  app.render(props);app.commit();await tick();let tree=app.render(props);
- find(tree,'accessibilityLabel','Add photo or PDF').props.onPress();await tick();tree=app.render(props);assert.equal(picks,1);assert.equal(nodes(tree).find(n=>n.type==='BottomSheet')!.props.visible,false);
- find(app.render({...props,busy:true}),'accessibilityLabel','Add photo or PDF').props.onPress();await tick();assert.equal(picks,1);app.unmount();
+ find(tree,'accessibilityLabel','Add attachment').props.onPress();assert.equal(picks,0);find(app.render(props),'title','Choose file').props.onPress();await tick();tree=app.render(props);assert.equal(picks,1);assert.equal(nodes(tree).find(n=>n.type==='BottomSheet')!.props.visible,false);
+ find(app.render({...props,busy:true}),'accessibilityLabel','Add attachment').props.onPress();await tick();assert.equal(picks,1);app.unmount();
 });
 
 test('rejected picker input opens recovery feedback without increasing the confirmed attachment count', async () => {
  const app=harness('src/BillAttachments.tsx','BillAttachments',{Platform:{OS:'web'},accountOwner:()=> 'owner',pendingMediaUpload:async()=>null,request:async()=>({attachments:[],can_modify:true}),pickMedia:async()=>{throw Error('Choose a still image.');}});
  const props={session:{token:'owner'},groupId:'g',expenseId:'e',busy:false,onBusyChange(){}};
- app.render(props);app.commit();await tick();find(app.render(props),'accessibilityLabel','Add photo or PDF').props.onPress();await tick();const tree=app.render(props);
+ app.render(props);app.commit();await tick();find(app.render(props),'accessibilityLabel','Add attachment').props.onPress();find(app.render(props),'title','Choose file').props.onPress();await tick();const tree=app.render(props);
  assert.equal(nodes(tree).find(n=>n.type==='BottomSheet')!.props.visible,true);assert.ok(find(tree,'accessibilityLabel','Attachments, 0 saved files, needs attention'));
  assert.ok(nodes(tree).some(n=>n.children.includes('Choose a still image.')));app.unmount();
 });
@@ -1379,7 +1379,7 @@ test('pending and read-only gallery states preserve recovery while preventing ne
   const pending={id:'waiting',file:{name:'PRIVATE_NAME.jpg',uri:'file:///pending.jpg',type:'image/jpeg',size:777000}};
   const app=harness('src/BillAttachments.tsx','BillAttachments',{accountOwner:()=> 'owner',pendingMediaUpload:async()=>pending,request:async()=>({attachments:galleryItems,can_modify:true}),PrivateMediaImage:'PrivateMediaImage',RemoveMediaMenu:'RemoveMediaMenu'});
   const props={session:{token:'owner'},groupId:'g',expenseId:'e',readOnly,busy:false,onBusyChange(){}};app.render(props);app.commit();await tick();const tree=app.render(props);
-  assert.ok(!find(tree,'accessibilityLabel','Add photo or PDF'));assert.equal(find(tree,'title','Retry upload').props.disabled,readOnly);
+  assert.ok(!find(tree,'accessibilityLabel','Add attachment'));assert.equal(find(tree,'title','Retry upload').props.disabled,readOnly);
   const local=nodes(tree).find(n=>n.type==='LocalAttachment'&&!n.props.thumbnailOnly)!;assert.equal(local.props.title,'Photo waiting to upload');assert.equal(local.props.subtitle,'Saved on this device');
   assert.equal(!!find(tree,'accessibilityLabel','Options for Photo 1 of 3'),!readOnly);app.unmount();
  }

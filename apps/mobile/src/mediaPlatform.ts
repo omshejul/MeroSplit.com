@@ -1,6 +1,6 @@
 import { clearProfilePhotoCache } from './profilePhotoCache.ts';
 import { readPrivateMedia } from './media.ts';
-import type { MediaMetadata, PickedMedia } from './media.ts';
+import type { MediaMetadata, PickedMedia, MediaSource } from './media.ts';
 import type { Session } from './types.ts';
 
 const imageTypes = ['image/jpeg', 'image/png', 'image/webp'];
@@ -16,12 +16,17 @@ export function validateMedia(file: PickedMedia, avatar = false): void {
   if (!file.uri.startsWith('file://') && !file.uri.startsWith('content://')) throw new Error('Choose a file stored on this device.');
 }
 
-export async function pickMedia(photo: boolean, avatar = false): Promise<PickedMedia | null> {
+export async function pickMedia(photo: MediaSource, avatar = false): Promise<PickedMedia | null> {
   const { File } = await import('expo-file-system');
   let selected: { uri: string; name?: string | null; mimeType?: string | null; size?: number };
   if (photo) {
     const picker = await import('expo-image-picker');
-    const result = await picker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsMultipleSelection: false, allowsEditing: avatar, ...(avatar ? { aspect: [1, 1] as [number, number] } : {}), quality: 0.85,
+    if (photo === 'camera' && !(await import('./cameraSupport')).canTakePhoto()) throw new Error('Update MeroSplit to take photos. You can choose an existing photo or file.');
+    if (photo === 'camera') {
+      const permission = await picker.requestCameraPermissionsAsync();
+      if (!permission.granted) throw new Error(permission.canAskAgain ? 'Allow camera access to take a photo.' : 'Camera access is off. Allow it in device settings, then try again.');
+    }
+    const result = await (photo === 'camera' ? picker.launchCameraAsync : picker.launchImageLibraryAsync)({ mediaTypes: ['images'], allowsMultipleSelection: false, allowsEditing: avatar, ...(avatar ? { aspect: [1, 1] as [number, number] } : {}), quality: 0.85,
       preferredAssetRepresentationMode: picker.UIImagePickerPreferredAssetRepresentationMode.Compatible });
     if (result.canceled) return null;
     const asset = result.assets[0]; selected = { uri: asset.uri, name: asset.fileName, mimeType: asset.mimeType, size: asset.fileSize };
@@ -34,7 +39,7 @@ export async function pickMedia(photo: boolean, avatar = false): Promise<PickedM
   // The photo picker may return a JPEG cache copy while retaining a HEIC source name.
   const extension = selected.uri.split(/[?#]/)[0].split('.').pop()?.toLowerCase() ?? '';
   const type = mimeForExtension[extension] ?? selected.mimeType ?? '';
-  const originalName = selected.name || (avatar ? 'Profile photo' : 'Bill attachment');
+  const originalName = (photo === 'camera' ? `Receipt photo ${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}` : selected.name) || (avatar ? 'Profile photo' : 'Bill attachment');
   const name = `${originalName.replace(/\.[^.]+$/, '')}.${extensions[type] ?? extension}`;
   const file = { uri: selected.uri, name, type, size: selected.size || 0 };
   try { file.size = new File(selected.uri).size || file.size; validateMedia(file, avatar); return file; }

@@ -23,7 +23,7 @@ function form(db: any, options: any = {}) {
     useRef:(initial:any)=>{const id=cursor++;return state[id]??={current:initial}},
     useContext:()=>discard, ScreenDraftDiscard:{},
     useEffect:(fn:()=>any, values:any[])=>{const id=cursor++;if(!deps[id]||values.some((v,i)=>v!==deps[id][i])){effects.push(()=>{cleanup[id]?.();cleanup[id]=fn()});deps[id]=values}},
-    StyleSheet:{create:(v:any)=>v},View:'View',Text:'Text',Form:'Form',AmountField:'AmountField',TextField:'TextField',DateField:'DateField',Button:'Button',ErrorText:'ErrorText',BillPeople:'BillPeople',DraftAttachment:'DraftAttachment',NotesField:'NotesField',Checkbox:{Item:'Checkbox'},RadioChoice:'RadioChoice',
+    useWindowDimensions:()=>({fontScale:1}),StyleSheet:{create:(v:any)=>v},View:'View',Text:'Text',Form:'Form',AmountField:'AmountField',TextField:'TextField',DateField:'DateField',Button:'Button',ErrorText:'ErrorText',BillPeople:'BillPeople',DraftAttachment:'DraftAttachment',NotesField:'NotesField',Checkbox:{Item:'Checkbox'},RadioChoice:'RadioChoice',
     useUI:()=>({ui:{}}),Crypto:{randomUUID:()=> 'draft-fixed-id'},useScreenRemovalLock:()=>{}, getDatabase:async()=>db,readDraft,saveDraft,
     clearStagedMedia:async(f:any)=>{media.push(f)},
   };

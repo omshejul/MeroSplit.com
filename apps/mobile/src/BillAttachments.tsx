@@ -5,7 +5,7 @@ import { ErrorState } from './UIStates';
 import { LoadingState } from './UIStates';
 import { NoticeBanner } from './UIStates';
 
-import { chooseAttachment } from './AttachmentPicker';
+import AttachmentPicker from './AttachmentPicker';
 import AttachmentGallery from './AttachmentGallery';
 import AttachmentTile from './AttachmentTile';
 import BottomSheet from './BottomSheet';
@@ -16,7 +16,7 @@ import { Alert } from './alerts';
 import * as Crypto from 'expo-crypto';
 import { accountOwner, request } from './api';
 import { clearMediaPreview, clearPickedMedia, clearStagedMedia, openPrivateMedia, pendingMediaUpload, pickMedia, retryMediaUpload, removePendingMediaUpload, saveMediaUpload, stageMediaUpload } from './media';
-import type { MediaList, MediaMetadata, PendingMediaUpload, PickedMedia } from './media';
+import type { MediaList, MediaMetadata, PendingMediaUpload, PickedMedia, MediaSource } from './media';
 import { getDatabase } from './native';
 import LocalAttachment from './LocalAttachment';
 import PrivateMediaImage from './PrivateMediaImage';
@@ -28,7 +28,7 @@ export default function BillAttachments({ session, groupId, expenseId, revision,
   const notify = useToast(), { height } = useWindowDimensions();
   const { ui, motion } = useUI(), [items, setItems] = useState<MediaMetadata[]>([]), [canModify, setCanModify] = useState(false), [loading, setLoading] = useState(true), [working, setWorking] = useState(false), [error, setError] = useState('');
   useScreenRemovalLock(working);
-  const [open, setOpen] = useState(false), trigger = useRef<React.ComponentRef<typeof View>>(null);
+  const [open, setOpen] = useState(false), [sourceOpen, setSourceOpen] = useState(false), trigger = useRef<React.ComponentRef<typeof View>>(null);
   const close = () => { if (!busy && !working) { setOpen(false); requestAnimationFrame(() => trigger.current?.focus()); } };
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [pending, setPending] = useState<PendingMediaUpload | null>(null);
@@ -36,7 +36,7 @@ export default function BillAttachments({ session, groupId, expenseId, revision,
   const owner = session ? accountOwner(session) : '', identity = `${owner}|${path}`, identityRef = useRef(identity); identityRef.current = identity;
   const lock = useRef(false), mounted = useRef(true), current = () => mounted.current && identityRef.current === identity;
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
-  useEffect(() => { setItems([]); setCanModify(false); setPending(null); setSelectedId(null); setError(''); setOpen(false); }, [identity]);
+  useEffect(() => { setItems([]); setCanModify(false); setPending(null); setSelectedId(null); setError(''); setOpen(false); setSourceOpen(false); }, [identity]);
   useEffect(() => {
     let active = true; setLoading(true);
     if (!session) { setLoading(false); return; }
@@ -74,7 +74,7 @@ export default function BillAttachments({ session, groupId, expenseId, revision,
     if (!current()) return;
     void onChanged?.().catch(() => { if (current()) setError(`${message} Could not refresh the group. Refresh when online.`); });
   }
-  async function add(photo: boolean) {
+  async function add(photo: MediaSource) {
     if (!session || readOnly || !canModify || pending || items.length >= 10) return;
     const file = await pickMedia(photo); if (!file) return;
     if (current()) setOpen(true);
@@ -125,9 +125,9 @@ export default function BillAttachments({ session, groupId, expenseId, revision,
   const preview = session && items[0] ? <PrivateMediaImage session={session} media={items[0]} label="Attachment preview" size={80} interactive={false} /> : pending ? <LocalAttachment file={pending.file} disabled={disabled} onError={setError} title="Pending attachment" thumbnailOnly size={80} /> : undefined;
   const needsAttention = !!(pending || error), hasFiles = !!(items.length || pending);
   return <>
-    <AttachmentTile triggerRef={trigger} thumbnail={preview} count={items.length} loading={loading || working} warning={needsAttention} canAdd={editable && !hasFiles} disabled={disabled}
-      label={loading ? 'Loading attachments' : working ? 'Processing file' : needsAttention ? `Attachments, ${items.length} saved ${items.length === 1 ? 'file' : 'files'}, needs attention` : hasFiles ? `Attachments, ${items.length} ${items.length === 1 ? 'file' : 'files'}` : editable ? 'Add photo or PDF' : 'View attachments'}
-      onPress={() => { if (disabled) return; if (!hasFiles && editable && !error) chooseAttachment(photo => void run(() => add(photo))); else setOpen(true); }} />
+    <AttachmentPicker visible={sourceOpen} disabled={disabled} onDismiss={() => setSourceOpen(false)} onPick={source => void run(() => add(source))} anchor={<AttachmentTile triggerRef={trigger} thumbnail={preview} count={items.length} loading={loading || working} warning={needsAttention} canAdd={editable && !hasFiles} disabled={disabled}
+      label={loading ? 'Loading attachments' : working ? 'Processing file' : needsAttention ? `Attachments, ${items.length} saved ${items.length === 1 ? 'file' : 'files'}, needs attention` : hasFiles ? `Attachments, ${items.length} ${items.length === 1 ? 'file' : 'files'}` : editable ? 'Add attachment' : 'View attachments'}
+      onPress={() => { if (disabled) return; if (!hasFiles && editable && !error) setSourceOpen(true); else setOpen(true); }} />} />
     <BottomSheet visible={open} title="Photos & documents" icon="attachment" closeIconOnly doneAccessibilityLabel="Close attachments" disabled={busy || working} maxHeight={height} gap={10} onDismiss={close}>
     {!session ? <Text style={ui.caption}>Sign in to view attachments.</Text> : <>
       {loading && <LoadingState label="Loading attachments…" />}
@@ -135,7 +135,7 @@ export default function BillAttachments({ session, groupId, expenseId, revision,
       {!!billTitle && <Text style={ui.caption}>{billTitle}</Text>}
       <AttachmentGallery session={session} items={items} selectedId={selected?.id ?? null} disabled={disabled}
         onSelect={setSelectedId} onOpen={item => void run(() => openPrivateMedia(session, item))}
-        onAdd={editable && !pending && items.length < 10 ? () => chooseAttachment(photo => void run(() => add(photo))) : undefined}
+        onAdd={editable && !pending && items.length < 10 ? () => { setOpen(false); setSourceOpen(true); } : undefined}
         options={selected && editable && <Button iconOnly icon="more" kind="text" accessibilityLabel={`Options for ${selectedLabel}`} disabled={disabled || !!pending} onPress={() => remove(selected)} />} />
       {pending && <><LocalAttachment file={pending.file} title={`${pending.file.type === 'application/pdf' ? 'PDF' : 'Photo'} waiting to upload`} subtitle="Saved on this device" disabled={disabled} onError={setError} />
         {!working && <NoticeBanner tone={pending.rejection ? 'error' : 'warning'}>{pending.rejection
