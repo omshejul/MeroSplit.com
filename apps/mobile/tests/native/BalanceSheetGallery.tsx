@@ -10,6 +10,7 @@ import AppStack, { NavigationContainer, useAppNavigation } from '../../src/AppSt
 import BalanceExplanation, { type BalanceSelection } from '../../src/BalanceExplanationDialog';
 import { balanceKey } from '../../src/balanceExplanation';
 import { directTransfers, proposeTransfers } from '../../src/accounting';
+import { ExpenseDetail } from '../../src/GroupScreen';
 import type { Expense, Group } from '../../src/types';
 const file = new File(Paths.document, 'balance-sheet-state.json');
 const save = (value: unknown) => file.write(JSON.stringify(value));
@@ -25,16 +26,16 @@ function fixture(long: boolean, simplified: boolean): Group {
 }
 function Gallery() {
  const navigation = useAppNavigation(), { ui, changeAppearance } = useUI();
- const [selection, setSelection] = useState<BalanceSelection | null>(null), [stale, setStale] = useState(false), [closes, setCloses] = useState(0);
+ const [selection, setSelection] = useState<BalanceSelection | null>(null), [stale, setStale] = useState(false), [closes, setCloses] = useState(0), [opened, setOpened] = useState<{ bill: Expense; group: Group } | null>(null);
  useEffect(() => { save({ ready: true, open: !!selection, closes, stale }); }, [selection, closes, stale]);
- function open(long = false, failed = false, simplified = false) {
+ function open(long = false, failed = false, simplified = false, outgoing = false) {
   const group = fixture(long, simplified); setStale(false);
-  setSelection({ group, accepted: group, selfId: 'a', commands: [], transfer: group.transfers[0], restoreFocus: () => {}, load: failed ? async () => { throw new Error('Connect to load the full breakdown.'); } : async () => ({ group, saved: true }) });
+  setSelection({ group, accepted: group, selfId: outgoing ? 'b' : 'a', commands: [], transfer: group.transfers[0], restoreFocus: () => {}, load: failed ? async () => { throw new Error('Connect to load the full breakdown.'); } : async () => ({ group, saved: true }) });
  }
  return <NavigationContainer ref={navigation.ref}><AppFrame><AppStack initialScreen="home" scope="balance-sheet-qa" blocked={false} render={() => <>
-  <ScreenHeader title="Balance sheet QA" busy={false} />
-  <View style={pageContentStyle}><Button title="Open amount breakdown" onPress={() => open()} /><Button title="Open long breakdown" onPress={() => open(true)} /><Button title="Open offline error" onPress={() => open(false, true)} /><Button title="Open simplified breakdown" onPress={() => open(false, false, true)} /><Button title="Use light" onPress={() => void changeAppearance('light')} /><Button title="Use dark" onPress={() => void changeAppearance('dark')} /><Text style={ui.caption}>Closed {closes} times</Text></View>
-  <BalanceExplanation selection={selection} currentKey={selection ? stale ? 'changed' : balanceKey(selection.group, []) : ''} onClose={() => { setSelection(null); setCloses(value => value + 1); }} />
+  <ScreenHeader title={opened ? opened.bill.description : "Balance sheet QA"} busy={false} />
+  <View style={pageContentStyle}>{opened ? <><Button title="Back to balances" onPress={() => setOpened(null)} /><ExpenseDetail expense={opened.bill} group={opened.group} selfId="a" busy={false} canEdit={false} onEdit={() => {}} onReverse={() => {}} /></> : <><Button title="Open amount breakdown" onPress={() => open()} /><Button title="Open outgoing breakdown" onPress={() => open(false, false, false, true)} /><Button title="Open long breakdown" onPress={() => open(true)} /><Button title="Open offline error" onPress={() => open(false, true)} /><Button title="Open simplified breakdown" onPress={() => open(false, false, true)} /><Button title="Use light" onPress={() => void changeAppearance('light')} /><Button title="Use dark" onPress={() => void changeAppearance('dark')} /><Text style={ui.caption}>Closed {closes} times</Text></>}</View>
+  <BalanceExplanation onOpenBill={bill => { if (selection) setOpened({ bill, group: selection.group }); }} selection={selection} currentKey={selection ? stale ? 'changed' : balanceKey(selection.group, []) : ''} onClose={() => { setSelection(null); setCloses(value => value + 1); }} />
  </>} /></AppFrame></NavigationContainer>;
 }
 export default function BalanceSheetGallery() { return <SafeAreaProvider><UIProvider><Gallery /></UIProvider></SafeAreaProvider>; }

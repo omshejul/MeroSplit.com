@@ -299,7 +299,7 @@ export default function GroupScreen({ session = null, bottomClearance = 120, cat
           <LegacyPayments group={group} accepted={accepted} selfId={selfId} busy={busy} onPayment={onPayment} onPrefetchPayment={onPrefetchPayment} onPage={onHistoryPage} scope={pagingScope} enabled={active && online} />
         </DetailDialog>}
       </>} />
-    <BalanceExplanation session={session} active={iconsActive} online={online} categoryIcons={categoryIcons} selection={explanation} currentKey={balanceKey(incoming, pending)} onClose={() => setExplanation(null)} />
+    <BalanceExplanation onOpenBill={onExpense} session={session} active={iconsActive} online={online} categoryIcons={categoryIcons} selection={explanation} currentKey={balanceKey(incoming, pending)} onClose={() => setExplanation(null)} />
   </Animated.View>;
 }
 function RecordAttribution({ action, name }: { action: string; name?: string | null }) {

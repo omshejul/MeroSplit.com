@@ -29,15 +29,17 @@ const nodes = (value: any): Element[] => Array.isArray(value) ? value.flatMap(no
 const find = (tree: any, prop: string, value: string) => nodes(tree).find(node => node.props[prop] === value)!;
 const payerContent = (tree: any) => { const child = find(tree, 'title', 'Who paid?').children[0]; return typeof child === 'function' ? child(() => {}) : child; };
 const tick = async () => { for (let i = 0; i < 15; i++) await Promise.resolve(); };
+const Animated = { View: 'Animated.View', Value: class { value: number; constructor(value: number) { this.value = value; } stopAnimation() {} setValue(value: number) { this.value = value; } interpolate(value: any) { return value; } } };
 function harness(file: string, name: string, extra: Record<string, any> = {}) {
   let cursor = 0, states: any[] = [], effects: (() => void)[] = [], cleanups: Record<number, () => void> = {};
   const deps: Record<number, any[]> = {};
   const draftDiscard = { current: null as null | (() => Promise<boolean>) };
-  const env: Record<string, any> = { channelSummary, categoryIcon, expenseCategory, changedBalance, useExpenseIcons: () => ({}), animateLayout() {}, PeopleSheet: 'PeopleSheet', currencySymbol, cachedRead: () => undefined, rememberRead() {}, invalidateRead() {}, getDatabase: async () => ({}), draftDiscard, ScreenDraftDiscard: {}, useContext: () => draftDiscard, expenseDraftStore: () => ({ read: () => ({ then: (done: (value: null) => void) => { done(null); return { catch() {} }; } }), write: async () => {} }), React, Dialog, PersonInviteDialog: 'PersonInviteDialog', useToast: () => () => {}, DetailDialog: 'DetailDialog', useScreenRemovalLock() {}, validUPIAddress, View: 'View', ScrollView: 'ScrollView', KeyboardDialog: 'KeyboardDialog', BottomSheet: 'BottomSheet', Pressable: 'Pressable', Text: 'Text', LoadingSpinner: 'LoadingSpinner', NotificationSwitch: 'NotificationSwitch', PushSettings: 'PushSettings', PushStatus: 'PushStatus', BalanceStatements: 'BalanceStatements', DialogScrollBody: 'DialogScrollBody', Form: 'Form', SectionHeading: 'SectionHeading', Button: 'Button', Icon: 'Icon', SettingsRow: 'SettingsRow', BillPeople: 'BillPeople', DraftAttachment: 'DraftAttachment', LocalAttachment: 'LocalAttachment', AmountField: 'AmountField', TextField: 'TextField', DateField: 'DateField', ErrorText: 'ErrorText', Checkbox: { Item: 'Checkbox' }, RadioChoice: 'RadioChoice', Crypto: { randomUUID: () => 'bill-id' }, StyleSheet: { create: (value: any) => value }, Keyboard: { dismiss() {} }, useWindowDimensions: () => ({ height: 667 }), useSafeAreaInsets: () => ({ top: 20, bottom: 0 }), Platform: { OS: 'native' }, requestAnimationFrame: (fn: () => void) => fn(), useUI: () => ({ ui: {} }), adjustmentToPaise, formatMoney, integer, rupeesToPaise, validateExpense, ...extra,
+  const env: Record<string, any> = { Animated, motionDuration: { feedback: 180 }, balanceColor: (amount: string, palette: any) => BigInt(amount) > 0n ? palette.positive : BigInt(amount) < 0n ? palette.negative : palette.muted, channelSummary, categoryIcon, expenseCategory, changedBalance, useExpenseIcons: () => ({}), animateLayout() {}, PeopleSheet: 'PeopleSheet', currencySymbol, cachedRead: () => undefined, rememberRead() {}, invalidateRead() {}, getDatabase: async () => ({}), draftDiscard, ScreenDraftDiscard: {}, useContext: () => draftDiscard, expenseDraftStore: () => ({ read: () => ({ then: (done: (value: null) => void) => { done(null); return { catch() {} }; } }), write: async () => {} }), React, Dialog, PersonInviteDialog: 'PersonInviteDialog', useToast: () => () => {}, DetailDialog: 'DetailDialog', useScreenRemovalLock() {}, validUPIAddress, View: 'View', ScrollView: 'ScrollView', KeyboardDialog: 'KeyboardDialog', BottomSheet: 'BottomSheet', Pressable: 'Pressable', Text: 'Text', LoadingSpinner: 'LoadingSpinner', NotificationSwitch: 'NotificationSwitch', PushSettings: 'PushSettings', PushStatus: 'PushStatus', BalanceStatements: 'BalanceStatements', DialogScrollBody: 'DialogScrollBody', Form: 'Form', SectionHeading: 'SectionHeading', Button: 'Button', Icon: 'Icon', SettingsRow: 'SettingsRow', BillPeople: 'BillPeople', DraftAttachment: 'DraftAttachment', LocalAttachment: 'LocalAttachment', AmountField: 'AmountField', TextField: 'TextField', DateField: 'DateField', ErrorText: 'ErrorText', Checkbox: { Item: 'Checkbox' }, RadioChoice: 'RadioChoice', Crypto: { randomUUID: () => 'bill-id' }, StyleSheet: { create: (value: any) => value }, Keyboard: { dismiss() {} }, useWindowDimensions: () => ({ height: 667 }), useSafeAreaInsets: () => ({ top: 20, bottom: 0 }), Platform: { OS: 'native' }, requestAnimationFrame: (fn: () => void) => fn(), useUI: () => ({ ui: {} }), adjustmentToPaise, formatMoney, integer, rupeesToPaise, validateExpense, ...extra,
     useState: (initial: any) => { const id = cursor++; if (!(id in states)) states[id] = typeof initial === 'function' ? initial() : initial; return [states[id], (value: any) => { states[id] = typeof value === 'function' ? value(states[id]) : value; }]; },
     useRef: (initial: any) => { const id = cursor++; return states[id] ??= { current: initial }; },
     useEffect: (fn: () => any, values: any[]) => { const id = cursor++; if (!deps[id] || values.some((value, i) => value !== deps[id][i])) { effects.push(() => { cleanups[id]?.(); cleanups[id] = fn(); }); deps[id] = values; } },
   };
+  const readUI = env.useUI; env.useUI = () => ({ motion: { enabled: false }, ...readUI() });
   const source = ts.createSourceFile(file, readFileSync(new URL(`../${file}`, import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   const body = source.statements.filter(node => !ts.isImportDeclaration(node) && !ts.isExportDeclaration(node)).map(node => node.getText(source).replace(/^export (?:default )?/, '')).join('\n');
   const code = ts.transpile(body, { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React });
@@ -1409,4 +1411,61 @@ test('Push UI uses the durable local choice through saving and network failure, 
 });
 test('statements use a frequency sheet without a third toggle, and manual send preserves subscription state',async()=>{
  const panel=statementPanel(),{app,props}=panel;app.render(props);app.commit();await tick();let tree=app.render(props);assert.equal(notificationToggle(tree,'Balance statements'),undefined);assert.equal(nodes(tree).find(n=>n.type==='SettingsRow'&&n.props.label==='Frequency')!.props.value,'Not scheduled');find(tree,'title','Email statement now').props.onPress();await tick();assert.equal(props.channels.state.value.statement_enabled,false);nodes(tree).find(n=>n.type==='SettingsRow'&&n.props.label==='Frequency')!.props.onPress();tree=app.render(props);assert.equal(nodes(tree).find(n=>n.type==='KeyboardDialog'&&n.props.label==='Statement frequency')!.props.visible,true);find(tree,'label','Weekly').props.onPress();tree=app.render(props);assert.equal(props.channels.state.value.statement_frequency,'weekly');assert.equal(nodes(tree).find(n=>n.type==='SettingsRow'&&n.props.label==='Frequency')!.props.value,'Weekly');app.unmount();
+});
+
+test('breakdown links open the matching bill, while amount colors follow the viewer in both directions', () => {
+  const expenses = [
+    { id: 'lunch', description: 'Lunch', total: '1000', paid: { A: '1000' }, shares: { A: '500', B: '500' }, category: 'food', date: '2026-10-28', deleted: false },
+    { id: 'taxi', description: 'Taxi', total: '200', paid: { B: '200' }, shares: { A: '200' }, category: 'transport', date: '2026-10-28', deleted: false },
+  ];
+  const group: any = { id: 'pair', version: 1, name: 'Trip', simplify_debts: false, participants: [{ id: 'A', name: 'Me' }, { id: 'B', name: 'Asha' }], expenses, settlements: [], balances: { A: '300', B: '-300' }, transfers: directTransfers(expenses as any, []), activity: [] };
+  const palette = { positive: 'green', negative: 'red' }, opened: any[] = [];
+  for (const selfId of ['A', 'B']) {
+    const value = explainTransfer(group, group, selfId, group.transfers[0]);
+    const app = harness('src/BalanceExplanationDialog.tsx', 'ExplanationBody', { useUI: () => ({ ui: {}, palette }) });
+    const rows = nodes(app.render({ value, selfId, onOpenBill: (bill: any) => opened.push(bill.id) })).filter(node => node.type?.name === 'InlineDetails');
+    assert.deepEqual(rows.map(row => row.props.amountEffect), selfId === 'A' ? ['500', '-200'] : ['-500', '200']);
+    for (const [index, row] of rows.entries()) {
+      const disclosure = harness('src/BalanceExplanationDialog.tsx', 'InlineDetails', { useUI: () => ({ ui: {}, palette }) });
+      let tree = disclosure.render(row.props);
+      const amount = nodes(tree).find(node => node.type === 'Text' && node.children.includes(index === 0 ? '+' : '−'))!;
+      assert.equal(amount.props.style[1].color, selfId === 'A' ? index === 0 ? 'green' : 'red' : index === 0 ? 'red' : 'green');
+      assert.match(find(tree, 'accessibilityRole', 'button').props.accessibilityLabel, /adds to what you (are owed|owe)/);
+      assert.equal(find(tree, 'title', 'Open bill'), undefined);
+      find(tree, 'accessibilityRole', 'button').props.onPress(); tree = disclosure.render(row.props);
+      find(tree, 'title', 'Open bill').props.onPress();
+    }
+  }
+  assert.deepEqual(opened, ['lunch', 'taxi', 'lunch', 'taxi']);
+});
+
+test('disclosure animates both ways, survives interrupted closing, and skips animation for reduced motion', () => {
+  let enabled = true;
+  const animations: any[] = [];
+  const animationEnv = { ...Animated, timing(value: any, options: any) {
+    const entry: any = { options, stopped: false, start(done: any) { this.done = done; }, stop() { this.stopped = true; this.done?.({ finished: false }); }, finish() { value.setValue(options.toValue); this.done?.({ finished: true }); } };
+    animations.push(entry); return entry;
+  } };
+  const app = harness('src/BalanceExplanationDialog.tsx', 'InlineDetails', { Animated: animationEnv, Easing: { cubic: 'cubic', out: (value: any) => value }, useUI: () => ({ ui: {}, palette: {}, motion: { enabled } }) });
+  const props = { title: 'Lunch', children: 'Bill details', onOpenBill() {} };
+  let tree = app.render(props); app.commit();
+  find(tree, 'accessibilityRole', 'button').props.onPress(); tree = app.render(props); app.commit();
+  nodes(tree).find(node => node.props.onLayout)!.props.onLayout({ nativeEvent: { layout: { height: 96 } } });
+  tree = app.render(props); app.commit();
+  assert.equal(animations.at(-1).options.toValue, 1); assert.equal(animations.at(-1).options.duration, 180);
+  animations.at(-1).finish();
+  find(tree, 'accessibilityRole', 'button').props.onPress(); tree = app.render(props); app.commit();
+  const closing = animations.at(-1); assert.equal(closing.options.toValue, 0);
+  assert.equal(find(tree, 'title', 'Open bill').props.disabled, true);
+  find(tree, 'accessibilityRole', 'button').props.onPress(); tree = app.render(props); app.commit();
+  assert.equal(closing.stopped, true); animations.at(-1).finish();
+  assert.ok(nodes(app.render(props)).some(node => node.children.includes('Bill details')));
+  find(tree, 'accessibilityRole', 'button').props.onPress(); app.render(props); app.commit(); animations.at(-1).finish();
+  assert.ok(!nodes(app.render(props)).some(node => node.children.includes('Bill details')));
+  enabled = false; const count = animations.length;
+  tree = app.render(props); app.commit(); find(tree, 'accessibilityRole', 'button').props.onPress(); tree = app.render(props); app.commit();
+  assert.ok(nodes(tree).some(node => node.children.includes('Bill details'))); assert.equal(animations.length, count);
+  find(tree, 'accessibilityRole', 'button').props.onPress(); app.render(props); app.commit();
+  assert.equal(find(app.render(props), 'title', 'Open bill'), undefined);
+  app.unmount();
 });
