@@ -81,3 +81,30 @@ test('a new client scope generation does not rejoin the prior same-token refresh
  finishes[0](); await old; assert.equal(env.accountRefresh.current.promise, current, 'old finally must not clear the replacement job');
  finishes[1](); await current; assert.equal(env.accountRefresh.current, null);
 });
+
+
+test('push and notice refreshes invalidate Activity before publishing and advance the live revision only for changed heads', async () => {
+ let invalidated=false,live=0,nextVersion='g:2';const heads={current:'g:1'};
+ const env:any={groupVersions:heads,scopeGeneration:{current:0},ownerRef:{current:owner},activeSessionRef:{current:session},authHeldRef:{current:false},activeGroupRef:{current:null},accountOwner,
+  setSyncing(){},setSyncProblem(){},setVerifiedEmptyOwner(){},getDatabase:async()=>({}),readProfile:async()=>{},request:async()=>({needs_invitation:false}),setNeedsInvitation(){},
+  syncOutbox:async()=>assert.fail('targeted live reads never replay writes'),retryAccountMediaUploads:async()=>assert.fail('targeted live reads never retry uploads'),
+  refreshGroups:async()=>[],readPrefetch:{invalidate(){invalidated=true;}},readScope:()=>owner,load:async()=>{assert.equal(invalidated,true,'old Activity cache expires before new group versions publish');heads.current=nextVersion;},setLiveRevision:(update:(n:number)=>number)=>live=update(live),downloadOffline(){},ApiError:class extends Error{},publishIfChanged:async()=>{}};
+ const read=production('runAccountRefresh',env);
+ await read(session,['g']);assert.equal(live,1);
+ invalidated=false;await read(session,['g']);assert.equal(live,1,'duplicate notice and heads arrivals do not create another live transition');
+ nextVersion='g:3';await read(session,['g']);assert.equal(live,2);
+});
+
+
+test('live recovery probes ignore a failed request hint but stop for browser offline, background or blocked auth', () => {
+ let options:ts.ObjectLiteralExpression|undefined;
+ function visit(node:ts.Node) {if(ts.isCallExpression(node)&&node.expression.getText(source)==='useLiveLedger')options=node.arguments[1] as ts.ObjectLiteralExpression;ts.forEachChild(node,visit);} visit(source);assert.ok(options);
+ const enabled=options.properties.find(node=>ts.isPropertyAssignment(node)&&node.name.getText(source)==='enabled') as ts.PropertyAssignment;
+ const evaluate=new Function('env',`with(env){return ${enabled.initializer.getText(source)};}`);
+ const env={ready:true,foreground:true,online:false,expired:false,authHeld:false,authPending:false,Platform:{OS:'android'},navigator:{onLine:true}};
+ assert.equal(evaluate(env),true,'native foreground probes can restore a soft reachability failure');
+ assert.equal(evaluate({...env,Platform:{OS:'web'}}),true);
+ assert.equal(evaluate({...env,Platform:{OS:'web'},navigator:{onLine:false}}),false);
+ for(const key of ['expired','authHeld','authPending'])assert.equal(evaluate({...env,[key]:true}),false);
+ assert.equal(evaluate({...env,foreground:false}),false);
+});

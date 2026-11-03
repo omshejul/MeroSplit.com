@@ -192,3 +192,18 @@ test('history depth refresh rejects stale, foreign and revoked pages without reu
   assert.equal(latest.transactions.length,1,'failed pages never alter the supplied snapshot');
  }finally{globalThis.fetch=original;}
 });
+
+
+test('a live revision re-runs the active search and preserves downloaded matching history', async () => {
+ const original=globalThis.fetch,calls:string[]=[];
+ const row=(id:string)=>({kind:'bill' as const,date:bill.date,bill:{...bill,id,description:'Coffee '+id}});
+ const previous={...summary(),transactions:[row('first'),row('older')],history:{...summary().history,transactions:{cursor:'old-search-page',next_cursor:'old-cursor',query:'Coffee'}}};
+ const latest={...summary(2),transactions:[{...row('unrelated'),bill:{...bill,id:'unrelated',description:'Taxi'}}],history:{...summary(2).history,transactions:{next_cursor:'wrong-unfiltered-cursor'}}};
+ try {
+  globalThis.fetch=async input=>{const url=new URL(String(input));calls.push(url.href);assert.equal(url.searchParams.get('q'),'Coffee');assert.equal(url.searchParams.get('version'),'2');return Response.json({read_mode:'page',group_id:'g',version:2,items:[row(url.searchParams.has('cursor')?'older':'first')],next_cursor:url.searchParams.has('cursor')?null:'new-filtered-cursor'});};
+  const refreshed=await retainHistoryWindow(session,latest,previous);
+  assert.deepEqual(refreshed.transactions?.map(row=>row.kind==='bill'?row.bill.id:row.payment.id),['first','older']);
+  assert.equal(refreshed.history?.transactions?.query,'Coffee');assert.equal(calls.length,2);
+  const empty=await retainHistoryWindow(session,latest,{...previous,transactions:[]});assert.equal(empty.history?.transactions?.query,'Coffee');
+ } finally {globalThis.fetch=original;}
+});

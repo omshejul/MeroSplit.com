@@ -9,7 +9,8 @@ import { migrate, enqueue, pendingCommands } from '../src/storage.ts';
 import { addPerson } from '../src/members.ts';
 const file = ts.createSourceFile('App.tsx', readFileSync(new URL('../App.tsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
 function declarations(name: string): ts.FunctionDeclaration[] { const result: ts.FunctionDeclaration[]=[]; function visit(node: ts.Node) { if(ts.isFunctionDeclaration(node) && node.name?.text===name) result.push(node); ts.forEachChild(node,visit); } visit(file); return result; }
-function production(name: string, env: object) { const node=declarations(name)[0]; assert.ok(node); return new Function('env', `with(env) { ${ts.transpile(node.getText(file),{target:ts.ScriptTarget.ES2022})}; return ${name}; }`)(withSharedUI(env)); }
+function production(name: string, env: object) {
+ if (name === 'runAccountRefresh') env = { groupVersions: { current: '' }, setLiveRevision() {}, readPrefetch: { invalidate() {} }, readScope: () => '', ...env }; const node=declarations(name)[0]; assert.ok(node); return new Function('env', `with(env) { ${ts.transpile(node.getText(file),{target:ts.ScriptTarget.ES2022})}; return ${name}; }`)(withSharedUI(env)); }
 
 test('actual App portal siblings have stable distinct account-scoped identities', () => {
  const keys:string[]=[];

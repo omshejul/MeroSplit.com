@@ -199,6 +199,13 @@ def groups(request):
 
 
 
+@api.get("/me/ledger-heads")
+def ledger_heads(request):
+    rows = list(groups_for_actor(Group.objects.filter(participants__user=request.auth, participants__removed=False), request.auth)
+                .annotate(hidden=F("participants__hidden")).order_by("id").values("id", "version", "hidden"))
+    return JsonResponse({"groups": rows}, headers={"Cache-Control": "no-store"})
+
+
 @api.post("/groups", response=LinkedWriteResult)
 def group_create(request, body: GroupIn):
     return create_group(request.auth, body.model_dump(mode="json"))

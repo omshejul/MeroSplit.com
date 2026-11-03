@@ -1,3 +1,4 @@
+import StaggerItem, { type ListEntry } from './StaggerItem';
 import { ErrorState } from './UIStates';
 import { EmptyState } from './UIStates';
 import PaginationFooter from './PaginationFooter';
@@ -19,16 +20,20 @@ import { AmountText, balanceColor, Icon, IconBadge, useUI } from './ui';
 
 type Props = {
   categoryIcons?: ExpenseIcons; onVisibleExpenses?: (refs: ExpenseIconRef[]) => void; header?: React.ReactNode; footer?: React.ReactNode; items: ActivityItem[]; busy: boolean; emptyVerified?: boolean; showEmpty?: boolean; error?: string | null; hasMore?: boolean;
-  cursor?: string | null; pagingScope?: string; active?: boolean; online?: boolean;
+  liveRevision?: number; cursor?: string | null; pagingScope?: string; active?: boolean; online?: boolean;
   onRefresh: () => void; onLoadMore?: (signal?: AbortSignal) => Promise<boolean>; onOpen: (target: ActivityTarget) => void;
 };
 
 /** This is an event feed. Only canonical bill content in its destination can mark a bill seen. */
-export default function ActivityScreen({ categoryIcons = {}, onVisibleExpenses, header, footer, items, busy, error, hasMore, cursor, pagingScope = 'activity', active = true, online = true, emptyVerified = false, showEmpty = true, onRefresh, onLoadMore, onOpen }: Props) {
+export default function ActivityScreen({ categoryIcons = {}, onVisibleExpenses, header, footer, items, busy, error, hasMore, cursor, pagingScope = 'activity', liveRevision = 0, active = true, online = true, emptyVerified = false, showEmpty = true, onRefresh, onLoadMore, onOpen }: Props) {
   const { ui, motion } = useUI();
   const { bottom, ...insets } = useHomeTabScrollInsets();
   const list = useRef<FlatList<ActivityItem>>(null);
-  const anchor = useListAnchor(list, items, active, motion.enabled);
+  const anchor = useListAnchor(list, items, active, false, undefined, true);
+  const arrivals = useRef({ revision: liveRevision, entries: new Map<string, ListEntry>() });
+  const live = arrivals.current.revision !== liveRevision;
+  items.forEach((item, index) => { if (!arrivals.current.entries.has(item.id)) arrivals.current.entries.set(item.id, { delay: Math.min(index, 5) * 30, played: !live }); });
+  arrivals.current.revision = liveRevision;
   const anchorRef = useRef(anchor); anchorRef.current = anchor;
   const visible = useRef(onVisibleExpenses); visible.current = onVisibleExpenses;
   const viewable = useRef(({ viewableItems }: { viewableItems: { isViewable: boolean; item: ActivityItem }[] }) => { anchorRef.current.viewable(viewableItems.filter(row => row.isViewable).map(row => row.item.id)); visible.current?.(viewableItems.filter(row => row.isViewable && row.item.bill && !row.item.bill.deleted).map(({ item }) => ({ ...item.bill!, id: item.bill!.id, title: item.bill!.description, groupId: item.group.id }))); } );
@@ -39,7 +44,7 @@ export default function ActivityScreen({ categoryIcons = {}, onVisibleExpenses, 
     contentContainerStyle={[pageContentStyle, { gap: 0, paddingBottom: pageContentStyle.paddingBottom + bottom }]} onRefresh={onRefresh} refreshing={false}
     ListHeaderComponent={<>{header}{error ? <ErrorState error={error} retryLabel="Try again" disabled={busy} onRetry={onRefresh} style={s.message} /> : null}</>}
     ListEmptyComponent={showEmpty && !hasMore && !error ? <EmptyState message="No activity yet" illustration={<Mascot size="empty" visible={emptyVerified && !busy} />} style={s.empty} /> : undefined}
-    renderItem={({ item, index }) => <View ref={anchor.rowRef(item.id)} collapsable={false}><ActivityRow categoryIcons={categoryIcons} item={item} busy={busy} onOpen={onOpen} showDay={index === 0 || activityDay(items[index - 1].created_at) !== activityDay(item.created_at)} /></View>}
+    renderItem={({ item, index }) => <View ref={anchor.rowRef(item.id)} collapsable={false}><StaggerItem entry={arrivals.current.entries.get(item.id)}><ActivityRow categoryIcons={categoryIcons} item={item} busy={busy} onOpen={onOpen} showDay={index === 0 || activityDay(items[index - 1].created_at) !== activityDay(item.created_at)} /></StaggerItem></View>}
     ListFooterComponent={<>{footer}<PaginationFooter paging={paging} error="Could not load earlier activity." style={s.message} /></>} />;
 }
 

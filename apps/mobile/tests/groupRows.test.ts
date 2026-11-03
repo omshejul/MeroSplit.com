@@ -257,7 +257,7 @@ test('actual GroupScreen transaction rows expose offline new/edit bills and thei
   assert.deepEqual(projected.history, accepted.history);
 });
 
-test('own saved payload changes adopt the same queued ID while conflict and acknowledgement keep the reading snapshot', () => {
+test('own saved payload changes remain during conflict and adopt confirmed records when pending work clears', () => {
   const slots: any[] = [];
   let cursor = 0, dirty = false, effects: (() => void)[] = [];
   const effect = (callback: () => void, deps: unknown[]) => { const index = cursor++, previous = slots[index]; if (!previous || deps.some((value, i) => !Object.is(value, previous[i]))) { slots[index] = deps; effects.push(callback); } };
@@ -277,7 +277,7 @@ test('own saved payload changes adopt the same queued ID while conflict and ackn
   assert.equal(view({ ...props, group: second, pending: [edited] }).props.data[0].bill.description, 'Saved edited');
   assert.equal(view({ ...props, group: accepted, pending: [{ ...edited, state: 'conflict' }] }).props.data[0].bill.description, 'Saved edited');
   const acknowledged = { ...accepted, version: 2 };
-  assert.equal(view({ ...props, group: acknowledged, accepted: acknowledged, pending: [] }).props.data[0].bill.description, 'Saved edited');
+  assert.deepEqual(view({ ...props, group: acknowledged, accepted: acknowledged, pending: [] }).props.data, [], 'confirmed records adopt automatically when pending work clears');
   assert.deepEqual(view({ ...props, group: acknowledged, accepted: acknowledged, pending: [], revision: 1 }).props.data, []);
 });
 
@@ -323,9 +323,9 @@ test('held optimistic total keeps its pending label until Show updates adopts ac
   assert.equal(elements(refreshed).find(node => node.type === 'PersonalTransferRow')!.props.disabled, true);
 });
 
-test('background summaries preserve displayed bills and accepted payments until an explicit read or own saved change', async () => {
+test('live summaries adopt safely while inactive, busy and pending views retain their reading snapshot', async () => {
   const slots: any[] = [], updates: boolean[] = [], reads: any[][] = [], offsets: unknown[] = [];
-  let cursor = 0, dirty = false, layout: (() => void)[] = [], effects: (() => void)[] = [], paging: any;
+  let cursor = 0, dirty = false, layout: (() => void)[] = [], effects: (() => void)[] = [], paging: any, lastRoot: Element;
   const effect = (queue: (() => void)[], callback: () => void, deps: unknown[]) => {
     const index = cursor++, previous = slots[index];
     if (!previous || deps.some((value, i) => !Object.is(value, previous[i]))) { slots[index] = deps; queue.push(callback); }
@@ -342,17 +342,17 @@ test('background summaries preserve displayed bills and accepted payments until 
     useScrollPagination: (options: any) => { paging = options; return { events: {}, loading: false, failed: false }; },
   });
   const bill = billRow(), payment = { id: 'older-payment', sender: 'self', recipient: 'other', amount: '10' };
-  const original = { ...group, version: 1, read_mode: 'summary', expenses: [bill], settlements: [payment], transfers: [], transactions: [{ kind: 'bill', bill }, { kind: 'payment', payment }], history: { transactions: { next_cursor: 'older' } } };
+  const original = { ...group, version: 1, read_mode: 'summary', expenses: [bill], settlements: [payment], transfers: [{ sender: 'other', recipient: 'self', amount: '10' }], transactions: [{ kind: 'bill', bill }, { kind: 'payment', payment }], history: { transactions: { next_cursor: 'older' } } };
   const initial = { ...original }, props = { group: initial, accepted: original, selfId: 'self', pending: [], busy: false, revision: 0, onUpdatesAvailable: (value: boolean) => updates.push(value), onHistoryPage: async (...args: any[]) => { reads.push(args); return true; } };
   const view = (next: any) => {
     let tree: Element;
     do { dirty = false; cursor = 0; layout = []; effects = []; tree = render(next); layout.forEach(fn => fn()); effects.forEach(fn => fn()); } while (dirty);
-    return elements(tree!).find(node => node.type === 'FlatList')!;
+    lastRoot = tree!; return elements(tree!).find(node => node.type === 'FlatList')!;
   };
   const first = view(props);
   first.props.ref.current = { scrollToOffset: (value: unknown) => offsets.push(value) };
   const latestBill = billRow({ id: 'newest' }), latest = { ...original, version: 2, expenses: [latestBill], settlements: [], transactions: [{ kind: 'bill', bill: latestBill }], history: { transactions: { next_cursor: 'newer-window' } } };
-  const background = view({ ...props, group: latest, accepted: latest });
+  const background = view({ ...props, group: latest, accepted: latest, active: false });
   assert.equal(background.props.data, original.transactions, 'background head replacement preserves every displayed row');
   const oldPayment = background.props.renderItem({ item: original.transactions[1] }).children[0].children[0];
   assert.equal(oldPayment.props.accepted, original, 'accepted payment membership advances with the displayed snapshot');
@@ -367,11 +367,26 @@ test('background summaries preserve displayed bills and accepted payments until 
   assert.equal(saved.props.data, own.transactions, 'own saved changes appear without waiting for another refresh');
   const acknowledged = { ...latest, version: 3 };
   const afterSync = view({ ...props, group: acknowledged, accepted: acknowledged, revision: 1 });
-  assert.equal(afterSync.props.data, own.transactions, 'background acknowledgment keeps the displayed rows');
+  assert.equal(afterSync.props.data, acknowledged.transactions, 'remote and push refreshes adopt without a separate manual revision');
   assert.deepEqual(offsets, [], 'acknowledgment does not move the reader');
-  assert.equal(updates.at(-1), true);
-  const adopted = view({ ...props, group: acknowledged, accepted: acknowledged, revision: 2 });
-  assert.equal(adopted.props.data, acknowledged.transactions);
+  assert.equal(updates.at(-1), false);
+  const liveBill = billRow({id: 'live-arrival'}), next = { ...acknowledged, version: 4, transactions: [{kind:'bill',bill:liveBill}, ...acknowledged.transactions] };
+  assert.equal(view({ ...props, group: next, accepted: next, revision: 1, busy: true }).props.data, acknowledged.transactions);
+  const live = view({ ...props, group: next, accepted: next, revision: 1, busy: false });
+  assert.equal(live.props.data, next.transactions);
+  assert.equal(live.props.renderItem({item:next.transactions[0]}).children[0].props.entry,undefined,'a live arrival waits until visible');
+  live.props.onViewableItemsChanged({viewableItems:[{item:next.transactions[0],index:0,isViewable:true},{item:next.transactions[1],index:1,isViewable:true}]});
+  const entrance=live.props.renderItem({item:next.transactions[0]}).children[0].props.entry;
+  assert.equal(entrance.played,false,'only a genuinely new live row receives an entrance');
+  assert.equal(live.props.renderItem({item:next.transactions[1]}).children[0].props.entry.played,true,'an existing row does not replay');
+  elements(lastRoot!).find(node=>node.type==='PersonalTransferRow')!.props.onExplain(next.transfers[0],()=>{});
+  view({ ...props, group: next, accepted: next, revision: 1 });
+  const newer={...next,version:5,transactions:[{kind:'bill',bill:billRow({id:'after-sheet'})},...next.transactions]};
+  assert.equal(view({ ...props, group: newer, accepted: newer, revision:1 }).props.data,next.transactions,'an open explanation holds its current rows');
+  elements(lastRoot!).find(node=>node.type==='BalanceExplanation')!.props.onClose();
+  assert.equal(view({ ...props, group:newer,accepted:newer,revision:1 }).props.data,newer.transactions,'closing the sheet adopts the waiting version');
+  const adopted = view({ ...props, group: next, accepted: next, revision: 2 });
+  assert.equal(adopted.props.data, next.transactions);
   assert.equal(updates.at(-1), false);
 });
 
@@ -644,6 +659,7 @@ test('transaction entrance follows visible batches beyond row eight and never re
   const show = (ids: number[]) => list.props.onViewableItemsChanged({ viewableItems: ids.map(index => ({ index, isViewable: true, item: value.transactions[index] })) });
   show(Array.from({ length: 12 }, (_, i) => i));
   assert.equal(entry(0).delay, 0); assert.equal(entry(10).delay, 210, 'every visible row is included with a bounded delay');
+  assert.equal(entry(0).played, true, 'initial rows do not animate as live arrivals');
   const first = entry(0); first.played = true;
   show([40, 41, 42]); assert.equal(entry(40).delay, 0); assert.equal(entry(42).delay, 70);
   show([0, 1]); assert.equal(entry(0), first); assert.equal(entry(0).played, true, 'scrolling back cannot replay');

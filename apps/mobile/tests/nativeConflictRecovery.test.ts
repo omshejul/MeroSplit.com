@@ -118,7 +118,7 @@ test('review fetch cannot publish a screen or cache after the account/session ge
 
 test('actual group callsite passes preview status separately from the live header', () => {
   const previewError = 'Balances show accepted records. Sync or review saved changes before previewing a new total.';
-  const view = variable('groupView', { session, expenseClearance:120, screen: 'group', selected: { group }, preview: group, previewError, GroupScreen: 'GroupScreen', categoryIcons: {}, listNotice: null, noticeVisibility: undefined, owner, groupId: 'g', ledgerRevision: 0, setLedgerUpdates() {}, pending: [edit], busy: false, selfId: 'a', loadBalanceGroup() {}, browseScope: '', remindPayment() {}, focused: false, foreground: true, expired: false, authHeld: false, online: true, pullToRefresh() {}, pulling: false });
+  const view = variable('groupView', { session, expenseClearance:120, screen: 'group', selected: { group }, preview: group, previewError, GroupScreen: 'GroupScreen', categoryIcons: {}, listNotice: null, noticeVisibility: undefined, owner, groupId: 'g', ledgerRevision: 0, liveRevision: 0, setLedgerUpdates() {}, pending: [edit], busy: false, selfId: 'a', loadBalanceGroup() {}, browseScope: '', remindPayment() {}, focused: false, foreground: true, expired: false, authHeld: false, online: true, pullToRefresh() {}, pulling: false });
   assert.equal(view.props.session, session);
   assert.equal(view.props.iconsActive, true, 'an open native sheet must not disable its icon loading');
   assert.equal(view.props.active, false);

@@ -23,7 +23,7 @@ function elements(tree: unknown): Element[] {
   if (!tree || typeof tree !== 'object' || !('children' in tree)) return [];
   const element = tree as Element; return [element, ...element.children.flatMap(elements), ...elements(element.props.ListHeaderComponent), ...elements(element.props.ListFooterComponent), ...elements(element.props.data?.length ? undefined : element.props.ListEmptyComponent)];
 }
-const uiEnv = { FlatList: 'FlatList', pageContentStyle: {}, useRef: () => ({ current: null }), useScrollPagination: () => ({ events: {}, loading: false, failed: false }), LoadingSpinner: 'LoadingSpinner', Mascot, Text: 'Text', ErrorText: 'ErrorText', View: 'View', ActivityIndicator: 'Spinner', Button: 'Button', GroupListRow: 'GroupListRow', ActivityRow: 'ActivityRow', styles: {}, s: {}, useUI: () => ({ ui: {}, palette: {}, motion: {enabled:true} }) };
+const uiEnv = { FlatList: 'FlatList', pageContentStyle: {}, useRef: (value: unknown) => ({ current: value ?? null }), useScrollPagination: () => ({ events: {}, loading: false, failed: false }), LoadingSpinner: 'LoadingSpinner', Mascot, Text: 'Text', ErrorText: 'ErrorText', View: 'View', ActivityIndicator: 'Spinner', Button: 'Button', GroupListRow: 'GroupListRow', ActivityRow: 'ActivityRow', styles: {}, s: {}, useUI: () => ({ ui: {}, palette: {}, motion: {enabled:true} }) };
 
 test('Groups and Activity decorate only verified true empty states while retaining their existing copy', () => {
   const groups = productionFunction('src/GroupList.tsx', 'GroupList', uiEnv);
@@ -107,7 +107,7 @@ test('production canonical refresh marker clears immediately and only verifies a
   let marker = 'owner1', release!: () => void;
   const loaded = new Promise<void>(resolve => { release = resolve; });
   const env = { scopeGeneration: { current: 0 }, setVerifiedEmptyOwner: (value: string) => { marker = value; }, getDatabase: async () => ({}), accountOwner: () => scope, readProfile: async () => {}, syncOutbox: async () => {}, retryAccountMediaUploads: async () => 0, refreshGroups: async () => { if (failed) throw Error('Offline'); return []; }, load: () => loaded, ownerRef: { current: scope }, activeSessionRef: { current: active }, activeGroupRef: { current: null }, ApiError: class extends Error {} };
-  const sync = productionFunction('App.tsx', 'runAccountRefresh', { ...env, authHeldRef: {current:false}, setSyncing(){}, setSyncProblem(){}, request:async()=>({needs_invitation:false}), setNeedsInvitation(){}, downloadOffline(){}, publishIfChanged:async()=>{} });
+  const sync = productionFunction('App.tsx', 'runAccountRefresh', { ...env, groupVersions:{current:''}, readPrefetch:{invalidate(){}}, readScope:()=>'', setLiveRevision(){}, authHeldRef: {current:false}, setSyncing(){}, setSyncProblem(){}, request:async()=>({needs_invitation:false}), setNeedsInvitation(){}, downloadOffline(){}, publishIfChanged:async()=>{} });
   const refreshing = sync(active); assert.equal(marker, ''); release(); await refreshing; assert.equal(marker, scope);
   failed = true;
   await assert.rejects(sync(active), /Offline/); assert.equal(marker, '');
