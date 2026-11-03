@@ -21,6 +21,7 @@ export function useListAnchor<T>(list: React.RefObject<FlatList<T> | null>, revi
   if(!active||!saved.current.length)return;
   const anchor=saved.current.find(value=>nodes.current.has(value.key));if(!anchor)return;
   const stamp=++generation.current;restoring.current=true;
+  if(timer.current)clearTimeout(timer.current);
   let frame=requestAnimationFrame(()=>{frame=requestAnimationFrame(()=>nodes.current.get(anchor.key)?.measureInWindow((_x,y)=>{
    if(!live.current||stamp!==generation.current)return;
    if(Math.abs(y-anchor.y)<1){restoring.current=false;capture();return;}

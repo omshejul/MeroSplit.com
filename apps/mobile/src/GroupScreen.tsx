@@ -248,7 +248,7 @@ export default function GroupScreen({ session = null, bottomClearance = 120, cat
     load: signal => onHistoryPage?.(historyResource, 'next', undefined, signal, accepted) ?? Promise.resolve(false) });
   const visibility = noticeVisibility ? { ...noticeVisibility, viewport, scrollEpoch } : undefined;
   return <Animated.View ref={frame} role="region" accessibilityLabel={group.name} style={{ flex: 1, opacity }}>
-    <FlatList maintainVisibleContentPosition={{ minIndexForVisible: 0 }} renderScrollComponent={props => <KeyboardScrollView {...props} refreshControl={props.refreshControl ?? (onRefresh ? <RefreshControl refreshing={refreshing ?? false} onRefresh={onRefresh} /> : undefined)} />} ref={list} contentInsetAdjustmentBehavior="automatic" data={rows} extraData={entryRevision} nestedScrollEnabled scrollEventThrottle={100} onEndReachedThreshold={0.3}
+    <FlatList renderScrollComponent={props => <KeyboardScrollView {...props} refreshControl={props.refreshControl ?? (onRefresh ? <RefreshControl refreshing={refreshing ?? false} onRefresh={onRefresh} /> : undefined)} />} ref={list} contentInsetAdjustmentBehavior="automatic" data={rows} extraData={entryRevision} nestedScrollEnabled scrollEventThrottle={100} onEndReachedThreshold={0.3}
       onLayout={event => { frame.current?.measureInWindow((x, y, width, height) => setViewport({ x, y, width, height })); }}
       onScrollBeginDrag={anchor.dragging} onScroll={event => { anchor.scrolled(event.nativeEvent.contentOffset.y); setScrollEpoch(value => value + 1); }}
       keyboardShouldPersistTaps="handled" onViewableItemsChanged={viewable.current} onRefresh={onRefresh} refreshing={refreshing}

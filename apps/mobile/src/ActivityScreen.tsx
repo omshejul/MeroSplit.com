@@ -34,7 +34,7 @@ export default function ActivityScreen({ categoryIcons = {}, onVisibleExpenses, 
   const viewable = useRef(({ viewableItems }: { viewableItems: { isViewable: boolean; item: ActivityItem }[] }) => { anchorRef.current.viewable(viewableItems.filter(row => row.isViewable).map(row => row.item.id)); visible.current?.(viewableItems.filter(row => row.isViewable && row.item.bill && !row.item.bill.deleted).map(({ item }) => ({ ...item.bill!, id: item.bill!.id, title: item.bill!.description, groupId: item.group.id }))); } );
   const paging = useScrollPagination({ scope: pagingScope, cursor, enabled: active && online && !busy && !error,
     load: signal => onLoadMore?.(signal) ?? Promise.resolve(false) });
-  return <FlatList maintainVisibleContentPosition={{ minIndexForVisible: 0 }} onViewableItemsChanged={viewable.current} ref={list} data={items} keyExtractor={item => item.id} onScroll={event => anchor.scrolled(event.nativeEvent.contentOffset.y)} onScrollBeginDrag={anchor.dragging} scrollEventThrottle={100} onEndReachedThreshold={0.3}
+  return <FlatList onViewableItemsChanged={viewable.current} ref={list} data={items} keyExtractor={item => item.id} onScroll={event => anchor.scrolled(event.nativeEvent.contentOffset.y)} onScrollBeginDrag={anchor.dragging} scrollEventThrottle={100} onEndReachedThreshold={0.3}
     contentInsetAdjustmentBehavior="automatic" {...insets}
     contentContainerStyle={[pageContentStyle, { gap: 0, paddingBottom: pageContentStyle.paddingBottom + bottom }]} onRefresh={onRefresh} refreshing={false}
     ListHeaderComponent={<>{header}{error ? <ErrorState error={error} retryLabel="Try again" disabled={busy} onRetry={onRefresh} style={s.message} /> : null}</>}
