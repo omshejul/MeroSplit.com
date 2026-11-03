@@ -1,4 +1,5 @@
 import { clearExpenseIcons } from './expenseIconCache.ts';
+import { clearNotificationChannels } from './channelPreferences.ts';
 import type { CachedGroup, Command, Group, LegacyRecovery, LegacySource } from './types';
 import type { ExpenseHistoryPage } from './expenseHistory';
 
@@ -287,6 +288,7 @@ export async function bindLegacyGroup(db: Database, owner: string, recovery: Leg
 
 export async function wipeAccount(db: Database, owner: string): Promise<void> {
   await clearExpenseIcons(db, owner);
+  await clearNotificationChannels(db, owner);
   await db.withExclusiveTransactionAsync(async tx => {
     await tx.runAsync('DELETE FROM outbox WHERE owner=?', owner);
     await tx.runAsync('DELETE FROM groups_cache WHERE owner=?', owner);

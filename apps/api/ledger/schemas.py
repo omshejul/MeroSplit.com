@@ -155,6 +155,14 @@ class BalanceStatementPreferencesIn(Input):
     frequency: Literal["weekly", "monthly"]
 
 
+class NotificationChannelsIn(Input):
+    client_id: UUID
+    revision: Annotated[StrictInt, Field(ge=1, le=9007199254740991)]
+    email_notifications: StrictBool | None = None
+    statement_frequency: Literal["weekly", "monthly"] | None = None
+    activate_push: StrictBool = False
+
+
 class NotificationPreferencesIn(Input):
     expense_updates: StrictBool
     email_reminders: StrictBool
@@ -216,6 +224,7 @@ class SplitwiseImportResult(WriteResult):
 
 
 class PushDeviceIn(Input):
+    preference_revision: Annotated[StrictInt, Field(ge=1, le=9007199254740991)] | None = None
     bill_chat: StrictBool = False
     ledger_updates: StrictBool = False
     currency: Literal["INR", "USD", "EUR", "GBP", "AED", "AUD", "CAD", "SGD", "NZD", "CHF", "JPY"] = "INR"

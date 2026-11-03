@@ -84,6 +84,7 @@ import useAppUpdates from './src/useAppUpdates';
 import { restartForUpdate } from './src/appUpdate';
 import { usePushNotifications } from './src/PushSettings';
 import AccountNotifications from './src/AccountNotifications';
+import { useNotificationChannels } from './src/useNotificationChannels';
 import MCPSettings from './src/MCPSettings';
 import OAuthContinuation from './src/OAuthContinuation';
 import { changeGroupMembership } from './src/groupMembership';
@@ -196,11 +197,12 @@ function AppContent() {
   const [pushOpportunity, setPushOpportunity] = useState<PushOpportunity | null>(null);
   const [pushInvitationOpen, setPushInvitationOpen] = useState(false);
   const [pushTarget, setPushTarget] = useState<{ token: string; target: PushTarget | null } | null>(null);
+  const notificationChannels = useNotificationChannels(authPending ? null : session);
   const push = usePushNotifications(authPending ? null : session, {
     onOpen: async target => { if (session) setPushTarget({ token: session.token, target }); },
     onForeground: async () => { if (ready && session && !authHeldRef.current && !lock.current) syncQuietly(); },
     shouldSuppress: data => suppressPush.current(data),
-  });
+  }, notificationChannels);
   const providerConnections = useLinkedProviders(authPending ? null : session, ready && foreground && online && !expired && !authHeld);
   useEffect(() => { if (session && screen === 'signInMethods') providerConnections.refresh(); }, [session?.token, screen, tab]);
   const activeGroupRef = useRef(groupId); activeGroupRef.current = groupId;
@@ -1515,7 +1517,7 @@ function AppContent() {
         <AccountHeader onPhotoChanged={() => refreshProfilePhotos(session)} key={owner} session={session} name={myName} busy={busy} onBusyChange={value => setSubmission(value, `${route.key}|profile-photo`)} />
         <View><ProfileSettings key={`profile-settings|${owner}`} name={myName} vpa={vpa} busy={busy} onSaveName={saveName} onSaveUPI={saveUPI} onAppearance={value => perform(() => changeAppearance(value), false, 'appearance')} onColorFamily={value => perform(() => changeColorFamily(value), false, 'appearance')} onCurrency={value => perform(() => changeCurrency(value), false, 'currency')} />
           <SettingsRow rowRef={methodsRow} label="Sign-in methods" icon="key" disabled={busy || expired} onPress={() => navigate('signInMethods')} />
-          <AccountNotifications key={`account-notifications|${owner}`} session={session} push={push} busy={busy} onBusyChange={value => setSubmission(value, `${route.key}|notifications`)} />
+          <AccountNotifications key={`account-notifications|${owner}`} session={session} push={push} channels={notificationChannels} busy={busy} onBusyChange={value => setSubmission(value, `${route.key}|notifications`)} />
           <MCPSettings key={`mcp-settings|${owner}`} session={session} busy={busy} onBusyChange={value => setSubmission(value, `${route.key}|mcp`)} />
         <View><SettingsRow label="Import from Splitwise" icon="import" disabled={busy} onPress={() => navigate('import')} />
           <ExportData key={`export-data|${owner}`} busy={busy} onExport={exportData} /></View>

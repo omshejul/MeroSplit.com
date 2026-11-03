@@ -14,7 +14,7 @@ from ninja.files import UploadedFile as RequestFile
 from ninja.security import django_auth
 from pydantic import Field, StrictInt, StrictStr
 
-from . import balance_statements, bill_chat, feedback, group_invites
+from . import balance_statements, bill_chat, feedback, group_invites, notification_channels
 from .accounting import AccountingError
 from .app_releases import STORE_RELEASES
 from .collaboration import (
@@ -87,6 +87,7 @@ from .schemas import (
     InviteIn,
     LinkedWriteResult,
     NotificationPreferencesIn,
+    NotificationChannelsIn,
     OpeningIn,
     ParticipantIn,
     ParticipantNameIn,
@@ -351,6 +352,16 @@ def account_sign_in_disconnect(request, account_id: int):
 @api.post('/me/feedback')
 def submit_feedback(request, body: FeedbackIn):
     return feedback.submit(request.auth, body.id, body.text)
+
+
+@api.get("/me/notifications/channels")
+def notification_channels_read(request):
+    return notification_channels.preferences(request.auth)
+
+
+@api.put("/me/notifications/channels")
+def notification_channels_update(request, body: NotificationChannelsIn):
+    return notification_channels.update(request.auth, **body.model_dump(exclude_none=True))
 
 
 @api.put("/me/notifications/preferences")
@@ -678,9 +689,9 @@ def push_device_register(request, installation_id: UUID, body: PushDeviceIn):
 
 
 @api.delete("/me/push-devices/{installation_id}")
-def push_device_remove(request, installation_id: UUID):
+def push_device_remove(request, installation_id: UUID, preference_revision: Annotated[int, Field(ge=1, le=9007199254740991)] | None = None):
     from .push import remove_device
-    return remove_device(request.auth, installation_id)
+    return remove_device(request.auth, installation_id, preference_revision)
 
 
 @api.get("/me/mcp/pending")

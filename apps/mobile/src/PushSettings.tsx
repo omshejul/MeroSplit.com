@@ -1,5 +1,5 @@
 import { ErrorState } from './UIStates';
-import { createSettingWriter, type SettingState } from './settingWriter';
+import type { NotificationChannels } from './useNotificationChannels';
 
 import React, { useEffect, useRef, useState } from 'react';
 import { AppState, Linking, Platform, Text, View } from 'react-native';
@@ -9,7 +9,7 @@ import * as SecureStore from 'expo-secure-store';
 import Constants from 'expo-constants';
 import * as Notifications from 'expo-notifications';
 import { accountOwner } from './api';
-import { consentToPush, dismissReadPushes, emptyPushPreferences, notificationForAccount, notificationTarget, pushPermission, refreshPushDevice, unregisterPushDevice } from './notifications';
+import { pushChoice, dismissReadPushes, emptyPushPreferences, notificationForAccount, notificationTarget, pushPermission, refreshPushDevice, unregisterPushDevice } from './notifications';
 import type { PushPermission, PushPreferences, PushTarget } from './notifications';
 import type { Session } from './types';
 import { Button, useUI } from './ui';
@@ -19,19 +19,27 @@ type Callbacks = { onOpen: (target: PushTarget | null) => Promise<void>; onForeg
 let suppressForeground = (_data: unknown) => true;
 Notifications.setNotificationHandler({ handleNotification: async notification => { const show = !suppressForeground(notification.request.content.data); return { shouldShowBanner: show, shouldShowList: show, shouldPlaySound: show, shouldSetBadge: false }; } });
 
-export function usePushNotifications(session: Session | null, callbacks: Callbacks) {
+export function usePushNotifications(session: Session | null, callbacks: Callbacks, channels?: NotificationChannels) {
   const { currency } = useUI();
   const [preferences, setPreferences] = useState<PushPreferences | null>(null), [permission, setPermission] = useState<PushPermission>('ask');
-  const [working, setWorking] = useState(false), [verified, setVerified] = useState(false), [error, setError] = useState('');
+  const [working, setWorking] = useState(false), [saving, setSaving] = useState(false), [verified, setVerified] = useState(false), [error, setError] = useState('');
   const saved = useRef<PushPreferences | null>(null), activeSession = useRef(session), handlers = useRef(callbacks), mounted = useRef(true);
   activeSession.current = session; handlers.current = callbacks;
-  suppressForeground = data => !notificationForAccount(activeSession.current, data) || !!handlers.current.shouldSuppress?.(data);
+  const channelState = useRef(channels); channelState.current = channels;
+  const localWrites = useRef<Promise<unknown>>(Promise.resolve()), durable = useRef<PushPreferences | null>(null);
+  suppressForeground = data => !saved.current?.opted_in || !!saved.current?.pending_off || !notificationForAccount(activeSession.current, data) || !!handlers.current.shouldSuppress?.(data);
   const serial = useRef<Promise<unknown>>(Promise.resolve()), running = useRef(false), seen = useRef(new Set<string>()), previousOwner = useRef<string | null>(null);
   const owner = session ? accountOwner(session) : null;
+  const retiredRevision = channels?.state.value?.muted_push_devices?.find(device => device.id === preferences?.installation_id)?.revision ?? -1;
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   async function save(value: PushPreferences) {
-    await SecureStore.setItemAsync(CHOICE_KEY, JSON.stringify(value)); saved.current = value;
-    if (mounted.current) setPreferences(value);
+    if ((value.revision ?? 0) < (saved.current?.revision ?? 0)) return;
+    if (value.owner && (!activeSession.current || value.owner !== accountOwner(activeSession.current))) return;
+    saved.current = value; if (mounted.current) { setPreferences(value); setSaving(true); }
+    const write = localWrites.current.catch(() => {}).then(async () => { await SecureStore.setItemAsync(CHOICE_KEY, JSON.stringify(value)); durable.current = value; });
+    localWrites.current = write;
+    try { await write; if (mounted.current && saved.current === value) setSaving(false); }
+    catch (cause) { if (saved.current === value) { saved.current = durable.current; if (mounted.current) { setPreferences(durable.current); setSaving(false); setError('Could not save on this device. Try again.'); } } throw cause; }
   }
   async function state() {
     if (saved.current) return saved.current;
@@ -42,7 +50,7 @@ export function usePushNotifications(session: Session | null, callbacks: Callbac
     try { value = raw ? JSON.parse(raw) as PushPreferences : emptyPushPreferences(installation); }
     catch { throw new Error('Could not restore notification settings. Sign out and sign in again.'); }
     if (value.installation_id !== installation) throw new Error('Could not restore notification settings. Sign out and sign in again.');
-    saved.current = value; if (mounted.current) setPreferences(value); return value;
+    saved.current = durable.current = value; if (mounted.current) setPreferences(value); return value;
   }
   function run(action: () => Promise<void>) {
     const result = serial.current.catch(() => {}).then(async () => {
@@ -58,10 +66,27 @@ export function usePushNotifications(session: Session | null, callbacks: Callbac
   }
   async function refreshNow(token?: Notifications.DevicePushToken) {
     try {
-    const current = activeSession.current, value = await state();
+    const current = activeSession.current; let value = await state();
+    await localWrites.current;
+    value = saved.current ?? value;
     const status = pushPermission(await Notifications.getPermissionsAsync()); if (mounted.current) { setPermission(status); if (status !== 'granted') setVerified(false); }
     if (!current) return;
-    await refreshPushDevice(current, value, status, async () => {
+    if (value.owner !== accountOwner(current)) { await save({ ...emptyPushPreferences(value.installation_id), revision: (value.revision ?? 0) + 1 }); return; }
+    const account = channelState.current;
+    if (account && !account.state.value) return;
+    if (status !== 'granted' && value.opted_in && !value.pending_on) { value = pushChoice(current, value, false); await save(value); }
+    if ((account?.state.value?.legacy_muted || account?.state.value?.muted_push_devices?.some(device => device.id === value.installation_id && device.revision >= (value.revision ?? 0))) && value.opted_in && !value.pending_on) { value = pushChoice(current, value, false); await save(value); }
+    if (value.opted_in && value.pending_on) {
+      let permission = status;
+      if (permission === 'ask') permission = pushPermission(await Notifications.requestPermissionsAsync({ ios: { allowAlert: true, allowBadge: false, allowSound: true } }));
+      if (mounted.current) setPermission(permission);
+      if (permission !== 'granted') { value = pushChoice(current, saved.current ?? value, false); await save(value); }
+      else await account?.activatePush();
+    }
+    value = saved.current ?? value;
+    if (activeSession.current?.token !== current.token) return;
+    const effectivePermission = value.pending_on ? 'granted' : status;
+    await refreshPushDevice(current, value, effectivePermission, async () => {
       await channel();
       const projectId = Constants.expoConfig?.extra?.eas?.projectId;
       if (typeof projectId !== 'string') throw new Error('Notifications are not configured yet.');
@@ -87,21 +112,18 @@ export function usePushNotifications(session: Session | null, callbacks: Callbac
       if (activeSession.current?.token === current.token && AppState.currentState === 'active') await Notifications.dismissNotificationAsync(id);
     });
   }
-  const enable = async () => { const current = activeSession.current; let enabled = false; await run(async () => {
-    if (!current || !activeSession.current || accountOwner(activeSession.current) !== accountOwner(current)) throw new Error('Sign in to enable notifications.');
-    await consentToPush(current, await state(), save); await channel();
-    let status = await Notifications.getPermissionsAsync();
-    if (pushPermission(status) === 'ask') status = await Notifications.requestPermissionsAsync({ ios: { allowAlert: true, allowBadge: false, allowSound: true } });
-    if (activeSession.current?.token !== current.token || accountOwner(activeSession.current) !== accountOwner(current)) return;
-    if (pushPermission(status) !== 'granted') { setPermission(pushPermission(status)); await unregisterPushDevice(current, await state(), save); return; }
-    await refreshNow(); enabled = true;
-  }); return enabled; };
-  const disable = () => { const current = activeSession.current; return run(async () => {
-    if (current) await unregisterPushDevice(current, await state(), save);
-    if (mounted.current) setVerified(false);
-  }); };
+  async function choose(enabled: boolean) {
+    const current = activeSession.current;
+    if (!current) throw new Error('Sign in to change notifications.');
+    const value = saved.current ?? await state();
+    if (mounted.current) setError('');
+    await save(pushChoice(current, value, enabled));
+    void refresh().catch(() => {});
+  }
+  const enable = async () => { await choose(true); return true; };
+  const disable = () => choose(false);
   const clear = () => run(async () => {
-    const value = await state(); await save(emptyPushPreferences(value.installation_id));
+    const value = await state(); await save({ ...emptyPushPreferences(value.installation_id), revision: (value.revision ?? 0) + 1 });
     seen.current.clear(); Notifications.clearLastNotificationResponse(); await Notifications.dismissAllNotificationsAsync();
     if (mounted.current) setVerified(false);
   });
@@ -123,7 +145,7 @@ export function usePushNotifications(session: Session | null, callbacks: Callbac
     void refresh().catch(() => {});
     void clearReadPrompts().catch(() => {});
     if (session) void open(Notifications.getLastNotificationResponse()).catch(() => {});
-  }, [owner, session?.token, currency]);
+  }, [owner, session?.token, currency, !!channels?.state.value, channels?.state.value?.legacy_muted, retiredRevision]);
   useEffect(() => {
     const foreground = AppState.addEventListener('change', value => { if (value === 'active') { if (!running.current) void refresh().catch(() => {}); void clearReadPrompts().catch(() => {}); } });
     const rotated = Notifications.addPushTokenListener(token => { if (!running.current) void run(() => refreshNow(token)).catch(() => {}); });
@@ -131,30 +153,25 @@ export function usePushNotifications(session: Session | null, callbacks: Callbac
     const tapped = Notifications.addNotificationResponseReceivedListener(response => { void open(response).catch(() => {}); });
     return () => { foreground.remove(); rotated.remove(); received.remove(); tapped.remove(); };
   }, []);
-  const configured = !!session && preferences?.owner === owner && preferences.opted_in && !!preferences.binding && permission === 'granted';
-  const enabled = configured && verified;
-  return { state: { ready: !!preferences, enabled, configured, optedIn: !!preferences?.opted_in && preferences.owner === owner, pendingOff: !!preferences?.owner && preferences.owner === owner && !!preferences.pending_off, installationId: preferences?.installation_id, permission, working, error }, enable, disable, refresh, clear, clearReadPrompts };
+  useEffect(() => {
+    const timer = setInterval(() => { const value = saved.current; if (AppState.currentState === 'active' && !running.current && value?.owner === owner && (value.pending_off || value.pending_on)) void refresh().catch(() => {}); }, 15_000);
+    return () => clearInterval(timer);
+  }, [owner]);
+  const configured = !!session && preferences?.owner === owner && preferences.opted_in && !preferences.pending_off && permission !== 'denied';
+  const enabled = configured && verified && !!preferences?.binding;
+  return { state: { ready: !!preferences && (!channels || !!channels.state.value), enabled, configured, optedIn: configured, saving, pending: !!preferences?.pending_off || !!preferences?.pending_on, pendingOff: !!preferences?.owner && preferences.owner === owner && !!preferences.pending_off, installationId: preferences?.installation_id, permission, working, error }, enable, disable, refresh, clear, clearReadPrompts };
 }
 export type PushControls = ReturnType<typeof usePushNotifications>;
-export default function PushSettings({ push, busy, muted = false, onChanged }: { push: PushControls; busy: boolean; muted?: boolean; onBusyChange: (busy: boolean) => void; onChanged?: (enabled: boolean) => Promise<void> }) {
-  const { ui } = useUI(), { state } = push;
-  const configured = state.configured ?? state.enabled;
-  const [choice, setChoice] = useState<SettingState<boolean>>({ value: configured, saving: false, error: '' });
-  const mounted = useRef(true), current = useRef({ push, onChanged }); current.current = { push, onChanged };
-  const writer = useRef<ReturnType<typeof createSettingWriter<boolean>> | null>(null);
-  writer.current ??= createSettingWriter(configured, async value => {
-    const controls = current.current;
-    if (value) { const granted = await controls.push.enable(); if (granted === false) return false; }
-    else await controls.push.disable();
-    await controls.onChanged?.(value); return value;
-  }, value => { if (mounted.current) setChoice(value); });
-  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
-  useEffect(() => { if (!state.working) writer.current!.hydrate(configured); }, [configured, state.working]);
+export default function PushSettings({ push, busy }: { push: PushControls; busy: boolean; onBusyChange?: (busy: boolean) => void }) {
+  const { state } = push;
   const disabled = busy || !state.ready || state.permission === 'denied';
+  return <NotificationSwitch icon="phone" label="Push notifications" checked={state.configured} disabled={disabled} onChange={value => { if (!disabled) void (value ? push.enable() : push.disable()).catch(() => {}); }} />;
+}
+export function PushStatus({ push, busy }: { push: PushControls; busy: boolean }) {
+  const { ui } = useUI(), { state } = push;
   return <View style={{ gap: 8 }}>
-    <NotificationSwitch icon="phone" label="Push notifications" checked={!muted && choice.value} disabled={disabled} onChange={value => { if (!disabled) writer.current!.change(value); }} />
-    {!muted && (choice.saving || state.working || state.permission === 'denied' || state.pendingOff) && <Text accessibilityLiveRegion="polite" style={ui.caption}>{choice.saving ? 'Saving…' : state.permission === 'denied' ? 'Notifications are blocked in your phone settings.' : state.pendingOff ? 'Could not confirm notifications are off. Retry.' : 'Checking push notifications…'}</Text>}
-    {!muted && state.permission === 'denied' && <Button title="Open phone settings" kind="text" disabled={busy} onPress={() => void Linking.openSettings().catch(() => {})} />}
-    {!muted && !!(choice.error || state.error) && <ErrorState error={choice.error || state.error} retryLabel="Retry notifications" disabled={busy} onRetry={() => { if (choice.error) writer.current!.retry(); else void push.refresh().catch(() => {}); }} />}
+    {state.pending && <Text accessibilityLiveRegion="polite" style={ui.caption}>{state.saving ? 'Saving…' : state.error ? 'Saved on this device. Will sync when connected.' : 'Saved on this device. Syncing…'}</Text>}
+    {state.permission === 'denied' && <><Text style={ui.caption}>Notifications are blocked in your phone settings.</Text><Button title="Open phone settings" kind="text" disabled={busy} onPress={() => void Linking.openSettings().catch(() => {})} /></>}
+    {!!state.error && !state.pending && <ErrorState error={state.error} retryLabel="Retry push notifications" disabled={busy} onRetry={() => void push.refresh().catch(() => {})} />}
   </View>;
 }

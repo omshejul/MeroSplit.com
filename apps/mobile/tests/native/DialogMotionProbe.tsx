@@ -1,3 +1,4 @@
+import {useNotificationChannels} from '../../src/useNotificationChannels';
 // Synthetic, offline UI acceptance entry. Never imported by production index.ts.
 import React,{useEffect,useRef,useState} from 'react';
 import {registerRootComponent} from 'expo';
@@ -22,6 +23,7 @@ const originalFetch=globalThis.fetch;
 globalThis.fetch=async(input,init)=>{
  const url=String(input);if(!url.startsWith(session.baseUrl))return originalFetch(input,init);
  const method=init?.method??'GET',body=JSON.parse(typeof init?.body==='string'?init.body:'{}');
+ if(url.endsWith('/me/notifications/channels')){if(method==='GET')while(!release)await new Promise(done=>setTimeout(done,50));if(method==='PUT'&&body.email_notifications!==undefined)preferences.email_reminders=body.email_notifications;return new Response(JSON.stringify({email_notifications:preferences.email_reminders,email_available:true,legacy_muted:false,statement_enabled:preferences.email_reminders,statement_frequency:statements.frequency,revision:body.revision}),{status:200,headers:{'content-type':'application/json'}});}
  if(url.endsWith('/me/notifications/preferences')){
   if(method==='GET')while(!release)await new Promise(done=>setTimeout(done,50));
   else {await new Promise(done=>setTimeout(done,350));preferences={...preferences,...body,notifications_enabled:!!body.expense_updates};}
@@ -40,14 +42,15 @@ globalThis.fetch=async(input,init)=>{
 };
 const nodes=(node:any):any[]=>Array.isArray(node)?node.flatMap(nodes):React.isValidElement(node)?[node,...React.Children.toArray((node.props as any).children).flatMap(nodes)]:[];
 function Probe(){
+ const channels=useNotificationChannels(session);
  const {ui,changeColorFamily,motion}=useUI(),[field,setField]=useState(false),[name,setName]=useState('Weekend crew'),[error,setError]=useState(''),[busy,setBusy]=useState(false);
  const input=useRef<any>(null),commands=useRef<any>({});
  const push={state:{ready:true,enabled:true,working:false,permission:'granted',installationId:'fixture-phone',error:'',pendingOff:false},enable:async()=>true,disable:async()=>{},refresh:async()=>{}} as unknown as PushControls;
- const notifications=AccountNotifications({session,push,busy,onBusyChange:setBusy});
+ const notifications=AccountNotifications({session,push,channels,busy,onBusyChange:setBusy});
  commands.current={
   open:()=>nodes(notifications).find(n=>n.props.label==='Notifications'&&n.props.onPress)?.props.onPress(),
   ready:()=>{release=true;},
-  master:()=>nodes(notifications).find(n=>n.props.label==='Notifications'&&n.props.onChange)?.props.onChange(!preferences.expense_updates),
+  master:()=>nodes(notifications).find(n=>n.props.label==='Email notifications'&&n.props.onChange)?.props.onChange(!preferences.email_reminders),
   close:()=>nodes(notifications).find(n=>typeof n.props.onDismiss==='function')?.props.onDismiss(),
   field:()=>{commands.current.close();setField(true);},
   error:()=>setError('Could not save your changes. Check your connection and try again.'),
