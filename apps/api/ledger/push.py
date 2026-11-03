@@ -87,20 +87,13 @@ def register_device(request, installation_id, payload):
 
 
 def remove_device(actor, installation_id):
-    from .expense_notifications import _locked_preference, account_email, update_preferences
-    # Finish device cascades before cancelling deliveries: logout locks Device first.
+    # Device removal never changes the account's explicit master preference.
     with transaction.atomic():
         device = PushDevice.objects.select_for_update().filter(id=installation_id, user=actor).first()
         if device:
             device.delete()
         elif PushDevice.objects.filter(id=installation_id).exists():
             return {"removed": True}
-    with transaction.atomic():
-        if not get_user_model().objects.select_for_update(no_key=True).filter(pk=actor.pk, is_active=True).exists():
-            return {"removed": True}
-        pref = _locked_preference(actor)
-        if not (pref.email_reminders and account_email(actor)) and not registered_push_ids(actor):
-            update_preferences(actor, False, pref.email_reminders)
     return {"removed": True}
 
 

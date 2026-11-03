@@ -1,4 +1,5 @@
 import { ErrorState } from './UIStates';
+import { createSettingWriter, type SettingState } from './settingWriter';
 
 import React, { useEffect, useRef, useState } from 'react';
 import { AppState, Linking, Platform, Text, View } from 'react-native';
@@ -130,18 +131,30 @@ export function usePushNotifications(session: Session | null, callbacks: Callbac
     const tapped = Notifications.addNotificationResponseReceivedListener(response => { void open(response).catch(() => {}); });
     return () => { foreground.remove(); rotated.remove(); received.remove(); tapped.remove(); };
   }, []);
-  const enabled = !!session && preferences?.owner === owner && preferences.opted_in && !!preferences.binding && permission === 'granted' && verified;
-  return { state: { ready: !!preferences, enabled, optedIn: !!preferences?.opted_in && preferences.owner === owner, pendingOff: !!preferences?.owner && preferences.owner === owner && !!preferences.pending_off, installationId: preferences?.installation_id, permission, working, error }, enable, disable, refresh, clear, clearReadPrompts };
+  const configured = !!session && preferences?.owner === owner && preferences.opted_in && !!preferences.binding && permission === 'granted';
+  const enabled = configured && verified;
+  return { state: { ready: !!preferences, enabled, configured, optedIn: !!preferences?.opted_in && preferences.owner === owner, pendingOff: !!preferences?.owner && preferences.owner === owner && !!preferences.pending_off, installationId: preferences?.installation_id, permission, working, error }, enable, disable, refresh, clear, clearReadPrompts };
 }
 export type PushControls = ReturnType<typeof usePushNotifications>;
-export default function PushSettings({ push, busy, onBusyChange, onChanged }: { push: PushControls; busy: boolean; onBusyChange: (busy: boolean) => void; onChanged?: (enabled: boolean) => Promise<void> }) {
+export default function PushSettings({ push, busy, muted = false, onChanged }: { push: PushControls; busy: boolean; muted?: boolean; onBusyChange: (busy: boolean) => void; onChanged?: (enabled: boolean) => Promise<void> }) {
   const { ui } = useUI(), { state } = push;
-  const disabled = busy || state.working || !state.ready || state.permission === 'denied';
-  async function act(action: () => Promise<void>) { if (busy || state.working) return; onBusyChange(true); try { await action(); } catch { /* The hook keeps the actionable error visible. */ } finally { onBusyChange(false); } }
+  const configured = state.configured ?? state.enabled;
+  const [choice, setChoice] = useState<SettingState<boolean>>({ value: configured, saving: false, error: '' });
+  const mounted = useRef(true), current = useRef({ push, onChanged }); current.current = { push, onChanged };
+  const writer = useRef<ReturnType<typeof createSettingWriter<boolean>> | null>(null);
+  writer.current ??= createSettingWriter(configured, async value => {
+    const controls = current.current;
+    if (value) { const granted = await controls.push.enable(); if (granted === false) return false; }
+    else await controls.push.disable();
+    await controls.onChanged?.(value); return value;
+  }, value => { if (mounted.current) setChoice(value); });
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  useEffect(() => { if (!state.working) writer.current!.hydrate(configured); }, [configured, state.working]);
+  const disabled = busy || !state.ready || state.permission === 'denied';
   return <View style={{ gap: 8 }}>
-    <NotificationSwitch icon="phone" label="Push notifications" checked={state.enabled} disabled={disabled} onChange={value => void act(async () => { if (value) { if (await push.enable()) await onChanged?.(true); } else { await push.disable(); await onChanged?.(false); } })} />
-    {(state.working || state.permission === 'denied' || state.pendingOff) && <Text style={ui.caption}>{state.working ? 'Updating…' : state.permission === 'denied' ? 'Blocked in phone settings.' : 'Waiting to turn off. Retry when connected.'}</Text>}
-    {state.permission === 'denied' && <Button title="Open phone settings" kind="text" disabled={busy || state.working} onPress={() => void Linking.openSettings().catch(() => {})} />}
-    {!!state.error && <ErrorState error={state.error} retryLabel="Retry notifications" disabled={busy || state.working} onRetry={() => void act(push.refresh)} />}
+    <NotificationSwitch icon="phone" label="Push notifications" checked={!muted && choice.value} disabled={disabled} onChange={value => { if (!disabled) writer.current!.change(value); }} />
+    {!muted && (choice.saving || state.working || state.permission === 'denied' || state.pendingOff) && <Text accessibilityLiveRegion="polite" style={ui.caption}>{choice.saving ? 'Saving…' : state.permission === 'denied' ? 'Notifications are blocked in your phone settings.' : state.pendingOff ? 'Could not confirm notifications are off. Retry.' : 'Checking push notifications…'}</Text>}
+    {!muted && state.permission === 'denied' && <Button title="Open phone settings" kind="text" disabled={busy} onPress={() => void Linking.openSettings().catch(() => {})} />}
+    {!muted && !!(choice.error || state.error) && <ErrorState error={choice.error || state.error} retryLabel="Retry notifications" disabled={busy} onRetry={() => { if (choice.error) writer.current!.retry(); else void push.refresh().catch(() => {}); }} />}
   </View>;
 }

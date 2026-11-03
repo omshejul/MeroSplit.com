@@ -57,10 +57,6 @@ def _locked_preference(actor):
 @transaction.atomic
 def update_preferences(actor, expense_updates, email_reminders):
     row = _locked_preference(actor)
-    if row.email_reminders and not email_reminders:
-        from .push import registered_push_ids
-        if not registered_push_ids(actor):
-            expense_updates = False
     now = timezone.now()
     if expense_updates and not row.expense_updates:
         row.updates_enabled_at = now

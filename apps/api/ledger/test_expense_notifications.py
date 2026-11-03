@@ -643,8 +643,8 @@ def test_effective_channels_legacy_empty_email_mute_restore_and_last_off(client)
     assert send(client, 'get', '/me/notifications/preferences').json() == muted
     assert save(True, True)['notifications_enabled'] is True
     last = save(True, False)
-    assert last['expense_updates'] is False and last['notifications_enabled'] is False
-    assert not NotificationPreference.objects.get(user=client.actor).expense_updates
+    assert last['expense_updates'] is True and last['notifications_enabled'] is False
+    assert NotificationPreference.objects.get(user=client.actor).expense_updates
 
 
 def test_effective_push_bindings_last_removal_and_registration_never_unmutes(client):
@@ -657,8 +657,11 @@ def test_effective_push_bindings_last_removal_and_registration_never_unmutes(cli
     assert send(client, 'delete', f'/me/push-devices/{first.id}').status_code == 200
     assert send(client, 'get', '/me/notifications/preferences').json()['notifications_enabled'] is True
     assert send(client, 'delete', f'/me/push-devices/{second.id}').status_code == 200
-    assert NotificationPreference.objects.get(user=client.actor).expense_updates is False
+    assert NotificationPreference.objects.get(user=client.actor).expense_updates is True
     assert send(client, 'get', '/me/notifications/preferences').json()['notifications_enabled'] is False
+    register(client)
+    assert send(client, 'get', '/me/notifications/preferences').json()['notifications_enabled'] is True
+    send(client, 'put', '/me/notifications/preferences', {'expense_updates': False, 'email_reminders': False})
     register(client)
     assert send(client, 'get', '/me/notifications/preferences').json()['notifications_enabled'] is False
 
@@ -675,21 +678,18 @@ def test_effective_push_rejects_stale_expired_and_rebound_sessions(client, clock
     assert not notifications.notification_settings(client.actor)['push_device_ids']
 
 
-def test_last_device_removal_retry_finishes_master_normalization(client, monkeypatch):
+def test_last_device_removal_and_retry_never_change_master_preference(client, monkeypatch):
     device = register(client)
     send(client, 'put', '/me/notifications/preferences', {'expense_updates': True, 'email_reminders': False})
-    original = notifications._locked_preference
-    def interrupted(actor):
-        raise RuntimeError('Synthetic interruption after binding removal')
-    monkeypatch.setattr(notifications, '_locked_preference', interrupted)
+    def unexpected_preference_write(actor):
+        raise AssertionError('Removing a channel must not change the master preference')
+    monkeypatch.setattr(notifications, '_locked_preference', unexpected_preference_write)
     from .push import remove_device
-    with pytest.raises(RuntimeError):
-        remove_device(client.actor, device.id)
+    assert remove_device(client.actor, device.id) == {'removed': True}
     assert not PushDevice.objects.filter(pk=device.id).exists()
     assert NotificationPreference.objects.get(user=client.actor).expense_updates
-    monkeypatch.setattr(notifications, '_locked_preference', original)
     assert remove_device(client.actor, device.id) == {'removed': True}
-    assert not NotificationPreference.objects.get(user=client.actor).expense_updates
+    assert NotificationPreference.objects.get(user=client.actor).expense_updates
 
 
 @pytest.mark.parametrize("change", ["seen", "removed", "edited", "deleted_notice"])

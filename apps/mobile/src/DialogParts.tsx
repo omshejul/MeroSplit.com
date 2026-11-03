@@ -39,13 +39,13 @@ function Actions({ style, ...props }: React.ComponentProps<typeof PaperDialog.Ac
 export const Dialog = { Title, Content, Actions, ScrollArea: PaperDialog.ScrollArea };
 
 // Inputs/choices scroll while the separate action footer remains reachable.
-export function DialogScrollBody({ maxHeight = 520, gap = 12, paddingVertical = 12, paddingHorizontal, children }: {
-  maxHeight?: number; gap?: number; paddingVertical?: number; paddingHorizontal?: number; children: React.ReactNode;
+export function DialogScrollBody({ maxHeight = 520, gap = 12, paddingVertical = 12, paddingHorizontal, fixedHeight = false, children }: {
+  maxHeight?: number; gap?: number; paddingVertical?: number; paddingHorizontal?: number; fixedHeight?: boolean; children: React.ReactNode;
 }) {
   const { bodyHeight } = useContext(DialogContext);
   const { motion } = useUI(), limit = Math.min(maxHeight, bodyHeight), size = useDialogBodySize(limit, !!motion?.enabled);
   return <Dialog.ScrollArea style={{ flexShrink: 1, maxHeight: limit, paddingHorizontal: paddingHorizontal ?? 20, borderTopWidth: 0, borderBottomWidth: 0 }}>
-    <Animated.View style={{ height: size.height, maxHeight: limit, overflow: 'hidden', flexShrink: 1 }}>
+    <Animated.View style={{ height: fixedHeight ? limit : size.height, maxHeight: limit, overflow: 'hidden', flexShrink: 1 }}>
     <ScrollView keyboardShouldPersistTaps="handled" onContentSizeChange={size.onContentSizeChange} style={{ maxHeight: limit }} contentContainerStyle={{ paddingVertical, gap, paddingRight: Platform.OS === 'web' ? 16 : 0 }}><RowGroup style={{ gap }}>{children}</RowGroup></ScrollView>
     </Animated.View>
   </Dialog.ScrollArea>;
