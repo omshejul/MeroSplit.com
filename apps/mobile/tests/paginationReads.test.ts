@@ -16,3 +16,8 @@ test('production group paging cannot publish another account/route response or r
 test('production filtered legacy payment pages report no added visible rows but advance cursor',async()=>{const {env,state,group}=environment();group.history.settlements={next_cursor:'next'};env.request=async()=>({read_mode:'page',group_id:'g',version:5,items:[{id:'p',sender:'other',recipient:'third'}],next_cursor:'older'});assert.equal(await production('historyPage',env)('settlements','next'),false);assert.equal(state.saved[0].history.settlements.next_cursor,'older');assert.equal(state.saved[0].settlements.length,1);});
 
 test('a version conflict followed by revoked access clears the old group without saving the stale snapshot',async()=>{const {env,state}=environment();env.request=async()=>{throw new ApiError(409,'Changed');};env.fetchGroup=async()=>{throw new ApiError(403,'Removed');};await assert.rejects(production('historyPage',env)('bills','next'),/Changed/);assert.deepEqual(state.groups,[]);assert.equal(state.saved.length,0);assert.equal(state.screen,'home');});
+
+test('refreshing Activity refetches older loaded rows at the new revision before publishing',async()=>{
+ const {env,state}=environment();env.activity={items:[row('a'),row('b')],revision:'old',firstPage:true};env.background=(fn:any)=>fn();env.request=async(_session:any,path:string)=>({read_mode:'activity',revision:'new',items:[row(path.includes('cursor=')?'b':'a')],next_cursor:path.includes('cursor=')?null:'new-cursor'});
+ await production('refreshActivity',env)();assert.deepEqual(state.activity.items.map((r:any)=>r.id),['a','b']);assert.equal(state.activity.revision,'new');
+});

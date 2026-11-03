@@ -86,7 +86,7 @@ test('native tab changes keep routes authoritative and never mount four account 
   const refs = { current: 0 }, selected: string[] = [], rendered: string[] = [];
   const render = new Function('env', `with(env){${ts.transpile(body, { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React })};return HomeTabs;}`)({
     React, SafeAreaProvider:'SafeAreaProvider', SafeAreaView:'SafeAreaView', Platform: { Version: '27' }, Tabs: { Host: 'NativeTabs', Screen: 'NativeTab' }, Animated: { View: 'AnimatedView' },
-    useRef: () => refs, useUI: () => ({ palette: { accent: 'accent', background: 'background' }, dark: true }), useHomeTabSwipe: () => ({}),
+    useRef: (initial:any) => initial instanceof Set ? {current:initial} : refs, useUI: () => ({ palette: { accent: 'accent', background: 'background' }, dark: true }), useHomeTabSwipe: () => ({}),
   });
   const props = { selected: 'Groups', busy: false, onSelect: (value: string) => selected.push(value), render: (value: string) => { rendered.push(value); return value; } };
   const tree = render(props); assert.equal(tree.type, 'NativeTabs'); assert.deepEqual(rendered, ['Groups']);

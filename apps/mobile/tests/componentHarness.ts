@@ -19,6 +19,7 @@ export function withSharedUI<T extends Record<string, any>>(input: T): T & Recor
   for (const name of ['MarkdownNotes', 'NotesField', 'RowGroup', 'PeopleSheet', 'View', 'Text', 'Switch', 'Button', 'ErrorText', 'Avatar', 'Icon', 'TextField', 'EmailField', 'RadioChoice', 'SectionHeading', 'DialogScrollBody', 'CancelDialogActions', 'BottomSafeArea', 'ScrollBottomInset', 'ActivityIndicator']) env[name] ??= name;
   if (env.TextField === 'TextField' && input.TextInput) env.TextField = input.TextInput;
   env.Animated ??= { View: 'Animated.View' };
+  env.useListAnchor ??= () => ({rowRef: () => () => {}, viewable() {}, scrolled() {}, dragging() {}});
   env.useRef ??= (initial: any) => ({ current: initial });
   env.useDialogTransition ??= (visible: boolean) => ({ present: visible, opacity: 1, translateY: 0 });
   env.useDialogBodySize ??= () => ({ height: undefined, onContentSizeChange() {} });

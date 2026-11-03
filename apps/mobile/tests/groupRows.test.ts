@@ -159,7 +159,7 @@ test('virtualized timeline and legacy bill/payment lists preserve server order',
   const props = { group: value, accepted: value, selfId: 'self', pending: [], busy: true, onPayment() {}, onExpense() {} };
   const list = elements(render(props)).find(node => node.type === 'FlatList')!;
   assert.deepEqual(list.props.data.map((row: any) => row.bill?.id ?? row.payment.id), ['bill', 'first', 'second']);
-  const rows = list.props.data.map((item: any) => list.props.renderItem({ item }).children[0]);
+  const rows = list.props.data.map((item: any) => list.props.renderItem({ item }).children[0].children[0]);
   assert.ok(rows.every((row: any) => row.props.busy));
   assert.ok(rows.filter((row: any) => row.type === 'PaymentRow').every((row: any) => row.props.accepted === value && row.props.onPayment === props.onPayment));
   const fallback = { ...value, read_mode: 'summary', transactions: undefined };
@@ -205,7 +205,7 @@ test('complete offline caches keep every payment in the dated bill timeline and 
     const nodes = elements(tree), list = nodes.find(node => node.type === 'FlatList')!;
     assert.deepEqual(list.props.data.map((row: any) => row.bill?.id ?? row.payment.id), ['newer', 'received', 'other-members', 'older']);
     assert.ok(!nodes.some(node => node.type === 'DetailDialog' && node.props.title === 'Payment records'));
-    const row = list.props.renderItem({ item: list.props.data[1] }).children[0];
+    const row = list.props.renderItem({ item: list.props.data[1] }).children[0].children[0];
     assert.equal(row.type, 'PaymentRow');
     elements(production('PaymentRow')(row.props)).find(node => node.type === 'LogRow')!.props.onPress();
   }
@@ -248,7 +248,7 @@ test('actual GroupScreen transaction rows expose offline new/edit bills and thei
   assert.deepEqual(list.props.data.map((row: any) => row.bill.id), ['photo', 'accepted']);
   assert.equal(list.props.data[1].bill.description, 'Saved accepted edit');
   assert.deepEqual(list.props.data.map(list.props.keyExtractor), ['bill:photo', 'bill:accepted']);
-  const row = list.props.renderItem({ item: list.props.data[0] }).children[0];
+  const row = list.props.renderItem({ item: list.props.data[0] }).children[0].children[0];
   assert.equal(row.props.group, projected);
   const rendered = production('BillTimelineRow')(row.props);
   elements(rendered).find(node => node.type === 'LogRow')!.props.onPress();
@@ -354,21 +354,21 @@ test('background summaries preserve displayed bills and accepted payments until 
   const latestBill = billRow({ id: 'newest' }), latest = { ...original, version: 2, expenses: [latestBill], settlements: [], transactions: [{ kind: 'bill', bill: latestBill }], history: { transactions: { next_cursor: 'newer-window' } } };
   const background = view({ ...props, group: latest, accepted: latest });
   assert.equal(background.props.data, original.transactions, 'background head replacement preserves every displayed row');
-  const oldPayment = background.props.renderItem({ item: original.transactions[1] }).children[0];
+  const oldPayment = background.props.renderItem({ item: original.transactions[1] }).children[0].children[0];
   assert.equal(oldPayment.props.accepted, original, 'accepted payment membership advances with the displayed snapshot');
   assert.equal(updates.at(-1), true); assert.deepEqual(offsets, []);
   await paging.load(undefined);
   assert.equal(reads[0][4], original, 'paging uses the accepted displayed version rather than an optimistic preview or newer background summary');
   const refreshed = view({ ...props, group: latest, accepted: latest, revision: 1 });
   assert.equal(refreshed.props.data, latest.transactions); assert.equal(updates.at(-1), false);
-  assert.deepEqual(offsets, [{ offset: 0, animated: false }]);
+  assert.deepEqual(offsets, []);
   const own = { ...latest, transactions: [...latest.transactions, { kind: 'bill', bill }] };
   const saved = view({ ...props, group: own, accepted: latest, revision: 1, pending: [{ command_id: '00000000-0000-4000-8000-000000000001', state: 'pending' }] });
   assert.equal(saved.props.data, own.transactions, 'own saved changes appear without waiting for another refresh');
   const acknowledged = { ...latest, version: 3 };
   const afterSync = view({ ...props, group: acknowledged, accepted: acknowledged, revision: 1 });
   assert.equal(afterSync.props.data, own.transactions, 'background acknowledgment keeps the displayed rows');
-  assert.deepEqual(offsets, [{ offset: 0, animated: false }], 'acknowledgment does not move the reader');
+  assert.deepEqual(offsets, [], 'acknowledgment does not move the reader');
   assert.equal(updates.at(-1), true);
   const adopted = view({ ...props, group: acknowledged, accepted: acknowledged, revision: 2 });
   assert.equal(adopted.props.data, acknowledged.transactions);
@@ -639,7 +639,7 @@ test('transaction entrance follows visible batches beyond row eight and never re
   const value = { ...group, expenses: bills, settlements: [], transfers: [], transactions: bills.map(bill => ({ kind: 'bill', bill })) };
   const noticed: string[][] = [];
   const list = elements(production('GroupScreen')({ group: value, accepted: value, pending: [], selfId: 'self', busy: false, onVisibleBills: (ids: string[]) => noticed.push(ids) })).find(node => node.type === 'FlatList')!;
-  const entry = (i: number) => list.props.renderItem({ item: value.transactions[i], index: i }).props.entry;
+  const entry = (i: number) => list.props.renderItem({ item: value.transactions[i], index: i }).children[0].props.entry;
   assert.equal(entry(0), undefined); assert.equal(entry(59), undefined);
   const show = (ids: number[]) => list.props.onViewableItemsChanged({ viewableItems: ids.map(index => ({ index, isViewable: true, item: value.transactions[index] })) });
   show(Array.from({ length: 12 }, (_, i) => i));

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
-import { accountOwner, refreshGroups, syncOutbox } from '../src/api.ts';
+import { accountOwner, refreshGroups, retainHistoryWindow, syncOutbox } from '../src/api.ts';
 import { migrate, saveGroup, readGroup, readVisibleGroup, listGroups, saveDraft, readDraft, enqueue, pendingCommands, reconcileGroupCache } from '../src/storage.ts';
 import { previewPending } from '../src/ledger.ts';
 import { sqliteAdapter } from './sqlite.ts';
@@ -152,4 +152,43 @@ test('pre-setting caches refresh once at the same revision to discover group rep
     await refreshGroups(db,session,'summary'); assert.equal(calls.length,2); assert.equal((await readVisibleGroup(db,owner,'g'))?.group.simplify_debts,false);
     calls.length=0;await refreshGroups(db,session,'summary');assert.equal(calls.length,1);
   } finally {globalThis.fetch=original;raw.close();}
+});
+
+test('a changed summary refetches the loaded history depth instead of dropping the older visible bill',async()=>{
+ const raw=new DatabaseSync(':memory:'),db=sqliteAdapter(raw),original=globalThis.fetch;
+ const row=(id:string)=>({kind:'bill' as const,date:bill.date,bill:{...bill,id}});
+ const cached={...summary(),transactions:[row('first'),row('older')],history:{...summary().history,transactions:{cursor:null,next_cursor:'old-cursor',query:''}}};
+ const latest={...summary(2),transactions:[row('first')],history:{...summary(2).history,transactions:{next_cursor:'new-cursor'}}};
+ try{
+  await migrate(db);await saveGroup(db,owner,cached,'shared');
+  globalThis.fetch=async url=>{const path=String(url);if(path.endsWith('/groups'))return Response.json({groups:[{id:'g',version:2}]});if(path.endsWith('/summary'))return Response.json(latest);assert.ok(path.includes('version=2'));return Response.json({read_mode:'page',group_id:'g',version:2,items:[row('older')],next_cursor:null});};
+  await refreshGroups(db,session,'summary');
+  assert.deepEqual((await readVisibleGroup(db,owner,'g'))?.group.transactions?.map(row=>row.kind==='bill'?row.bill.id:row.payment.id),['first','older']);
+ }finally{globalThis.fetch=original;raw.close();}
+});
+
+test('accepting an edited bill refetches the expanded history before replacing its cache',async()=>{
+ const raw=new DatabaseSync(':memory:'),db=sqliteAdapter(raw),original=globalThis.fetch;
+ const row=(id:string,description=id)=>({kind:'bill' as const,date:bill.date,bill:{...bill,id,description}});
+ const cached={...summary(),transactions:[row('first'),row('older')],history:{...summary().history,transactions:{cursor:null,next_cursor:'old-cursor',query:''}}};
+ try{
+  await migrate(db);await saveGroup(db,owner,cached,'shared');await enqueue(db,owner,{command_id:'edit',group_id:'g',base_version:1,method:'PUT',path:'/groups/g/expenses/older',body:{id:'older'},state:'pending',error:null});
+  globalThis.fetch=async(url,init)=>{if(init?.method==='PUT')return Response.json({id:'older',version:2});if(String(url).includes('/history/'))return Response.json({read_mode:'page',group_id:'g',version:2,items:[row('older','Updated body')],next_cursor:null});return Response.json({...summary(2),transactions:[row('first')],history:{...summary(2).history,transactions:{next_cursor:'new-cursor'}}});};
+  await syncOutbox(db,session,'summary');const shown=(await readVisibleGroup(db,owner,'g'))!.group;assert.equal(shown.transactions?.length,2);assert.equal(shown.transactions?.[1].kind==='bill'?shown.transactions[1].bill.description:'','Updated body');assert.equal((await pendingCommands(db,owner)).length,0);
+ }finally{globalThis.fetch=original;raw.close();}
+});
+
+
+test('history depth refresh rejects stale, foreign and revoked pages without reusing old text',async()=>{
+ const original=globalThis.fetch,row=(id:string)=>({kind:'bill' as const,date:bill.date,bill:{...bill,id}});
+ const previous={...summary(),transactions:[row('first'),row('older')]};
+ const latest={...summary(2),transactions:[row('first')],history:{transactions:{next_cursor:'new'}}};
+ try{
+  for(const response of [{read_mode:'page',group_id:'g',version:1,items:[row('older')],next_cursor:null},{read_mode:'page',group_id:'other',version:2,items:[row('older')],next_cursor:null}]){
+   globalThis.fetch=async()=>Response.json(response);await assert.rejects(retainHistoryWindow(session,latest,previous),/History changed/);
+  }
+  globalThis.fetch=async()=>new Response('',{status:403});await assert.rejects(retainHistoryWindow(session,latest,previous));
+  let current=true;globalThis.fetch=async()=>{current=false;return Response.json({read_mode:'page',group_id:'g',version:2,items:[row('older')],next_cursor:null});};await assert.rejects(retainHistoryWindow(session,latest,previous,()=>current),/account changed/);
+  assert.equal(latest.transactions.length,1,'failed pages never alter the supplied snapshot');
+ }finally{globalThis.fetch=original;}
 });

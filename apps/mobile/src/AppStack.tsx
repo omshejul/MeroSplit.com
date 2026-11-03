@@ -52,12 +52,17 @@ export function useAppNavigation() {
       return;
     }
     const target = destination(current.routes[current.index] as AppRoute, name, params);
+    if (name === 'home' && current.routes[current.index].name === 'home') {
+      ref.dispatch({ type: 'SET_PARAMS', payload: { params: target.params }, source: current.routes[current.index].key, appNavigation: true } as AppAction);
+      return;
+    }
     const index = current.routes.findLastIndex(value => sameRoute(value as AppRoute, target));
     if (index >= 0) {
       ref.dispatch({ ...StackActions.popTo(name, target.params), appNavigation: true } as AppAction);
     } else {
       const parents = routeParents(target), parent = parents.at(-1);
-      if (!parent || sameRoute(current.routes[current.index] as AppRoute, parent)) {
+      if (!parent || sameRoute(current.routes[current.index] as AppRoute, parent)
+        || current.routes[0].name === 'home' && (current.routes[0].params as RouteParams)?.tab === 'Activity' && !current.routes.some(route => route.name === 'group') && ['expenseDetail', 'paymentDetail', 'billChat'].includes(name)) {
         ref.dispatch({ ...StackActions.push(name, target.params), appNavigation: true } as AppAction);
       } else {
         // Link/notification entry has a real parent stack even when opened cold.

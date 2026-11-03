@@ -16,14 +16,14 @@ test('focus visibility clips to the usable viewport and moves only the required 
 
 // Run the production controller with native measurement callbacks we can defer.
 // Device probes separately cover the actual IME and layout engine.
-function scroller(os = 'android') {
+function scroller(os = 'android', enabled = true) {
   const source = ts.createSourceFile('KeyboardScrollView.tsx', readFileSync(new URL('../src/KeyboardScrollView.tsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   const fn = source.statements.find(n => ts.isFunctionDeclaration(n) && n.name?.text === 'KeyboardScrollView')!;
   let cursor = 0, sequence = 0, keyboardTop: number | undefined = 400;
   const slots: any[] = [], frames = new Map<number, Function>(), timers = new Map<number, Function>(), listeners = new Map<string, Function>();
-  const effects: Function[] = [], cleanup: Function[] = [], scrolls: number[] = [];
+  const effects: Function[] = [], cleanup: Function[] = [], scrolls: number[] = [], scrollOptions: any[] = [];
   let provider: any, scrollProps: any, measure: Function = (done: Function) => done(0, 100, 360, 600);
-  const node = { measureInWindow(done: Function) { measure(done); }, scrollTo({ y }: { y: number }) { scrolls.push(y); } };
+  const node = { measureInWindow(done: Function) { measure(done); }, scrollTo(value: { y: number; animated: boolean }) { scrolls.push(value.y); scrollOptions.push(value); } };
   const useRef = (value: unknown) => { const i = cursor++; return slots[i] ??= { current: value }; };
   const useState = (value: unknown) => { const i = cursor++; if (!(i in slots)) slots[i] = value; return [slots[i], (next: any) => { slots[i] = typeof next === 'function' ? next(slots[i]) : next; }]; };
   const useMemo = (fn: Function, deps: unknown[]) => { const i = cursor++; if (!slots[i] || deps.some((v, n) => v !== slots[i].deps[n])) slots[i] = { deps, value: fn() }; return slots[i].value; };
@@ -39,13 +39,13 @@ function scroller(os = 'android') {
     useEffect(fn: Function) { const i = cursor++; if (!slots[i]) { slots[i] = true; effects.push(() => cleanup.push(fn())); } },
     KeyboardVisibility: { Provider: 'Provider' }, ScrollView: 'ScrollView', Platform: { OS: os }, StyleSheet: { flatten: (style: any) => style },
     Keyboard: { metrics: () => keyboardTop === undefined ? undefined : { screenY: keyboardTop }, addListener: (name: string, fn: Function) => { listeners.set(name, fn); return { remove() { listeners.delete(name); } }; } },
-    keyboardScrollDelta,
+    useUI: () => ({ motion: { enabled } }), keyboardScrollDelta,
     setTimeout(fn: Function) { timers.set(++sequence, fn); return sequence; }, clearTimeout(id: number) { timers.delete(id); },
     requestAnimationFrame(fn: Function) { frames.set(++sequence, fn); return sequence; }, cancelAnimationFrame(id: number) { frames.delete(id); },
   };
   const renderFn = new Function('env', `with(env) { ${ts.transpile(fn.getText(source).replace('export default ', ''), { jsx: ts.JsxEmit.React, target: ts.ScriptTarget.ES2022 })}; return KeyboardScrollView; }`)(env);
   return {
-    scrolls, node, get controller() { return provider; }, get props() { return scrollProps; },
+    scrolls, scrollOptions, node, get controller() { return provider; }, get props() { return scrollProps; },
     render(props: any = {}) { cursor = 0; const tree = renderFn(props); effects.splice(0).forEach(fn => fn()); return tree; },
     flush() { const pending = [...frames.values()]; frames.clear(); pending.forEach(fn => fn()); },
     settle() { const pending = [...timers.values()]; timers.clear(); pending.forEach(fn => fn()); },
@@ -125,4 +125,9 @@ test('focus is remeasured after a native sheet moves without a React layout even
   top = 140; y = 95; s.settle(); s.flush();
   assert.equal(s.scrolls.at(-1), 43, 'late presentation must reveal the field below the moved viewport top');
   s.unmount();
+});
+
+
+test('revealing a covered input animates only when reduced motion allows it',()=>{
+ for(const enabled of [true,false]){const s=scroller('android',enabled);s.render();s.controller.focus(input(380));s.flush();assert.equal(s.scrollOptions.at(-1).animated,enabled);s.unmount();}
 });

@@ -22,6 +22,7 @@ import BalanceExplanation, { type BalanceSelection } from './BalanceExplanationD
 import { balanceKey } from './balanceExplanation';
 import type { BalanceSource } from './balanceExplanationStorage';
 import { Animated, Keyboard, Platform, FlatList, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { useListAnchor } from './useListAnchor';
 import { useScrollPagination } from './useScrollPagination';
 import { pageContentStyle } from './AppNavigation';
 import { expenseBalanceChange, formatMoney } from './accounting';
@@ -185,7 +186,6 @@ export default function GroupScreen({ session = null, bottomClearance = 120, cat
     adoptedRevision.current = revision; savedCommands.current = commandBodies;
     if (!deliberate && !ownSave) return;
     if (deliberate && incoming.version !== group.version) {
-      list.current?.scrollToOffset({ offset: 0, animated: false });
       opacity.stopAnimation();
       if (motion.enabled) {
         opacity.setValue(0.6);
@@ -217,7 +217,7 @@ export default function GroupScreen({ session = null, bottomClearance = 120, cat
     try {
       const applied = await onHistoryPage?.(historyResource, 'search', query, controller.signal, accepted);
       if (controller.signal.aborted) return false;
-      if (applied) list.current?.scrollToOffset({ offset: 0, animated: false });
+      if (applied) list.current?.scrollToOffset({ offset: 0, animated: motion.enabled });
       return applied ?? !historyWindow?.query;
     } catch { return false; }
     finally { if (searchRequest.current === controller) { searchRequest.current = null; setLoadingSearch(false); } }
@@ -230,11 +230,14 @@ export default function GroupScreen({ session = null, bottomClearance = 120, cat
   }
   const list = useRef<FlatList<GroupTransaction>>(null), frame = useRef<React.ComponentRef<typeof View>>(null);
   const [viewport, setViewport] = useState<{ x: number; y: number; width: number; height: number } | null>(null), [scrollEpoch, setScrollEpoch] = useState(0);
+  const anchor = useListAnchor(list, group, active, motion.enabled, `${group.id}|${historyWindow?.query || ''}`);
+  const anchorRef = useRef(anchor); anchorRef.current = anchor;
   const entries = useRef(new Map<string, ListEntry>()), [entryRevision, setEntryRevision] = useState(0);
   const transactionKey = (row: GroupTransaction) => row.kind === 'bill' ? `bill:${row.bill.id}` : `payment:${row.payment.id}`;
   const visible = useRef(onVisibleBills); visible.current = onVisibleBills;
   const viewable = useRef(({ viewableItems }: { viewableItems: { isViewable: boolean; index?: number | null; item: GroupTransaction }[] }) => {
     const shown = viewableItems.filter(row => row.isViewable).sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
+    anchorRef.current.viewable(shown.map(row => transactionKey(row.item)));
     const fresh = shown.filter(row => !entries.current.has(transactionKey(row.item)));
     fresh.forEach((row, index) => entries.current.set(transactionKey(row.item), { delay: Math.min(index, 6) * 35, played: false }));
     if (fresh.length) setEntryRevision(value => value + 1);
@@ -247,12 +250,12 @@ export default function GroupScreen({ session = null, bottomClearance = 120, cat
   return <Animated.View ref={frame} role="region" accessibilityLabel={group.name} style={{ flex: 1, opacity }}>
     <FlatList renderScrollComponent={props => <KeyboardScrollView {...props} refreshControl={props.refreshControl ?? (onRefresh ? <RefreshControl refreshing={refreshing ?? false} onRefresh={onRefresh} /> : undefined)} />} ref={list} contentInsetAdjustmentBehavior="automatic" data={rows} extraData={entryRevision} nestedScrollEnabled scrollEventThrottle={100} onEndReachedThreshold={0.3}
       onLayout={event => { frame.current?.measureInWindow((x, y, width, height) => setViewport({ x, y, width, height })); }}
-      onScroll={event => { setScrollEpoch(value => value + 1); }}
+      onScrollBeginDrag={anchor.dragging} onScroll={event => { anchor.scrolled(event.nativeEvent.contentOffset.y); setScrollEpoch(value => value + 1); }}
       keyboardShouldPersistTaps="handled" onViewableItemsChanged={viewable.current} onRefresh={onRefresh} refreshing={refreshing}
       keyExtractor={row => row.kind === 'bill' ? `bill:${row.bill.id}` : `payment:${row.payment.id}`}
-      contentContainerStyle={[pageContentStyle, { gap: 0, paddingBottom: bottomClearance }]} renderItem={({ item: row }) => <StaggerItem entry={entries.current.get(transactionKey(row))}>{row.kind === 'payment'
+      contentContainerStyle={[pageContentStyle, { gap: 0, paddingBottom: bottomClearance }]} renderItem={({ item: row }) => <View ref={anchor.rowRef(transactionKey(row))} collapsable={false}><StaggerItem entry={entries.current.get(transactionKey(row))}>{row.kind === 'payment'
         ? <PaymentRow payment={row.payment} accepted={accepted} group={group} selfId={selfId} busy={busy} onPayment={onPayment} onPrefetchPayment={onPrefetchPayment} />
-        : <BillTimelineRow categoryIcons={categoryIcons} expense={row.bill} group={group} selfId={selfId} busy={busy} onExpense={onExpense} onPrefetchBill={onPrefetchBill} noticeVisibility={group === accepted ? visibility : undefined} />}</StaggerItem>}
+        : <BillTimelineRow categoryIcons={categoryIcons} expense={row.bill} group={group} selfId={selfId} busy={busy} onExpense={onExpense} onPrefetchBill={onPrefetchBill} noticeVisibility={group === accepted ? visibility : undefined} />}</StaggerItem></View>}
       ListHeaderComponent={<View style={s.content}>{header}
     {!!previewError && <Text>{previewError}</Text>}
     {group !== accepted && <Text style={ui.caption}>Balances show a pending preview.</Text>}
