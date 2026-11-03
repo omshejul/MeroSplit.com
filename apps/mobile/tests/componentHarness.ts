@@ -16,7 +16,7 @@ export function withSharedUI<T extends Record<string, any>>(input: T): T & Recor
   if (input) (input as Record<string, any>).startLoading ??= () => () => {};
   if (!input?.React?.createElement || input.__sharedUI) return input;
   const env: Record<string, any> = input; env.__sharedUI = true;
-  for (const name of ['GroupIdentity', 'EditableName', 'MarkdownNotes', 'NotesField', 'RowGroup', 'PeopleSheet', 'View', 'Text', 'Switch', 'Button', 'ErrorText', 'Avatar', 'Icon', 'TextField', 'EmailField', 'RadioChoice', 'SectionHeading', 'DialogScrollBody', 'CancelDialogActions', 'BottomSafeArea', 'ScrollBottomInset', 'ActivityIndicator']) env[name] ??= name;
+  for (const name of ['GroupIdentity', 'EditableName', 'MarkdownNotes', 'NotesField', 'RowGroup', 'PeopleSheet', 'View', 'Text', 'Switch', 'Button', 'ErrorText', 'Avatar', 'Icon', 'TextField', 'EmailField', 'RadioChoice', 'SectionHeading', 'DialogScrollBody', 'CancelDialogActions', 'BottomSafeArea', 'ScrollBottomInset', 'ActivityIndicator', 'Menu']) env[name] ??= name;
   if (env.TextField === 'TextField' && input.TextInput) env.TextField = input.TextInput;
   env.Animated ??= { View: 'Animated.View' };
   env.useListAnchor ??= () => ({rowRef: () => () => {}, viewable() {}, scrolled() {}, dragging() {}});
@@ -24,6 +24,9 @@ export function withSharedUI<T extends Record<string, any>>(input: T): T & Recor
   env.useDialogTransition ??= (visible: boolean) => ({ present: visible, opacity: 1, translateY: 0 });
   env.useDialogBodySize ??= () => ({ height: undefined, onContentSizeChange() {} });
   env.useWindowDimensions ??= () => ({ width: 390, height: 844, fontScale: 1 });
+  env.useEffect ??= () => {};
+  env.useDialogRegistration ??= () => {};
+  env.canTakePhoto ??= () => false;
   env.useLoading ??= () => () => {}; env.startLoading ??= () => () => {}; env.LoadingOverlay ??= 'LoadingOverlay';
   env.useRowDivider ??= (divider?: boolean) => divider ?? true; env.animateLayout ??= () => {};
   env.StyleSheet ??= { hairlineWidth: 1, create: (value: any) => value };

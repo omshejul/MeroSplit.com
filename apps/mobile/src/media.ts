@@ -8,6 +8,7 @@ import { sessionRequest } from './transport.ts';
 export { validateMedia, pickMedia, clearPickedMedia, stageMediaUpload, clearStagedMedia, openPrivateMedia, clearMediaPreview, clearMediaPreviews } from './mediaPlatform.ts';
 
 export type MediaMetadata = { id: string; name: string; content_type: string; size: number };
+export type MediaSource = boolean | 'camera';
 export type PickedMedia = { uri: string; name: string; type: string; size: number };
 export type MediaList = { attachments: MediaMetadata[]; can_modify: boolean };
 export type AvatarResult = { avatar: MediaMetadata | null; profile_photo?: import("./types").ProfilePhoto | null; cleanup_pending?: boolean };

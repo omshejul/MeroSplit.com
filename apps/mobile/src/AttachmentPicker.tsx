@@ -1,13 +1,34 @@
-import React from 'react';
-import { Platform } from 'react-native';
-import { Alert } from './alerts';
-import { SettingsRow } from './ui';
+import React, { useEffect } from 'react';
+import { BackHandler, Platform } from 'react-native';
+import { Menu } from 'react-native-paper';
+import { Button, useUI } from './ui';
+import { useDialogRegistration } from './DialogFocus';
+import { canTakePhoto } from './cameraSupport';
+import type { MediaSource } from './media';
 
-export function chooseAttachment(onPick: (photo: boolean) => void) {
-  if (Platform.OS === 'web') onPick(false);
-  else Alert.alert('Add photo or PDF', undefined, [{ text: 'Cancel', style: 'cancel' }, { text: 'Photo', onPress: () => onPick(true) }, { text: 'Files', onPress: () => onPick(false) }]);
+export function AttachmentOptions({ disabled, onPick }: { disabled: boolean; onPick: (source: MediaSource) => void }) {
+  return <>
+    {canTakePhoto() && <Button title="Take photo" icon="camera" kind="menu" accessibilityRole="menuitem" disabled={disabled} onPress={() => { if (!disabled) onPick('camera'); }} />}
+    <Button title="Choose photo" icon="photo" kind="menu" accessibilityRole="menuitem" disabled={disabled} onPress={() => { if (!disabled) onPick(true); }} />
+    <Button title="Choose file" icon="file" kind="menu" accessibilityRole="menuitem" disabled={disabled} onPress={() => { if (!disabled) onPick(false); }} />
+  </>;
 }
 
-export default function AttachmentPicker({ disabled, onPick }: { disabled: boolean; onPick: (photo: boolean) => void }) {
-  return <SettingsRow label="Add photo or PDF" icon="attachment" chevron={false} disabled={disabled} onPress={() => { if (!disabled) chooseAttachment(onPick); }} />;
+// Paper Menu measures this exact anchor and expands from it. Its theme also
+// disables the transition when the user requests reduced motion.
+export default function AttachmentPicker({ visible, disabled, anchor, onDismiss, onPick }: {
+  visible: boolean; disabled: boolean; anchor: React.ReactNode; onDismiss: () => void; onPick: (source: MediaSource) => void;
+}) {
+  const { palette } = useUI();
+  useDialogRegistration(visible && !disabled);
+  useEffect(() => {
+    if (!visible || disabled || Platform.OS === 'web') return;
+    // Paper dismisses on Back but does not consume it. Keep navigation in place.
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => { onDismiss(); return true; });
+    return () => subscription.remove();
+  }, [visible, disabled, onDismiss]);
+  return <Menu visible={visible && !disabled} anchor={anchor} anchorPosition="bottom" onDismiss={onDismiss} overlayAccessibilityLabel="Close attachment picker"
+    contentStyle={{ width: 248, padding: 4, borderRadius: 12, backgroundColor: palette.surface, borderWidth: 1, borderColor: palette.line }}>
+    <AttachmentOptions disabled={disabled} onPick={source => { if (!disabled) { onDismiss(); onPick(source); } }} />
+  </Menu>;
 }
