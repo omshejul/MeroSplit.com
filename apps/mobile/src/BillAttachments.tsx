@@ -1,59 +1,60 @@
 import { useLoading } from './LoadingOverlay';
 import { useToast } from './Toast';
-import RowGroup from './RowGroup';
 import { animateLayout } from './layoutTransition';
 import { ErrorState } from './UIStates';
 import { LoadingState } from './UIStates';
 import { NoticeBanner } from './UIStates';
 
-import AttachmentPicker, { chooseAttachment } from './AttachmentPicker';
+import { chooseAttachment } from './AttachmentPicker';
+import AttachmentGallery from './AttachmentGallery';
 import AttachmentTile from './AttachmentTile';
-import KeyboardDialog from './KeyboardDialog';
-import { Dialog, DialogScrollBody, CloseDialogActions } from './DialogParts';
-import AttachmentRow from './AttachmentRow';
+import BottomSheet from './BottomSheet';
 import React, { useEffect, useRef, useState } from 'react';
 import { useScreenRemovalLock } from './screenRemoval';
-import { Text, View } from 'react-native';
+import { Text, View, useWindowDimensions } from 'react-native';
 import { Alert } from './alerts';
 import * as Crypto from 'expo-crypto';
 import { accountOwner, request } from './api';
-import { clearMediaPreview, clearPickedMedia, clearStagedMedia, mediaSize, openPrivateMedia, pendingMediaUpload, pickMedia, retryMediaUpload, removePendingMediaUpload, saveMediaUpload, stageMediaUpload } from './media';
+import { clearMediaPreview, clearPickedMedia, clearStagedMedia, openPrivateMedia, pendingMediaUpload, pickMedia, retryMediaUpload, removePendingMediaUpload, saveMediaUpload, stageMediaUpload } from './media';
 import type { MediaList, MediaMetadata, PendingMediaUpload, PickedMedia } from './media';
 import { getDatabase } from './native';
 import LocalAttachment from './LocalAttachment';
 import PrivateMediaImage from './PrivateMediaImage';
-import RemoveMediaMenu from './RemoveMediaMenu';
 import type { Session } from './types';
 import { Button, useUI } from './ui';
 
-export type BillAttachmentsProps = { session: Session | null; groupId: string; expenseId: string; revision?: number; readOnly?: boolean; busy: boolean; onBusyChange: (busy: boolean) => void; onChanged?: () => Promise<void> };
-export default function BillAttachments({ session, groupId, expenseId, revision, readOnly = false, busy, onBusyChange, onChanged }: BillAttachmentsProps) {
-  const notify = useToast();
+export type BillAttachmentsProps = { session: Session | null; groupId: string; expenseId: string; revision?: number; billTitle?: string; readOnly?: boolean; busy: boolean; onBusyChange: (busy: boolean) => void; onChanged?: () => Promise<void> };
+export default function BillAttachments({ session, groupId, expenseId, revision, billTitle = '', readOnly = false, busy, onBusyChange, onChanged }: BillAttachmentsProps) {
+  const notify = useToast(), { height } = useWindowDimensions();
   const { ui, motion } = useUI(), [items, setItems] = useState<MediaMetadata[]>([]), [canModify, setCanModify] = useState(false), [loading, setLoading] = useState(true), [working, setWorking] = useState(false), [error, setError] = useState('');
   useScreenRemovalLock(working);
   const [open, setOpen] = useState(false), trigger = useRef<React.ComponentRef<typeof View>>(null);
-  const close = () => { if (!busy && !working) { setOpen(false); setOptionsId(null); requestAnimationFrame(() => trigger.current?.focus()); } };
-  const [optionsId, setOptionsId] = useState<string | null>(null);
+  const close = () => { if (!busy && !working) { setOpen(false); requestAnimationFrame(() => trigger.current?.focus()); } };
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [pending, setPending] = useState<PendingMediaUpload | null>(null);
   const path = `/groups/${encodeURIComponent(groupId)}/expenses/${encodeURIComponent(expenseId)}/attachments`;
   const owner = session ? accountOwner(session) : '', identity = `${owner}|${path}`, identityRef = useRef(identity); identityRef.current = identity;
   const lock = useRef(false), mounted = useRef(true), current = () => mounted.current && identityRef.current === identity;
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
-  useEffect(() => { setItems([]); setCanModify(false); setPending(null); setOptionsId(null); setError(''); setOpen(false); }, [identity]);
+  useEffect(() => { setItems([]); setCanModify(false); setPending(null); setSelectedId(null); setError(''); setOpen(false); }, [identity]);
   useEffect(() => {
     let active = true; setLoading(true);
     if (!session) { setLoading(false); return; }
     void getDatabase().then(db => pendingMediaUpload(db, session, path)).then(saved => { if (active) setPending(saved); return request<MediaList>(session, path); })
-      .then(result => { if (active) { animateLayout(!!motion?.enabled); setItems(result.attachments); setCanModify(result.can_modify); setLoading(false); } })
+      .then(result => { if (active) { animateLayout(!!motion?.enabled); adoptItems(result.attachments); setCanModify(result.can_modify); setLoading(false); } })
       .catch(() => { if (active) { animateLayout(!!motion?.enabled); setError('Could not load attachments. Refresh when online.'); setLoading(false); } });
     return () => { active = false; };
   }, [identity, session?.token, revision]);
+  function adoptItems(attachments: MediaMetadata[]) {
+    setItems(attachments);
+    setSelectedId(id => attachments.find(item => item.id === id)?.id ?? attachments[0]?.id ?? null);
+  }
   async function load() {
     if (!session) return;
     const saved = await pendingMediaUpload(await getDatabase(), session, path);
     if (current()) setPending(saved);
     const result = await request<MediaList>(session, path);
-    if (current()) { animateLayout(!!motion?.enabled); setItems(result.attachments); setCanModify(result.can_modify); }
+    if (current()) { animateLayout(!!motion?.enabled); adoptItems(result.attachments); setCanModify(result.can_modify); }
     return result;
   }
   async function run(action: () => Promise<void>) {
@@ -96,7 +97,7 @@ export default function BillAttachments({ session, groupId, expenseId, revision,
     const db = await getDatabase();
     try {
       const accepted = await retryMediaUpload(db, session, path);
-      if (current()) { setItems(previous => [...previous.filter(item => item.id !== accepted.id), accepted]); setPending(null); notify('Attachment uploaded.'); }
+      if (current()) { setItems(previous => [...previous.filter(item => item.id !== accepted.id), accepted]); setPending(null); setSelectedId(accepted.id); notify('Attachment uploaded.'); }
       refreshAccepted('Attachment saved.');
     } catch (cause) {
       try { const saved = await pendingMediaUpload(db, session, path); if (current()) setPending(saved); } catch { /* Keep the current pending upload visible. */ }
@@ -105,43 +106,47 @@ export default function BillAttachments({ session, groupId, expenseId, revision,
   }
   function remove(item: MediaMetadata) {
     if (readOnly || !canModify || pending) return;
-    Alert.alert('Remove this attachment?', item.name, [{ text: 'Cancel', style: 'cancel' }, { text: 'Remove attachment', onPress: () => void run(async () => {
+    Alert.alert('Remove this attachment?', `Remove this ${item.content_type === 'application/pdf' ? 'PDF' : 'photo'} from the bill?`, [{ text: 'Cancel', style: 'cancel' }, { text: 'Remove attachment', style: 'destructive', onPress: () => void run(async () => {
       if (readOnly || !canModify || pending) return;
       await request(session!, `${path}/${encodeURIComponent(item.id)}`, 'DELETE');
-      if (current()) setItems(previous => previous.filter(value => value.id !== item.id));
+      if (current()) {
+        const index = items.findIndex(value => value.id === item.id);
+        setSelectedId(items[index + 1]?.id ?? items[index - 1]?.id ?? null);
+        setItems(previous => previous.filter(value => value.id !== item.id));
+      }
       await clearMediaPreview(item);
       refreshAccepted('Attachment removed.');
     }) }]);
   }
+  const selected = items.find(item => item.id === selectedId) ?? items[0];
+  const selectedLabel = selected ? `${selected.content_type === 'application/pdf' ? 'PDF' : 'Photo'} ${items.indexOf(selected) + 1} of ${items.length}` : '';
   const disabled = busy || loading || working, editable = !readOnly && canModify;
   useLoading(working);
-  const preview = session && items[0] ? <PrivateMediaImage session={session} media={items[0]} size={80} interactive={false} /> : pending ? <LocalAttachment file={pending.file} disabled={disabled} onError={setError} thumbnailOnly size={80} /> : undefined;
+  const preview = session && items[0] ? <PrivateMediaImage session={session} media={items[0]} label="Attachment preview" size={80} interactive={false} /> : pending ? <LocalAttachment file={pending.file} disabled={disabled} onError={setError} title="Pending attachment" thumbnailOnly size={80} /> : undefined;
   const needsAttention = !!(pending || error), hasFiles = !!(items.length || pending);
   return <>
     <AttachmentTile triggerRef={trigger} thumbnail={preview} count={items.length} loading={loading || working} warning={needsAttention} canAdd={editable && !hasFiles} disabled={disabled}
       label={loading ? 'Loading attachments' : working ? 'Processing file' : needsAttention ? `Attachments, ${items.length} saved ${items.length === 1 ? 'file' : 'files'}, needs attention` : hasFiles ? `Attachments, ${items.length} ${items.length === 1 ? 'file' : 'files'}` : editable ? 'Add photo or PDF' : 'View attachments'}
       onPress={() => { if (disabled) return; if (!hasFiles && editable && !error) chooseAttachment(photo => void run(() => add(photo))); else setOpen(true); }} />
-    <KeyboardDialog visible={open} label="Attachments" placement="bottom" dismissable={!busy && !working} onDismiss={close}>
-    <Dialog.Title icon="attachment">Attachments{items.length ? ` (${items.length})` : ''}</Dialog.Title>
-    <DialogScrollBody gap={10}>
+    <BottomSheet visible={open} title="Photos & documents" icon="attachment" closeIconOnly doneAccessibilityLabel="Close attachments" disabled={busy || working} maxHeight={height} gap={10} onDismiss={close}>
     {!session ? <Text style={ui.caption}>Sign in to view attachments.</Text> : <>
       {loading && <LoadingState label="Loading attachments…" />}
       {working && <LoadingState label="Processing file…" />}
-      <RowGroup>{items.map(item => <AttachmentRow key={item.id} title={item.name} label={`Open ${item.name}`} subtitle={`${item.content_type === 'application/pdf' ? 'PDF' : 'Image'} · ${mediaSize(item.size)}`} thumbnail={<PrivateMediaImage session={session} media={item} />} disabled={disabled}
-        onOpen={() => void run(() => openPrivateMedia(session, item))} options={editable && <RemoveMediaMenu open={optionsId === item.id} disabled={disabled || !!pending} label={`Options for ${item.name}`} removeLabel="Remove attachment"
-          onOpen={() => setOptionsId(item.id)} onClose={() => setOptionsId(null)} onRemove={() => remove(item)} />} />)}</RowGroup>
-      {pending && <><LocalAttachment file={pending.file} disabled={disabled} onError={setError} />
+      {!!billTitle && <Text style={ui.caption}>{billTitle}</Text>}
+      <AttachmentGallery session={session} items={items} selectedId={selected?.id ?? null} disabled={disabled}
+        onSelect={setSelectedId} onOpen={item => void run(() => openPrivateMedia(session, item))}
+        onAdd={editable && !pending && items.length < 10 ? () => chooseAttachment(photo => void run(() => add(photo))) : undefined}
+        options={selected && editable && <Button iconOnly icon="more" kind="text" accessibilityLabel={`Options for ${selectedLabel}`} disabled={disabled || !!pending} onPress={() => remove(selected)} />} />
+      {pending && <><LocalAttachment file={pending.file} title={`${pending.file.type === 'application/pdf' ? 'PDF' : 'Photo'} waiting to upload`} subtitle="Saved on this device" disabled={disabled} onError={setError} />
         {!working && <NoticeBanner tone={pending.rejection ? 'error' : 'warning'}>{pending.rejection
           ? `File not uploaded. ${pending.rejection} Your file is saved on this device. Remove it to choose another file.`
           : 'Upload not confirmed. Your file is saved on this device. Retry when online.'}</NoticeBanner>}
         {!pending.rejection && <Button title="Retry upload" icon="refresh" disabled={disabled || readOnly} onPress={() => void run(finishUpload)} />}
         <Button title="Remove file" icon="remove" kind="text" disabled={disabled || readOnly} onPress={() => void run(async () => { await removePendingMediaUpload(await getDatabase(), session, path); if (current()) setPending(null); await load(); await onChanged?.(); })} /></>}
-      {editable && !pending && items.length < 10 && <AttachmentPicker disabled={disabled} onPick={photo => void run(() => add(photo))} />}
       {!loading && readOnly && <Text style={ui.caption}>Read-only while archived or waiting to sync.</Text>}
       {items.length >= 10 && <Text style={ui.caption}>This bill has the maximum of 10 attachments.</Text>}
       {!!error && error !== pending?.rejection && <ErrorState error={error} retryLabel="Refresh attachments" disabled={busy || working || loading} onRetry={!pending ? () => void refresh() : undefined} />}
     </>}
-    </DialogScrollBody><CloseDialogActions title="Done" disabled={busy || working} onClose={close} />
-    </KeyboardDialog>
+    </BottomSheet>
   </>;
 }

@@ -254,12 +254,12 @@ test('accepted attachment action reuses one load/picker path and preserves permi
     app.render(props); app.commit(); await tick(); return app;
   };
   const app = await make(); let tree = app.render(props); app.commit();
-  assert.equal(reads, 1); assert.equal(nodes(tree).find(node => node.type === 'KeyboardDialog' && node.props.label === 'Attachments')!.props.visible, false);
-  find(tree, 'label', 'Add photo or PDF').props.onPress(); await tick(); assert.equal(picks, 1); assert.equal(uploads, 0); assert.equal(reads, 1);
-  tree = app.render({ ...props, busy: true }); find(tree, 'label', 'Add photo or PDF').props.onPress(); await tick(); assert.equal(picks, 1);
-  assert.ok(!find(app.render({ ...props, readOnly: true }), 'label', 'Add photo or PDF'));
+  assert.equal(reads, 1); assert.equal(nodes(tree).find(node => node.type === 'BottomSheet' && node.props.title === 'Photos & documents')!.props.visible, false);
+  find(tree, 'accessibilityLabel', 'Add photo or PDF').props.onPress(); await tick(); assert.equal(picks, 1); assert.equal(uploads, 0); assert.equal(reads, 1);
+  tree = app.render({ ...props, busy: true }); find(tree, 'accessibilityLabel', 'Add photo or PDF').props.onPress(); await tick(); assert.equal(picks, 1);
+  assert.ok(!find(app.render({ ...props, readOnly: true }), 'accessibilityLabel', 'Add photo or PDF'));
   for (const [items, canModify, pending] of [[[], false, null], [[], true, { file: { name: 'Retained pending file' } }], [Array.from({ length: 10 }, (_, i) => ({ id: String(i), name: 'Synthetic.pdf', content_type: 'application/pdf' })), true, null]] as any[]) {
-    const guarded = await make(items, canModify, pending); assert.ok(!find(guarded.render(props), 'label', 'Add photo or PDF'));
+    const guarded = await make(items, canModify, pending); assert.ok(!find(guarded.render(props), 'accessibilityLabel', 'Add photo or PDF'));
   }
   assert.equal(picks, 1); assert.equal(uploads, 0);
 });
@@ -1335,8 +1335,8 @@ test('attachment reveal commits the loaded layout in one animated update and res
     await tick(); const tree = app.render(props);
     assert.deepEqual(animations, [enabled]);
     assert.ok(!nodes(tree).some(node => node.children.includes('Loading attachments…')));
-    assert.ok(find(tree, 'accessibilityLabel', 'Open Receipt.pdf'));
-    assert.ok(find(tree, 'label', 'Add photo or PDF'));
+    assert.ok(find(tree, 'accessibilityLabel', 'Open PDF 1 of 1'));
+    assert.ok(find(tree, 'accessibilityLabel', 'Add photo or PDF'));
     app.unmount();
   }
 });
@@ -1521,11 +1521,11 @@ test('receipt tile opens the attachment sheet and keeps confirmed counts separat
   app.render(props);app.commit();await tick();let tree=app.render(props);
   const action=find(tree,'accessibilityLabel',pending?'Attachments, 1 saved file, needs attention':'Attachments, 1 file');
   assert.ok(action);assert.equal(action.props.disabled,false);assert.equal(nodes(tree).find(n=>n.type==='PrivateMediaImage'&&n.props.size===80)!.props.interactive,false);
-  assert.equal(nodes(tree).find(n=>n.type==='KeyboardDialog')!.props.visible,false);
-  action.props.onPress();tree=app.render(props);assert.equal(nodes(tree).find(n=>n.type==='KeyboardDialog')!.props.visible,true);
-  assert.ok(find(tree,'accessibilityLabel','Open Receipt.jpg'));
+  assert.equal(nodes(tree).find(n=>n.type==='BottomSheet')!.props.visible,false);
+  action.props.onPress();tree=app.render(props);assert.equal(nodes(tree).find(n=>n.type==='BottomSheet')!.props.visible,true);
+  assert.ok(find(tree,'accessibilityLabel','Open Photo 1 of 1'));
   if(pending)assert.ok(nodes(tree).some(n=>n.type==='Text'&&n.children.includes('!')));
-  find(tree,'title','Done').props.onPress();assert.equal(nodes(app.render(props)).find(n=>n.type==='KeyboardDialog')!.props.visible,false);app.unmount();
+  nodes(tree).find(n=>n.type==='BottomSheet')!.props.onDismiss();assert.equal(nodes(app.render(props)).find(n=>n.type==='BottomSheet')!.props.visible,false);assert.ok(!find(tree,'title','Done'));app.unmount();
  }
 });
 
@@ -1534,7 +1534,7 @@ test('empty receipt tile opens the existing picker directly; cancellation and bu
  const app=harness('src/BillAttachments.tsx','BillAttachments',{Platform:{OS:'web'},accountOwner:()=> 'owner',pendingMediaUpload:async()=>null,request:async()=>({attachments:[],can_modify:true}),pickMedia:async()=>{picks++;return null;}});
  const props={session:{token:'owner'},groupId:'g',expenseId:'e',busy:false,onBusyChange(){}};
  app.render(props);app.commit();await tick();let tree=app.render(props);
- find(tree,'accessibilityLabel','Add photo or PDF').props.onPress();await tick();tree=app.render(props);assert.equal(picks,1);assert.equal(nodes(tree).find(n=>n.type==='KeyboardDialog')!.props.visible,false);
+ find(tree,'accessibilityLabel','Add photo or PDF').props.onPress();await tick();tree=app.render(props);assert.equal(picks,1);assert.equal(nodes(tree).find(n=>n.type==='BottomSheet')!.props.visible,false);
  find(app.render({...props,busy:true}),'accessibilityLabel','Add photo or PDF').props.onPress();await tick();assert.equal(picks,1);app.unmount();
 });
 
@@ -1542,7 +1542,7 @@ test('rejected picker input opens recovery feedback without increasing the confi
  const app=harness('src/BillAttachments.tsx','BillAttachments',{Platform:{OS:'web'},accountOwner:()=> 'owner',pendingMediaUpload:async()=>null,request:async()=>({attachments:[],can_modify:true}),pickMedia:async()=>{throw Error('Choose a still image.');}});
  const props={session:{token:'owner'},groupId:'g',expenseId:'e',busy:false,onBusyChange(){}};
  app.render(props);app.commit();await tick();find(app.render(props),'accessibilityLabel','Add photo or PDF').props.onPress();await tick();const tree=app.render(props);
- assert.equal(nodes(tree).find(n=>n.type==='KeyboardDialog')!.props.visible,true);assert.ok(find(tree,'accessibilityLabel','Attachments, 0 saved files, needs attention'));
+ assert.equal(nodes(tree).find(n=>n.type==='BottomSheet')!.props.visible,true);assert.ok(find(tree,'accessibilityLabel','Attachments, 0 saved files, needs attention'));
  assert.ok(nodes(tree).some(n=>n.children.includes('Choose a still image.')));app.unmount();
 });
 
@@ -1588,4 +1588,52 @@ test('balance sheet loads category hints for its own full bill set and stops on 
  const props={selection:{group,accepted:group,commands:[],selfId:'A',transfer:group.transfers[0],restoreFocus(){}},currentKey:balanceKey(group,[]),onClose(){},session,online:true,active:true};
  app.render(props);app.commit();await tick();app.render(props);const last=calls.at(-1)!;assert.equal(last[0],session);assert.equal(last[1][0].id,'older');assert.equal(last[2],true);assert.equal(last[4],true);
  app.render({...props,currentKey:'stale'});assert.deepEqual(calls.at(-1)![1],[]);assert.equal(calls.at(-1)![2],false);app.unmount();
+});
+
+
+const galleryItems = [
+ {id:'photo-one',name:'IMG_1456.jpg',content_type:'image/jpeg',size:593000},
+ {id:'pdf-two',name:'scan-original.pdf',content_type:'application/pdf',size:1200000},
+ {id:'photo-three',name:'IMG_1457.jpg',content_type:'image/jpeg',size:430000},
+];
+test('gallery selects and opens the exact private attachment, contains the preview and hides file metadata',()=>{
+ let selected='',opened:any;const moves:any[]=[];
+ const app=harness('src/AttachmentGallery.tsx','AttachmentGallery',{PrivateMediaImage:'PrivateMediaImage',useWindowDimensions:()=>({width:390,height:844,fontScale:1}),useUI:()=>({palette:{},ui:{},motion:{enabled:true}})});
+ const tree=app.render({session:{token:'owner'},items:galleryItems,selectedId:'pdf-two',disabled:false,onSelect:(id:string)=>selected=id,onOpen:(item:any)=>opened=item,onAdd(){}});
+ assert.equal(find(tree,'accessibilityLabel','Select PDF 2 of 3').props.accessibilityState.selected,true);
+ find(tree,'accessibilityLabel','Select Photo 3 of 3').props.onPress();assert.equal(selected,'photo-three');
+ find(tree,'accessibilityLabel','Open PDF 2 of 3').props.onPress();assert.equal(opened,galleryItems[1]);
+ const preview=nodes(tree).find(n=>n.type==='PrivateMediaImage'&&n.props.resizeMode==='contain')!;assert.equal(preview.props.media,galleryItems[1]);assert.equal(preview.props.interactive,false);
+ const labels=nodes(tree).flatMap(n=>[...n.children,n.props.accessibilityLabel,n.props.label]).filter(v=>typeof v==='string').join(' ');assert.doesNotMatch(labels,/IMG_|scan-original|593|KB|MB/);
+ const strip=nodes(tree).find(n=>n.type==='ScrollView'&&n.props.horizontal)!;strip.props.ref.current={scrollTo:(v:any)=>moves.push(v)};app.commit();assert.equal(moves[0].animated,true);
+});
+test('gallery shrinks its preview for large text and keeps selected thumbnails reachable with reduced motion',()=>{
+ const moves:any[]=[];const app=harness('src/AttachmentGallery.tsx','AttachmentGallery',{PrivateMediaImage:'PrivateMediaImage',useWindowDimensions:()=>({width:320,height:568,fontScale:1.8}),useUI:()=>({palette:{},ui:{},motion:{enabled:false}})});
+ const tree=app.render({session:{},items:galleryItems,selectedId:'photo-three',disabled:false,onSelect(){},onOpen(){}});
+ assert.equal(nodes(tree).find(n=>n.type==='PrivateMediaImage'&&n.props.resizeMode==='contain')!.props.size,120);
+ const strip=nodes(tree).find(n=>n.type==='ScrollView'&&n.props.horizontal)!;strip.props.ref.current={scrollTo:(v:any)=>moves.push(v)};strip.props.onContentSizeChange();assert.deepEqual(moves,[{x:152,animated:false}]);
+});
+test('removing the selected gallery attachment confirms without filenames and selects its next neighbour',async()=>{
+ let confirmation:any;const removed:string[]=[];const props={session:{token:'owner'},groupId:'g',expenseId:'e',busy:false,onBusyChange(){}};
+ const app=harness('src/BillAttachments.tsx','BillAttachments',{accountOwner:()=> 'owner',pendingMediaUpload:async()=>null,request:async(_session:any,path:string,method:string)=>{if(method==='DELETE'){removed.push(path);return {};}return {attachments:galleryItems,can_modify:true};},PrivateMediaImage:'PrivateMediaImage',RemoveMediaMenu:'RemoveMediaMenu',clearMediaPreview:async()=>{},Alert:{alert:(...args:any[])=>confirmation=args}});
+ app.render(props);app.commit();await tick();let tree=app.render(props);find(tree,'accessibilityLabel','Select PDF 2 of 3').props.onPress();tree=app.render(props);
+ find(tree,'accessibilityLabel','Options for PDF 2 of 3').props.onPress();assert.equal(confirmation[1],'Remove this PDF from the bill?');confirmation[2].find((v:any)=>v.text==='Remove attachment').onPress();await tick();tree=app.render(props);
+ assert.ok(find(tree,'accessibilityLabel','Open Photo 2 of 2'));assert.deepEqual(removed,['/groups/g/expenses/e/attachments/pdf-two']);assert.ok(!find(tree,'title','Done'));app.unmount();
+});
+test('pending and read-only gallery states preserve recovery while preventing new uploads or removal',async()=>{
+ for(const readOnly of [false,true]){
+  const pending={id:'waiting',file:{name:'PRIVATE_NAME.jpg',uri:'file:///pending.jpg',type:'image/jpeg',size:777000}};
+  const app=harness('src/BillAttachments.tsx','BillAttachments',{accountOwner:()=> 'owner',pendingMediaUpload:async()=>pending,request:async()=>({attachments:galleryItems,can_modify:true}),PrivateMediaImage:'PrivateMediaImage',RemoveMediaMenu:'RemoveMediaMenu'});
+  const props={session:{token:'owner'},groupId:'g',expenseId:'e',readOnly,busy:false,onBusyChange(){}};app.render(props);app.commit();await tick();const tree=app.render(props);
+  assert.ok(!find(tree,'accessibilityLabel','Add photo or PDF'));assert.equal(find(tree,'title','Retry upload').props.disabled,readOnly);
+  const local=nodes(tree).find(n=>n.type==='LocalAttachment'&&!n.props.thumbnailOnly)!;assert.equal(local.props.title,'Photo waiting to upload');assert.equal(local.props.subtitle,'Saved on this device');
+  assert.equal(!!find(tree,'accessibilityLabel','Options for Photo 1 of 3'),!readOnly);app.unmount();
+ }
+});
+
+
+test('gallery keeps the initial visible attachment when refreshed rows arrive in a different order',async()=>{
+ let items=galleryItems,opened:any;const app=harness('src/BillAttachments.tsx','BillAttachments',{accountOwner:()=> 'owner',pendingMediaUpload:async()=>null,request:async()=>({attachments:items,can_modify:true}),PrivateMediaImage:'PrivateMediaImage',openPrivateMedia:async(_:any,item:any)=>opened=item});
+ const props={session:{token:'owner'},groupId:'g',expenseId:'e',revision:1,busy:false,onBusyChange(){}};app.render(props);app.commit();await tick();assert.ok(find(app.render(props),'accessibilityLabel','Open Photo 1 of 3'));
+ items=[galleryItems[2],galleryItems[1],galleryItems[0]];const next={...props,revision:2};app.render(next);app.commit();await tick();const tree=app.render(next);find(tree,'accessibilityLabel','Open Photo 3 of 3').props.onPress();await tick();assert.equal(opened.id,'photo-one');app.unmount();
 });

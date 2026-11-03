@@ -10,7 +10,7 @@ import { localMediaUrl, clearLocalMediaUrl, openLocalMedia } from './mediaPlatfo
 import { useUI } from './ui';
 
 // The same private, local preview is used by bill drafts and pending uploads.
-export default function LocalAttachment({ file, disabled, onError, thumbnailOnly = false, size = 56 }: { thumbnailOnly?: boolean; size?: number; file: PickedMedia; disabled: boolean; onError: (message: string) => void }) {
+export default function LocalAttachment({ file, disabled, onError, thumbnailOnly = false, size = 56, title = file.name, subtitle = `${mediaSize(file.size)} · Tap to preview` }: { thumbnailOnly?: boolean; size?: number; title?: string; subtitle?: string; file: PickedMedia; disabled: boolean; onError: (message: string) => void }) {
   const { ui, palette } = useUI(), [uri, setUri] = useState(''), [opening, setOpening] = useState(false), [failed, setFailed] = useState(false);
   useLoading(opening);
   useEffect(() => {
@@ -20,7 +20,7 @@ export default function LocalAttachment({ file, disabled, onError, thumbnailOnly
     return () => { active = false; if (resolved) clearLocalMediaUrl(resolved); };
   }, [file.uri]);
   const pdf = file.type === 'application/pdf';
-  const thumbnail = uri && !pdf ? <Image source={{ uri }} style={{ width: size, height: size, borderRadius: 8 }} accessibilityLabel={file.name} onError={() => onError('Could not load the photo preview.')} />
+  const thumbnail = uri && !pdf ? <Image source={{ uri }} style={{ width: size, height: size, borderRadius: 8 }} accessibilityLabel={title} onError={() => onError('Could not load the photo preview.')} />
     : <MediaPreviewFrame size={size} loading={!uri && !failed} borderRadius={8} label={`${pdf ? 'PDF' : 'Photo'} preview`} text={pdf ? 'PDF' : 'Photo'} />;
-  return thumbnailOnly ? thumbnail : <AttachmentRow title={file.name} label={`Preview ${file.name}`} subtitle={`${mediaSize(file.size)} · Tap to preview`} disabled={disabled || !uri} onOpen={() => { setOpening(true); void openLocalMedia(file, uri).catch(() => onError('Could not preview this file. Try again.')).finally(() => setOpening(false)); }} thumbnail={thumbnail} />;
+  return thumbnailOnly ? thumbnail : <AttachmentRow title={title} label={`Preview ${title}`} subtitle={subtitle} disabled={disabled || !uri} onOpen={() => { setOpening(true); void openLocalMedia(file, uri).catch(() => onError('Could not preview this file. Try again.')).finally(() => setOpening(false)); }} thumbnail={thumbnail} />;
 }

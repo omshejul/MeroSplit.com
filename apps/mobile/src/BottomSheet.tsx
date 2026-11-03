@@ -9,8 +9,8 @@ import DialogFocus from './DialogFocus';
 import NativeSheet from './NativeSheet';
 import { Button, Icon, useUI, type IconName } from './ui';
 
-export default function BottomSheet({ visible, onDismiss, title, icon, total, count, disabled, maxHeight, doneAccessibilityLabel, gap = 0, children }: {
-  visible: boolean; onDismiss: () => void; title: string; icon: IconName; total?: string; count?: number; disabled: boolean; maxHeight: number; doneAccessibilityLabel?: string; gap?: number; children: React.ReactNode;
+export default function BottomSheet({ visible, onDismiss, title, icon, total, count, disabled, maxHeight, doneAccessibilityLabel, gap = 0, closeIconOnly = false, children }: {
+  visible: boolean; onDismiss: () => void; title: string; icon: IconName; total?: string; count?: number; disabled: boolean; maxHeight: number; doneAccessibilityLabel?: string; closeIconOnly?: boolean; gap?: number; children: React.ReactNode;
 }) {
   const { ui, palette, motion } = useUI(), { height, width } = useWindowDimensions(), insets = useSafeAreaInsets();
   const [headerHeight, setHeaderHeight] = useState(100), [sheetHeight, setSheetHeight] = useState(height);
@@ -20,7 +20,7 @@ export default function BottomSheet({ visible, onDismiss, title, icon, total, co
       <ScrollView style={{ flex: 1, marginTop: headerHeight }} nestedScrollEnabled keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 12 + insets.bottom }}><RowGroup style={{ gap }}>{children}</RowGroup></ScrollView>
       <View onLayout={event => setHeaderHeight(event.nativeEvent.layout.height)} style={{ position: 'absolute', top: 0, left: 0, right: 0, paddingHorizontal: 20, paddingTop: 20, paddingBottom: 16, gap: 6 }}>
         <View accessible={false} pointerEvents="none" style={{ position: 'absolute', top: 8, width: 36, height: 4, borderRadius: 2, backgroundColor: palette.outline, alignSelf: 'center' }} />
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}><Icon name={icon} /><Text accessibilityRole="header" style={[ui.section, { flex: 1 }]}>{title}</Text><Button title="Done" icon="tick" kind="outlined" compact accessibilityLabel={doneAccessibilityLabel ?? (icon === 'people' ? 'Apply split' : icon === 'pay' ? 'Apply payers' : 'Close sheet')} disabled={disabled || count === 0} onPress={close} /></View>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}><Icon name={icon} /><Text accessibilityRole="header" style={[ui.section, { flex: 1 }]}>{title}</Text><Button title={closeIconOnly ? undefined : "Done"} icon={closeIconOnly ? "close" : "tick"} iconOnly={closeIconOnly} kind={closeIconOnly ? "text" : "outlined"} compact accessibilityLabel={doneAccessibilityLabel ?? (icon === 'people' ? 'Apply split' : icon === 'pay' ? 'Apply payers' : 'Close sheet')} disabled={disabled || !closeIconOnly && count === 0} style={closeIconOnly ? { width: 44, height: 44, minWidth: 44 } : undefined} onPress={close} /></View>
         {(total || count !== undefined) && <Text style={ui.caption}>{[total, count === undefined ? '' : `${count} selected`].filter(Boolean).join(' · ')}</Text>}
       </View>
     </KeyboardAvoidingView>
