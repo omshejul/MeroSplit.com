@@ -8,9 +8,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { formatMoney, type Transfer } from './accounting';
 import { balanceKey, changedBalance, explainTransfer } from './balanceExplanation';
 import type { BalanceSource } from './balanceExplanationStorage';
-import type { Command, Group } from './types';
+import type { Command, Group, Session } from './types';
 import BottomSheet from './BottomSheet';
-import { categoryIcon } from './categoryIcons';
+import { categoryIcon, expenseCategory, type ExpenseIcons } from './categoryIcons';
+import { useExpenseIcons } from './useExpenseIcons';
 import { balanceColor, Button, Icon, IconBadge, SectionHeading, useUI, type IconName } from './ui';
 
 export type BalanceSelection = { group: Group; accepted: Group; commands: Command[]; selfId: string; transfer: Transfer; restoreFocus: () => void; load?: (expected: Group) => Promise<BalanceSource> };
@@ -59,7 +60,7 @@ function HistoryRecords({ rows, group, selfId }: { rows: HistoryRow[]; group: Gr
   </>;
 }
 
-function ExplanationBody({ value, selfId }: { value: Explanation; selfId: string }) {
+function ExplanationBody({ value, selfId, categoryIcons = {} }: { value: Explanation; selfId: string; categoryIcons?: ExpenseIcons }) {
   const { ui, palette } = useUI(), { group, plan, index, people, history } = value;
   const own = people.find(person => person.id === selfId)!, chosen = plan[index], sender = nameFor(group, selfId, chosen.sender), recipient = nameFor(group, selfId, chosen.recipient), direct = people.length === 2;
   const summary = <View style={{ gap: 6, paddingBottom: 12 }}>
@@ -77,10 +78,10 @@ function ExplanationBody({ value, selfId }: { value: Explanation; selfId: string
       const bill = row.id.startsWith('bill:') ? group.expenses.find(bill => `bill:${bill.id}` === row.id) : undefined;
       const debtor = BigInt(row.amount) < 0n ? chosen.recipient : chosen.sender, creditor = debtor === chosen.sender ? chosen.recipient : chosen.sender;
       const from = nameFor(group, selfId, debtor), to = creditor === selfId ? 'you' : nameFor(group, selfId, creditor);
-      return <InlineDetails key={row.id} title={row.title} icon={bill ? categoryIcon(bill.category) : row.id.startsWith('payment:') ? 'payment' : 'history'} amount={row.amount}>
+      return <InlineDetails key={row.id} title={row.title} icon={bill ? categoryIcon(expenseCategory({ ...bill, groupId: group.id, title: bill.description }, categoryIcons)) : row.id.startsWith('payment:') ? 'payment' : 'history'} amount={row.amount}>
         {bill && <Text style={ui.caption}>{Object.entries(bill.paid).filter(([, amount]) => BigInt(amount) > 0n).map(([id, amount]) => `${nameFor(group, selfId, id)} paid ${formatMoney(amount)}`).join(', ')}</Text>}
         {bill && <Text style={ui.caption}>{debtor === selfId ? 'Your share' : `${from}'s share`}: {formatMoney(bill.shares[debtor] ?? '0')}</Text>}
-        <Text style={ui.caption}>{bill ? `${from} ${debtor === selfId ? 'owe' : 'owes'} ${to} ${formatMoney(absolute(row.amount))} for this bill` : `${BigInt(row.amount) < 0n ? 'Reduces this payment by' : 'Adds to this payment:'} ${formatMoney(absolute(row.amount))}`}</Text>
+        {(!bill || BigInt(bill.shares[debtor] ?? '0') !== BigInt(absolute(row.amount))) && <Text style={ui.caption}>{bill ? `${from} ${debtor === selfId ? 'owe' : 'owes'} ${to} ${formatMoney(absolute(row.amount))} for this bill` : `${BigInt(row.amount) < 0n ? 'Reduces this payment by' : 'Adds to this payment:'} ${formatMoney(absolute(row.amount))}`}</Text>}
       </InlineDetails>;
     })}
     <Text style={ui.caption}>Positive amounts add to this payment. Negative amounts reduce it. Each bill keeps its original shares.</Text>
@@ -93,7 +94,7 @@ function ExplanationBody({ value, selfId }: { value: Explanation; selfId: string
     <Text style={ui.body}>{bill ? `${BigInt(bill.paid[selfId] ?? '0') === 0n ? 'Your share of' : 'From'} ${bill.description}.` : 'Your balance combines bills and recorded payments.'}{history.settledDate ? ` Your earlier balance was settled on ${dateText(history.settledDate)}.` : ''}</Text>
     {bill ? <View style={{ gap: 12, marginVertical: 12 }}>
       <SectionHeading>What makes up {formatMoney(absolute(own.balance))}</SectionHeading>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}><IconBadge name="bill" /><View style={{ flex: 1, gap: 4 }}><Text style={ui.body}>{bill.description}</Text><Text style={ui.caption}>{dateText(bill.date)}</Text></View><Text style={ui.body}>{formatMoney(bill.total)}</Text></View>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}><IconBadge name={categoryIcon(expenseCategory({ ...bill, groupId: group.id, title: bill.description }, categoryIcons))} /><View style={{ flex: 1, gap: 4 }}><Text style={ui.body}>{bill.description}</Text><Text style={ui.caption}>{dateText(bill.date)}</Text></View><Text style={ui.body}>{formatMoney(bill.total)}</Text></View>
       <Text style={ui.caption}>{Object.entries(bill.paid).filter(([, amount]) => BigInt(amount) > 0n).map(([id, amount]) => `${nameFor(group, selfId, id)} paid ${formatMoney(amount)}`).join(', ')}</Text>
       {BigInt(bill.paid[selfId] ?? '0') > 0n && bill.paid[selfId] !== bill.total && <Text style={ui.caption}>Your share {formatMoney(bill.shares[selfId] ?? '0')}.</Text>}
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}><Text style={ui.body}>{share.label}</Text><Text style={ui.body}>{formatMoney(share.amount)}</Text></View>
@@ -121,7 +122,7 @@ function ExplanationBody({ value, selfId }: { value: Explanation; selfId: string
   </>;
 }
 
-export default function BalanceExplanation({ selection, currentKey, onClose }: { selection: BalanceSelection | null; currentKey: string; onClose: () => void }) {
+export default function BalanceExplanation({ selection, currentKey, onClose, categoryIcons = {}, session = null, active = true, online = true }: { selection: BalanceSelection | null; currentKey: string; onClose: () => void; categoryIcons?: ExpenseIcons; session?: Session | null; active?: boolean; online?: boolean }) {
   const { ui } = useUI(), { height } = useWindowDimensions(), insets = useSafeAreaInsets();
   const [result, setResult] = useState<{ value: Explanation; saved: boolean } | null>(null), [error, setError] = useState(''), [retry, setRetry] = useState(0);
   const stale = !!selection && balanceKey(selection.group, selection.commands) !== currentKey;
@@ -137,9 +138,13 @@ export default function BalanceExplanation({ selection, currentKey, onClose }: {
     })();
     return () => { active = false; };
   }, [selection, retry]);
+  const value = selection && !stale && result?.value.group.id === selection.group.id ? result.value : null;
+  const billIds = new Set(value?.group.simplify_debts === false ? value.directItems.filter(row => row.id.startsWith('bill:')).map(row => row.id.slice(5)) : value?.history.single ? [value.history.single.id] : []);
+  const refs = value?.group.expenses.filter(bill => !bill.deleted && billIds.has(bill.id)).map(bill => ({ ...bill, groupId: value.group.id, title: bill.description })) ?? [];
+  const icons = useExpenseIcons(session, refs, active && !!value && !value.pending, online, true);
   const maxHeight = Math.max(180, height - insets.top - insets.bottom - 48);
   useLoading(!!selection && !stale && !result && !error);
   return <BottomSheet visible={!!selection} onDismiss={close} disabled={false} title="Amount breakdown" icon="info" maxHeight={maxHeight} gap={12} doneAccessibilityLabel="Close explanation">
-    {stale ? <ErrorText live>{changedBalance}</ErrorText> : error ? <ErrorState error={error} retryLabel="Try again" onRetry={() => setRetry(value => value + 1)} /> : !result || !selection ? <LoadingState label="Loading the full breakdown…" /> : <><ExplanationBody key={`${selection.group.id}:${selection.transfer.sender}:${selection.transfer.recipient}`} value={result.value} selfId={selection.selfId} />{result.saved && <Text style={ui.caption}>Saved on this device.</Text>}</>}
+    {stale ? <ErrorText live>{changedBalance}</ErrorText> : error ? <ErrorState error={error} retryLabel="Try again" onRetry={() => setRetry(value => value + 1)} /> : !result || !selection ? <LoadingState label="Loading the full breakdown…" /> : <><ExplanationBody key={`${selection.group.id}:${selection.transfer.sender}:${selection.transfer.recipient}`} value={result.value} selfId={selection.selfId} categoryIcons={{ ...categoryIcons, ...icons }} />{result.saved && <Text style={ui.caption}>Saved on this device.</Text>}</>}
   </BottomSheet>;
 }
