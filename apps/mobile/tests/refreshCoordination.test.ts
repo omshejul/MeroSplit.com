@@ -5,6 +5,8 @@ import { DatabaseSync } from 'node:sqlite';
 import ts from 'typescript';
 import { accountOwner, refreshGroups } from '../src/api.ts';
 import { storageRevision, migrate, saveGroup, readVisibleGroup, listGroups, pendingCommands, listLegacyGroups, listLegacyRecoveries, listUnavailableGroups, confirmedSync } from '../src/storage.ts';
+import { hydrateExpenseIcons, cachedExpenseIcons, saveExpenseIcons } from '../src/expenseIconCache.ts';
+import { categoryKey } from '../src/categoryIcons.ts';
 import { listPaymentReturns } from '../src/paymentReturnStorage.ts';
 import { sqliteAdapter } from './sqlite.ts';
 import type { Group, Session } from '../src/types.ts';
@@ -48,7 +50,7 @@ test('unchanged persisted data publishes once; failed refresh and stale loads re
  const setter=()=>{};
  const env:any={ownerRef:{current:owner},activeGroupRef:{current:'g'},getDatabase:async()=>db,isOnline:()=>true,
   publishedStorage:{current:{scope:'',view:'',changes:-1}},loadGeneration:{current:0},groupVersions:{current:''},activityOwner:{current:''},
-  storageRevision,listGroups,pendingCommands,listLegacyGroups,listLegacyRecoveries,listUnavailableGroups,listPaymentReturns,confirmedSync,
+  hydrateExpenseIcons,storageRevision,listGroups,pendingCommands,listLegacyGroups,listLegacyRecoveries,listUnavailableGroups,listPaymentReturns,confirmedSync,
   setLastConfirmed:setter,setPendingFiles:setter,setActivity:setter,setGroups:(fn:any)=>{const next=fn(shown);if(next!==shown)publishes++;shown=next;},setCommands:setter,setLegacy:setter,setRecoveries:setter,setUnavailable:setter,setHasDrafts:setter,setReturns:setter};
  try{
   await migrate(db);await saveGroup(db,owner,group(),'shared');const load=production('load',env);

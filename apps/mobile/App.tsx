@@ -3,6 +3,7 @@ import { hasOpenDialogs } from './src/DialogFocus';
 import { NoticeBanner } from './src/UIStates';
 import { ErrorText } from './src/ui';
 import { PhotoSession } from './src/Avatar';
+import { hydrateExpenseIcons } from './src/expenseIconCache';
 import { readPrefetch, readScope } from './src/prefetch';
 import { personalTransfers } from './src/personalBalances';
 import { subscribeConnection } from './src/connectivity';
@@ -285,7 +286,9 @@ function AppContent() {
   }
   async function load(scope = ownerRef.current) {
     if (!scope) return;
-    const db = await getDatabase(), revision = await storageRevision(db);
+    const db = await getDatabase();
+    await hydrateExpenseIcons(db, scope).catch(() => {});
+    const revision = await storageRevision(db);
     const view = `${isOnline()}|${activeGroupRef.current}`;
     if (publishedStorage.current.scope === scope && publishedStorage.current.view === view && publishedStorage.current.changes === revision) return;
     const generation = ++loadGeneration.current;
