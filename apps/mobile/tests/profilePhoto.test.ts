@@ -6,10 +6,10 @@ import ts from 'typescript';
 const tick=()=>new Promise(r=>setTimeout(r,0));
 function deferred(){let resolve!:(v:any)=>void;const promise=new Promise(r=>resolve=r);return{promise,resolve};}
 function fixture(){let cursor=0;const state:any[]=[],deps:any[][]=[],cleanup:any[]=[];let effects:any[]=[];const old=deferred(),upload=deferred(),cleared:string[]=[],busy:boolean[]=[],loading:boolean[]=[];
- const env:any={useLoading:(value:boolean)=>loading.push(value),React:{createElement:(type:any,props:any,...children:any[])=>({type,props:props??{},children})},View:'View',Text:'Text',Button:'Button',Avatar:'Avatar',Icon:'Icon',RemoveMediaMenu:'RemoveMediaMenu',LoadingSpinner:'LoadingSpinner',ProfilePhotoCrop:'ProfilePhotoCrop',Platform:{OS:'ios'},Crypto:{randomUUID:()=> 'new'},Alert:{alert(){}},useUI:()=>({ui:{body:{},caption:{},error:{}},palette:{soft:'#eee',background:'#fff',accent:'#333'}}),accountOwner:()=> 'account',cachedRead:()=>({avatar:{id:'old'}}),request:()=>old.promise,pickMedia:async()=>({uri:'file:///new.jpg',name:'photo.jpg',size:100,type:'image/jpeg'}),clearPickedMedia:async(v:any)=>cleared.push(v.uri),uploadMedia:()=>upload.promise,
+ const env:any={useLoading:(value:boolean)=>loading.push(value),React:{createElement:(type:any,props:any,...children:any[])=>({type,props:props??{},children})},PhotoSession:{Provider:'PhotoSession.Provider'},KeyboardDialog:'KeyboardDialog',Dialog:{Title:'Dialog.Title'},View:'View',Text:'Text',Button:'Button',Avatar:'Avatar',Icon:'Icon',RemoveMediaMenu:'RemoveMediaMenu',LoadingSpinner:'LoadingSpinner',ProfilePhotoCrop:'ProfilePhotoCrop',Platform:{OS:'ios'},Crypto:{randomUUID:()=> 'new'},Alert:{alert(){}},useUI:()=>({ui:{body:{},caption:{},error:{}},palette:{soft:'#eee',background:'#fff',accent:'#333'}}),accountOwner:()=> 'account',cachedRead:()=>({avatar:{id:'old'}}),request:()=>old.promise,pickMedia:async()=>({uri:'file:///new.jpg',name:'photo.jpg',size:100,type:'image/jpeg'}),clearPickedMedia:async(v:any)=>cleared.push(v.uri),uploadMedia:()=>upload.promise,
  useRef:(v:any)=>{const i=cursor++;return state[i]??={current:v}},useState:(v:any)=>{const i=cursor++;if(!(i in state))state[i]=typeof v==='function'?v():v;return[state[i],(n:any)=>state[i]=typeof n==='function'?n(state[i]):n]},useEffect:(fn:any,values:any[])=>{const i=cursor++;if(!deps[i]||values.some((v,j)=>v!==deps[i][j])){deps[i]=values;effects.push(()=>{cleanup[i]?.();cleanup[i]=fn()})}}};
- const src=ts.createSourceFile('ProfilePhoto.tsx',readFileSync(new URL('../src/ProfilePhoto.tsx',import.meta.url),'utf8'),ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX),body=src.statements.filter(n=>!ts.isImportDeclaration(n) && !ts.isExportDeclaration(n)).map(n=>n.getText(src).replace(/^export (?:default )?/,'')).join('\n');
- const component=new Function('env',`with(env){${ts.transpile(body,{jsx:ts.JsxEmit.React,target:ts.ScriptTarget.ES2022})};return ProfilePhoto;}`)(withSharedUI(env));
+ const src=ts.createSourceFile('PhotoEditor.tsx',readFileSync(new URL('../src/PhotoEditor.tsx',import.meta.url),'utf8'),ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX),body=src.statements.filter(n=>!ts.isImportDeclaration(n) && !ts.isExportDeclaration(n)).map(n=>n.getText(src).replace(/^export (?:default )?/,'')).join('\n');
+ const component=new Function('env',`with(env){${ts.transpile(body,{jsx:ts.JsxEmit.React,target:ts.ScriptTarget.ES2022})};return PhotoEditor;}`)(withSharedUI(env));
  return{env,render:(props:any={})=>{cursor=0;return component({session:{baseUrl:'https://test.invalid',userId:'1',token:'token'},busy:false,compact:true,onBusyChange:(v:boolean)=>busy.push(v),...props})},commit:async()=>{const p=effects;effects=[];p.forEach(f=>f());await tick()},old,upload,cleared,busy,loading,unmount:()=>cleanup.forEach(f=>f?.())};}
 function nodes(t:any):any[]{return !t||typeof t!=='object'?[]:[t,...(t.children??[]).flat(Infinity).flatMap(nodes)]}
 const choose=(t:any)=>nodes(t).find(n=>n.type==='Button'&&/profile photo/.test(n.props.accessibilityLabel??''));
@@ -41,4 +41,16 @@ test('upload error spans below the photo and account identity row',async()=>{
  assert.ok(!nodes(row).some(n=>n.props.accessibilityLabel==='Retry photo upload'),'retry must be below the entire row');
  assert.ok(nodes(tree).some(n=>n.props.accessibilityLabel==='Retry photo upload'));
  a.unmount();
+});
+
+
+test('group photo opens actions first, shares picking and uploads to the group scope',async()=>{
+ const a=fixture(),group={id:'group',group_photo:null},render=()=>a.render({group});let picked=0;const calls:any[]=[];
+ a.env.pickMedia=async()=>{picked++;return{uri:'file:///group.jpg',name:'Group.jpg',size:100,type:'image/jpeg'}};a.env.uploadMedia=async(...args:any[])=>{calls.push(args);return{group_photo:{id:'new'}}};
+ render();await a.commit();nodes(render()).find(n=>n.props.accessibilityLabel==='Edit group photo').props.onPress();await tick();
+ assert.equal(picked,0);assert.ok(!nodes(render()).some(n=>n.props.title==='Remove photo'));
+ nodes(render()).find(n=>n.props.title==='Choose photo').props.onPress();await tick();
+ assert.equal(picked,1);assert.equal(calls[0][1],'/groups/group/photo');assert.equal(calls[0][3],'new');
+ assert.equal(nodes(render()).find(n=>n.type==='Avatar').props.photo.id,'new');
+ nodes(render()).find(n=>n.props.accessibilityLabel==='Edit group photo').props.onPress();assert.ok(nodes(render()).some(n=>n.props.title==='Change photo'));assert.ok(nodes(render()).some(n=>n.props.title==='Remove photo'));a.unmount();
 });

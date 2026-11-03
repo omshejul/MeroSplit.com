@@ -4,11 +4,11 @@ import type { ProfilePhoto } from './types';
 import { Avatar, AmountText, useUI } from './ui';
 import ListRow from './ListRow';
 
-type Props = React.ComponentProps<typeof ListRow> & { name: string; photo?: ProfilePhoto | null; title?: string; avatar?: boolean; titleStyle?: React.ComponentProps<typeof Text>['style'] };
-export default function PersonRow({ name, photo, title = name, avatar = true, titleStyle, children, ...props }: Props) {
+type Props = React.ComponentProps<typeof ListRow> & { name: string; photo?: ProfilePhoto | null; title?: string; avatar?: boolean; titleContent?: React.ReactNode; titleStyle?: React.ComponentProps<typeof Text>['style'] };
+export default function PersonRow({ name, photo, title = name, avatar = true, titleStyle, titleContent, children, ...props }: Props) {
   const { ui } = useUI();
   return <ListRow leading={avatar ? <Avatar name={name} photo={photo} /> : undefined} {...props}>
-    <Text accessibilityLabel={title} style={[ui.rowTitle, titleStyle]}>{title}</Text>{children}
+    {titleContent ?? <Text accessibilityLabel={title} style={[ui.rowTitle, titleStyle]}>{title}</Text>}{children}
   </ListRow>;
 }
 export function PersonAmountRow({ amount, amountLabel, amountStyle, ...props }: Props & ({ amount: string; amountLabel?: never } | { amount?: never; amountLabel: string }) & { amountStyle?: React.ComponentProps<typeof Text>['style'] }) {

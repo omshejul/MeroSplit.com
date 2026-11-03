@@ -22,7 +22,7 @@ const pendingFilename = /^merosplit-upload-[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-
 
 export async function uploadMedia<T>(session: Session, path: string, file: PickedMedia, id: string, fetcher: typeof fetch = fetch,
   readBytes: (uri: string) => Promise<Uint8Array> = readMediaBytes, current: () => boolean = () => true): Promise<T> {
-  if (path === '/me/avatar') readPrefetch.invalidate(readScope(session));
+  if (path === '/me/avatar' || /^\/groups\/[^/]+\/photo$/.test(path)) readPrefetch.invalidate(readScope(session));
   const body = new FormData(); body.append('id', id);
   body.append('file', await mediaFilePart(file, readBytes));
   if (!current()) throw new Error('The signed-in account changed.');
@@ -34,7 +34,7 @@ export async function uploadMedia<T>(session: Session, path: string, file: Picke
     const data = await response.json();
     if (!response.ok) throw new ApiError(response.status, String(data.detail ?? data.error ?? 'Could not upload this file.'));
     return data as T;
-  } finally { clearTimeout(timer); if (path === '/me/avatar') readPrefetch.invalidate(readScope(session)); }
+  } finally { clearTimeout(timer); if (path === '/me/avatar' || /^\/groups\/[^/]+\/photo$/.test(path)) readPrefetch.invalidate(readScope(session)); }
 }
 
 

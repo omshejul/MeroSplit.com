@@ -71,3 +71,17 @@ test('date headings use local calendar days and keep malformed dates honest', ()
   assert.equal(activityTime('unknown'), 'Time unavailable');
   assert.match(activityDay(new Date(2025, 9, 15).toISOString(), now), /2025/);
 });
+
+test('group identity changes describe the edit and keep a neutral group destination', () => {
+  const changed: ActivityItem = { ...event('group_renamed'), payment: undefined, name_change: { before: 'Goa trip', after: 'Weekend crew' } };
+  assert.equal(activityPresentation(changed).title, 'You renamed the group from Goa trip to Weekend crew');
+  for (const [kind, title] of [['group_photo_changed', 'You changed the group photo'], ['group_photo_removed', 'You removed the group photo']] as const) {
+    const row = activityPresentation({ ...changed, kind });
+    assert.equal(row.title, title); assert.equal(row.cashflow, '0');
+    assert.deepEqual(row.target, { kind: 'group', groupId: 'group' });
+  }
+  const nickname: ActivityItem = { ...changed, kind: 'member_nickname_changed', person: person('Harshit'), actor: { name: 'Om', is_self: false }, name_change: { before: 'Harshit', after: 'Harry' } };
+  assert.equal(activityPresentation(nickname).title, "Om changed Harshit's nickname to Harry");
+  assert.equal(activityPresentation({ ...nickname, person: person('self', true) }).title, 'Om changed your nickname to Harry');
+  assert.equal(activityPresentation({ ...nickname, name_change: { before: 'Harry', after: 'Harshit' } }).title, "Om changed Harry's nickname to Harshit");
+});

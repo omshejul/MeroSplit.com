@@ -31,6 +31,10 @@ export function activityPresentation(item: ActivityItem) {
     case 'member_joined': title = `${person} joined the group`; break;
     case 'member_removed': title = `${actor} removed ${item.person?.is_self ? 'you' : person}`; break;
     case 'simplify_debts_changed': title = `${actor} changed Simplify debts`; break;
+    case 'group_renamed': title = `${actor} renamed the group from ${item.name_change?.before ?? 'its previous name'} to ${item.name_change?.after ?? item.group.name}`; break;
+    case 'group_photo_changed': title = `${actor} changed the group photo`; break;
+    case 'group_photo_removed': title = `${actor} removed the group photo`; break;
+    case 'member_nickname_changed': title = `${actor} changed ${item.person?.is_self ? 'your' : `${item.name_change?.before ?? person}'s`} nickname to ${item.name_change?.after ?? person}`; break;
     case 'group_created': title = `${actor} created the group`; break;
     case 'group_archived': title = `${actor} archived the group`; break;
     case 'group_unarchived': title = `${actor} reopened the group`; break;
