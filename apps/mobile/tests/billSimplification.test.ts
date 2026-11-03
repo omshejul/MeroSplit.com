@@ -4,6 +4,7 @@ import { categoryIcon, expenseCategory, categoryKey } from '../src/categoryIcons
 import { directTransfers } from '../src/accounting.ts';
 import { explainTransfer, balanceKey, changedBalance } from '../src/balanceExplanation.ts';
 import test from 'node:test';
+import { createSettingWriter } from '../src/settingWriter.ts';
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync, mkdtempSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
@@ -32,7 +33,7 @@ function harness(file: string, name: string, extra: Record<string, any> = {}) {
   let cursor = 0, states: any[] = [], effects: (() => void)[] = [], cleanups: Record<number, () => void> = {};
   const deps: Record<number, any[]> = {};
   const draftDiscard = { current: null as null | (() => Promise<boolean>) };
-  const env: Record<string, any> = { categoryIcon, expenseCategory, changedBalance, useExpenseIcons: () => ({}), animateLayout() {}, PeopleSheet: 'PeopleSheet', currencySymbol, cachedRead: () => undefined, rememberRead() {}, invalidateRead() {}, getDatabase: async () => ({}), draftDiscard, ScreenDraftDiscard: {}, useContext: () => draftDiscard, expenseDraftStore: () => ({ read: () => ({ then: (done: (value: null) => void) => { done(null); return { catch() {} }; } }), write: async () => {} }), React, Dialog, PersonInviteDialog: 'PersonInviteDialog', useToast: () => () => {}, DetailDialog: 'DetailDialog', useScreenRemovalLock() {}, validUPIAddress, View: 'View', ScrollView: 'ScrollView', KeyboardDialog: 'KeyboardDialog', BottomSheet: 'BottomSheet', Pressable: 'Pressable', Text: 'Text', LoadingSpinner: 'LoadingSpinner', NotificationSwitch: 'NotificationSwitch', PushSettings: 'PushSettings', BalanceStatements: 'BalanceStatements', DialogScrollBody: 'DialogScrollBody', Form: 'Form', SectionHeading: 'SectionHeading', Button: 'Button', Icon: 'Icon', SettingsRow: 'SettingsRow', BillPeople: 'BillPeople', DraftAttachment: 'DraftAttachment', LocalAttachment: 'LocalAttachment', AmountField: 'AmountField', TextField: 'TextField', DateField: 'DateField', ErrorText: 'ErrorText', Checkbox: { Item: 'Checkbox' }, RadioChoice: 'RadioChoice', Crypto: { randomUUID: () => 'bill-id' }, StyleSheet: { create: (value: any) => value }, Keyboard: { dismiss() {} }, useWindowDimensions: () => ({ height: 667 }), useSafeAreaInsets: () => ({ top: 20, bottom: 0 }), Platform: { OS: 'native' }, requestAnimationFrame: (fn: () => void) => fn(), useUI: () => ({ ui: {} }), adjustmentToPaise, formatMoney, integer, rupeesToPaise, validateExpense, ...extra,
+  const env: Record<string, any> = { createSettingWriter, categoryIcon, expenseCategory, changedBalance, useExpenseIcons: () => ({}), animateLayout() {}, PeopleSheet: 'PeopleSheet', currencySymbol, cachedRead: () => undefined, rememberRead() {}, invalidateRead() {}, getDatabase: async () => ({}), draftDiscard, ScreenDraftDiscard: {}, useContext: () => draftDiscard, expenseDraftStore: () => ({ read: () => ({ then: (done: (value: null) => void) => { done(null); return { catch() {} }; } }), write: async () => {} }), React, Dialog, PersonInviteDialog: 'PersonInviteDialog', useToast: () => () => {}, DetailDialog: 'DetailDialog', useScreenRemovalLock() {}, validUPIAddress, View: 'View', ScrollView: 'ScrollView', KeyboardDialog: 'KeyboardDialog', BottomSheet: 'BottomSheet', Pressable: 'Pressable', Text: 'Text', LoadingSpinner: 'LoadingSpinner', NotificationSwitch: 'NotificationSwitch', PushSettings: 'PushSettings', BalanceStatements: 'BalanceStatements', DialogScrollBody: 'DialogScrollBody', Form: 'Form', SectionHeading: 'SectionHeading', Button: 'Button', Icon: 'Icon', SettingsRow: 'SettingsRow', BillPeople: 'BillPeople', DraftAttachment: 'DraftAttachment', LocalAttachment: 'LocalAttachment', AmountField: 'AmountField', TextField: 'TextField', DateField: 'DateField', ErrorText: 'ErrorText', Checkbox: { Item: 'Checkbox' }, RadioChoice: 'RadioChoice', Crypto: { randomUUID: () => 'bill-id' }, StyleSheet: { create: (value: any) => value }, Keyboard: { dismiss() {} }, useWindowDimensions: () => ({ height: 667 }), useSafeAreaInsets: () => ({ top: 20, bottom: 0 }), Platform: { OS: 'native' }, requestAnimationFrame: (fn: () => void) => fn(), useUI: () => ({ ui: {} }), adjustmentToPaise, formatMoney, integer, rupeesToPaise, validateExpense, ...extra,
     useState: (initial: any) => { const id = cursor++; if (!(id in states)) states[id] = typeof initial === 'function' ? initial() : initial; return [states[id], (value: any) => { states[id] = typeof value === 'function' ? value(states[id]) : value; }]; },
     useRef: (initial: any) => { const id = cursor++; return states[id] ??= { current: initial }; },
     useEffect: (fn: () => any, values: any[]) => { const id = cursor++; if (!deps[id] || values.some((value, i) => value !== deps[id][i])) { effects.push(() => { cleanups[id]?.(); cleanups[id] = fn(); }); deps[id] = values; } },
@@ -393,18 +394,19 @@ function notificationPanel(initial: { expense_updates: boolean; email_reminders:
     } });
   const props = { session: { token: 'synthetic' }, push, busy: false, onBusyChange: (value: boolean) => changes.push(value) };
   return { app, props, pending, changes, get loads() { return loads; }, get pushCalls() { return pushCalls; }, get savedPreferences() { return preferences; },
-    saved: (at: number) => { const next = pending[at].value; if (preferences?.email_reminders && !next.email_reminders && !push.state.enabled) next.expense_updates = false; preferences = { ...next, notifications_enabled: next.expense_updates && (next.email_reminders || push.state.enabled) }; pending[at].resolve({ ...preferences }); }, restore: () => { preferences = { expense_updates: false, email_reminders: true }; } };
+    saved: (at: number) => { const next = pending[at].value; preferences = { ...next, notifications_enabled: next.expense_updates && (next.email_reminders || push.state.enabled) }; pending[at].resolve({ ...preferences }); }, restore: () => { preferences = { expense_updates: false, email_reminders: true }; } };
 }
 
-test('master hides channels while off and each explicit ON shows both defaults immediately', async () => {
+test('master is independent of channels, shows effective OFF while muted and restores saved choices', async () => {
   const panel = notificationPanel({ expense_updates: false, email_reminders: true }), { app, props } = panel;
   app.render(props); app.commit(); await tick(); let tree = app.render(props);
   assert.equal(notificationToggle(tree, 'Notifications').props.checked, false);
-  assert.equal(notificationToggle(tree, 'Email notifications'), undefined);
-  assert.ok(!nodes(tree).some(node => node.type === 'PushSettings'));
+  assert.equal(notificationToggle(tree, 'Email notifications').props.checked, false);
+  assert.equal(notificationToggle(tree, 'Email notifications').props.disabled, true);
+  assert.equal(nodes(tree).find(node => node.type === 'PushSettings')!.props.muted, true);
   notificationToggle(tree, 'Notifications').props.onChange(true); tree = app.render(props);
   assert.equal(notificationToggle(tree, 'Notifications').props.checked, true);
-  assert.equal(notificationToggle(tree, 'Notifications').props.disabled, true);
+  assert.equal(notificationToggle(tree, 'Notifications').props.disabled, false);
   assert.deepEqual(panel.pending[0].value, { expense_updates: true, email_reminders: true });
   panel.saved(0); await tick(); tree = app.render(props);
   assert.equal(notificationToggle(tree, 'Email notifications').props.checked, true);
@@ -413,9 +415,10 @@ test('master hides channels while off and each explicit ON shows both defaults i
   assert.equal(notificationToggle(tree, 'Notifications').props.checked, true);
   notificationToggle(tree, 'Notifications').props.onChange(false); panel.saved(2); await tick(); tree = app.render(props);
   assert.equal(notificationToggle(tree, 'Notifications').props.checked, false);
-  assert.equal(notificationToggle(tree, 'Email notifications'), undefined);
+  assert.equal(notificationToggle(tree, 'Email notifications').props.checked, false);
+  assert.equal(notificationToggle(tree, 'Email notifications').props.disabled, true);
   notificationToggle(tree, 'Notifications').props.onChange(true); panel.saved(3); await tick(); tree = app.render(props);
-  assert.equal(notificationToggle(tree, 'Email notifications').props.checked, true, 'each master ON restores Email, not the previous manual OFF');
+  assert.equal(notificationToggle(tree, 'Email notifications').props.checked, false, 'master ON preserves the saved email choice');
   assert.equal(panel.pushCalls, 0, 'an already valid push binding does not ask permission again');
   assert.deepEqual(panel.changes, [], 'notification saves do not lock the parent page');
   app.unmount();
@@ -427,14 +430,15 @@ test('Notifications updates immediately, rolls back failures and prevents duplic
   const change = notificationToggle(tree, 'Notifications').props.onChange;
   change(false); change(false); assert.equal(panel.pending.length, 1); tree = app.render(props);
   assert.equal(notificationToggle(tree, 'Notifications').props.checked, false);
-  assert.equal(notificationToggle(tree, 'Notifications').props.disabled, true);
-  assert.equal(notificationToggle(tree, 'Email notifications'), undefined);
+  assert.equal(notificationToggle(tree, 'Notifications').props.disabled, false);
+  assert.equal(notificationToggle(tree, 'Email notifications').props.checked, false);
+  assert.equal(notificationToggle(tree, 'Email notifications').props.disabled, true);
   assert.equal(nodes(tree).find(node => node.type === 'KeyboardDialog')!.props.dismissable, true);
   assert.deepEqual(panel.changes, []);
   panel.pending[0].reject(Error('offline')); await tick(); tree = app.render(props);
   assert.equal(notificationToggle(tree, 'Notifications').props.checked, true);
   assert.equal(notificationToggle(tree, 'Email notifications').props.checked, true);
-  assert.ok(nodes(tree).some(node => node.type === 'ErrorText' && node.children.includes('Could not save notifications. Try again.')));
+  assert.ok(nodes(tree).some(node => node.type === 'ErrorText' && node.children.includes('Could not save. Try again.')));
   tree = app.render({ ...props, busy: true }); notificationToggle(tree, 'Notifications').props.onChange(false); assert.equal(panel.pending.length, 1);
   tree = app.render(props); notificationToggle(tree, 'Notifications').props.onChange(false); panel.saved(1); await tick();
   assert.equal(notificationToggle(app.render(props), 'Notifications').props.checked, false);
@@ -446,7 +450,7 @@ test('Unavailable notification preferences show error and Retry without inventin
   app.render(props); app.commit(); await tick(); let tree = app.render(props);
   assert.ok(!nodes(tree).some(node => node.type === 'NotificationSwitch' || node.type === 'PushSettings'));
   assert.ok(nodes(tree).some(node => node.type === 'ErrorText'));
-  panel.restore(); find(tree, 'title', 'Retry').props.onPress(); await tick(); tree = app.render(props);
+  panel.restore(); find(tree, 'title', 'Retry notifications').props.onPress(); await tick(); tree = app.render(props);
   assert.equal(notificationToggle(tree, 'Notifications').props.checked, false);
   assert.equal(panel.loads, 2); app.unmount();
 });
@@ -457,8 +461,8 @@ test('Push UI retains permission denial, native enable action and parent/working
   const app = harness('src/PushSettings.tsx', 'PushSettings', { Notifications: { setNotificationHandler() {} }, Linking: { openSettings: async () => { settings++; } } });
   const props = { push, busy: false, onBusyChange: (value: boolean) => busyChanges.push(value) };
   notificationToggle(app.render(props), 'Push notifications').props.onChange(true); await tick();
-  assert.equal(enabled, 1); assert.deepEqual(busyChanges, [true, false]);
-  for (const held of [{ ...props, busy: true }, { ...props, push: { ...push, state: { ...push.state, working: true } } }]) {
+  assert.equal(enabled, 1); assert.deepEqual(busyChanges, []);
+  for (const held of [{ ...props, busy: true }]) {
     const row = notificationToggle(app.render(held), 'Push notifications'); assert.equal(row.props.disabled, true); row.props.onChange(true); await tick(); assert.equal(enabled, 1);
   }
   const denied = { ...props, push: { ...push, state: { ...push.state, permission: 'denied' } } };
@@ -615,7 +619,7 @@ test('uncertain statement send retries the same command and blocks double taps',
   assert.ok(nodes(tree).some(node => node.type === 'ErrorText'));
   panel.fail(false); find(tree, 'title', 'Email statement now').props.onPress(); await tick();
   assert.equal(panel.writes.length, 2); assert.deepEqual(panel.writes[0], panel.writes[1]);
-  assert.deepEqual(panel.busy, [true, false, true, false]);
+  assert.deepEqual(panel.busy, []);
   app.unmount();
 });
 
@@ -882,56 +886,8 @@ test('Payment failed opens frozen-address help without answering or changing the
   assert.ok(nodes(dialog).some(node => typeof node.type === 'function' && node.type.name === 'PaymentAddress' && node.props.vpa === 'original@example'));
 });
 
-test('master reflects usable channel combinations without changing saved choices or asking permission', async () => {
-  for (const email of [false, true]) for (const push of [false, true]) {
-    const panel = notificationPanel({ expense_updates: true, email_reminders: email });
-    panel.props.push.state.enabled = push;
-    panel.app.render(panel.props); panel.app.commit(); await tick();
-    assert.equal(notificationToggle(panel.app.render(panel.props), 'Notifications').props.checked, email || push);
-    assert.equal(panel.pending.length, 0); assert.equal(panel.pushCalls, 0);
-    panel.app.unmount();
-  }
-  for (const ids of [['this-device'], ['other-device']]) {
-    const panel = notificationPanel({ expense_updates: true, email_reminders: false, notifications_enabled: true, push_device_ids: ids });
-    panel.props.push.state.enabled = false; panel.props.push.state.permission = 'denied';
-    panel.app.render(panel.props); panel.app.commit(); await tick();
-    assert.equal(notificationToggle(panel.app.render(panel.props), 'Notifications').props.checked, ids[0] === 'other-device');
-    assert.equal(panel.pending.length, 0); panel.app.unmount();
-  }
-});
 
-test('last channel OFF hides choices; master ON enables Email and explicitly attempts Push', async () => {
-  const panel = notificationPanel({ expense_updates: true, email_reminders: true });
-  panel.props.push.state.enabled = false;
-  panel.app.render(panel.props); panel.app.commit(); await tick();
-  notificationToggle(panel.app.render(panel.props), 'Email notifications').props.onChange(false);
-  panel.saved(0); await tick(); let tree = panel.app.render(panel.props);
-  assert.equal(notificationToggle(tree, 'Notifications').props.checked, false);
-  assert.equal(notificationToggle(tree, 'Email notifications'), undefined);
-  notificationToggle(tree, 'Notifications').props.onChange(true);
-  assert.equal(panel.pending[1].value.email_reminders, true); assert.equal(panel.pushCalls, 0, 'permission/registration waits for preference save');
-  panel.saved(1); await tick(); tree = panel.app.render(panel.props);
-  assert.equal(panel.pushCalls, 1); assert.equal(panel.props.push.state.enabled, true);
-  assert.equal(notificationToggle(tree, 'Notifications').props.checked, true);
-  assert.equal(notificationToggle(tree, 'Email notifications').props.checked, true);
-  panel.app.unmount();
-});
 
-test('denied or failed push enable keeps backend-confirmed Email on without pretending Push is enabled', async () => {
-  for (const failed of [false, true]) {
-    const panel = notificationPanel({ expense_updates: false, email_reminders: false }); let attempts = 0;
-    panel.props.push.state.enabled = false; panel.props.push.state.permission = 'denied';
-    panel.props.push.enable = async () => { attempts++; if (failed) throw Error('Push unavailable'); return false; };
-    panel.app.render(panel.props); panel.app.commit(); await tick();
-    notificationToggle(panel.app.render(panel.props), 'Notifications').props.onChange(true);
-    panel.saved(0); await tick(); const tree = panel.app.render(panel.props);
-    assert.equal(attempts, 1); assert.equal(panel.props.push.state.enabled, false);
-    assert.equal(notificationToggle(tree, 'Notifications').props.checked, true);
-    assert.equal(notificationToggle(tree, 'Email notifications').props.checked, true);
-    if (failed) assert.ok(nodes(tree).some(node => node.type === 'ErrorText'));
-    panel.app.unmount();
-  }
-});
 
 test('failed master ON and unmount do not request push or expose unconfirmed choices', async () => {
   for (const unmount of [false, true]) {
@@ -943,7 +899,8 @@ test('failed master ON and unmount do not request push or expose unconfirmed cho
     await tick(); assert.equal(panel.pushCalls, 0);
     if (!unmount) {
       const tree = panel.app.render(panel.props); assert.equal(notificationToggle(tree, 'Notifications').props.checked, false);
-      assert.equal(notificationToggle(tree, 'Email notifications'), undefined); panel.app.unmount();
+      assert.equal(notificationToggle(tree, 'Email notifications').props.checked, false);
+  assert.equal(notificationToggle(tree, 'Email notifications').props.disabled, true); panel.app.unmount();
     }
   }
 });
@@ -1027,84 +984,12 @@ test('Shared Button forwards Paper dialog spacing without changing disabled or p
 });
 
 
-test('last Push OFF mutes the account and hides both choices, including another saved device', async () => {
-  const panel = notificationPanel({ expense_updates: true, email_reminders: false, push_device_ids: ['this-device', 'other-device'] });
-  panel.app.render(panel.props); panel.app.commit(); await tick();
-  const pushRow = nodes(panel.app.render(panel.props)).find(node => node.type === 'PushSettings')!;
-  panel.props.push.state.enabled = false;
-  void pushRow.props.onChanged(false);
-  assert.equal(panel.pending[0].value.expense_updates, false);
-  panel.saved(0); await tick(); const tree = panel.app.render(panel.props);
-  assert.equal(notificationToggle(tree, 'Notifications').props.checked, false);
-  assert.equal(notificationToggle(tree, 'Email notifications'), undefined);
-  panel.app.unmount();
-});
-
-test('master updates immediately during push registration and confirmed defaults survive reload', async () => {
-  const panel = notificationPanel({ expense_updates: false, email_reminders: false }); let finish!: () => void;
-  panel.props.push.state.enabled = false;
-  panel.props.push.enable = () => new Promise<boolean>(resolve => { finish = () => { panel.props.push.state.enabled = true; resolve(true); }; });
-  panel.app.render(panel.props); panel.app.commit(); await tick();
-  notificationToggle(panel.app.render(panel.props), 'Notifications').props.onChange(true);
-  panel.saved(0); await tick(); let tree = panel.app.render(panel.props);
-  assert.equal(notificationToggle(tree, 'Notifications').props.checked, true);
-  assert.equal(notificationToggle(tree, 'Email notifications').props.checked, true);
-  assert.ok(!nodes(tree).some(node => node.type === 'LoadingSpinner'));
-  finish(); await tick(); tree = panel.app.render(panel.props);
-  assert.equal(notificationToggle(tree, 'Notifications').props.checked, true);
-  const saved = panel.savedPreferences; panel.app.unmount();
-  const reload = notificationPanel(saved); reload.app.render(reload.props); reload.app.commit(); await tick();
-  assert.equal(notificationToggle(reload.app.render(reload.props), 'Notifications').props.checked, true);
-  assert.equal(notificationToggle(reload.app.render(reload.props), 'Email notifications').props.checked, true);
-  assert.equal(reload.pushCalls, 0, 'loading saved choices is not permission consent');
-  reload.app.unmount();
-});
 
 
-test('server-revoked push IDs override stale local enabled state', async () => {
-  const panel = notificationPanel({ expense_updates: true, email_reminders: false, email_available: true, push_device_ids: [], notifications_enabled: false });
-  panel.props.push.state.enabled = true;
-  panel.app.render(panel.props); panel.app.commit(); await tick();
-  const tree = panel.app.render(panel.props);
-  assert.equal(notificationToggle(tree, 'Notifications').props.checked, false);
-  assert.equal(notificationToggle(tree, 'Email notifications'), undefined);
-  assert.equal(panel.pushCalls, 0); panel.app.unmount();
-});
-
-test('explicit master ON refreshes server-confirmed channels after a new push registration', async () => {
-  const panel = notificationPanel({ expense_updates: false, email_reminders: false, email_available: false, push_device_ids: [], notifications_enabled: false });
-  panel.props.push.state.enabled = false;
-  panel.props.push.enable = async () => {
-    panel.props.push.state.enabled = true;
-    Object.assign(panel.savedPreferences!, { email_available: false, push_device_ids: ['this-device'], notifications_enabled: true });
-    return true;
-  };
-  panel.app.render(panel.props); panel.app.commit(); await tick();
-  notificationToggle(panel.app.render(panel.props), 'Notifications').props.onChange(true);
-  panel.saved(0); await tick();
-  assert.equal(panel.loads, 2, 'new registration reads authoritative current device IDs');
-  assert.equal(notificationToggle(panel.app.render(panel.props), 'Notifications').props.checked, true);
-  assert.deepEqual(panel.savedPreferences!.push_device_ids, ['this-device']);
-  panel.app.unmount();
-});
 
 
-test('stale current push binding stays off in the channel view and last local Email OFF hides channels', async () => {
-  const panel = notificationPanel({ expense_updates: true, email_reminders: true, notifications_enabled: true, push_device_ids: ['other-device'] });
-  panel.props.push.state.enabled = true;
-  panel.app.render(panel.props); panel.app.commit(); await tick();
-  let tree = panel.app.render(panel.props);
-  const pushRow = nodes(tree).find(node => node.type === 'PushSettings')!;
-  assert.equal(pushRow.props.push.state.enabled, false);
-  assert.equal(pushRow.props.push.enable, panel.props.push.enable, 'existing permission and registration functions are preserved');
-  notificationToggle(tree, 'Email notifications').props.onChange(false);
-  assert.equal(panel.pending[0].value.expense_updates, false);
-  panel.saved(0); await tick(); tree = panel.app.render(panel.props);
-  assert.equal(notificationToggle(tree, 'Notifications').props.checked, false);
-  assert.equal(notificationToggle(tree, 'Email notifications'), undefined);
-  assert.ok(!nodes(tree).some(node => node.type === 'PushSettings'));
-  panel.app.unmount();
-});
+
+
 
 
 function billDiscardDialog(env: Record<string, any>) {
@@ -1636,4 +1521,41 @@ test('gallery keeps the initial visible attachment when refreshed rows arrive in
  let items=galleryItems,opened:any;const app=harness('src/BillAttachments.tsx','BillAttachments',{accountOwner:()=> 'owner',pendingMediaUpload:async()=>null,request:async()=>({attachments:items,can_modify:true}),PrivateMediaImage:'PrivateMediaImage',openPrivateMedia:async(_:any,item:any)=>opened=item});
  const props={session:{token:'owner'},groupId:'g',expenseId:'e',revision:1,busy:false,onBusyChange(){}};app.render(props);app.commit();await tick();assert.ok(find(app.render(props),'accessibilityLabel','Open Photo 1 of 3'));
  items=[galleryItems[2],galleryItems[1],galleryItems[0]];const next={...props,revision:2};app.render(next);app.commit();await tick();const tree=app.render(next);find(tree,'accessibilityLabel','Open Photo 3 of 3').props.onPress();await tick();assert.equal(opened.id,'photo-one');app.unmount();
+});
+
+test('rapid master reversals keep the newest visible choice and save it after the older request completes', async () => {
+ const panel=notificationPanel({expense_updates:true,email_reminders:true}),{app,props}=panel;app.render(props);app.commit();await tick();
+ notificationToggle(app.render(props),'Notifications').props.onChange(false);
+ notificationToggle(app.render(props),'Notifications').props.onChange(true);
+ assert.equal(notificationToggle(app.render(props),'Notifications').props.checked,true,'latest tap must win immediately');
+ panel.saved(0);await tick();assert.equal(panel.pending.length,2,'latest intent must not be dropped while saving');panel.saved(1);await tick();assert.equal(notificationToggle(app.render(props),'Notifications').props.checked,true);app.unmount();
+});
+
+
+test('master represents the saved choice even when all channels are unavailable or push verification is running', async () => {
+ for(const flags of [{enabled:false,working:true},{enabled:false,working:false},{enabled:true,working:false}]){
+  const panel=notificationPanel({expense_updates:true,email_reminders:false,notifications_enabled:false,push_device_ids:[]});Object.assign(panel.props.push.state,flags);panel.app.render(panel.props);panel.app.commit();await tick();const tree=panel.app.render(panel.props);
+  assert.equal(notificationToggle(tree,'Notifications').props.checked,true);assert.equal(notificationToggle(tree,'Notifications').props.disabled,false);assert.equal(notificationToggle(tree,'Email notifications').props.checked,false);assert.equal(panel.pushCalls,0);panel.app.unmount();
+ }
+});
+test('muting the master displays every delivery method off without deleting choices or asking device permission', async () => {
+ const panel=notificationPanel({expense_updates:false,email_reminders:true}),{app,props}=panel;app.render(props);app.commit();await tick();let tree=app.render(props);
+ assert.equal(notificationToggle(tree,'Notifications').props.checked,false);assert.equal(notificationToggle(tree,'Email notifications').props.checked,false);assert.equal(nodes(tree).find(n=>n.type==='PushSettings')!.props.muted,true);assert.equal(nodes(tree).find(n=>n.type==='BalanceStatements')!.props.notificationsEnabled,false);
+ notificationToggle(tree,'Notifications').props.onChange(true);panel.saved(0);await tick();tree=app.render(props);assert.equal(notificationToggle(tree,'Email notifications').props.checked,true);assert.equal(panel.pushCalls,0);assert.equal(nodes(tree).find(n=>n.type==='PushSettings')!.props.onChanged,undefined);app.unmount();
+});
+test('turning off the last email channel leaves the master preference unchanged',async()=>{
+ const panel=notificationPanel({expense_updates:true,email_reminders:true}),{app,props}=panel;props.push.state.enabled=false;app.render(props);app.commit();await tick();notificationToggle(app.render(props),'Email notifications').props.onChange(false);assert.deepEqual(panel.pending[0].value,{expense_updates:true,email_reminders:false});panel.saved(0);await tick();const tree=app.render(props);assert.equal(notificationToggle(tree,'Notifications').props.checked,true);assert.equal(notificationToggle(tree,'Email notifications').props.checked,false);app.unmount();
+});
+test('push toggles remain responsive while registration saves and an old success cannot undo a later Off',async()=>{
+ let finish!:(value:boolean)=>void,disabled=0;const busy:boolean[]=[];const push={state:{ready:true,enabled:false,configured:false,working:false,permission:'granted',error:''},enable:()=>new Promise<boolean>(resolve=>{finish=resolve}),disable:async()=>{disabled++},refresh:async()=>{}};
+ const app=harness('src/PushSettings.tsx','PushSettings',{Notifications:{setNotificationHandler(){}}});const props={push,busy:false,onBusyChange:(v:boolean)=>busy.push(v)};app.render(props);app.commit();notificationToggle(app.render(props),'Push notifications').props.onChange(true);let tree=app.render(props);assert.equal(notificationToggle(tree,'Push notifications').props.checked,true);assert.equal(notificationToggle(tree,'Push notifications').props.disabled,false);notificationToggle(tree,'Push notifications').props.onChange(false);assert.equal(notificationToggle(app.render(props),'Push notifications').props.checked,false);finish(true);await tick();assert.equal(disabled,1);assert.equal(notificationToggle(app.render(props),'Push notifications').props.checked,false);assert.deepEqual(busy,[]);app.unmount();
+});
+test('a configured push choice remains on during a temporary verification failure',()=>{
+ const push={state:{ready:true,enabled:false,configured:true,working:false,permission:'granted',error:'Could not connect.'},enable:async()=>true,disable:async()=>{},refresh:async()=>{}};const app=harness('src/PushSettings.tsx','PushSettings',{Notifications:{setNotificationHandler(){}}});const props={push,busy:false,onBusyChange(){}};assert.equal(notificationToggle(app.render(props),'Push notifications').props.checked,true);assert.equal(notificationToggle(app.render({...props,muted:true}),'Push notifications').props.checked,false);app.unmount();
+});
+test('a background preference response cannot undo a newer successful toggle',async()=>{
+ let read!:(value:any)=>void;const initial={expense_updates:true,email_reminders:true};const app=harness('src/AccountNotifications.tsx','AccountNotifications',{cachedRead:()=>initial,AppState:{addEventListener:()=>({remove(){}})},request:async(_:any,_path:string,method='GET',value:any)=>method==='GET'?new Promise(resolve=>{read=resolve}):value});const props={session:{token:'one'},push:{state:{enabled:false,working:false}},busy:false,onBusyChange(){}};app.render(props);app.commit();notificationToggle(app.render(props),'Notifications').props.onChange(false);await tick();read(initial);await tick();assert.equal(notificationToggle(app.render(props),'Notifications').props.checked,false);app.unmount();
+});
+test('statement toggle is immediate without locking the page, and master Off masks its stored choice',async()=>{
+ const panel=statementPanel(),{app,props}=panel;app.render(props);app.commit();await tick();notificationToggle(app.render(props),'Balance statements').props.onChange(true);assert.equal(notificationToggle(app.render(props),'Balance statements').props.checked,true);await tick();const muted=notificationToggle(app.render({...props,notificationsEnabled:false}),'Balance statements');assert.equal(muted.props.checked,false);assert.equal(muted.props.disabled,true);assert.deepEqual(panel.busy,[]);app.unmount();
 });
