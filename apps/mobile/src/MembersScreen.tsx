@@ -72,7 +72,7 @@ function MemberRow({ group, person, selfId, organizer, disabled, onInvite, onAct
   const isOwner = person.user_id === group.owner_id;
   const { fontScale } = useWindowDimensions();
   // Match EditableName inset while keeping its full tap area inside the header.
-  const titleInset = Math.max(0, (44 - 23 * fontScale) / 2);
+  const titleInset = Math.max(0, 44 - 23 * fontScale);
   const title = `${person.name}${self && person.name.toLowerCase() !== 'you' ? ' (you)' : ''}`;
   return <PersonRow name={person.name} title={title} photo={person.profile_photo} titleContent={<View style={{ flexDirection: 'row', alignItems: 'flex-end', flexWrap: 'wrap', columnGap: 8, zIndex: 1, paddingBottom: titleInset, marginBottom: -titleInset }}>{!group.is_direct ? <EditableName name={person.name} displayName={title} title="Group nickname" label={`Edit nickname for ${person.name}`} path={`/participants/${person.id}/nickname`} version={group.version} busy={disabled} editable={canEditNickname && !person.removed} onAction={onAction} allowEmpty /> : <Text style={ui.rowTitle}>{title}</Text>}{isOwner && <Text style={[ui.rowSub, { fontSize: ui.rowTitle.fontSize, lineHeight: ui.rowTitle.lineHeight }]}>Organizer</Text>}</View>} trailing={organizer && !self && (joined ? <IconAction name="more" label={`Manage ${person.name}`} disabled={disabled} onPress={onInvite} />
       : <Button title="Invite" icon="mail" compact accessibilityLabel={`Invite ${person.name}`} disabled={disabled || !!group.archived} onPress={onInvite} />)}>
