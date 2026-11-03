@@ -1,5 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useSyncExternalStore } from 'react';
 import { accountOwner, ApiError, request } from './api';
+import { getDatabase } from './native';
+import { cachedExpenseIcons, subscribeExpenseIcons, saveExpenseIcons, clearExpenseIcons } from './expenseIconCache';
 import { categoryKey, categoryIcon } from './categoryIcons';
 import type { ExpenseIconRef, ExpenseIcons } from './categoryIcons';
 import type { Session } from './types';
@@ -9,10 +11,11 @@ const pendingDelays = [5_000, 15_000, 30_000];
 
 export function useExpenseIcons(session: Session | null, visible: ExpenseIconRef[], active: boolean, online: boolean, batchAll = false): ExpenseIcons {
   const refs = [...new Map(visible.map(ref => [ref.id, ref])).values()].sort((a, b) => a.id.localeCompare(b.id)).slice(0, batchAll ? undefined : 20);
-  const account = session ? `${accountOwner(session)}|${session.token}` : '';
+  const owner = session ? accountOwner(session) : '';
+  const account = session ? `${owner}|${session.token}` : '';
   const query = JSON.stringify(refs), scope = `${account}|${active}|${online}|${query}`;
   const current = useRef(scope); current.current = scope;
-  const [saved, setSaved] = useState<{ account: string; icons: ExpenseIcons }>({ account: '', icons: {} });
+  const saved = useSyncExternalStore(subscribeExpenseIcons, () => cachedExpenseIcons(owner), () => cachedExpenseIcons(owner));
   useEffect(() => {
     if (!session || !active || !online || !refs.length) return;
     let stopped = false, timer: ReturnType<typeof setTimeout> | undefined, attempt = 0;
@@ -35,20 +38,22 @@ export function useExpenseIcons(session: Session | null, visible: ExpenseIconRef
           pending ||= hint.state === 'pending';
           if (['ready', 'manual'].includes(hint.state) && hint.category && (categoryIcon(hint.category) !== 'bill' || hint.category === 'general')) values[categoryKey(ref.groupId, ref.id, ref.title)] = hint.category;
         }
-        setSaved(previous => {
-          const icons = previous.account === account ? { ...previous.icons } : {};
-          refs.forEach(ref => delete icons[categoryKey(ref.groupId, ref.id, ref.title)]);
-          return { account, icons: Object.fromEntries(Object.entries({ ...icons, ...values }).slice(-Math.max(200, refs.length))) };
-        });
+        const db = await getDatabase();
+        if (!valid()) return;
+        await saveExpenseIcons(db, owner, values);
+        if (!valid()) return;
         if (pending && attempt < pendingDelays.length) timer = setTimeout(() => void read(), pendingDelays[attempt++]);
       } catch (cause) {
-        if (valid() && cause instanceof ApiError && [401, 403, 404].includes(cause.status)) setSaved({ account, icons: {} });
+        if (valid() && cause instanceof ApiError && [401, 403, 404].includes(cause.status)) {
+          const db = await getDatabase().catch(() => null);
+          if (db && valid()) await clearExpenseIcons(db, owner).catch(() => {});
+        }
         // Cosmetic failures keep a receipt or an accepted cached icon. No error banner or retry storm.
       }
     }
     timer = setTimeout(() => void read(), 250);
     return () => { stopped = true; controller.abort(); if (timer) clearTimeout(timer); };
   }, [scope]);
-  if (!active || saved.account !== account) return {};
-  return saved.icons;
+  if (!active || !owner) return {};
+  return saved;
 }

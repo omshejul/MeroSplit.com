@@ -8,12 +8,16 @@ const tick = async () => { for (let i = 0; i < 20; i++) await Promise.resolve();
 class ApiError extends Error { status: number; constructor(status: number) { super('Synthetic failure'); this.status = status; } }
 const bill = { id: 'bill', groupId: 'group', title: 'Dinner', category: 'general', category_auto: true };
 const hint = (state = 'ready', category: string | null = 'food', fields = {}) => ({ items: [{ id: bill.id, group_id: bill.groupId, title: bill.title, state, category, ...fields }] });
-function fixture() {
+function fixture(cache: Record<string, Record<string, string>> = {}) {
   let index = 0, props = { session: { userId: 'one', token: 'token-one' } as any, visible: [bill], active: true, online: true, all: false };
   const state: any[] = [], deps: any[][] = [], cleanups: any[] = [], effects: (() => void)[] = [], timers = new Map<number, { fn: () => void; delay: number }>();
   const calls: { path: string; signal: AbortSignal; resolve: (value: any) => void; reject: (error: Error) => void }[] = [];
   let timerId = 0;
-  const env = { categoryKey, categoryIcon, ApiError, accountOwner: (session: any) => session.userId,
+  const env = { getDatabase: async () => ({}),
+    subscribeExpenseIcons: () => () => {}, cachedExpenseIcons: (owner: string) => cache[owner] ?? {},
+    saveExpenseIcons: async (_: any, owner: string, values: Record<string, string>) => { cache[owner] = { ...cache[owner], ...values }; },
+    clearExpenseIcons: async (_: any, owner: string) => { cache[owner] = {}; },
+    useSyncExternalStore: (_: any, snapshot: () => any) => snapshot(), categoryKey, categoryIcon, ApiError, accountOwner: (session: any) => session.userId,
     request: (_: any, path: string, _method: any, _body: any, _format: any, signal: AbortSignal) => new Promise((resolve, reject) => calls.push({ path, signal, resolve, reject })),
     useRef: (value: any) => state[index++] ??= { current: value },
     useState: (value: any) => { const key = index++; return [state[key] ??= value, (value: any) => { state[key] = typeof value === 'function' ? value(state[key]) : value; }]; },
@@ -115,4 +119,24 @@ test('closing a breakdown aborts an in-flight icon batch and never starts the re
  const refs=Array.from({length:45},(_,i)=>({...bill,id:`bill-${i}`}));const app=fixture();app.render({visible:refs,all:true});await app.commit();
  app.calls[0].resolve({items:[]});await tick();assert.equal(app.calls.length,2);
  app.render({active:false});await app.commit(false);assert.equal(app.calls[1].signal.aborted,true);app.calls[1].resolve({items:[]});await tick();assert.equal(app.calls.length,2);assert.deepEqual(app.render(),{});app.unmount();
+});
+
+
+test('a newly opened screen reads resolved icons on its first offline render, including after token renewal', async () => {
+  const cache = {};
+  const first = fixture(cache); first.render(); await first.commit(); first.calls[0].resolve(hint()); await tick(); first.unmount();
+  const second = fixture(cache);
+  assert.equal(second.render({ online: false, session: { userId: 'one', token: 'renewed' } })[categoryKey('group', 'bill', 'Dinner')], 'food');
+  await second.commit(); assert.equal(second.calls.length, 0);
+  assert.deepEqual(second.render({ session: { userId: 'other', token: 'different' } }), {}); second.unmount();
+});
+
+
+test('background pending and temporary failures retain cached icons while ready results refresh them', async () => {
+  const key = categoryKey('group', 'bill', 'Dinner'), cache = { one: { [key]: 'food' } };
+  const app = fixture(cache); assert.equal(app.render()[key], 'food'); await app.commit();
+  app.calls[0].resolve(hint('pending', null)); await tick(); assert.equal(app.render()[key], 'food');
+  await app.fire(); app.calls[1].resolve(hint('ready', 'coffee')); await tick(); assert.equal(app.render()[key], 'coffee');
+  app.render({ online: false }); await app.commit(); app.render({ online: true }); await app.commit();
+  app.calls[2].reject(Error('Temporary failure')); await tick(); assert.equal(app.render()[key], 'coffee'); app.unmount();
 });
