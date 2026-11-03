@@ -14,8 +14,8 @@ export function validChannels(value: Channels): Channels {
   return value;
 }
 
-// One local snapshot owns the preference. Network responses only acknowledge
-// revisions and update delivery metadata, never replay a switch's old value.
+// One local snapshot owns pending choices. Receipts acknowledge revisions;
+// only an idle, fresh read may adopt account changes from another device.
 export function channelPreferences(db: Database, owner: string, uuid: () => string,
   send: (patch?: ChannelPatch & { client_id: string; revision: number }) => Promise<Channels & { revision?: number }>, publish: (state: ChannelState) => void) {
   let row: Row | null = null, stopped = false, active: Promise<void> | null = null;
@@ -46,16 +46,18 @@ export function channelPreferences(db: Database, owner: string, uuid: () => stri
   }
   async function flush() {
     try {
+      let wrote = false;
       await writes;
       if (!row) {
         const remote = validChannels(await send());
         if (stopped) return;
         row = { client_id: uuid(), revision: 0, value: remote, pending: {} };
         await persist(); if (!stopped) emit({ error: '' });
+        return;
       }
       while (!stopped && row && pending()) {
         await writes;
-        const sent = row;
+        const sent = row; wrote = true;
         const receipt = await send({ ...sent.pending, client_id: sent.client_id, revision: sent.revision });
         const remote = validChannels(receipt);
         if (!Number.isSafeInteger(receipt.revision) || receipt.revision! < sent.revision) throw new Error('Could not confirm notification settings.');
@@ -71,12 +73,12 @@ export function channelPreferences(db: Database, owner: string, uuid: () => stri
         await persist();
         if (!stopped && row.revision === stamp) emit({ error: '' });
       }
-      // Refresh delivery metadata only. Local choices are loaded once, then
-      // remain authoritative until this device's user changes them.
-      if (!stopped && row && !pending()) {
+      // Never follow an acknowledgement with another read that could replay
+      // an earlier response. Foreground/idle refreshes can adopt account edits.
+      if (!wrote && !stopped && row && !pending()) {
         const stamp = row.revision, remote = validChannels(await send());
         if (stopped || row.revision !== stamp || pending()) return;
-        row = { ...row, value: { ...row.value, ...(row.revision === 0 ? remote : {}), email_available: remote.email_available, legacy_muted: remote.legacy_muted, muted_push_devices: remote.muted_push_devices } };
+        row = { ...row, value: remote };
         await persist();
         if (!stopped && row.revision === stamp) emit({ error: '' });
       }

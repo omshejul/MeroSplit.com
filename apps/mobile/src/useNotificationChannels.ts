@@ -28,7 +28,7 @@ export function useNotificationChannels(session: Session | null) {
       try {
         const db = await getDatabase(); if (closed) return;
         controller = channelPreferences(db, owner, Crypto.randomUUID,
-          patch => { const active = activeSession.current; if (!active || accountOwner(active) !== owner) throw new Error('The signed-in account changed.'); return request<Channels>(active, '/me/notifications/channels', patch ? 'PUT' : 'GET', patch); },
+          patch => { const active = activeSession.current; if (!active || accountOwner(active) !== owner) throw new Error('The signed-in account changed.'); return request<Channels>(active, patch ? '/me/notifications/channels' : `/me/notifications/channels?refresh=${Crypto.randomUUID()}`, patch ? 'PUT' : 'GET', patch); },
           state => { if (!closed) setView({ owner, state }); });
         current.current = { owner, controller };
         await controller.load();
