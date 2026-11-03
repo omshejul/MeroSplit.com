@@ -25,10 +25,10 @@ type HistoryRow = Explanation['history']['entries'][number] | Explanation['histo
 function InlineDetails({ title, expandedTitle, icon = 'history', amount, children }: { title: string; expandedTitle?: string; icon?: IconName; amount?: string; children: React.ReactNode }) {
   const { ui, palette } = useUI(), [open, setOpen] = useState(false);
   return <View style={{ borderTopWidth: StyleSheet.hairlineWidth, borderColor: palette.line }}>
-    <Button kind="plain" accessibilityRole="button" accessibilityState={{ expanded: open }} accessibilityLabel={open ? expandedTitle ?? title : title} onPress={() => setOpen(value => !value)} style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 56, paddingVertical: 12, backgroundColor: pressed ? palette.soft : undefined })}>
+    <Button kind="plain" accessibilityRole="button" accessibilityState={{ expanded: open }} accessibilityLabel={open ? expandedTitle ?? title : title} onPress={() => setOpen(value => !value)} style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 48, paddingVertical: 10, backgroundColor: pressed ? palette.soft : undefined })}>
       <Icon name={icon} size={20} color={palette.muted} /><Text style={[ui.body, { flex: 1 }]}>{open ? expandedTitle ?? title : title}</Text>{amount !== undefined && <Text style={[ui.body, { fontVariant: ['tabular-nums'], flexShrink: 1 }]}>{BigInt(amount) < 0n ? '−' : '+'}{formatMoney(absolute(amount))}</Text>}<View style={{ transform: [{ rotate: open ? '180deg' : '0deg' }] }}><Icon name="down" size={18} color={palette.muted} /></View>
     </Button>
-    {open && <View style={{ gap: 16, paddingBottom: 12 }}>{children}</View>}
+    {open && <View style={{ gap: 8, paddingBottom: 12 }}>{children}</View>}
   </View>;
 }
 
@@ -74,7 +74,7 @@ function ExplanationBody({ value, selfId, categoryIcons = {} }: { value: Explana
     {summary}
     <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}><Icon name="simplify" size={20} /><Text style={[ui.caption, { flex: 1 }]}>Simplify debts is off. Bills and payments are combined between the same two people.</Text></View>
     <SectionHeading>What makes up this amount</SectionHeading>
-    {value.directItems.map(row => {
+    <View>{value.directItems.map(row => {
       const bill = row.id.startsWith('bill:') ? group.expenses.find(bill => `bill:${bill.id}` === row.id) : undefined;
       const debtor = BigInt(row.amount) < 0n ? chosen.recipient : chosen.sender, creditor = debtor === chosen.sender ? chosen.recipient : chosen.sender;
       const from = nameFor(group, selfId, debtor), to = creditor === selfId ? 'you' : nameFor(group, selfId, creditor);
@@ -83,7 +83,7 @@ function ExplanationBody({ value, selfId, categoryIcons = {} }: { value: Explana
         {bill && <Text style={ui.caption}>{debtor === selfId ? 'Your share' : `${from}'s share`}: {formatMoney(bill.shares[debtor] ?? '0')}</Text>}
         {(!bill || BigInt(bill.shares[debtor] ?? '0') !== BigInt(absolute(row.amount))) && <Text style={ui.caption}>{bill ? `${from} ${debtor === selfId ? 'owe' : 'owes'} ${to} ${formatMoney(absolute(row.amount))} for this bill` : `${BigInt(row.amount) < 0n ? 'Reduces this payment by' : 'Adds to this payment:'} ${formatMoney(absolute(row.amount))}`}</Text>}
       </InlineDetails>;
-    })}
+    })}</View>
     <Text style={ui.caption}>Positive amounts add to this payment. Negative amounts reduce it. Each bill keeps its original shares.</Text>
   </>;
   const bill = history.single;
