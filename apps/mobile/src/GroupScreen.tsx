@@ -39,7 +39,7 @@ type Transfer = { sender: string; recipient: string; amount: string };
 type Props = {
   session?: Session | null; iconsActive?: boolean; bottomClearance?: number;
   categoryIcons?: ExpenseIcons; noticeVisibility?: NoticeVisibility; header?: React.ReactNode;
-  revision?: number; onUpdatesAvailable?: (available: boolean) => void; previewError?: string;
+  revision?: number; liveRevision?: number; onUpdatesAvailable?: (available: boolean) => void; previewError?: string;
   group: Group; accepted: Group; pending: Command[]; busy: boolean; selfId: string;
   onLoadBalanceGroup?: (expected: Group) => Promise<BalanceSource>;
   onHistoryPage?: (resource: HistoryResource, direction: 'next' | 'previous' | 'search', query?: string, signal?: AbortSignal, target?: Group) => Promise<boolean>;
@@ -168,23 +168,28 @@ function BillSearch({ value, onChange, onSearch, onClose, showSubmit, autoFocus 
   </View>;
 }
 
-export default function GroupScreen({ session = null, bottomClearance = 120, categoryIcons, header, noticeVisibility, group: incoming, accepted: incomingAccepted, previewError: incomingPreviewError = '', revision = 0, onUpdatesAvailable, pending, busy, selfId, pagingScope = incoming.id, active = true, iconsActive = active, online = true, onRefresh, refreshing = false, onVisibleBills, onPrefetchBill, onPrefetchPayment, onLoadBalanceGroup, onHistoryPage, onExpense, onPayment, onSettle }: Props) {
+export default function GroupScreen({ session = null, bottomClearance = 120, categoryIcons, header, noticeVisibility, group: incoming, accepted: incomingAccepted, previewError: incomingPreviewError = '', revision = 0, liveRevision = 0, onUpdatesAvailable, pending, busy, selfId, pagingScope = incoming.id, active = true, iconsActive = active, online = true, onRefresh, refreshing = false, onVisibleBills, onPrefetchBill, onPrefetchPayment, onLoadBalanceGroup, onHistoryPage, onExpense, onPayment, onSettle }: Props) {
   const { ui, motion, palette: colors } = useUI();
-  // Background cache updates must not replace a page while someone is reading it.
-  // Adopt both views together only for an explicit read or the user's saved changes.
+  // Explicit reads and safe live refreshes adopt the accepted page and preview together.
+  // Unrelated background cache work still leaves the current reading window alone.
   const [shown, setShown] = useState({ group: incoming, accepted: incomingAccepted, previewError: incomingPreviewError });
   const { group, accepted, previewError } = shown;
   const commandBodies = new Map(pending.map(command => [command.command_id, JSON.stringify(command.body)]));
   const ownChanges = pending.map(command => `${command.command_id}:${command.state}:${commandBodies.get(command.command_id)}`).join('|');
   const wasActive = useRef(active);
-  const adoptedRevision = useRef(revision), savedCommands = useRef(commandBodies);
+  const adoptedRevision = useRef(revision), adoptedLiveRevision = useRef(liveRevision), savedCommands = useRef(commandBodies);
   const [opacity] = useState(() => new Animated.Value(1));
+  const liveEntryGroup = useRef<Group | null>(null);
+  const [explanation, setExplanation] = useState<BalanceSelection | null>(null);
   useLayoutEffect(() => {
     const returning = active && !wasActive.current; wasActive.current = active;
+    const live = active && !busy && !pending.length && !explanation && (liveRevision !== adoptedLiveRevision.current
+      || incoming.version !== group.version || incomingPreviewError !== previewError);
     const deliberate = revision !== adoptedRevision.current || returning && (incoming !== group || incomingPreviewError !== previewError);
     const ownSave = pending.some(command => !savedCommands.current.has(command.command_id) || savedCommands.current.get(command.command_id) !== commandBodies.get(command.command_id));
     adoptedRevision.current = revision; savedCommands.current = commandBodies;
-    if (!deliberate && !ownSave) return;
+    if (!deliberate && !ownSave && !live) return;
+    adoptedLiveRevision.current = liveRevision;
     if (deliberate && incoming.version !== group.version) {
       opacity.stopAnimation();
       if (motion.enabled) {
@@ -192,11 +197,11 @@ export default function GroupScreen({ session = null, bottomClearance = 120, cat
         Animated.timing(opacity, { toValue: 1, duration: 180, useNativeDriver: Platform.OS !== 'web', isInteraction: false }).start();
       } else opacity.setValue(1);
     }
+    liveEntryGroup.current = live && !deliberate ? incoming : null;
     setShown({ group: incoming, accepted: incomingAccepted, previewError: incomingPreviewError });
-  }, [revision, ownChanges, active]);
+  }, [revision, liveRevision, incoming.version, incomingPreviewError, ownChanges, active, busy, explanation]);
   useEffect(() => { onUpdatesAvailable?.(incoming.version !== group.version || incomingPreviewError !== previewError); }, [incoming.version, group.version, incomingPreviewError, previewError, onUpdatesAvailable]);
   useEffect(() => () => opacity.stopAnimation(), [opacity]);
-  const [explanation, setExplanation] = useState<BalanceSelection | null>(null);
   const historyResource = group.transactions ? 'transactions' : 'bills';
   const [search, setSearch] = useState(group.history?.[historyResource]?.query ?? ''), [searching, setSearching] = useState(!!group.history?.[historyResource]?.query);
   const historyWindow = group.history?.[historyResource];
@@ -230,16 +235,23 @@ export default function GroupScreen({ session = null, bottomClearance = 120, cat
   }
   const list = useRef<FlatList<GroupTransaction>>(null), frame = useRef<React.ComponentRef<typeof View>>(null);
   const [viewport, setViewport] = useState<{ x: number; y: number; width: number; height: number } | null>(null), [scrollEpoch, setScrollEpoch] = useState(0);
-  const anchor = useListAnchor(list, group, active, motion.enabled, `${group.id}|${historyWindow?.query || ''}`);
+  const anchor = useListAnchor(list, group, active, motion.enabled && group !== liveEntryGroup.current, `${group.id}|${historyWindow?.query || ''}`, true);
   const anchorRef = useRef(anchor); anchorRef.current = anchor;
-  const entries = useRef(new Map<string, ListEntry>()), [entryRevision, setEntryRevision] = useState(0);
   const transactionKey = (row: GroupTransaction) => row.kind === 'bill' ? `bill:${row.bill.id}` : `payment:${row.payment.id}`;
+  const entries = useRef(new Map<string, ListEntry>()), entered = useRef(new Set<string>()), entryScope = useRef(''), [entryRevision, setEntryRevision] = useState(0);
+  const scope = `${group.id}|${historyWindow?.query || ''}`;
+  if (entryScope.current !== scope) { entryScope.current = scope; entries.current.clear(); entered.current.clear(); }
+  // Initial/cache/filter/history rows stay still. Only new live records receive an entrance.
+  for (const row of rows) if (!entries.current.has(transactionKey(row))) entries.current.set(transactionKey(row), { delay: 0, played: group !== liveEntryGroup.current });
   const visible = useRef(onVisibleBills); visible.current = onVisibleBills;
   const viewable = useRef(({ viewableItems }: { viewableItems: { isViewable: boolean; index?: number | null; item: GroupTransaction }[] }) => {
     const shown = viewableItems.filter(row => row.isViewable).sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
     anchorRef.current.viewable(shown.map(row => transactionKey(row.item)));
-    const fresh = shown.filter(row => !entries.current.has(transactionKey(row.item)));
-    fresh.forEach((row, index) => entries.current.set(transactionKey(row.item), { delay: Math.min(index, 6) * 35, played: false }));
+    const fresh = shown.filter(row => !entered.current.has(transactionKey(row.item)));
+    fresh.forEach((row, index) => {
+      const key = transactionKey(row.item); entered.current.add(key);
+      const entry = entries.current.get(key); if (entry) entry.delay = Math.min(index, 6) * 35;
+    });
     if (fresh.length) setEntryRevision(value => value + 1);
     visible.current?.(shown.filter(row => row.item.kind === 'bill').map(row => row.item.kind === 'bill' ? row.item.bill.id : ''));
   });
@@ -253,7 +265,7 @@ export default function GroupScreen({ session = null, bottomClearance = 120, cat
       onScrollBeginDrag={anchor.dragging} onScroll={event => { anchor.scrolled(event.nativeEvent.contentOffset.y); setScrollEpoch(value => value + 1); }}
       keyboardShouldPersistTaps="handled" onViewableItemsChanged={viewable.current} onRefresh={onRefresh} refreshing={refreshing}
       keyExtractor={row => row.kind === 'bill' ? `bill:${row.bill.id}` : `payment:${row.payment.id}`}
-      contentContainerStyle={[pageContentStyle, { gap: 0, paddingBottom: bottomClearance }]} renderItem={({ item: row }) => <View ref={anchor.rowRef(transactionKey(row))} collapsable={false}><StaggerItem entry={entries.current.get(transactionKey(row))}>{row.kind === 'payment'
+      contentContainerStyle={[pageContentStyle, { gap: 0, paddingBottom: bottomClearance }]} renderItem={({ item: row }) => <View ref={anchor.rowRef(transactionKey(row))} collapsable={false}><StaggerItem entry={entered.current.has(transactionKey(row)) ? entries.current.get(transactionKey(row)) : undefined}>{row.kind === 'payment'
         ? <PaymentRow payment={row.payment} accepted={accepted} group={group} selfId={selfId} busy={busy} onPayment={onPayment} onPrefetchPayment={onPrefetchPayment} />
         : <BillTimelineRow categoryIcons={categoryIcons} expense={row.bill} group={group} selfId={selfId} busy={busy} onExpense={onExpense} onPrefetchBill={onPrefetchBill} noticeVisibility={group === accepted ? visibility : undefined} />}</StaggerItem></View>}
       ListHeaderComponent={<View style={s.content}>{header}

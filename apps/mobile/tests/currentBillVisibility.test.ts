@@ -12,6 +12,7 @@ import type { Group, Session } from '../src/types.ts';
 
 const source = ts.createSourceFile('App.tsx', readFileSync(new URL('../App.tsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true);
 function production(name: string, env: any) {
+ if (name === 'runAccountRefresh') env = { groupVersions: { current: '' }, setLiveRevision() {}, readPrefetch: { invalidate() {} }, readScope: () => '', ...env };
   let body = '';
   function visit(node: ts.Node) { if (ts.isFunctionDeclaration(node) && node.name?.text === name) body = node.getText(source); ts.forEachChild(node, visit); }
   visit(source); assert.ok(body);

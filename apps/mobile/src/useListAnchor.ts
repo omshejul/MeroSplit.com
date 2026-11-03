@@ -5,7 +5,7 @@ import type React from 'react';
 type Node = React.ComponentRef<typeof View>;
 // Preserve a visible record across inserted rows/header height changes. Dragging
 // takes control away from an animated correction; reduced motion stays immediate.
-export function useListAnchor<T>(list: React.RefObject<FlatList<T> | null>, revision: unknown, active: boolean, animate: boolean, scope?: unknown) {
+export function useListAnchor<T>(list: React.RefObject<FlatList<T> | null>, revision: unknown, active: boolean, animate: boolean, scope?: unknown, pinTop = false) {
  const nodes=useRef(new Map<string,Node>()), visible=useRef<string[]>([]), saved=useRef<{key:string;y:number}[]>([]);
  const offset=useRef(0), restoring=useRef(false), generation=useRef(0), timer=useRef<ReturnType<typeof setTimeout>|null>(null);
  const live=useRef(active);live.current=active;
@@ -19,6 +19,7 @@ export function useListAnchor<T>(list: React.RefObject<FlatList<T> | null>, revi
  useLayoutEffect(()=>{saved.current=[];visible.current=[];generation.current++;restoring.current=false;if(timer.current)clearTimeout(timer.current);},[scope]);
  useLayoutEffect(()=>{
   if(!active||!saved.current.length)return;
+  if(pinTop&&offset.current<=1){saved.current=[];return;}
   const anchor=saved.current.find(value=>nodes.current.has(value.key));if(!anchor)return;
   const stamp=++generation.current;restoring.current=true;
   if(timer.current)clearTimeout(timer.current);

@@ -33,7 +33,11 @@ export async function request<T>(session: Session, path: string, method = 'GET',
   try { return await networkRequest<T>(session, path, method, body, responseType, signal); }
   finally { if (method !== 'GET') readPrefetch.invalidate(readScope(session)); }
 }
-async function networkRequest<T>(session: Session, path: string, method: string, body: unknown, responseType: 'json' | 'text', signal?: AbortSignal): Promise<T> {
+// A failed advisory probe must not turn off its own recovery loop.
+export function readLedgerHeads(session: Session, signal?: AbortSignal): Promise<{ groups: { id: string; version: number; hidden: boolean }[] }> {
+  return networkRequest<{ groups: { id: string; version: number; hidden: boolean }[] }>(session, '/me/ledger-heads', 'GET', undefined, 'json', signal, false).then(value => { recordConnection(true); return value; });
+}
+async function networkRequest<T>(session: Session, path: string, method: string, body: unknown, responseType: 'json' | 'text', signal?: AbortSignal, connectionHint = true): Promise<T> {
   const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 15_000);
   const cancel = () => controller.abort();
   if (signal?.aborted) cancel();
@@ -42,8 +46,8 @@ async function networkRequest<T>(session: Session, path: string, method: string,
     const response = await sessionRequest(session, `/api/v1${path}`, {
       method, headers: { 'Content-Type': 'application/json' },
       body: body === undefined ? undefined : JSON.stringify(body), signal: controller.signal,
-    }).catch(error => { if (signal?.aborted) throw error; recordConnection(false); throw new Error('Could not connect. Your saved changes stay on this device.'); });
-    recordConnection(true);
+    }).catch(error => { if (signal?.aborted) throw error; if (connectionHint) recordConnection(false); throw new Error('Could not connect. Your saved changes stay on this device.'); });
+    if (connectionHint) recordConnection(true);
     if (responseType === 'text' && response.ok) return await response.text() as T;
     if (!response.headers.get('content-type')?.includes('json')) throw new ApiError(response.ok ? 502 : response.status, 'The service is temporarily unavailable. Try again later.');
     const data = await response.json();
@@ -114,26 +118,31 @@ export async function fetchGroup(session: Session, id: string, mode: 'full' | 's
 export async function retainHistoryWindow(session: Session, group: Group, previous?: Group, current = () => true): Promise<Group> {
   const window = previous?.history?.transactions;
   if (group.read_mode !== 'summary' || !group.transactions || group.id !== previous?.id || group.version === previous.version
-    || window?.cursor || window?.query || !previous.transactions || previous.transactions.length <= group.transactions.length) return group;
+    || window?.cursor && !window.query || !previous.transactions) return group;
   const key = (row: NonNullable<Group['transactions']>[number]) => `${row.kind}:${row.kind === 'bill' ? row.bill.id : row.payment.id}`;
-  const last = key(previous.transactions.at(-1)!), target = previous.transactions.length;
-  let rows = [...group.transactions], cursor = group.history?.transactions?.next_cursor;
+  if (!window?.query && previous.transactions.length <= group.transactions.length) return group;
+  const query = window?.query ?? '', last = previous.transactions.length ? key(previous.transactions.at(-1)!) : '', target = previous.transactions.length;
+  let rows = query ? [] as NonNullable<Group['transactions']> : [...group.transactions];
+  let cursor = query ? null : group.history?.transactions?.next_cursor, first = !!query;
   const cursors = new Set<string>();
+  // Re-run an active filter at the new revision; never replace it with unrelated rows.
   // One extra page covers a shifted boundary without an unbounded background catch-up.
-  while (cursor && rows.length < target + 50 && (rows.length < target || !rows.some(row => key(row) === last))) {
+  while (first || cursor && rows.length < target + 50 && (rows.length < target || !rows.some(row => key(row) === last))) {
     if (!current()) throw new Error('The signed-in account changed.');
-    if (cursors.has(cursor)) throw new ApiError(409, 'History changed. Refresh before continuing.');
-    cursors.add(cursor);
-    const params = new URLSearchParams({ version: String(group.version), limit: '50', deleted: 'all', cursor });
+    if (!first && cursor && cursors.has(cursor)) throw new ApiError(409, 'History changed. Refresh before continuing.');
+    if (cursor) cursors.add(cursor);
+    const params = new URLSearchParams({ version: String(group.version), limit: '50', deleted: 'all' });
+    if (cursor) params.set('cursor', cursor);
+    if (query) params.set('q', query);
     const page = await request<{ read_mode: string; group_id: string; version: number; items: NonNullable<Group['transactions']>; next_cursor: string | null }>(session, `/groups/${group.id}/history/transactions?${params}`);
     if (!current()) throw new Error('The signed-in account changed.');
     if (page.read_mode !== 'page' || page.group_id !== group.id || page.version !== group.version || !Array.isArray(page.items)) throw new ApiError(409, 'History changed. Refresh before continuing.');
     const keys = new Set(rows.map(key));
     const added = page.items.filter(row => { const id = key(row); if (keys.has(id)) return false; keys.add(id); return true; });
-    rows.push(...added); cursor = page.next_cursor;
+    rows.push(...added); cursor = page.next_cursor; first = false;
     if (!added.length) break;
   }
-  return { ...group, transactions: rows, history: { ...group.history, transactions: { ...group.history?.transactions, next_cursor: cursor ?? null } } };
+  return { ...group, transactions: rows, history: { ...group.history, transactions: { ...group.history?.transactions, query, cursor: null, previous: [], next_cursor: cursor ?? null } } };
 }
 
 // The complete authorized index is the pruning boundary. Changed groups still

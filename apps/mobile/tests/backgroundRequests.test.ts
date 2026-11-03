@@ -11,6 +11,7 @@ import { migrate, saveGroup, readVisibleGroup } from '../src/storage.ts';
 const app = ts.createSourceFile('App.tsx', readFileSync(new URL('../App.tsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
 const nav = ts.createSourceFile('AppNavigation.tsx', readFileSync(new URL('../src/AppNavigation.tsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
 function production(name: string, env: any, source = app) {
+ if (name === 'runAccountRefresh') env = { groupVersions: { current: '' }, setLiveRevision() {}, readPrefetch: { invalidate() {} }, readScope: () => '', ...env };
   let found: ts.FunctionDeclaration | undefined;
   function visit(node: ts.Node) { if (ts.isFunctionDeclaration(node) && node.name?.text === name) found = node; ts.forEachChild(node, visit); }
   visit(source); assert.ok(found, name);
