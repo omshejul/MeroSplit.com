@@ -24,7 +24,7 @@ export default function NotesField({ value, disabled, onChange }: { value: strin
   return <View style={{ gap: 8 }}>
     <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
       <Text style={ui.label}>Notes (optional)</Text>
-      <Button ref={trigger} kind="secondary" iconOnly icon={({ color }) => <MarkdownMark color={color} />} accessibilityLabel="Markdown formatting help" accessibilityHint="Shows examples for formatting notes" onPress={() => { Keyboard.dismiss(); setHelp(true); }} style={{ marginLeft: 'auto', minWidth: 52, minHeight: 44, borderRadius: 12 }} />
+      <Button ref={trigger} kind="secondary" small iconOnly icon={({ color }) => <MarkdownMark color={color} />} accessibilityLabel="Markdown formatting help" accessibilityHint="Shows examples for formatting notes" onPress={() => { Keyboard.dismiss(); setHelp(true); }} hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }} style={{ marginLeft: 'auto', minWidth: 44, height: 28, minHeight: 28, borderRadius: 8 }} />
     </View>
     <TextField autoCorrect={false} label="Notes (optional)" hideLabel value={value} onChangeText={onChange} multiline style={{ minHeight: 100, textAlignVertical: 'top' }} maxLength={2000} editable={!disabled} />
     <Text style={[ui.caption, { alignSelf: 'flex-end' }]}>{value.length}/2,000</Text>
