@@ -174,10 +174,55 @@ def test_invalid_bearer_rate_limit_is_durable_across_app_instances(ledger, monke
     async def check():
         async with running_app(MeroSplitApplication()) as one, running_app(MeroSplitApplication()) as two:
             for index in range(60):
-                response = await (one if index % 2 else two).get("/mcp")
+                response = await (one if index % 2 else two).get("/mcp", headers={"Authorization": "Bearer invalid"})
                 assert response.status_code == 401
-            response = await two.get("/mcp")
+            response = await two.get("/mcp", headers={"Authorization": "Bearer invalid"})
             assert response.status_code == 429 and response.headers["Retry-After"] == "60"
+    asyncio.run(check())
+
+
+def test_repeated_authenticated_discovery_keeps_tools_available(ledger, bearer, monkeypatch):
+    now = timezone.now()
+    monkeypatch.setattr("ledger.otp.timezone.now", lambda: now)
+    async def check():
+        async with running_app(MeroSplitApplication(), bearer[0]) as http:
+            for _ in range(40):
+                async with sdk(http) as client:
+                    assert "get_account_context" in {tool.name for tool in (await client.list_tools()).tools}
+    asyncio.run(check())
+
+
+def test_failed_anonymous_probes_do_not_hide_authenticated_tools(ledger, bearer, monkeypatch):
+    now = timezone.now()
+    monkeypatch.setattr("ledger.otp.timezone.now", lambda: now)
+    async def check():
+        async with running_app(MeroSplitApplication()) as public:
+            for _ in range(60):
+                assert (await public.get("/mcp", headers={"Authorization": "Bearer invalid"})).status_code == 401
+            assert (await public.get("/mcp", headers={"Authorization": "Bearer invalid"})).status_code == 429
+            # A temporary budget cannot prevent a client from discovering OAuth.
+            challenge = await public.get("/mcp")
+            assert challenge.status_code == 401 and "resource_metadata=" in challenge.headers["WWW-Authenticate"]
+            metadata = await public.get("/.well-known/oauth-protected-resource/mcp")
+            assert metadata.status_code == 200
+        async with running_app(MeroSplitApplication(), bearer[0]) as http:
+            async with sdk(http) as client:
+                assert not (await client.call_tool("get_account_context", {})).is_error
+    asyncio.run(check())
+
+
+def test_discovery_cannot_reset_ledger_operation_quota(ledger, bearer, monkeypatch):
+    now = timezone.now()
+    monkeypatch.setattr("ledger.otp.timezone.now", lambda: now)
+    async def check():
+        async with running_app(MeroSplitApplication(), bearer[0]) as http:
+            async with sdk(http) as client:
+                for _ in range(60):
+                    assert not (await client.call_tool("get_account_context", {})).is_error
+                assert "get_account_context" in {tool.name for tool in (await client.list_tools()).tools}
+                limited = await client.call_tool("get_account_context", {})
+                assert limited.is_error and limited.structured_content["error"]["status"] == 429
+                assert limited.structured_content["error"]["retry_after_seconds"] == 60
     asyncio.run(check())
 
 
@@ -200,7 +245,7 @@ def test_revoke_between_http_verifier_and_tool_boundary_prevents_command(ledger,
     armed = False
     def authenticate(raw, **kwargs):
         result = original(raw, **kwargs)
-        if armed and kwargs.get("enforce_limits", True) and result:
+        if armed and not kwargs.get("enforce_limits", True) and result:
             McpOAuthGrant.objects.filter(pk=result[1].pk).update(revoked_at=timezone.now())
         return result
     monkeypatch.setattr(mcp_server, "authenticate_access_token", authenticate)

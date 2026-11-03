@@ -420,6 +420,8 @@ def test_invalid_http_bodies_are_also_network_limited_without_creating_clients()
         assert client.post("/oauth/register", data="[", content_type="application/json").status_code == 400
     response = client.post("/oauth/register", data="[", content_type="application/json")
     assert response.status_code == 429 and response["Retry-After"] == "60"
+    assert "Try again in a minute" in response.json()["error_description"]
+    assert "Connect again" not in response.json()["error_description"]
     assert not McpOAuthClient.objects.exists()
 
 
@@ -603,15 +605,15 @@ def test_public_setup_verifies_without_financial_reads_or_manual_keys():
     assert '"mcpServers":{"merosplit":{"url":' in text
     assert 'Other Streamable HTTP clients' in text
     assert 'config/mcpServer/reload' in text and 'mcpServerStatus/list' in text
-    assert 'Authenticated; tool loading pending' in text
+    assert 'Missing tools alone do not prove that sign-in expired.' in text
+    assert 'retry_after_seconds' in text and 'HTTP 429' in text
     assert 'start a new chat to load the tools' not in text
     assert 'Muse Code' in text and 'muse mcp login merosplit' in text and 'muse resume' in text
     assert 'VS Code and Copilot' in text and 'MCP: List Servers' in text
     assert 'complete browser OAuth if needed' in text
     assert 'Report success only after the account check succeeds' in text
     assert 'Settings → MCP servers → merosplit → Restart' in text
-    assert 'Return here and reply <strong>done</strong>' in text
-    assert 'after their reply, rediscover the tools' in text
-    assert 'A status message alone is not a complete handoff.' in text
+    assert 'After the person replies, rediscover the tools' in text
+    assert 'If the same error remains, explain it instead of repeating the handoff.' in text
     assert 'Open the provided authorization URL manually only if the browser did not open automatically' in text
     assert 'use that same pending flow rather than starting another login' in text

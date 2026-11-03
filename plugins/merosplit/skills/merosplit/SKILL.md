@@ -5,7 +5,14 @@ description: Read MeroSplit balances and bill history, create groups, add or cor
 
 # MeroSplit ledger workflows
 
-Use the connected MeroSplit MCP tools. Authentication belongs to the host's browser OAuth flow; credentials and verification codes stay out of tool arguments and conversation output. If tools are unavailable or authorization expired, direct the user to reconnect MeroSplit in their host. A successful connection grants only the account's existing permissions.
+Use the connected MeroSplit MCP tools. Authentication belongs to the host's browser OAuth flow; credentials and verification codes stay out of tool arguments and conversation output. If tools are unavailable, discover deferred tools and inspect the actual client status before diagnosing the connection. A successful connection grants only the account's existing permissions.
+
+## Recover from a failure
+
+- Missing tools alone do not prove that sign-in expired. Search the current tool catalog and inspect the exact MCP status first. Never invent a cause or a refresh control.
+- For HTTP 429, keep pending write IDs and payload, wait `Retry-After` or `retry_after_seconds`, then retry once without reconnecting. Explain that MeroSplit is temporarily busy and that the bill is not confirmed saved yet.
+- For HTTP 401 or OAuth `invalid_grant`, use built-in OAuth only after the response confirms invalid or expired access. For HTTP 403, explain the reported restriction; reconnecting does not grant new permissions.
+- If tools and diagnostics are both unavailable, say the connection error is unknown and request the actual MCP status message. Use a supported refresh once only for confirmed stale tool loading. If it fails again, explain the failure instead of repeating restarts or logins.
 
 ## Find the right records
 
