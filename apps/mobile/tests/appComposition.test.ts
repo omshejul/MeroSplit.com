@@ -35,7 +35,7 @@ test('Me mounts Connect MCP on native and web, with current account key, session
   const MCPSettings = Symbol('Connect MCP');
   const env: Record<string, any> = { React, MCPSettings, savedChangesView: null, focused: true, methodsRow: { current: null }, navigate() {}, screen: 'home', tab: 'Account', owner: 'account-one',
     session: { email: 'one@example.invalid', token: 'synthetic-one' }, busy: false, lock: { current: false },
-    myName: 'One', vpa: '', push: {}, unavailable: [], commands: [], groups: [], expired: false,
+    myName: 'One', vpa: '', push: {}, notificationChannels: {}, unavailable: [], commands: [], groups: [], expired: false,
     legacy: [], legacySelf: {}, recoveries: [], ui: {}, saveName() {}, saveUPI() {}, exportData() {},
     appUpdates: { synthetic: 'shared-controller' }, AppUpdates: 'AppUpdates', online: true, AccountHeader: 'AccountHeader', View: 'View', ProfileSettings: 'ProfileSettings', AccountNotifications: 'AccountNotifications',
     DeleteAccount: 'DeleteAccount', ExportData: 'ExportData', SettingsRow: 'SettingsRow', Disclosure: 'Disclosure', Button: 'Button', Text: 'Text', SavedChanges: 'SavedChanges', LegacyRecords: 'LegacyRecords' };

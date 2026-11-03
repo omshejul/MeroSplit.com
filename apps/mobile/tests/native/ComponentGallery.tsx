@@ -1,3 +1,4 @@
+import {useNotificationChannels} from '../../src/useNotificationChannels';
 // Isolated manual/native QA entry. Production index.ts never imports this file.
 import React, { useEffect, useRef, useState } from 'react';
 import { Platform, ScrollView, View } from 'react-native';
@@ -73,7 +74,8 @@ globalThis.fetch = (async (input: any, options?: RequestInit) => {
   if (url.origin !== session.baseUrl || !url.pathname.startsWith('/api/v1/')) return originalFetch(input, options);
   const path = url.pathname.replace(/^\/api\/v1/, ''), method = options?.method ?? 'GET', body = options?.body ? JSON.parse(String(options.body)) : {};
   let result: any;
-  if (path === '/me/notifications/preferences') result = method === 'PUT' ? preferences = { ...preferences, ...body } : preferences;
+  if (path === '/me/notifications/channels') { if(method==='PUT'){if(body.email_notifications!==undefined)preferences.email_reminders=body.email_notifications;if(body.statement_frequency)statement.frequency=body.statement_frequency;}result={email_notifications:preferences.email_reminders,email_available:true,legacy_muted:false,statement_enabled:preferences.email_reminders,statement_frequency:statement.frequency,revision:body.revision}; }
+  else if (path === '/me/notifications/preferences') result = method === 'PUT' ? preferences = { ...preferences, ...body } : preferences;
   else if (path.includes('/me/balance-statements/preferences')) result = method === 'PUT' ? statement = { ...statement, ...body } : statement;
   else if (path.includes('/me/balance-statements/send')) result = { id: body.command_id, state: 'accepted' };
   else if (path === '/me/sign-in-methods') result = methods;
@@ -95,6 +97,7 @@ function ProviderMethodsDemo() { const connections = useLinkedProviders(session,
 const pages = ['Rows', 'States', 'Selectors', 'Dialogs', 'Profile', 'Expense', 'Payment', 'Group', 'Members', 'Bill', 'Bill icons', 'Payment detail', 'Saved change', 'Recovery', 'Activity', 'Versions', 'Attachments', 'Photo', 'Create', 'Sign in', 'Providers', 'Notifications', 'MCP', 'Import', 'Tabs', 'Join'] as const;
 type Page = typeof pages[number] | 'Home';
 function Gallery() {
+  const channels=useNotificationChannels(session);
   const { ui, palette, changeAppearance, changeCurrency, changeColorFamily, dark } = useUI();
   const [page, setPage] = useState<Page>('Home'), [result, setResult] = useState('Ready'), [chosen, setChosen] = useState('a'), [open, setOpen] = useState(false), [failed, setFailed] = useState(false), [dialog, setDialog] = useState(''), [value, setValue] = useState('Asha'), [email, setEmail] = useState('asha@example.invalid'), [tab, setTab] = useState('Groups');
   const writes = useRef(Promise.resolve()), [members, setMembers] = useState(group), [name, setName] = useState('Me'), [vpa, setVpa] = useState('');
@@ -124,7 +127,7 @@ function Gallery() {
   if (page === 'Create') content = <CreateGroupForm direct={false} busy={false} onCreate={value => done(`Created ${value.name}`)} />;
   if (page === 'Sign in') content = <><EmailSignIn email={email} busy={false} onEmail={setEmail} onSend={() => done('Sent sign-in code')}><GoogleBrandButton disabled={false} onPress={() => done('Google callback')} /></EmailSignIn><CodeSignIn email={email} code={value} busy={false} resendSeconds={0} onCode={setValue} onConfirm={() => done('Confirmed code')} onResend={() => done('Resent code')} onChangeEmail={() => done('Changed email')} /><EmailLinkSent busy={false} resendSeconds={0} onResend={() => done('Resent link')} onCode={() => done('Chose code')} onChangeEmail={() => done('Changed email')} /></>;
   if (page === 'Providers') content = <ProviderMethodsDemo />;
-  if (page === 'Notifications') content = <AccountNotifications session={session} push={push} busy={false} onBusyChange={() => {}} />;
+  if (page === 'Notifications') content = <AccountNotifications session={session} push={push} channels={channels} busy={false} onBusyChange={() => {}} />;
   if (page === 'MCP') content = <MCPSettings session={session} busy={false} onBusyChange={() => {}} />;
   if (page === 'Import') content = <SplitwiseImportScreen session={session} busy={false} onBusyChange={() => {}} onCancel={() => setPage('Home')} onImported={() => done('Imported fixture')} />;
   if (page === 'Tabs') content = <HomeTabs selected={tab} busy={false} onSelect={setTab} render={selected => <Text style={ui.section}>{selected} content</Text>} />;

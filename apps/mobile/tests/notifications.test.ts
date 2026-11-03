@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import ts from 'typescript';
 import { accountOwner, ApiError, request } from '../src/api.ts';
-import { consentToPush, dismissReadPushes, emptyPushPreferences, notificationForAccount, notificationTarget, pushPermission, refreshPushDevice, unregisterPushDevice } from '../src/notifications.ts';
+import { pushChoice, consentToPush, dismissReadPushes, emptyPushPreferences, notificationForAccount, notificationTarget, pushPermission, refreshPushDevice, unregisterPushDevice } from '../src/notifications.ts';
 import type { PushDevice, PushPreferences } from '../src/notifications.ts';
 import type { Group, Session } from '../src/types.ts';
 import { setDefaultCurrency } from '../src/currency.ts';
@@ -273,8 +273,21 @@ test('A failed native token refresh invalidates availability, including token ro
   function visit(node: ts.Node) { if (ts.isFunctionDeclaration(node) && node.name?.text === 'refreshNow') declaration = node.getText(source); ts.forEachChild(node, visit); }
   visit(source); assert.ok(declaration);
   let verified = true;
-  const env = { activeSession: { current: session }, state: async () => registered, mounted: { current: true }, setPermission() {}, setVerified: (value: boolean) => { verified = value; }, Notifications: { getPermissionsAsync: async () => ({ status: 'granted' }) }, pushPermission, refreshPushDevice: async () => { throw Error('Registry unavailable'); }, save() {} };
+  const env = { localWrites: {current:Promise.resolve()}, saved: {current:registered}, channelState:{current:undefined}, accountOwner, activeSession: { current: session }, state: async () => registered, mounted: { current: true }, setPermission() {}, setVerified: (value: boolean) => { verified = value; }, Notifications: { getPermissionsAsync: async () => ({ status: 'granted' }) }, pushPermission, refreshPushDevice: async () => { throw Error('Registry unavailable'); }, save() {} };
   const refresh = new Function('env', `with(env){${ts.transpile(declaration, { target: ts.ScriptTarget.ES2022 })};return refreshNow;}`)(env);
   await assert.rejects(refresh({ type: 'ios', data: 'synthetic-rotated' }), /Registry unavailable/);
   assert.equal(verified, false);
+});
+
+
+test('new push choices persist OFF immediately and keep its revision for an offline retry',async()=>{
+ const off=pushChoice(session,{...registered,revision:4},false);assert.equal(off.opted_in,false);assert.equal(off.pending_off,true);assert.equal(off.revision,5);let stored=off;const paths:string[]=[];
+ await assert.rejects(unregisterPushDevice(session,off,async value=>{stored=value},async <T>(_session:Session,path:string)=>{paths.push(path);throw Error('Offline')}),/Offline/);assert.equal(stored.opted_in,false);assert.equal(stored.pending_off,true);assert.match(paths[0],/preference_revision=5/);
+ await unregisterPushDevice(session,stored,async value=>{stored=value},async <T>(_session:Session,path:string)=>{paths.push(path);return{removed:true}as T});assert.equal(paths[0],paths[1]);assert.equal(stored.opted_in,false);assert.equal(stored.pending_off,false);assert.equal(stored.revision,5);assert.equal(pushChoice(session,stored,true).revision,6);
+});
+
+test('actual native save publishes the local choice before I/O and ignores stale binding receipts',async()=>{
+ const source=ts.createSourceFile('PushSettings.tsx',readFileSync(new URL('../src/PushSettings.tsx',import.meta.url),'utf8'),ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);let declaration='';const visit=(n:ts.Node)=>{if(ts.isFunctionDeclaration(n)&&n.name?.text==='save')declaration=n.getText(source);ts.forEachChild(n,visit)};visit(source);assert.ok(declaration);
+ const writes:{value:PushPreferences,finish:()=>void}[]=[];let rendered:any=null;const env={saved:{current:{...registered,revision:1}},durable:{current:{...registered,revision:1}},localWrites:{current:Promise.resolve()},activeSession:{current:session},accountOwner,mounted:{current:true},setPreferences:(value:any)=>{rendered=value},setSaving(){},setError(){},SecureStore:{setItemAsync:async(_key:string,value:string)=>new Promise<void>(resolve=>writes.push({value:JSON.parse(value),finish:resolve}))},CHOICE_KEY:'synthetic-choice'};
+ const save=new Function('env',`with(env){${ts.transpile(declaration,{target:ts.ScriptTarget.ES2022})};return save;}`)(env);const on=pushChoice(session,env.saved.current,true);const first=save(on);assert.equal(rendered.opted_in,true);const off=pushChoice(session,on,false);const second=save(off);assert.equal(rendered.opted_in,false);await save({...on,binding:device});assert.equal(env.saved.current.revision,off.revision);for(let i=0;i<10;i++)await Promise.resolve();assert.equal(writes.length,1);writes[0].finish();await first;for(let i=0;i<10;i++)await Promise.resolve();assert.equal(writes.length,2);assert.equal(writes[1].value.opted_in,false);writes[1].finish();await second;assert.equal(env.durable.current.revision,off.revision);assert.equal(env.durable.current.opted_in,false);
 });

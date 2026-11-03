@@ -342,6 +342,16 @@ class ActivityPush(models.Model):
         ]
 
 
+class NotificationChannelCursor(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    client_id = models.UUIDField()
+    revision = models.PositiveBigIntegerField(default=0)
+    push_disabled = models.BooleanField(default=False)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['user', 'client_id'], name='notification_channel_client')]
+
+
 class NotificationPreference(models.Model):
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, primary_key=True)
     expense_updates = models.BooleanField(default=True)
