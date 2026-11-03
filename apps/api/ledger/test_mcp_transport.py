@@ -27,6 +27,8 @@ from .mcp_oauth import MCP_SCOPE, OAuthError
 from .mcp_server import GROUP_RESOURCE, MAX_BODY, database_call
 from .models import Change, CommandReceipt, Expense, ExpenseNotice, NotificationPreference, UploadedFile
 from .test_mcp_tools import ledger as ledger
+from .test_mcp_uploads import remote as remote
+from .test_media import storage as storage
 
 pytestmark = pytest.mark.django_db(transaction=True)
 ORIGIN = "https://merosplit.omshejul.com"
@@ -86,7 +88,7 @@ def test_official_sdk_negotiation_tools_schema_resource_and_no_session_affinity(
         async with running_app(app, bearer[0]) as http:
             async with sdk(http, mode) as client:
                 tools = (await client.list_tools()).tools
-                assert len(tools) == 12
+                assert len(tools) == 13
                 assert all("actor" not in tool.input_schema["properties"] and "user_id" not in tool.input_schema["properties"] for tool in tools)
                 by_name = {tool.name: tool for tool in tools}
                 assert all(tool.annotations.idempotent_hint for tool in tools)
@@ -95,6 +97,12 @@ def test_official_sdk_negotiation_tools_schema_resource_and_no_session_affinity(
                 assert by_name["reverse_expense"].annotations.destructive_hint
                 assert by_name["reverse_external_payment"].annotations.destructive_hint
                 assert by_name["save_expense"].annotations.destructive_hint
+                attachment = by_name["upload_attachment"]
+                assert attachment.meta["openai/fileParams"] == ["file"]
+                file_schema = attachment.input_schema["$defs"]["AttachmentFile"]
+                assert set(file_schema["properties"]) == {"download_url", "file_id", "mime_type", "file_name"}
+                assert set(file_schema["required"]) == {"download_url", "file_id"}
+                assert not attachment.annotations.read_only_hint and attachment.annotations.idempotent_hint
                 bill_instructions = by_name["save_expense"].description
                 assert "ask what the expense was for and wait for their answer" in bill_instructions
                 assert "Never invent a description such as Shared expense" in bill_instructions
@@ -620,3 +628,26 @@ def test_icon_option_schema_and_explicit_selection_through_authenticated_mcp(led
     asyncio.run(check())
     record = Expense.objects.get(pk=body["id"])
     assert record.category == "drinks" and record.category_auto is False
+
+
+def test_authenticated_mcp_upload_roundtrip_retry_and_revoked_access(ledger, bearer, remote, storage):
+    async def check():
+        async with running_app(MeroSplitApplication(), bearer[0]) as http:
+            async with sdk(http) as client:
+                args = {"group_id": str(ledger[3].id), "bill_id": str(ledger[7].id), "id": str(uuid4()),
+                    "file": {"file_id": "file-synthetic", "download_url": "https://files.example.invalid/receipt", "file_name": "Receipt.png", "mime_type": "image/png"}}
+                saved = await client.call_tool("upload_attachment", args)
+                assert not saved.is_error, saved
+                assert saved.structured_content["attachment"]["content_type"] == "image/jpeg"
+                replay = await client.call_tool("upload_attachment", args)
+                assert not replay.is_error and replay.structured_content == saved.structured_content
+                assert len(storage.puts) == 1
+                invalid = await client.call_tool("upload_attachment", {**args, "file": {**args["file"], "file_name": "x" * 300}})
+                assert invalid.is_error and "files.example.invalid" not in str(invalid) and "file-synthetic" not in str(invalid)
+                denied = await client.call_tool("upload_attachment", {**args, "actor": ledger[2].pk})
+                assert denied.is_error and len(storage.puts) == 1
+                await sync_to_async(lambda: type(bearer[1]).objects.filter(pk=bearer[1].pk).update(revoked_at=timezone.now()))()
+                count = len(remote.calls)
+                response = await http.post("/mcp", json={"jsonrpc": "2.0", "id": 999, "method": "tools/call", "params": {"name": "upload_attachment", "arguments": args}})
+                assert response.status_code == 401 and len(remote.calls) == count
+    asyncio.run(check())

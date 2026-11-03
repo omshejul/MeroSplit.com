@@ -3,13 +3,15 @@
 from uuid import UUID
 
 from django.core import signing
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import transaction
 from django.db.models import F
 from ninja.errors import HttpError
 
-from . import services
+from . import media, services
 from .expense_icon_catalog import OPTIONS
 from .history_reads import expense_detail, history_page, settlement_detail
+from .mcp_files import download_file
 from .mcp_oauth import issuer_url
 from .models import Group, OpeningBalance
 from .profiles import display_name, participant_display_name
@@ -178,3 +180,11 @@ def reverse_external_payment(actor, group_id, payment_id, payload):
     """Reverse bookkeeping under the existing participant/organizer rules, never a bank refund."""
     body = Command.model_validate(payload)
     return services.reverse_settlement(actor, _uuid(group_id), _uuid(payment_id), body.model_dump(mode="json"))
+
+
+def upload_attachment(actor, group_id, bill_id, id, file):
+    group_id, bill_id, id = _uuid(group_id), _uuid(bill_id), _uuid(id)
+    media._bill(actor, group_id, bill_id, modify=True)  # Authorize before fetching source bytes.
+    data = download_file(file["download_url"])
+    upload = SimpleUploadedFile(file.get("file_name") or "attachment", data, content_type=file.get("mime_type") or "application/octet-stream")
+    return media.upload_file(actor, id, upload, group_id=group_id, expense_id=bill_id)
