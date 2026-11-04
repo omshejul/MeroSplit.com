@@ -21,7 +21,7 @@ import BillPeople from './BillPeople';
 import BalanceExplanation, { type BalanceSelection } from './BalanceExplanationDialog';
 import { balanceKey } from './balanceExplanation';
 import type { BalanceSource } from './balanceExplanationStorage';
-import { Animated, Keyboard, Platform, FlatList, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { Animated, Keyboard, Platform, FlatList, RefreshControl, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { useListAnchor } from './useListAnchor';
 import { useScrollPagination } from './useScrollPagination';
 import { pageContentStyle } from './AppNavigation';
@@ -118,19 +118,20 @@ function PaymentRow({ payment, accepted, group, selfId, busy, onPayment, onPrefe
   </LogRow>;
 }
 
-// Gross total stays "X paid ₹total"; the right side is only your balance effect from this bill.
-function BillEffect({ change, involved, reversed }: { change: string; involved: boolean; reversed: boolean }) {
+// Keep your balance effect distinct from the gross "X paid ₹total" amount.
+function BillEffect({ change, involved, reversed, stacked = false }: { change: string; involved: boolean; reversed: boolean; stacked?: boolean }) {
   const { palette: colors, ui } = useUI();
   const value = BigInt(change), color = value === 0n ? colors.muted : balanceColor(change, colors);
   const label = reversed ? 'Reversed' : value > 0n ? 'You lent' : value < 0n ? 'You borrowed' : involved ? 'No balance change' : 'Not involved';
-  return <View style={s.trailing}>
-    <Text style={[ui.rowSub, s.logCaption, { color, textAlign: 'right' }]}>{label}</Text>
+  return <View style={stacked ? s.stackedEffect : s.trailing}>
+    <Text style={[ui.rowSub, s.logCaption, { color, textAlign: stacked ? 'left' : 'right' }]}>{label}</Text>
     {value !== 0n && <AmountText amount={(value < 0n ? -value : value).toString()} style={[s.effect, { color }]} />}
   </View>;
 }
 
 function BillTimelineRow({ expense, group, selfId, busy, onExpense, onPrefetchBill, noticeVisibility, categoryIcons = {} }: Pick<Props, 'group' | 'selfId' | 'busy' | 'onExpense' | 'noticeVisibility' | 'categoryIcons' | 'onPrefetchBill'> & { expense: BillRow }) {
   const { ui } = useUI();
+  const { width, fontScale } = useWindowDimensions(), stacked = width / fontScale < 320;
   const category = expense.deleted ? null : expenseCategory({ ...expense, groupId: group.id, title: expense.description }, categoryIcons);
   const meaning = categoryMeaning(category);
   const change = expenseBalanceChange(expense, selfId), name = (id: string) => participantName(group.participants, selfId, id);
@@ -139,10 +140,11 @@ function BillTimelineRow({ expense, group, selfId, busy, onExpense, onPrefetchBi
   const who = paidBy.length === 1 ? name(paidBy[0][0]) : paidBy.length === 2 ? `${name(paidBy[0][0])} and ${name(paidBy[1][0])}` : `${paidBy.length} people`;
   const payers = paidBy.map(([id, amount]) => `${name(id)} paid ${formatMoney(amount)}`).join(', ');
   return <VisibleExpense groupId={group.id} expense={expense} visibility={noticeVisibility}>
-    <LogRow leading={<TransactionIcon name={expense.deleted ? 'refresh' : categoryIcon(category)} />} date={expense.date} busy={busy} onPress={() => onExpense(expense)} onPrefetch={() => onPrefetchBill?.(expense)} trailing={<BillEffect change={change} involved={involved} reversed={!!expense.deleted} />}
+    <LogRow leading={<TransactionIcon name={expense.deleted ? 'refresh' : categoryIcon(category)} />} date={expense.date} busy={busy} onPress={() => onExpense(expense)} onPrefetch={() => onPrefetchBill?.(expense)} trailing={stacked ? undefined : <BillEffect change={change} involved={involved} reversed={!!expense.deleted} />}
       label={`Bill, ${expense.description}, ${meaning ? meaning + ', ' : ''}total ${formatMoney(expense.total)}, ${expense.deleted ? 'reversed, no balance impact' : billImpact(change)}, ${payers || 'no payer recorded'}, Your share ${formatMoney(expense.shares[selfId] ?? '0')}, ${displayDate(expense.date)}`}>
       <Text numberOfLines={2} ellipsizeMode="tail" style={[ui.rowTitle, s.logTitle]}>{expense.description}</Text>
       <Text style={[ui.rowSub, s.logCaption]}>{paidBy.length ? `${who} paid ${formatMoney(expense.total)}` : `Total ${formatMoney(expense.total)}`}</Text>
+      {stacked && <BillEffect stacked change={change} involved={involved} reversed={!!expense.deleted} />}
     </LogRow>
   </VisibleExpense>;
 }
@@ -370,6 +372,7 @@ const s = StyleSheet.create({
   summary: { gap: 4, paddingVertical: 8 },
   section: { gap: 10, paddingVertical: 4 },
   trailing: { flexShrink: 1, maxWidth: '45%', alignItems: 'flex-end' },
+  stackedEffect: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'baseline', gap: 6, marginTop: 2 },
   effect: { flexShrink: 1, fontSize: 14, lineHeight: 20 },
   balanceAmount: { fontSize: 16, lineHeight: 22 },
   logTitle: { fontSize: 14, lineHeight: 20 },

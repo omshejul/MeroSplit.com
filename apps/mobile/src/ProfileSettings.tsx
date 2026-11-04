@@ -74,7 +74,7 @@ export default function ProfileSettings({ name, vpa, busy, onSaveName, onSaveUPI
   return <>
     <RowGroup><SettingsRow rowRef={nameRow} icon="edit" label="Name" value={name} disabled={busy} onPress={() => open('name')} />
     <SettingsRow rowRef={upiRow} icon="pay" label="UPI ID" value={vpa || 'Not set'} disabled={busy} onPress={() => open('upi')} />
-    <SettingsRow rowRef={currencyRow} icon="pay" label="Default currency" value={currency} disabled={busy} onPress={() => open('currency')} />
+    <SettingsRow rowRef={currencyRow} icon="currency" label="Default currency" value={currency} disabled={busy} onPress={() => open('currency')} />
     <SettingsRow divider rowRef={appearanceRow} icon="appearance" label="Appearance" value={darkOnly ? family : colorFamily === 'basic' ? mode : `${family} · ${mode}`} disabled={busy} onPress={() => open('appearance')} /></RowGroup>
     <KeyboardDialog visible={!!editing && isChoice} onDismiss={() => { if (!disabled) close(); }} dismissable={!disabled} maxHeight={height}>
       <Dialog.Title aria-level={2}>{isCurrency ? 'Default currency' : 'Appearance'}</Dialog.Title>
