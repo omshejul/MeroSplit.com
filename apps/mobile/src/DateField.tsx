@@ -12,7 +12,7 @@ function selectedDate(value: string, time?: string | null) {
   const now = new Date(), parsed = new Date(`${value}T${time || timeText(now)}:00`);
   return !Number.isNaN(parsed.getTime()) && dateText(parsed) === value ? parsed : now;
 }
-const dateLabel = (date: Date) => date.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+const dateLabel = (date: Date) => date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 const timeLabel = (date: Date) => date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
 type Props = { label: string; value: string; time?: string | null; onChange: (date: string, time: string | null) => void; disabled?: boolean };
 

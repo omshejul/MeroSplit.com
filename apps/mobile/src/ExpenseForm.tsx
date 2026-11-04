@@ -8,7 +8,7 @@ import { currencySymbol } from './currency';
 import Form from './Form';
 import { ScreenDraftDiscard, useScreenRemovalLock } from './screenRemoval';
 import React, { useContext, useEffect, useRef, useState } from 'react';
-import { StyleSheet, View, useWindowDimensions } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { Text } from 'react-native-paper';
 import * as Crypto from 'expo-crypto';
 import { adjustmentToPaise, formatMoney, integer, rupeesToPaise, validateExpense } from './accounting';
@@ -157,7 +157,7 @@ function SplitFields({ participants, draft, disabled, preserveRemoved, label, on
 }
 
 export default function ExpenseForm({ group, expense, selfId, busy, onSave, owner, writes }: Props) {
-  const { ui } = useUI(), { fontScale = 1 } = useWindowDimensions();
+  const { ui } = useUI();
   const [draft, setDraft] = useState(() => startingDraft(group, expense, selfId)), [error, setError] = useState(''), [saving, setSaving] = useState(false);
   const [fileBusy, setFileBusy] = useState(false);
   const draftRef = useRef(draft);
@@ -275,7 +275,7 @@ export default function ExpenseForm({ group, expense, selfId, busy, onSave, owne
       <View style={{ flex: 1, minWidth: 180, gap: 12 }}>
         <AmountField autoCorrect={false} label={`Amount (${currencySymbol()})`} value={draft.amount} onChangeText={amount => change({ amount })} placeholder="0" editable={!disabled} style={{ fontSize: 32, lineHeight: 40, minHeight: 80 }} />
       </View>
-      {!expense && <View style={{ alignSelf: 'flex-start', paddingTop: 20 * fontScale + 7 }}><DraftAttachment value={draft.attachment} path={`/groups/${group.id}/expenses/${draft.id}/attachments`} disabled={disabled || !!group.archived} onChange={async attachment => { await change({ attachment }); }} onBusy={setFileBusy} onError={setError} /></View>}
+      {!expense && <View style={{ alignSelf: 'flex-end' }}><DraftAttachment value={draft.attachment} path={`/groups/${group.id}/expenses/${draft.id}/attachments`} disabled={disabled || !!group.archived} onChange={async attachment => { await change({ attachment }); }} onBusy={setFileBusy} onError={setError} /></View>}
     </View>
     <TextField autoCorrect={false} label="Description" value={draft.description} onChangeText={description => change({ description })} placeholder="What was it for?" maxLength={200} editable={!disabled} />
     <BillPeople total={formattedTotal} count={draft.payerIds.length} icon="pay" title="Who paid?" sheetTitle={usesPayerAmounts(draft) ? 'Enter paid amounts' : 'Choose payer'} summary={draft.payerIds.length === 1 ? label(draft.payerIds[0]) : draft.payerIds.length ? `${draft.payerIds.length} people` : 'Choose who paid'}
