@@ -16,7 +16,7 @@ import { Text } from 'react-native-paper';
 import { formatMoney } from './accounting';
 import { activityDay, activityPresentation, activityTime } from './activityPresentation';
 import type { ActivityItem, ActivityTarget } from './types';
-import { AmountText, Icon, IconBadge, useUI } from './ui';
+import { AmountText, balanceColor, Icon, IconBadge, useUI } from './ui';
 
 type Props = {
   categoryIcons?: ExpenseIcons; onVisibleExpenses?: (refs: ExpenseIconRef[]) => void; header?: React.ReactNode; footer?: React.ReactNode; items: ActivityItem[]; busy: boolean; emptyVerified?: boolean; showEmpty?: boolean; error?: string | null; hasMore?: boolean;
@@ -59,7 +59,7 @@ function ActivityRow({ categoryIcons = {}, item, busy, showDay, onOpen }: {
     {showDay && <Text accessibilityRole="header" aria-level={2} style={[ui.caption, s.day]}>{day}</Text>}
     <ListRow accessibilityRole="button" accessibilityLabel={`${row.title}${meaning ? ', ' + meaning : ''}${row.amount ? `, ${formatMoney(row.amount)}` : ''}, ${item.group.name}, ${day}, ${activityTime(item.created_at)}`} disabled={busy} onPress={() => onOpen(row.target)} style={({ pressed }) => [s.row, pressed && s.pressed]}
       leading={<IconBadge name={item.bill && !item.bill.deleted && !['bill_reversed', 'bill_deleted'].includes(item.kind) ? categoryIcon(category) : row.icon} size={21} />}
-      trailing={<View style={s.trailing}>{row.amount && <AmountText amount={row.amount} style={[s.amount, { color: palette.text }]} />}<Icon name="next" size={16} color={palette.muted} /></View>}>
+      trailing={<View style={s.trailing}>{row.amount && <AmountText amount={row.amount} style={[s.amount, { color: row.cashflow === '0' ? palette.text : balanceColor(row.cashflow, palette) }]} />}<Icon name="next" size={16} color={palette.muted} /></View>}>
         <Text numberOfLines={1} ellipsizeMode="tail" style={ui.rowTitle}>{row.title}</Text>
         <Text numberOfLines={1} ellipsizeMode="tail" style={ui.rowSub}>{item.group.name} · {activityTime(item.created_at)}</Text>
         {item.kind === 'payment_recorded' && item.payment?.reversed && <Text style={ui.rowSub}>Record later reversed</Text>}
