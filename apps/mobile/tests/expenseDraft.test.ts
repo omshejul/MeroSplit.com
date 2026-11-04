@@ -16,7 +16,7 @@ const draftModule = new URL('../src/expenseDraft.ts', import.meta.url);
 const persistence = existsSync(draftModule) ? await import(draftModule.href) : {};
 function form(db: any, options: any = {}) {
   let cursor=0; const state:any[]=[], deps:any[][]=[], cleanup:any[]=[], effects:(()=>void)[]=[];
-  const writes={current:Promise.resolve()}, discard={current:null as null|(()=>Promise<boolean>)};
+  const writes={current:Promise.resolve()}, discard={current:null as null|(()=>Promise<boolean>),hasDraft:undefined as boolean|undefined};
   const media:any[]=[], saves:any[]=[];
   const env:any={animateLayout() {}, currencySymbol,...accounting,...persistence, React:{createElement:(type:any,props:any,...children:any[])=>({type,props:props||{},children})},
     useState:(initial:any)=>{const id=cursor++;if(!(id in state))state[id]=typeof initial==='function'?initial():initial;return[state[id],(v:any)=>{state[id]=typeof v==='function'?v(state[id]):v}]},
@@ -48,6 +48,38 @@ const snapshot = (changes:any={}) => ({schemaVersion:1,groupId:group.id,expenseI
 const memory = async () => {const raw=new DatabaseSync(':memory:'),db=sqliteAdapter(raw);await migrate(db);return{raw,db}};
 const button = (tree:any,title:string):any => {if(tree?.type==='Button'&&tree.props.title===title)return tree;if(Array.isArray(tree)){for(const x of tree){const r=button(x,title);if(r)return r}}else for(const x of tree?.children??[]){const r=button(x,title);if(r)return r}return null};
 
+test('untouched new and edit forms need no discard confirmation after an empty restore',async()=>{
+ const {raw,db}=await memory();
+ const expense={id:'saved-bill',version:1,description:'Dinner',total:'3100',date:'2026-11-01',notes:'',paid:{self:'3100'},shares:{self:'1550',other:'1550'},split:{mode:'equal',values:{self:'1',other:'1'}}};
+ for(const options of [{},{expense}]){
+  const app=form(db,options);app.render();assert.notEqual(app.discard.hasDraft,false,'unknown storage must remain protected');
+  const tree=await app.settle();assert.equal(app.discard.hasDraft,false,'focus without a field change must not create a draft');
+  assert.equal(field(tree,'TextField','Description').props.value,options.expense?.description??'');
+  assert.equal(await readDraft(db,'account-a',group.id),null);app.unmount();
+ }
+ raw.close();
+});
+
+test('field edits protect pending writes immediately and restored drafts stay protected',async()=>{
+ const {raw,db}=await memory();let release!:()=>void;const gate=new Promise<void>(resolve=>release=resolve);
+ const delayed={...db,runAsync:async(sql:string,...args:any[])=>{if(sql.startsWith('INSERT INTO drafts'))await gate;return db.runAsync(sql,...args)}};
+ const app=form(delayed);const tree=await app.settle();field(tree,'TextField','Description').props.onChangeText('Dinner');
+ assert.equal(app.discard.hasDraft,true,'Back must confirm before SQLite finishes writing');release();await app.writes.current;app.unmount();
+ const restored=form(db);await restored.settle();assert.equal(restored.discard.hasDraft,true);restored.unmount();raw.close();
+});
+
+test('failed restoration keeps an unknown saved draft protected',async()=>{
+ const {raw,db}=await memory();await saveDraft(db,'account-a',group.id,snapshot({groupId:'wrong-group'}));
+ const app=form(db);await app.settle();assert.notEqual(app.discard.hasDraft,false);app.unmount();raw.close();
+});
+
+test('an unresolved restore stays protected until SQLite confirms there is no saved draft',async()=>{
+ const {raw,db}=await memory();let release!:()=>void;const gate=new Promise<void>(resolve=>release=resolve);
+ const delayed={...db,getFirstAsync:async<T>(sql:string,...args:any[])=>{if(sql.startsWith('SELECT body'))await gate;return db.getFirstAsync<T>(sql,...args)}};
+ const app=form(delayed);await app.settle();assert.notEqual(app.discard.hasDraft,false);
+ release();await app.settle();assert.equal(app.discard.hasDraft,false);app.unmount();raw.close();
+});
+
 test('account, group and new/edit scopes retain independent complete drafts and split modes',async()=>{
  const {raw,db}=await memory(),writes={current:Promise.resolve()};
  const make=(owner='a',id='group-one',bill:string|null=null)=>persistence.expenseDraftStore(owner,id,bill,writes,async()=>db);
@@ -72,7 +104,7 @@ test('normal unmount retains owned attachment, explicit discard removes only tha
  const {raw,db}=await memory();const attachment={id:'file-one',path:'/groups/group-one/expenses/draft-fixed-id/attachments',file:{uri:'file:///synthetic/merosplit-upload-file-one.pdf',name:'Draft.pdf',type:'application/pdf',size:4}};
  await saveDraft(db,'account-a',group.id,snapshot({attachment}));await saveDraft(db,'account-b',group.id,snapshot({description:'Keep account B'}));
  const first=form(db);await first.settle();first.unmount();await tick();assert.equal(first.media.length,0);assert.deepEqual((await readDraft<any>(db,'account-a',group.id))?.attachment,attachment);
- const second=form(db);await second.settle();assert.equal(await second.discard.current?.(),true);assert.equal(await readDraft(db,'account-a',group.id),null);assert.equal((await readDraft<any>(db,'account-b',group.id))?.description,'Keep account B');assert.deepEqual(second.media,[attachment.file]);second.unmount();raw.close();
+ const second=form(db);await second.settle();assert.equal(second.discard.hasDraft,true);assert.equal(await second.discard.current?.(),true);assert.equal(await readDraft(db,'account-a',group.id),null);assert.equal((await readDraft<any>(db,'account-b',group.id))?.description,'Keep account B');assert.deepEqual(second.media,[attachment.file]);second.unmount();raw.close();
 });
 
 test('save clears only after durable handoff and duplicate taps cannot enqueue twice',async()=>{

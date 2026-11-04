@@ -172,6 +172,7 @@ export default function ExpenseForm({ group, expense, selfId, busy, onSave, owne
     void store.read().then(saved => {
       if (!mounted.current) return;
       if (saved) { draftRef.current = saved; setDraft(saved); }
+      discard.hasDraft = !!saved || discard.hasDraft === true;
       setReady(true);
     }).catch(() => { if (mounted.current) setError('Could not restore this saved bill. Your draft is still on this device.'); });
     const remove = async () => {
@@ -186,7 +187,7 @@ export default function ExpenseForm({ group, expense, selfId, busy, onSave, owne
       finally { lock.current = false; }
     };
     discard.current = remove;
-    return () => { mounted.current = false; if (discard.current === remove) discard.current = null; };
+    return () => { mounted.current = false; if (discard.current === remove) { discard.current = null; discard.hasDraft = undefined; } };
   }, [store, discard]);
   const lock = useRef(false), disabled = !ready || busy || saving || fileBusy || handedOff.current;
   useLoading(!ready && !error || saving || fileBusy);
@@ -198,6 +199,7 @@ export default function ExpenseForm({ group, expense, selfId, busy, onSave, owne
     return `${person.name}${person.removed ? ' (removed)' : ''}${matching.length > 1 ? ` (${matching.findIndex(value => value.id === id) + 1})` : ''}${id === selfId && person.name.trim().toLowerCase() !== 'you' ? ' (you)' : ''}`;
   };
   function change(patch: Partial<ExpenseFormDraft>) {
+    discard.hasDraft = true;
     const next = { ...draftRef.current, ...patch };
     draftRef.current = next; setDraft(next); setError('');
     const pending = store.write(next);

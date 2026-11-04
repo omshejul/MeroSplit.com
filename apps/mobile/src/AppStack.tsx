@@ -9,7 +9,7 @@ import KeyboardDialog from './KeyboardDialog';
 
 import { CancelDialogActions } from './DialogParts';
 import { Button, useUI } from './ui';
-import { ScreenDraftDiscard, ScreenRemovalLock } from './screenRemoval';
+import { ScreenDraftDiscard, ScreenRemovalLock, type DraftDiscard } from './screenRemoval';
 import { contentRoute, destination, routeParents, routePaths, sameRoute, screenNames, type AppRoute, type RouteParams, type Routes, type Screen } from './routes';
 import { NativeSheetProvider, NativeSheetScreen } from './NativeSheet';
 
@@ -92,7 +92,7 @@ function RouteScene({ route, navigation }: NativeStackScreenProps<Routes, Screen
   const [discarding, setDiscarding] = useState(false), discardLock = useRef(false);
   useLoading(discarding);
   const [deferred, setDeferred] = useState<NavigationAction | null>(null);
-  const [queued, setQueued] = useState(false), committed = useRef(false), draftDiscard = useRef<(() => Promise<boolean>) | null>(null);
+  const [queued, setQueued] = useState(false), committed = useRef(false), draftDiscard: DraftDiscard = useRef<(() => Promise<boolean>) | null>(null);
   const onQueued = useCallback(() => { committed.current = true; setQueued(true); }, []);
   const draft = route.name === 'expense' && !queued;
   useEffect(() => {
@@ -100,7 +100,7 @@ function RouteScene({ route, navigation }: NativeStackScreenProps<Routes, Screen
     if (!focused || !navigation.isFocused()) { setDeferred(null); return; }
     if (blocked || localBlocked || discarding) return;
     setDeferred(null);
-    if (draft && !committed.current) setPending(deferred);
+    if (draft && !committed.current && draftDiscard.hasDraft !== false) setPending(deferred);
     else navigation.dispatch(deferred);
   }, [deferred, blocked, localBlocked, discarding, draft, focused, navigation]);
   usePreventRemove(blocked || localBlocked || discarding || draft, ({ data }) => {
@@ -110,7 +110,7 @@ function RouteScene({ route, navigation }: NativeStackScreenProps<Routes, Screen
       if ((data.action as AppAction).appNavigation) setDeferred(data.action);
       return;
     }
-    if (!draft || committed.current) { navigation.dispatch(data.action); return; }
+    if (!draft || committed.current || draftDiscard.hasDraft === false) { navigation.dispatch(data.action); return; }
     setPending(data.action);
   });
   return <ScreenRemovalLock.Provider value={setLocalBlocked}><ScreenDraftDiscard.Provider value={draftDiscard}>
