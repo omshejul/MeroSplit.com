@@ -113,7 +113,7 @@ function PaymentRow({ payment, accepted, group, selfId, busy, onPayment, onPrefe
   const status = isAccepted ? presentation.status : 'Pending sync';
   return <LogRow payment leading={<TransactionIcon name={payment.reversed ? 'refresh' : 'payment'} />} date={payment.date} busy={busy} onPress={() => onPayment(payment)} onPrefetch={() => onPrefetchPayment?.(payment)} label={`Payment, ${presentation.title}, ${formatMoney(payment.amount)}${status ? `, ${status}` : ''}, ${displayDate(payment.date)}`}>
     <View style={s.paymentLine}>
-      <Text style={[ui.rowSub, s.logCaption, s.paymentSentence, { color: colors.text }]}>{presentation.title} <Text style={{ color: presentation.cashflow === '0' ? colors.text : balanceColor(presentation.cashflow, colors) }}>{formatMoney(payment.amount)}</Text>{!!status && <Text style={[ui.rowSub, s.logCaption]}> · {status}</Text>}</Text>
+      <Text style={[ui.rowSub, s.logCaption, s.paymentSentence, { color: colors.text }]}>{presentation.title} {formatMoney(payment.amount)}{!!status && <Text style={[ui.rowSub, s.logCaption]}> · {status}</Text>}</Text>
     </View>
   </LogRow>;
 }
@@ -274,14 +274,14 @@ export default function GroupScreen({ session = null, bottomClearance = 120, cat
     {group.archived && <NoticeBanner>Archived. Reopen in settings to make changes.</NoticeBanner>}
     {!transfers.length && <Text style={celebrateSettled ? [ui.numeric, s.settled] : ui.caption}>{celebrateSettled ? '🎉 All settled' : 'All settled'}</Text>}
     {!!transfers.length && <View style={s.balances}>
-      <SectionHeading>Your balances</SectionHeading>
+      <SectionHeading style={[ui.caption, s.logCaption]}>Your balances</SectionHeading>
       {[true, false].map(outgoing => {
         const rows = transfers.filter(transfer => (transfer.sender === selfId) === outgoing);
         if (!rows.length) return null;
         const total = rows.reduce((sum, transfer) => sum + BigInt(transfer.amount), 0n).toString();
         const title = outgoing ? 'You owe' : 'Owed to you';
         return <View key={title} role="region" accessibilityLabel={title} style={s.balanceSection}>
-          <View style={s.balanceHeading}><SectionHeading style={s.balanceSectionTitle}>{title}</SectionHeading>{rows.length > 1 && <Text style={[ui.caption, s.balanceTotal]}>{formatMoney(total)}</Text>}</View>
+          <View style={s.balanceHeading}><SectionHeading level={3} style={s.balanceSectionTitle}>{title}</SectionHeading>{rows.length > 1 && <Text style={[ui.caption, s.balanceTotal]}>{formatMoney(total)}</Text>}</View>
           <RowGroup style={[s.balancePanel, { backgroundColor: colors.surface }]}>{rows.map(transfer => <PersonalTransferRow key={`${transfer.sender}:${transfer.recipient}`} transfer={transfer} group={group} selfId={selfId} disabled={busy || !!group.archived || pending.length > 0} onSettle={onSettle} onExplain={(transfer, restoreFocus) => setExplanation({ group, accepted, commands: pending, selfId, transfer, restoreFocus, load: onLoadBalanceGroup })} />)}</RowGroup>
         </View>;
       })}
@@ -313,7 +313,7 @@ export function PaymentDetail({ payment, group, selfId, busy, canReverse, onReve
   const row = paymentPresentation(payment, selfId, name);
   const involved = payment.sender === selfId || payment.recipient === selfId;
   return <View role="region" accessibilityLabel={group.name} style={s.content}>
-    <RecordSummary title={row.title} amount={payment.amount} amountColor={row.cashflow === '0' ? colors.text : balanceColor(row.cashflow, colors)}>
+    <RecordSummary title={row.title} amount={payment.amount} amountColor={colors.text}>
       <Text style={ui.caption}>{group.name} · {displayDate(payment.date)}{row.status ? ` · ${row.status}` : ''}</Text>
       {payment.provenance === 'pending_manual' ? <Text style={ui.caption}>Pending sync</Text> : <RecordAttribution action="Marked paid" name={payment.recorded_by_name} />}
       {payment.reversed && <RecordAttribution action="Reversed" name={payment.reversal?.actor_name} />}
