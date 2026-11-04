@@ -13,8 +13,8 @@ export interface Database {
   withExclusiveTransactionAsync(task: (transaction: Database) => Promise<void>): Promise<void>;
 }
 
-// total_changes covers this connection; data_version covers native exclusive
-// transactions that commit through a separate SQLite connection.
+// total_changes covers this connection; data_version catches changes committed
+// through any other SQLite connection.
 export async function storageRevision(db: Database): Promise<string> {
   const [own, other] = await Promise.all([
     db.getFirstAsync<{ n: number }>('SELECT total_changes() AS n'),

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
-import { serializedDatabase } from '../src/webDatabase.ts';
+import { serializedDatabase } from '../src/database.ts';
 import { migrate, readDraft, saveDraft } from '../src/storage.ts';
 import { sqliteAdapter } from './sqlite.ts';
 import { sessionRequest, requestEmailCode, confirmEmailCode, signOut } from '../src/transport.web.ts';

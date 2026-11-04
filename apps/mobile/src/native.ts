@@ -6,6 +6,7 @@ import { digestStringAsync, CryptoDigestAlgorithm } from 'expo-crypto';
 import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { migrate } from './storage';
+import { serializedDatabase } from './database';
 import type { Database } from './storage';
 import type { Session } from './types';
 import { defaultColorFamily, isColorFamily, type ColorFamily } from './theme';
@@ -15,11 +16,14 @@ export function storageIsDurable(): boolean { return true; }
 export function isOnline(): boolean { return serverReachable(); }
 export function getDatabase(): Promise<Database> {
   database ??= (async () => {
-    const db = await SQLite.openDatabaseAsync('splitdumb.db');
-    await db.execAsync('PRAGMA journal_mode=WAL;');
-    await migrate(db);
-    return db;
-  })();
+    const connection = await SQLite.openDatabaseAsync('splitdumb.db');
+    try {
+      const db = serializedDatabase(connection, true);
+      await db.getFirstAsync('PRAGMA journal_mode=WAL');
+      await migrate(db);
+      return db;
+    } catch (error) { await connection.closeAsync().catch(() => {}); throw error; }
+  })().catch(error => { database = undefined; throw error; });
   return database;
 }
 
