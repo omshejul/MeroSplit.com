@@ -39,7 +39,7 @@ export function BillChatEntry({ session, groupId, expenseId, active, disabled, o
     }
     void read(); return () => { stopped = true; clearTimeout(timer); controller?.abort(); };
   }, [session.baseUrl, session.userId, session.token, path, active]);
-  return <SettingsRow label="Chat" icon="people" value={unread ? `${unread} unread` : undefined} disabled={disabled} onPress={onOpen} />;
+  return <SettingsRow label="Chat" icon="feedback" value={unread ? `${unread} unread` : undefined} disabled={disabled} onPress={onOpen} />;
 }
 function ChatMessageArrival({ pending, children, style }: { pending: boolean; children: React.ReactNode; style: import('react-native').StyleProp<import('react-native').ViewStyle> }) {
   const animate = useRef(pending).current, Surface = animate ? MotionReveal : View;

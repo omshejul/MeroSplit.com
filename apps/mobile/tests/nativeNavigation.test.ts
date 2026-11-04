@@ -81,6 +81,27 @@ function sceneHarness(name: routes.Screen = 'expense', accept: (action: any) => 
     blocked: (value: boolean) => { blocked = value; }, focus: (value: boolean) => { focused = value; }, prevented: () => prevent };
 }
 
+test('Back leaves a confirmed untouched bill without prompting but protects edited, restored and unknown drafts',()=>{
+ for(const hasDraft of [false,true,undefined]){
+  const h=sceneHarness(),action={type:'GO_BACK'};const tree=h.render();
+  nodes(tree).find(node=>node.type==='DraftDiscard').props.value.hasDraft=hasDraft;
+  h.remove(action);
+  assert.equal(h.dispatched.length,hasDraft===false?1:0);
+  assert.equal(nodes(h.render()).find(node=>node.type==='KeyboardDialog').props.visible,hasDraft!==false);
+ }
+});
+
+test('deferred app navigation rechecks whether a bill changed while its locks were held',()=>{
+ for(const hasDraft of [false,true]){
+  const h=sceneHarness(),action={...StackActions.popTo('group'),appNavigation:true};
+  h.blocked(true);const tree=h.render();const draft=nodes(tree).find(node=>node.type==='DraftDiscard').props.value;
+  draft.hasDraft=false;h.remove(action);h.render();h.flush();assert.equal(h.dispatched.length,0);
+  draft.hasDraft=hasDraft;h.blocked(false);h.render();h.flush();
+  assert.equal(h.dispatched.length,hasDraft?0:1);
+  assert.equal(nodes(h.render()).find(node=>node.type==='KeyboardDialog').props.visible,hasDraft);
+ }
+});
+
 test('supported removal guard: Cancel retains exact route/form, Discard redispatches original action with red trash', async () => {
   const h = sceneHarness(), action = { type: 'POP', source: 'exact-form-instance', target: 'native-stack' };
   h.render(); h.remove(action); let tree = h.render();

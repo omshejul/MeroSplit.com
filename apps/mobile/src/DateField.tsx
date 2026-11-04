@@ -12,7 +12,7 @@ function selectedDate(value: string, time?: string | null) {
   const now = new Date(), parsed = new Date(`${value}T${time || timeText(now)}:00`);
   return !Number.isNaN(parsed.getTime()) && dateText(parsed) === value ? parsed : now;
 }
-const dateLabel = (date: Date) => date.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+const dateLabel = (date: Date) => date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 const timeLabel = (date: Date) => date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
 type Props = { label: string; value: string; time?: string | null; onChange: (date: string, time: string | null) => void; disabled?: boolean };
 
@@ -52,8 +52,11 @@ export function DateDialog({ label, value, time, onChange, onDismiss }: Props & 
 
 export default function DateField({ label, value, time, onChange, disabled = false }: Props) {
   const { ui } = useUI(), [open, setOpen] = useState(false), date = selectedDate(value, time);
+  const { minHeight, paddingHorizontal, paddingVertical, borderRadius, borderWidth, borderColor, backgroundColor } = ui.input;
   return <View style={{ gap: 8 }}><Text style={ui.label}>{label}</Text>
-    <Button kind="outlined" accessibilityLabel={`${label}: ${value}${time ? ` ${time}` : ''}`} disabled={disabled} onPress={() => setOpen(true)} title={`${dateLabel(date)}${time ? `, ${timeLabel(date)}` : ''}`} />
+    <Button kind="outlined" accessibilityLabel={`${label}: ${value}${time ? ` ${time}` : ''}`} disabled={disabled} onPress={() => setOpen(true)} title={`${dateLabel(date)}${time ? `, ${timeLabel(date)}` : ''}`}
+      style={{ minHeight, paddingHorizontal, paddingVertical, borderRadius, borderWidth, borderColor, backgroundColor, justifyContent: 'flex-start' }}
+      labelStyle={{ fontFamily: ui.input.fontFamily, fontSize: ui.input.fontSize, color: ui.input.color, fontWeight: '400', textAlign: 'left' }} />
     {open && !disabled && <DateDialog label={label} value={value} time={time} onChange={onChange} onDismiss={() => setOpen(false)} />}
   </View>;
 }

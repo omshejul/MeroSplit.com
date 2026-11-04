@@ -8,7 +8,7 @@ import { currencySymbol } from './currency';
 import Form from './Form';
 import { ScreenDraftDiscard, useScreenRemovalLock } from './screenRemoval';
 import React, { useContext, useEffect, useRef, useState } from 'react';
-import { StyleSheet, View, useWindowDimensions } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { Text } from 'react-native-paper';
 import * as Crypto from 'expo-crypto';
 import { adjustmentToPaise, formatMoney, integer, rupeesToPaise, validateExpense } from './accounting';
@@ -157,7 +157,7 @@ function SplitFields({ participants, draft, disabled, preserveRemoved, label, on
 }
 
 export default function ExpenseForm({ group, expense, selfId, busy, onSave, owner, writes }: Props) {
-  const { ui } = useUI(), { fontScale = 1 } = useWindowDimensions();
+  const { ui } = useUI();
   const [draft, setDraft] = useState(() => startingDraft(group, expense, selfId)), [error, setError] = useState(''), [saving, setSaving] = useState(false);
   const [fileBusy, setFileBusy] = useState(false);
   const draftRef = useRef(draft);
@@ -172,6 +172,7 @@ export default function ExpenseForm({ group, expense, selfId, busy, onSave, owne
     void store.read().then(saved => {
       if (!mounted.current) return;
       if (saved) { draftRef.current = saved; setDraft(saved); }
+      discard.hasDraft = !!saved || discard.hasDraft === true;
       setReady(true);
     }).catch(() => { if (mounted.current) setError('Could not restore this saved bill. Your draft is still on this device.'); });
     const remove = async () => {
@@ -186,7 +187,7 @@ export default function ExpenseForm({ group, expense, selfId, busy, onSave, owne
       finally { lock.current = false; }
     };
     discard.current = remove;
-    return () => { mounted.current = false; if (discard.current === remove) discard.current = null; };
+    return () => { mounted.current = false; if (discard.current === remove) { discard.current = null; discard.hasDraft = undefined; } };
   }, [store, discard]);
   const lock = useRef(false), disabled = !ready || busy || saving || fileBusy || handedOff.current;
   useLoading(!ready && !error || saving || fileBusy);
@@ -198,6 +199,7 @@ export default function ExpenseForm({ group, expense, selfId, busy, onSave, owne
     return `${person.name}${person.removed ? ' (removed)' : ''}${matching.length > 1 ? ` (${matching.findIndex(value => value.id === id) + 1})` : ''}${id === selfId && person.name.trim().toLowerCase() !== 'you' ? ' (you)' : ''}`;
   };
   function change(patch: Partial<ExpenseFormDraft>) {
+    discard.hasDraft = true;
     const next = { ...draftRef.current, ...patch };
     draftRef.current = next; setDraft(next); setError('');
     const pending = store.write(next);
@@ -269,13 +271,13 @@ export default function ExpenseForm({ group, expense, selfId, busy, onSave, owne
     <Text style={ui.caption}>{group.name}</Text>
     {group.archived && <NoticeBanner>Reopen this group in settings before saving a bill.</NoticeBanner>}
     {expense && expense.version !== draft.expenseVersion && <NoticeBanner>A newer edit exists. Review it before saving this older draft.</NoticeBanner>}
-    <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 12 }}>
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start', gap: 12 }}>
       <View style={{ flex: 1, minWidth: 180, gap: 12 }}>
-        <AmountField autoCorrect={false} label={`Amount (${currencySymbol()})`} value={draft.amount} onChangeText={amount => change({ amount })} placeholder="0" editable={!disabled} style={{ fontSize: 32, lineHeight: 40, minHeight: 68 }} />
-        <TextField autoCorrect={false} label="Description" value={draft.description} onChangeText={description => change({ description })} placeholder="What was it for?" maxLength={200} editable={!disabled} />
+        <AmountField autoCorrect={false} label={`Amount (${currencySymbol()})`} value={draft.amount} onChangeText={amount => change({ amount })} placeholder="0" editable={!disabled} style={{ fontSize: 32, lineHeight: 40, minHeight: 80 }} />
       </View>
-      {!expense && <View style={{ alignSelf: 'flex-start', paddingTop: 20 * fontScale + 7 }}><DraftAttachment value={draft.attachment} path={`/groups/${group.id}/expenses/${draft.id}/attachments`} disabled={disabled || !!group.archived} onChange={async attachment => { await change({ attachment }); }} onBusy={setFileBusy} onError={setError} /></View>}
+      {!expense && <View style={{ alignSelf: 'flex-end' }}><DraftAttachment value={draft.attachment} path={`/groups/${group.id}/expenses/${draft.id}/attachments`} disabled={disabled || !!group.archived} onChange={async attachment => { await change({ attachment }); }} onBusy={setFileBusy} onError={setError} /></View>}
     </View>
+    <TextField autoCorrect={false} label="Description" value={draft.description} onChangeText={description => change({ description })} placeholder="What was it for?" maxLength={200} editable={!disabled} />
     <BillPeople total={formattedTotal} count={draft.payerIds.length} icon="pay" title="Who paid?" sheetTitle={usesPayerAmounts(draft) ? 'Enter paid amounts' : 'Choose payer'} summary={draft.payerIds.length === 1 ? label(draft.payerIds[0]) : draft.payerIds.length ? `${draft.payerIds.length} people` : 'Choose who paid'}
       inline={group.participants.filter(person => !person.removed || draft.payerIds.includes(person.id)).length === 1} disabled={disabled}>
       {close => <PayerFields participants={group.participants} draft={draft} disabled={disabled || !!group.archived} preserveRemoved={!!acceptedExpense}

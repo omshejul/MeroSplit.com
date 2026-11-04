@@ -55,7 +55,7 @@ export default function MCPSettings({ session, busy, onBusyChange }: { session: 
     finally { inFlight.current = false; if (mounted.current) setWorking(false); onBusyChange(false); }
   }
   return <>
-    <SettingsRow rowRef={row} icon="key" label="Connect MCP" disabled={disabled} onPress={() => { if (!disabled && !inFlight.current) { setCopied(false); setOpen(true); void load(); } }} />
+    <SettingsRow rowRef={row} icon="link" label="Connect MCP" disabled={disabled} onPress={() => { if (!disabled && !inFlight.current) { setCopied(false); setOpen(true); void load(); } }} />
     <KeyboardDialog visible={open} dismissable={!disabled} onDismiss={close} maxHeight={Math.max(0, height - top - bottom)}>
       <Dialog.Title aria-level={2}>Connect MCP</Dialog.Title>
       <DialogScrollBody maxHeight={440} gap={20} paddingVertical={20}>

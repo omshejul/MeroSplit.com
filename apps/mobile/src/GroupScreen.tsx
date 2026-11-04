@@ -21,7 +21,7 @@ import BillPeople from './BillPeople';
 import BalanceExplanation, { type BalanceSelection } from './BalanceExplanationDialog';
 import { balanceKey } from './balanceExplanation';
 import type { BalanceSource } from './balanceExplanationStorage';
-import { Animated, Keyboard, Platform, FlatList, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { Animated, Keyboard, Platform, FlatList, RefreshControl, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { useListAnchor } from './useListAnchor';
 import { useScrollPagination } from './useScrollPagination';
 import { pageContentStyle } from './AppNavigation';
@@ -113,24 +113,25 @@ function PaymentRow({ payment, accepted, group, selfId, busy, onPayment, onPrefe
   const status = isAccepted ? presentation.status : 'Pending sync';
   return <LogRow payment leading={<TransactionIcon name={payment.reversed ? 'refresh' : 'payment'} />} date={payment.date} busy={busy} onPress={() => onPayment(payment)} onPrefetch={() => onPrefetchPayment?.(payment)} label={`Payment, ${presentation.title}, ${formatMoney(payment.amount)}${status ? `, ${status}` : ''}, ${displayDate(payment.date)}`}>
     <View style={s.paymentLine}>
-      <Text style={[ui.rowSub, s.logCaption, s.paymentSentence, { color: colors.text }]}>{presentation.title} <Text style={{ color: presentation.cashflow === '0' ? colors.text : balanceColor(presentation.cashflow, colors) }}>{formatMoney(payment.amount)}</Text>{!!status && <Text style={[ui.rowSub, s.logCaption]}> · {status}</Text>}</Text>
+      <Text style={[ui.rowSub, s.logCaption, s.paymentSentence, { color: colors.text }]}>{presentation.title} {formatMoney(payment.amount)}{!!status && <Text style={[ui.rowSub, s.logCaption]}> · {status}</Text>}</Text>
     </View>
   </LogRow>;
 }
 
-// Gross total stays "X paid ₹total"; the right side is only your balance effect from this bill.
-function BillEffect({ change, involved, reversed }: { change: string; involved: boolean; reversed: boolean }) {
+// Keep your balance effect distinct from the gross "X paid ₹total" amount.
+function BillEffect({ change, involved, reversed, stacked = false }: { change: string; involved: boolean; reversed: boolean; stacked?: boolean }) {
   const { palette: colors, ui } = useUI();
   const value = BigInt(change), color = value === 0n ? colors.muted : balanceColor(change, colors);
   const label = reversed ? 'Reversed' : value > 0n ? 'You lent' : value < 0n ? 'You borrowed' : involved ? 'No balance change' : 'Not involved';
-  return <View style={s.trailing}>
-    <Text style={[ui.rowSub, s.logCaption, { color, textAlign: 'right' }]}>{label}</Text>
+  return <View style={stacked ? s.stackedEffect : s.trailing}>
+    <Text style={[ui.rowSub, s.logCaption, { color, textAlign: stacked ? 'left' : 'right' }]}>{label}</Text>
     {value !== 0n && <AmountText amount={(value < 0n ? -value : value).toString()} style={[s.effect, { color }]} />}
   </View>;
 }
 
 function BillTimelineRow({ expense, group, selfId, busy, onExpense, onPrefetchBill, noticeVisibility, categoryIcons = {} }: Pick<Props, 'group' | 'selfId' | 'busy' | 'onExpense' | 'noticeVisibility' | 'categoryIcons' | 'onPrefetchBill'> & { expense: BillRow }) {
   const { ui } = useUI();
+  const { width, fontScale } = useWindowDimensions(), stacked = width / fontScale < 320;
   const category = expense.deleted ? null : expenseCategory({ ...expense, groupId: group.id, title: expense.description }, categoryIcons);
   const meaning = categoryMeaning(category);
   const change = expenseBalanceChange(expense, selfId), name = (id: string) => participantName(group.participants, selfId, id);
@@ -139,10 +140,11 @@ function BillTimelineRow({ expense, group, selfId, busy, onExpense, onPrefetchBi
   const who = paidBy.length === 1 ? name(paidBy[0][0]) : paidBy.length === 2 ? `${name(paidBy[0][0])} and ${name(paidBy[1][0])}` : `${paidBy.length} people`;
   const payers = paidBy.map(([id, amount]) => `${name(id)} paid ${formatMoney(amount)}`).join(', ');
   return <VisibleExpense groupId={group.id} expense={expense} visibility={noticeVisibility}>
-    <LogRow leading={<TransactionIcon name={expense.deleted ? 'refresh' : categoryIcon(category)} />} date={expense.date} busy={busy} onPress={() => onExpense(expense)} onPrefetch={() => onPrefetchBill?.(expense)} trailing={<BillEffect change={change} involved={involved} reversed={!!expense.deleted} />}
+    <LogRow leading={<TransactionIcon name={expense.deleted ? 'refresh' : categoryIcon(category)} />} date={expense.date} busy={busy} onPress={() => onExpense(expense)} onPrefetch={() => onPrefetchBill?.(expense)} trailing={stacked ? undefined : <BillEffect change={change} involved={involved} reversed={!!expense.deleted} />}
       label={`Bill, ${expense.description}, ${meaning ? meaning + ', ' : ''}total ${formatMoney(expense.total)}, ${expense.deleted ? 'reversed, no balance impact' : billImpact(change)}, ${payers || 'no payer recorded'}, Your share ${formatMoney(expense.shares[selfId] ?? '0')}, ${displayDate(expense.date)}`}>
       <Text numberOfLines={2} ellipsizeMode="tail" style={[ui.rowTitle, s.logTitle]}>{expense.description}</Text>
       <Text style={[ui.rowSub, s.logCaption]}>{paidBy.length ? `${who} paid ${formatMoney(expense.total)}` : `Total ${formatMoney(expense.total)}`}</Text>
+      {stacked && <BillEffect stacked change={change} involved={involved} reversed={!!expense.deleted} />}
     </LogRow>
   </VisibleExpense>;
 }
@@ -274,14 +276,14 @@ export default function GroupScreen({ session = null, bottomClearance = 120, cat
     {group.archived && <NoticeBanner>Archived. Reopen in settings to make changes.</NoticeBanner>}
     {!transfers.length && <Text style={celebrateSettled ? [ui.numeric, s.settled] : ui.caption}>{celebrateSettled ? '🎉 All settled' : 'All settled'}</Text>}
     {!!transfers.length && <View style={s.balances}>
-      <SectionHeading>Your balances</SectionHeading>
+      <SectionHeading style={[ui.caption, s.logCaption]}>Your balances</SectionHeading>
       {[true, false].map(outgoing => {
         const rows = transfers.filter(transfer => (transfer.sender === selfId) === outgoing);
         if (!rows.length) return null;
         const total = rows.reduce((sum, transfer) => sum + BigInt(transfer.amount), 0n).toString();
         const title = outgoing ? 'You owe' : 'Owed to you';
         return <View key={title} role="region" accessibilityLabel={title} style={s.balanceSection}>
-          <View style={s.balanceHeading}><SectionHeading style={s.balanceSectionTitle}>{title}</SectionHeading>{rows.length > 1 && <Text style={[ui.caption, s.balanceTotal]}>{formatMoney(total)}</Text>}</View>
+          <View style={s.balanceHeading}><SectionHeading level={3} style={s.balanceSectionTitle}>{title}</SectionHeading>{rows.length > 1 && <Text style={[ui.caption, s.balanceTotal]}>{formatMoney(total)}</Text>}</View>
           <RowGroup style={[s.balancePanel, { backgroundColor: colors.surface }]}>{rows.map(transfer => <PersonalTransferRow key={`${transfer.sender}:${transfer.recipient}`} transfer={transfer} group={group} selfId={selfId} disabled={busy || !!group.archived || pending.length > 0} onSettle={onSettle} onExplain={(transfer, restoreFocus) => setExplanation({ group, accepted, commands: pending, selfId, transfer, restoreFocus, load: onLoadBalanceGroup })} />)}</RowGroup>
         </View>;
       })}
@@ -313,13 +315,13 @@ export function PaymentDetail({ payment, group, selfId, busy, canReverse, onReve
   const row = paymentPresentation(payment, selfId, name);
   const involved = payment.sender === selfId || payment.recipient === selfId;
   return <View role="region" accessibilityLabel={group.name} style={s.content}>
-    <RecordSummary title={row.title} amount={payment.amount} amountColor={row.cashflow === '0' ? colors.text : balanceColor(row.cashflow, colors)}>
+    <RecordSummary title={row.title} amount={payment.amount} amountColor={colors.text}>
       <Text style={ui.caption}>{group.name} · {displayDate(payment.date)}{row.status ? ` · ${row.status}` : ''}</Text>
       {payment.provenance === 'pending_manual' ? <Text style={ui.caption}>Pending sync</Text> : <RecordAttribution action="Marked paid" name={payment.recorded_by_name} />}
       {payment.reversed && <RecordAttribution action="Reversed" name={payment.reversal?.actor_name} />}
     </RecordSummary>
     {payment.reversed ? <NoticeBanner>This payment record was reversed.</NoticeBanner>
-      : <>{involved && <View style={s.section}><Button title="Reverse record" kind="danger" disabled={busy || !canReverse || group.archived || [payment.sender, payment.recipient].some(id => group.participants.find(person => person.id === id)?.removed)} onPress={onReverse} /></View>}</>}
+      : <>{involved && <View style={s.section}><Button title="Reverse record" kind="outlined" style={{ borderColor: colors.error }} labelStyle={{ color: colors.error }} disabled={busy || !canReverse || group.archived || [payment.sender, payment.recipient].some(id => group.participants.find(person => person.id === id)?.removed)} onPress={onReverse} /></View>}</>}
   </View>;
 }
 
@@ -350,7 +352,7 @@ export function ExpenseDetail({ categoryIcons = {}, noticeVisibility, expense, g
       <MarkdownNotes source={expense.notes} />
     </View>}
     {onHistory && <Button title="Version history" icon="history" kind="outlined" disabled={busy || pending} onPress={onHistory} />}
-    {!expense.deleted && <Button title="Reverse record" kind="danger" disabled={busy || !canEdit || pending} onPress={onReverse} />}
+    {!expense.deleted && <Button title="Reverse record" kind="outlined" style={{ borderColor: colors.error }} labelStyle={{ color: colors.error }} disabled={busy || !canEdit || pending} onPress={onReverse} />}
     {!canEdit && <Text style={ui.caption}>{group.archived ? 'Reopen this group in settings before changing a bill.' : 'Send or discard saved changes before changing this bill.'}</Text>}
   </View>;
 }
@@ -370,6 +372,7 @@ const s = StyleSheet.create({
   summary: { gap: 4, paddingVertical: 8 },
   section: { gap: 10, paddingVertical: 4 },
   trailing: { flexShrink: 1, maxWidth: '45%', alignItems: 'flex-end' },
+  stackedEffect: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'baseline', gap: 6, marginTop: 2 },
   effect: { flexShrink: 1, fontSize: 14, lineHeight: 20 },
   balanceAmount: { fontSize: 16, lineHeight: 22 },
   logTitle: { fontSize: 14, lineHeight: 20 },

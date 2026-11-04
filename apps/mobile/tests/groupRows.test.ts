@@ -85,6 +85,22 @@ test('BillEffect labels direction in words and shows the exact unsigned amount i
   assert.equal(render({ change: '1', involved: true, reversed: false }).props.style.maxWidth, '45%');
 });
 
+test('responsive bill rows retain one exact balance effect, spoken facts and details action across text sizes', () => {
+  const bill = billRow(), opened: unknown[] = [];
+  let label: string | undefined;
+  for (const dimensions of [{ width: 390, fontScale: 1 }, { width: 390, fontScale: 1.5 }, { width: 780, fontScale: 1.5 }]) {
+    const tree = production('BillTimelineRow', { useWindowDimensions: () => dimensions })({ expense: bill, group, selfId: 'self', busy: false, onExpense: (value: unknown) => opened.push(value) });
+    const row = elements(tree).find(node => node.type === 'LogRow')!;
+    const effects = [...elements(row.children), ...elements(row.props.trailing)].filter(node => node.type === 'BillEffect');
+    assert.equal(effects.length, 1, 'moving the balance into the content must not duplicate or omit it');
+    assert.equal(effects[0].props.change, '-266'); assert.equal(effects[0].props.involved, true);
+    label ??= row.props.label; assert.equal(row.props.label, label);
+    assert.ok(text(row.children).includes(`You and Noor paid ${formatMoney('1001')}`));
+    row.props.onPress();
+  }
+  assert.deepEqual(opened, [bill, bill, bill]);
+});
+
 test('log row keeps a 44px+ button target with a date column and the full spoken label', () => {
   const tree = production('LogRow')({ date: '2026-10-18', label: 'Bill, Lunch', busy: false, onPress() {}, trailing: 'Effect', children: 'Body' });
   assert.equal(tree.type, 'Button'); assert.equal(tree.props.accessibilityRole, 'button'); assert.equal(tree.props.accessibilityLabel, 'Bill, Lunch');
