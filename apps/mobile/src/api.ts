@@ -1,3 +1,4 @@
+import { notifyReviewAction } from './reviewPolicy.ts';
 import { readPrefetch, readScope } from './prefetch.ts';
 import { recordConnection } from './connectivity.ts';
 import type { Command, Expense, Group, LegacyRecovery, Session } from './types';
@@ -96,6 +97,7 @@ async function drainOutbox(db: Database, session: Session, mode: 'full' | 'summa
         const group = await retainHistoryWindow(session, await fetchGroup(session, command.group_id, mode), previous?.group, current);
         await acceptCommand(db, owner, command.command_id, group);
       }
+      notifyReviewAction(owner, command);
       receipts.push(receipt);
       if (!current() || command.command_id === stopAfterCommandId) break;
     } catch (error) {
