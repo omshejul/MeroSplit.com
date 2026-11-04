@@ -2,7 +2,7 @@ import { DEFAULT_CURRENCY, isCurrency, type Currency } from './currency';
 import { serverReachable } from './connectivity';
 import * as SQLite from 'expo-sqlite';
 import { migrate } from './storage';
-import { serializedDatabase } from './webDatabase';
+import { serializedDatabase } from './database';
 import { openBrowserStorage } from './browserStorage';
 import type { Database } from './storage';
 import type { Session } from './types';
