@@ -43,20 +43,18 @@ test('screen removal and strict effect replay release their requests without lea
   h.unmount('read'); assert.equal(h.render(), null);
 });
 
-test('the same accessible centered backdrop covers the root portal and a native sheet window', () => {
+test('the same accessible centered overlay covers the root portal and a native sheet window', () => {
   const h = harness(); h.render(); h.use('action', true);
   const portal = h.render(), overlay = portal.children[0], inline = h.render(true);
   assert.deepEqual(JSON.parse(JSON.stringify(inline)), JSON.parse(JSON.stringify(overlay)));
   assert.equal(overlay.props.accessibilityRole, 'progressbar');
   assert.equal(overlay.props.accessibilityState.busy, true);
   assert.equal(overlay.props.accessibilityViewIsModal, true);
-  assert.equal(overlay.props.onStartShouldSetResponder(), true, 'backdrop consumes touches');
+  assert.equal(overlay.props.onStartShouldSetResponder(), true, 'overlay consumes touches');
   assert.equal(overlay.props.style.position, 'absolute');
   assert.equal(overlay.props.style.alignItems, 'center');
   assert.equal(overlay.props.style.justifyContent, 'center');
-  assert.match(overlay.props.style.backgroundColor, /^rgba/);
-  assert.equal(overlay.children[0].props.style[1].backgroundColor, '#222');
-  assert.equal(overlay.children[0].children[0].props.size, 'large');
+  assert.equal(overlay.children[0].props.size, 'large');
 });
 
 

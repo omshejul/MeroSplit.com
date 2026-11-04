@@ -33,11 +33,10 @@ export default function LoadingOverlay({ inline = false }: { inline?: boolean })
   if (!active) return null;
   const overlay = <View testID="loading-overlay" accessibilityViewIsModal aria-modal accessibilityRole="progressbar" accessibilityLabel="Loading" accessibilityState={{ busy: true }}
     onStartShouldSetResponder={() => true} style={styles.overlay}>
-    <View style={[styles.spinner, { backgroundColor: colors.surface }]}><ActivityIndicator size="large" color={colors.primary} /></View>
+    <ActivityIndicator size="large" color={colors.primary} />
   </View>;
   return inline ? overlay : <Portal>{overlay}</Portal>;
 }
 const styles = StyleSheet.create({
-  overlay: { ...StyleSheet.absoluteFill, zIndex: 1000, backgroundColor: 'rgba(0,0,0,0.35)', alignItems: 'center', justifyContent: 'center' },
-  spinner: { padding: 24, borderRadius: 16 },
+  overlay: { ...StyleSheet.absoluteFill, zIndex: 1000, alignItems: 'center', justifyContent: 'center' },
 });

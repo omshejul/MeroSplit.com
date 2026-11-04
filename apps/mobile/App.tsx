@@ -1,3 +1,4 @@
+import ReviewRequest, { RateMeroSplit } from './src/ReviewRequest';
 import ScrollView from './src/HomeScrollView';
 import { hasOpenDialogs } from './src/DialogFocus';
 import { NoticeBanner } from './src/UIStates';
@@ -1532,7 +1533,7 @@ function AppContent() {
           }, 'Recover records')}
           />
         {recoveries.some(value => value.status === 'conflict') && <NoticeBanner tone="warning">Some earlier records could not be safely combined. Use Export data to review their saved originals.</NoticeBanner>}
-        <View><SettingsRow label="Feedback" icon="feedback" disabled={busy || expired} onPress={() => setFeedbackOpen(true)} /><SettingsRow external label="Privacy" icon="privacy" disabled={busy} onPress={() => launch(() => Linking.openURL(`${APP_ORIGIN}/privacy`))} /><SettingsRow external label="Help and support" icon="help" disabled={busy} onPress={() => launch(() => Linking.openURL(`${APP_ORIGIN}/support`))} /></View>
+        <View><SettingsRow label="Feedback" icon="feedback" disabled={busy || expired} onPress={() => setFeedbackOpen(true)} /><RateMeroSplit disabled={busy || expired} /><SettingsRow external label="Privacy" icon="privacy" disabled={busy} onPress={() => launch(() => Linking.openURL(`${APP_ORIGIN}/privacy`))} /><SettingsRow external label="Help and support" icon="help" disabled={busy} onPress={() => launch(() => Linking.openURL(`${APP_ORIGIN}/support`))} /></View>
         <View>
 
           <SettingsRow label="Sign out" icon="back" chevron={false} disabled={lock.current} onPress={() => confirm('Sign out?', storageIsDurable() ? 'Saved changes stay on this device for your next sign-in to this account.' : 'Export any temporary unsent changes before leaving. They will end when this tab closes.', async () => { await draftWrites.current; await flushChatWrites(); await endPushSession(session); await clearMediaPreviews(); await saveSession(null); changeScope(null); }, 'Sign out')} />
@@ -1569,6 +1570,8 @@ function AppContent() {
       forgetGroupInvite(); void saveGroupInvite(null).catch(() => {}); setAppLink(null); navigate('group', { groupId: group.id, tab: 'Groups' }); await load(accountOwner(active));
       if (activeSessionRef.current?.token === active.token) setPushOpportunity({ owner: accountOwner(active), token: active.token, groupId: group.id });
     }} />}
+    {session && <ReviewRequest key={`review-request|${owner}`} owner={owner} groupId={groupId} foreground={foreground} interaction={profileRevision}
+      eligible={ready && online && !expired && !authHeld && !busy && !pulling && !reading && !syncing && !syncProblem && !storageError && !commands.length && !pendingFiles && !appLink && !emailEntry && !feedbackOpen && !alertOpen && !upiSetup && !pushInvitationOpen && !newPersonInvite && !reviewCommand && !returnAttemptId && !returns.length && !appUpdates.promptVisible && !(notice && feedback.tone === 'error') && screen === 'group'} />}
     {session && <PushInvitation key={`push-invitation|${owner}|${session.token}`} owner={owner} session={session} push={push} onVisibility={setPushInvitationOpen}
       eligible={ready && foreground && online && !expired && !authHeld && !busy && !reading && !syncing && !storageError && !appLink && !emailEntry && !feedbackOpen && !alertOpen && !upiSetup && !newPersonInvite && !reviewCommand && !returnAttemptId && screen === 'group' && pushOpportunityReady(pushOpportunity, owner, session.token, selected, commands)} />}
     {newPersonInvite && <SendInviteDialog visible={showNewPersonInvite && !authHeld} email={newPersonInvite.email} busy={busy} error={newPersonInviteError} onSend={() => void sendNewPersonInvite()} onCancel={() => { if (!busy) { setNewPersonInvite(null); setNewPersonInviteError(''); } }} />}
