@@ -80,8 +80,7 @@ function ExplanationBody({ value, selfId, categoryIcons = {}, onOpenBill }: { va
   const { ui, palette } = useUI(), { group, plan, index, people, history } = value;
   const own = people.find(person => person.id === selfId)!, chosen = plan[index], sender = nameFor(group, selfId, chosen.sender), recipient = nameFor(group, selfId, chosen.recipient), direct = people.length === 2;
   const summary = <View style={{ gap: 6, paddingBottom: 12 }}>
-    <Text style={ui.body}>{direct || group.simplify_debts === false ? sender === 'You' ? `You owe ${recipient}` : `${sender} owes you` : 'Suggested payment'}</Text>
-    {!direct && group.simplify_debts !== false && <Text style={ui.body}>{sender} to {recipient === 'You' ? 'you' : recipient}</Text>}
+    <Text style={ui.body}>{direct || group.simplify_debts === false ? sender === 'You' ? `You owe ${recipient}` : `${sender} owes you` : sender === 'You' ? `You should pay ${recipient}` : `${sender} should pay you`}</Text>
     <Text style={[ui.amount, { fontSize: 36, lineHeight: 44, textAlign: 'left', flexShrink: 1, color: chosen.recipient === selfId ? palette.positive : palette.negative }]}>{formatMoney(chosen.amount)}</Text>
     <Text style={ui.caption}>{group.name}</Text>
     {value.pending && <Text style={ui.caption}>Includes changes waiting to sync.</Text>}
@@ -102,6 +101,35 @@ function ExplanationBody({ value, selfId, categoryIcons = {}, onOpenBill }: { va
     })}</View>
     <Text style={ui.caption}>Positive amounts add to this payment. Negative amounts reduce it. Each bill keeps its original shares.</Text>
   </>;
+  if (!direct) {
+    const after = (BigInt(own.balance) + (chosen.sender === selfId ? 1n : -1n) * BigInt(chosen.amount)).toString();
+    const totals = [
+      { label: 'You paid for bills', amount: own.paid },
+      { label: 'Your share of bills', amount: (-BigInt(own.share)).toString() },
+      { label: 'Payments you sent', amount: own.sent },
+      { label: 'Payments you received', amount: (-BigInt(own.received)).toString() },
+      { label: 'Agreed starting balance', amount: own.opening },
+    ].filter(row => BigInt(row.amount) !== 0n);
+    return <>
+      {summary}
+      <View style={{ flexDirection: 'row', gap: 8, alignItems: 'flex-start' }}><Icon name="simplify" size={20} /><Text style={[ui.caption, { flex: 1 }]}>Simplify combines group debts into fewer payments. Your shares don't change.</Text></View>
+      <Text style={ui.body}>{after === '0' ? 'This payment would settle your group balance.' : `After this payment, you would still ${BigInt(after) > 0n ? 'be owed' : 'owe'} ${formatMoney(absolute(after))}.`}</Text>
+      <InlineDetails title="How your balance adds up" icon="info">
+        {totals.map(row => <View key={row.label} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', gap: 12 }}><Text style={[ui.caption, { flex: 1 }]}>{row.label}</Text><Text style={[ui.body, { color: balanceColor(row.amount, palette), fontVariant: ['tabular-nums'] }]}>{BigInt(row.amount) < 0n ? '−' : '+'}{formatMoney(absolute(row.amount))}</Text></View>)}
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12, borderTopWidth: StyleSheet.hairlineWidth, borderColor: palette.line, paddingTop: 8 }}><Text style={[ui.body, { flex: 1 }]}>{BigInt(own.balance) > 0n ? 'You are owed' : 'You owe'}</Text><Text style={[ui.body, { color: balanceColor(own.balance, palette), fontVariant: ['tabular-nums'] }]}>{formatMoney(absolute(own.balance))}</Text></View>
+      </InlineDetails>
+      <InlineDetails title={`Bills and payments (${history.entries.length})`} icon="history">
+        <Text style={ui.caption}>Your bills and recorded payments across the group.</Text>
+        <HistoryRecords rows={history.entries} group={group} selfId={selfId} onOpenBill={onOpenBill} />
+      </InlineDetails>
+      {!!history.excluded.length && <InlineDetails title={`${history.excluded.length} reversed record${history.excluded.length === 1 ? '' : 's'}`} icon="refresh"><HistoryRecords rows={history.excluded} group={group} selfId={selfId} onOpenBill={onOpenBill} /></InlineDetails>}
+      <InlineDetails title="Group payment plan" icon="simplify">
+        {people.map(person => <Text key={person.id} style={ui.body}>{netText(person.name, person.balance)}</Text>)}
+        <SectionHeading>Suggested payments</SectionHeading>
+        {plan.map((row, step) => <Text key={`${row.sender}:${row.recipient}`} style={ui.body}>{nameFor(group, selfId, row.sender)} to {nameFor(group, selfId, row.recipient)} · {formatMoney(row.amount)}{step === index ? ' · This payment' : ''}</Text>)}
+      </InlineDetails>
+    </>;
+  }
   const bill = history.single;
   const otherId = direct ? group.participants.find(person => person.id !== selfId)!.id : '';
   const share = bill && BigInt(bill.paid[selfId] ?? '0') === 0n ? { label: 'Your share', amount: bill.shares[selfId] ?? '0' } : bill && bill.paid[selfId] === bill.total ? { label: `${nameFor(group, selfId, otherId)}'s share`, amount: bill.shares[otherId] ?? '0' } : { label: 'Effect on your balance', amount: absolute(own.balance) };
@@ -123,7 +151,6 @@ function ExplanationBody({ value, selfId, categoryIcons = {}, onOpenBill }: { va
       {history.recent.length > 3 && <Text style={ui.caption}>All {history.recent.length} changes are in the running balance below.</Text>}
       {!history.recent.length && <Text style={ui.body}>{netText('You', own.opening)} from the agreed starting balance.</Text>}
     </View>}
-    {!direct && <Text style={ui.caption}>{netText('You', own.balance)} across this group. Group balances are combined to suggest repayments, including bills involving other people.</Text>}
     <InlineDetails title="Show running balance" expandedTitle="Hide running balance">
       <Text style={ui.caption}>{history.ordered ? 'Based on current bills and recorded payment dates. Balances are shown after each date.' : 'Some records have no date or predate the agreed starting balance. Their effects are shown below; a chronological running balance is unavailable.'}</Text>
       {group.opening_balance?.accepted && <><SectionHeading>Agreed starting balance</SectionHeading><Text style={ui.body}>{balanceText(group, selfId, history.opening, true)}</Text><Text style={ui.caption}>{dateText(group.opening_balance.cutoff)} · {group.opening_balance.source}</Text></>}
@@ -131,11 +158,6 @@ function ExplanationBody({ value, selfId, categoryIcons = {}, onOpenBill }: { va
       {group.opening_balance && !group.opening_balance.accepted && <Text style={ui.caption}>The proposed starting balance is waiting for agreement and is not included.</Text>}
     </InlineDetails>
     {!!history.excluded.length && <InlineDetails title={`${history.excluded.length} reversed record${history.excluded.length === 1 ? '' : 's'} excluded`} icon="refresh"><HistoryRecords rows={history.excluded} group={group} selfId={selfId} onOpenBill={onOpenBill} /></InlineDetails>}
-    {!direct && <InlineDetails title="Group payment plan" icon="simplify">
-      {people.map(person => <Text key={person.id} style={ui.body}>{netText(person.name, person.balance)}</Text>)}
-      <SectionHeading>Suggested payments</SectionHeading>
-      {plan.map((row, step) => <Text key={`${row.sender}:${row.recipient}`} style={ui.body}>{nameFor(group, selfId, row.sender)} to {nameFor(group, selfId, row.recipient)} · {formatMoney(row.amount)}{step === index ? ' · This payment' : ''}</Text>)}
-    </InlineDetails>}
   </>;
 }
 

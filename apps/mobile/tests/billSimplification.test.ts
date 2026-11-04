@@ -1469,3 +1469,59 @@ test('disclosure animates both ways, survives interrupted closing, and skips ani
   assert.equal(find(app.render(props), 'title', 'Open bill'), undefined);
   app.unmount();
 });
+
+
+test('Simplify shows the proposed payment and exact after-payment balance with history hidden behind disclosures', () => {
+  const expenses = [
+    { id: 'Dinner', description: 'Dinner', total: '1001', paid: { A: '1001' }, shares: { B: '1001' }, category: 'food', date: '2026-10-28', deleted: false },
+    { id: 'Taxi', description: 'Taxi', total: '600', paid: { B: '600' }, shares: { C: '600' }, category: 'transport', date: '2026-10-28', deleted: false },
+  ];
+  const balances = { A: '1001', B: '-401', C: '-600' };
+  const group: any = { id: 'group', version: 1, name: 'Trip', simplify_debts: true, participants: [{ id: 'A', name: 'Me' }, { id: 'B', name: 'Aditya' }, { id: 'C', name: 'Anish' }], expenses, settlements: [], balances, transfers: [{ sender: 'C', recipient: 'A', amount: '600' }, { sender: 'B', recipient: 'A', amount: '401' }], activity: [] };
+  for (const selfId of ['A', 'C']) {
+    const value = explainTransfer(group, group, selfId, group.transfers[0]);
+    const app = harness('src/BalanceExplanationDialog.tsx', 'ExplanationBody', { useUI: () => ({ ui: {}, palette: {} }) });
+    const tree = app.render({ value, selfId, onOpenBill() {} });
+    const text = nodes(tree).flatMap(node => node.children).filter(child => typeof child === 'string');
+    assert.ok(text.includes(selfId === 'A' ? 'Anish should pay you' : 'You should pay Me'));
+    assert.ok(text.includes(selfId === 'A' ? 'After this payment, you would still be owed ₹4.01.' : 'This payment would settle your group balance.'));
+    assert.ok(!text.includes('Recent changes to your balance'));
+    const disclosures = nodes(tree).filter(node => node.type?.name === 'InlineDetails');
+    assert.deepEqual(disclosures.map(row => row.props.title), ['How your balance adds up', 'Bills and payments (1)', 'Group payment plan']);
+    const collapse = harness('src/BalanceExplanationDialog.tsx', 'InlineDetails');
+    const closed = collapse.render({ ...disclosures[1].props, children: disclosures[1].children });
+    assert.ok(!nodes(closed).some(node => node.type?.name === 'HistoryRecords'));
+    assert.equal(find(closed, 'accessibilityRole', 'button').props.accessibilityState.expanded, false);
+  }
+  // Later plan steps are suggestions, not already recorded payments.
+  const later = explainTransfer(group, group, 'A', group.transfers[1]);
+  const tree = harness('src/BalanceExplanationDialog.tsx', 'ExplanationBody').render({ value: later, selfId: 'A', onOpenBill() {} });
+  assert.ok(nodes(tree).some(node => node.children.includes('After this payment, you would still be owed ₹6.00.')));
+});
+
+test('simplified totals keep sent, received and starting balances distinct without changing records', () => {
+  const expenses: any[] = [
+    { id: 'Dinner', description: 'Dinner', total: '1001', paid: { A: '1001' }, shares: { B: '1001' }, date: '2026-10-28', deleted: false },
+    { id: 'Taxi', description: 'Taxi', total: '600', paid: { B: '600' }, shares: { C: '600' }, date: '2026-10-28', deleted: false },
+  ];
+  const settlements = [{ id: 'sent', sender: 'A', recipient: 'C', amount: '100', date: '2026-10-29' }, { id: 'received', sender: 'C', recipient: 'A', amount: '50', date: '2026-10-30' }];
+  const balances = { A: '851', B: '-301', C: '-550' };
+  const group: any = { id: 'group', version: 1, name: 'Trip', simplify_debts: true, participants: [{ id: 'A', name: 'Me' }, { id: 'B', name: 'Aditya' }, { id: 'C', name: 'Anish' }], expenses, settlements, balances, transfers: [{ sender: 'C', recipient: 'A', amount: '550' }, { sender: 'B', recipient: 'A', amount: '301' }], opening_balance: { accepted: true, balances: { A: '-200', B: '100', C: '100' }, cutoff: '2026-10-01', source: 'Agreed' }, activity: [] };
+  const before = JSON.stringify(group), value = explainTransfer(group, group, 'A', group.transfers[0]);
+  const tree = harness('src/BalanceExplanationDialog.tsx', 'ExplanationBody').render({ value, selfId: 'A', onOpenBill() {} });
+  const totals = nodes(tree).find(node => node.props.title === 'How your balance adds up')!;
+  const text = nodes(totals).flatMap(node => node.children).filter(child => typeof child === 'string');
+  for (const label of ['You paid for bills', 'Payments you sent', 'Payments you received', 'Agreed starting balance', 'You are owed', '₹8.51']) assert.ok(text.includes(label));
+  assert.ok(nodes(totals).some(node => node.type === 'Text' && node.children.includes('−') && node.children.includes('₹2.00')));
+  assert.ok(nodes(totals).some(node => node.type === 'Text' && node.children.includes('−') && node.children.includes('₹0.50')));
+  assert.equal(JSON.stringify(group), before);
+
+  const partialExpenses = [expenses[0], { ...expenses[1], total: '401', paid: { B: '401' }, shares: { A: '401' } }];
+  // One person owes two creditors. Paying the first does not settle their group balance.
+  const partial: any = { ...group, expenses: [{ ...partialExpenses[0], shares: { C: '1001' } }, partialExpenses[1]], settlements: [], opening_balance: undefined, balances: { A: '600', B: '401', C: '-1001' }, transfers: [{ sender: 'C', recipient: 'A', amount: '600' }, { sender: 'C', recipient: 'B', amount: '401' }] };
+  const out = harness('src/BalanceExplanationDialog.tsx', 'ExplanationBody').render({ value: explainTransfer(partial, partial, 'C', partial.transfers[0]), selfId: 'C', onOpenBill() {} });
+  assert.ok(nodes(out).some(node => node.children.includes('After this payment, you would still owe ₹4.01.')));
+  const full = { ...partial, expenses: [expenses[0]], balances: { A: '1001', B: '-1001', C: '0' }, transfers: [{ sender: 'B', recipient: 'A', amount: '1001' }] };
+  const incoming = harness('src/BalanceExplanationDialog.tsx', 'ExplanationBody').render({ value: explainTransfer(full, full, 'A', full.transfers[0]), selfId: 'A', onOpenBill() {} });
+  assert.ok(nodes(incoming).some(node => node.children.includes('This payment would settle your group balance.')));
+});
