@@ -71,7 +71,7 @@ const s = StyleSheet.create({
   content: { gap: 4 },
   row: { minHeight: 64 },
   day: { paddingTop: 12, paddingBottom: 4, fontWeight: '600' },
-  trailing: { alignItems: 'flex-end', gap: 3, flexShrink: 0 },
+  trailing: { flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 0 },
   amount: { fontSize: 16, lineHeight: 22, textAlign: 'auto' },
   empty: { alignItems: 'center', gap: 10, paddingVertical: 24 },
   message: { gap: 10, paddingVertical: 12 },

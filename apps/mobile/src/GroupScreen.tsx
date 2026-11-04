@@ -321,7 +321,7 @@ export function PaymentDetail({ payment, group, selfId, busy, canReverse, onReve
       {payment.reversed && <RecordAttribution action="Reversed" name={payment.reversal?.actor_name} />}
     </RecordSummary>
     {payment.reversed ? <NoticeBanner>This payment record was reversed.</NoticeBanner>
-      : <>{involved && <View style={s.section}><Button title="Reverse record" kind="danger" disabled={busy || !canReverse || group.archived || [payment.sender, payment.recipient].some(id => group.participants.find(person => person.id === id)?.removed)} onPress={onReverse} /></View>}</>}
+      : <>{involved && <View style={s.section}><Button title="Reverse record" kind="outlined" style={{ borderColor: colors.error }} labelStyle={{ color: colors.error }} disabled={busy || !canReverse || group.archived || [payment.sender, payment.recipient].some(id => group.participants.find(person => person.id === id)?.removed)} onPress={onReverse} /></View>}</>}
   </View>;
 }
 
@@ -352,7 +352,7 @@ export function ExpenseDetail({ categoryIcons = {}, noticeVisibility, expense, g
       <MarkdownNotes source={expense.notes} />
     </View>}
     {onHistory && <Button title="Version history" icon="history" kind="outlined" disabled={busy || pending} onPress={onHistory} />}
-    {!expense.deleted && <Button title="Reverse record" kind="danger" disabled={busy || !canEdit || pending} onPress={onReverse} />}
+    {!expense.deleted && <Button title="Reverse record" kind="outlined" style={{ borderColor: colors.error }} labelStyle={{ color: colors.error }} disabled={busy || !canEdit || pending} onPress={onReverse} />}
     {!canEdit && <Text style={ui.caption}>{group.archived ? 'Reopen this group in settings before changing a bill.' : 'Send or discard saved changes before changing this bill.'}</Text>}
   </View>;
 }
