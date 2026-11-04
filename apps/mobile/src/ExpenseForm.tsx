@@ -271,9 +271,9 @@ export default function ExpenseForm({ group, expense, selfId, busy, onSave, owne
     <Text style={ui.caption}>{group.name}</Text>
     {group.archived && <NoticeBanner>Reopen this group in settings before saving a bill.</NoticeBanner>}
     {expense && expense.version !== draft.expenseVersion && <NoticeBanner>A newer edit exists. Review it before saving this older draft.</NoticeBanner>}
-    <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 12 }}>
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start', gap: 12 }}>
       <View style={{ flex: 1, minWidth: 180, gap: 12 }}>
-        <AmountField autoCorrect={false} label={`Amount (${currencySymbol()})`} value={draft.amount} onChangeText={amount => change({ amount })} placeholder="0" editable={!disabled} style={{ fontSize: 32, lineHeight: 40, minHeight: 68 }} />
+        <AmountField autoCorrect={false} label={`Amount (${currencySymbol()})`} value={draft.amount} onChangeText={amount => change({ amount })} placeholder="0" editable={!disabled} style={{ fontSize: 32, lineHeight: 40, minHeight: 80 }} />
       </View>
       {!expense && <View style={{ alignSelf: 'flex-start', paddingTop: 20 * fontScale + 7 }}><DraftAttachment value={draft.attachment} path={`/groups/${group.id}/expenses/${draft.id}/attachments`} disabled={disabled || !!group.archived} onChange={async attachment => { await change({ attachment }); }} onBusy={setFileBusy} onError={setError} /></View>}
     </View>

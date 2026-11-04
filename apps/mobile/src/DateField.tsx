@@ -52,8 +52,11 @@ export function DateDialog({ label, value, time, onChange, onDismiss }: Props & 
 
 export default function DateField({ label, value, time, onChange, disabled = false }: Props) {
   const { ui } = useUI(), [open, setOpen] = useState(false), date = selectedDate(value, time);
+  const { minHeight, paddingHorizontal, paddingVertical, borderRadius, borderWidth, borderColor, backgroundColor } = ui.input;
   return <View style={{ gap: 8 }}><Text style={ui.label}>{label}</Text>
-    <Button kind="outlined" accessibilityLabel={`${label}: ${value}${time ? ` ${time}` : ''}`} disabled={disabled} onPress={() => setOpen(true)} title={`${dateLabel(date)}${time ? `, ${timeLabel(date)}` : ''}`} />
+    <Button kind="outlined" accessibilityLabel={`${label}: ${value}${time ? ` ${time}` : ''}`} disabled={disabled} onPress={() => setOpen(true)} title={`${dateLabel(date)}${time ? `, ${timeLabel(date)}` : ''}`}
+      style={{ minHeight, paddingHorizontal, paddingVertical, borderRadius, borderWidth, borderColor, backgroundColor, justifyContent: 'flex-start' }}
+      labelStyle={{ fontFamily: ui.input.fontFamily, fontSize: ui.input.fontSize, color: ui.input.color, fontWeight: '400', textAlign: 'left' }} />
     {open && !disabled && <DateDialog label={label} value={value} time={time} onChange={onChange} onDismiss={() => setOpen(false)} />}
   </View>;
 }
