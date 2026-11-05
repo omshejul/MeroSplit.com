@@ -11,7 +11,7 @@ function elements(value: unknown): Element[] {
   if (!value || typeof value !== 'object' || !('children' in value)) return [];
   const node = value as Element; return [node, ...node.children.flatMap(elements)];
 }
-function one(tree: unknown, type: string) { const rows = elements(tree).filter(node => node.type === type && (type !== 'SettingsRow' || node.props.label === 'Connect AI assistant')); assert.equal(rows.length, 1, type); return rows[0]; }
+function one(tree: unknown, type: string) { const rows = elements(tree).filter(node => node.type === type && (type !== 'SettingsRow' || node.props.label === 'Connect MCP')); assert.equal(rows.length, 1, type); return rows[0]; }
 function button(tree: unknown, title: string) { const value = elements(tree).find(node => (node.type === 'Button' && node.props.title === title || node.type === 'SettingsRow' && node.props.label === title)); assert.ok(value, title); return value; }
 const session = { token: 'synthetic-one', baseUrl: 'https://example.invalid/', email: 'one@example.invalid', userId: '1' };
 function harness(os = 'ios') {
@@ -67,7 +67,7 @@ function harness(os = 'ios') {
 
 test('Connect MCP offers clipboard setup and a device list, with header dismissal', async () => {
   const app = harness(); let tree = app.render(); await app.flush(); tree = app.render();
-  assert.equal(one(tree, 'SettingsRow').props.label, 'Connect AI assistant');
+  assert.equal(one(tree, 'SettingsRow').props.label, 'Connect MCP');
   assert.equal(one(tree, 'KeyboardDialog').props.visible, false);
   assert.equal(app.loading.at(-1), false, 'closed settings do not show the global overlay');
   assert.equal(app.calls.length, 0, 'the closed settings row does not fetch connections');

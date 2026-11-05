@@ -55,9 +55,9 @@ export default function MCPSettings({ session, busy, onBusyChange }: { session: 
     finally { inFlight.current = false; if (mounted.current) setWorking(false); onBusyChange(false); }
   }
   return <>
-    <SettingsRow rowRef={row} icon="link" label="Connect AI assistant" disabled={disabled} onPress={() => { if (!disabled && !inFlight.current) { setCopied(false); setOpen(true); void load(); } }} />
+    <SettingsRow rowRef={row} icon="link" label="Connect MCP" disabled={disabled} onPress={() => { if (!disabled && !inFlight.current) { setCopied(false); setOpen(true); void load(); } }} />
     <KeyboardDialog visible={open} dismissable={!disabled} onDismiss={close} maxHeight={Math.max(0, height - top - bottom)}>
-      <Dialog.Title aria-level={2}>Connect AI assistant</Dialog.Title>
+      <Dialog.Title aria-level={2}>Connect MCP</Dialog.Title>
       <DialogScrollBody maxHeight={440} gap={20} paddingVertical={20}>
         <Text style={ui.caption}>Paste the prompt into your assistant to connect MeroSplit.</Text>
         <View accessibilityLiveRegion="polite"><Button title={copied ? 'Copied' : 'Copy prompt'} icon={copied ? 'check' : 'copy'} kind="primary" disabled={disabled} onPress={() => void copyPrompt()} style={{ minHeight: 48 }} /></View>
