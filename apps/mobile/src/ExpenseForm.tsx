@@ -8,7 +8,7 @@ import { currencySymbol } from './currency';
 import Form from './Form';
 import { ScreenDraftDiscard, useScreenRemovalLock } from './screenRemoval';
 import React, { useContext, useEffect, useRef, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, View, type TextInput } from 'react-native';
 import { Text } from 'react-native-paper';
 import * as Crypto from 'expo-crypto';
 import { adjustmentToPaise, formatMoney, integer, rupeesToPaise, validateExpense } from './accounting';
@@ -40,6 +40,7 @@ type Props = {
 const today = () => { const date = new Date(); return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`; };
 const rupees = (value: string) => { const signed = integer(value, true), amount = signed < 0n ? -signed : signed; return `${signed < 0n ? '-' : ''}${amount / 100n}.${(amount % 100n).toString().padStart(2, '0')}`; };
 const paise = (value: string) => ['0', '0.0', '0.00'].includes(value) ? '0' : rupeesToPaise(value);
+const descriptionError = 'Enter a description of up to 200 characters.';
 
 const usesPayerAmounts = (draft: ExpenseFormDraft) => draft.multiplePayers === true || draft.payerIds.length > 1;
 function payerDifference(draft: ExpenseFormDraft): bigint | null {
@@ -160,7 +161,7 @@ export default function ExpenseForm({ group, expense, selfId, busy, onSave, owne
   const { ui } = useUI();
   const [draft, setDraft] = useState(() => startingDraft(group, expense, selfId)), [error, setError] = useState(''), [saving, setSaving] = useState(false);
   const [fileBusy, setFileBusy] = useState(false);
-  const draftRef = useRef(draft);
+  const draftRef = useRef(draft), descriptionInput = useRef<React.ComponentRef<typeof TextInput>>(null);
   const handedOff = useRef(false), mounted = useRef(true), discard = useContext(ScreenDraftDiscard);
   const pendingSave = useRef<Promise<void> | null>(null);
   const [ready, setReady] = useState(false);
@@ -223,7 +224,7 @@ export default function ExpenseForm({ group, expense, selfId, busy, onSave, owne
     if (!ready || lock.current || busy || fileBusy || handedOff.current || group.archived) return;
     setError('');
     try {
-      if (!draft.description.trim() || draft.description.trim().length > 200) throw new Error('Enter a description of up to 200 characters.');
+      if (!draft.description.trim() || draft.description.trim().length > 200) { descriptionInput.current?.focus(); throw new Error(descriptionError); }
       if (!/^\d{4}-\d{2}-\d{2}$/.test(draft.date) || Number.isNaN(Date.parse(draft.date)) || new Date(draft.date).toISOString().slice(0, 10) !== draft.date) throw new Error('Choose a valid date.');
       if (draft.notes.length > 2000) throw new Error('Notes can contain up to 2,000 characters.');
       const total = rupeesToPaise(draft.amount);
@@ -277,7 +278,10 @@ export default function ExpenseForm({ group, expense, selfId, busy, onSave, owne
       </View>
       {!expense && <View style={{ alignSelf: 'flex-end' }}><DraftAttachment value={draft.attachment} path={`/groups/${group.id}/expenses/${draft.id}/attachments`} disabled={disabled || !!group.archived} onChange={async attachment => { await change({ attachment }); }} onBusy={setFileBusy} onError={setError} /></View>}
     </View>
-    <TextField autoCorrect={false} label="Description" value={draft.description} onChangeText={description => change({ description })} placeholder="What was it for?" maxLength={200} editable={!disabled} />
+    <View style={styles.field}>
+      <TextField ref={descriptionInput} autoCorrect={false} label="Description" value={draft.description} onChangeText={description => change({ description })} placeholder="What was it for?" maxLength={200} editable={!disabled} />
+      {error === descriptionError && <ErrorText live>{error}</ErrorText>}
+    </View>
     <BillPeople total={formattedTotal} count={draft.payerIds.length} icon="pay" title="Who paid?" sheetTitle={usesPayerAmounts(draft) ? 'Enter paid amounts' : 'Choose payer'} summary={draft.payerIds.length === 1 ? label(draft.payerIds[0]) : draft.payerIds.length ? `${draft.payerIds.length} people` : 'Choose who paid'}
       inline={group.participants.filter(person => !person.removed || draft.payerIds.includes(person.id)).length === 1} disabled={disabled}>
       {close => <PayerFields participants={group.participants} draft={draft} disabled={disabled || !!group.archived} preserveRemoved={!!acceptedExpense}
@@ -289,7 +293,7 @@ export default function ExpenseForm({ group, expense, selfId, busy, onSave, owne
     </BillPeople>
     <DateField label="Date" value={draft.date} time={draft.time} onChange={(date, time) => change({ date, time })} disabled={disabled} />
     <NotesField value={draft.notes} disabled={disabled} onChange={notes => void change({ notes })} />
-    {!!error && <ErrorText live>{error}</ErrorText>}
+    {!!error && error !== descriptionError && <ErrorText live>{error}</ErrorText>}
     <Button title={saving ? 'Saving…' : 'Save bill'} onPress={() => void save()} disabled={disabled || group.archived} kind="primary" icon="check" />
   </Form>;
 }
