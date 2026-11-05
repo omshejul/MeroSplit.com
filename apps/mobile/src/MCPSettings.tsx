@@ -33,7 +33,7 @@ export default function MCPSettings({ session, busy, onBusyChange }: { session: 
     const current = ++revision.current;
     setLoading(true); setError('');
     try { const value = await request<{ connections: Connection[] }>(session, '/me/mcp'); if (mounted.current && current === revision.current) setConnections(value.connections); }
-    catch { if (mounted.current && current === revision.current) setError('Could not load connected devices. Close and reopen to try again.'); }
+    catch { if (mounted.current && current === revision.current) setError('Could not load connected assistants. Close and reopen to try again.'); }
     finally { if (mounted.current && current === revision.current) setLoading(false); }
   }
   function close() {
@@ -55,20 +55,20 @@ export default function MCPSettings({ session, busy, onBusyChange }: { session: 
     finally { inFlight.current = false; if (mounted.current) setWorking(false); onBusyChange(false); }
   }
   return <>
-    <SettingsRow rowRef={row} icon="link" label="Connect MCP" disabled={disabled} onPress={() => { if (!disabled && !inFlight.current) { setCopied(false); setOpen(true); void load(); } }} />
+    <SettingsRow rowRef={row} icon="link" label="Connect AI assistant" disabled={disabled} onPress={() => { if (!disabled && !inFlight.current) { setCopied(false); setOpen(true); void load(); } }} />
     <KeyboardDialog visible={open} dismissable={!disabled} onDismiss={close} maxHeight={Math.max(0, height - top - bottom)}>
-      <Dialog.Title aria-level={2}>Connect MCP</Dialog.Title>
+      <Dialog.Title aria-level={2}>Connect AI assistant</Dialog.Title>
       <DialogScrollBody maxHeight={440} gap={20} paddingVertical={20}>
         <Text style={ui.caption}>Paste the prompt into your assistant to connect MeroSplit.</Text>
         <View accessibilityLiveRegion="polite"><Button title={copied ? 'Copied' : 'Copy prompt'} icon={copied ? 'check' : 'copy'} kind="primary" disabled={disabled} onPress={() => void copyPrompt()} style={{ minHeight: 48 }} /></View>
-        <Text accessibilityRole="header" aria-level={3} style={ui.label}>Connected devices</Text>
+        <Text accessibilityRole="header" aria-level={3} style={ui.label}>Connected assistants</Text>
         {loading && <LoadingState label="Loading connections…" />}
         {connections?.map(value => <View key={value.id} style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 12, padding: 12, borderRadius: 12, backgroundColor: palette.soft }}>
           <Icon name="software" />
           <View style={{ flex: 1, minWidth: 100, gap: 2 }}><Text style={ui.rowTitle}>{value.client_name}</Text><Text style={ui.caption}>Connected</Text></View>
           <Button title="Disconnect" accessibilityLabel={`Disconnect ${value.client_name}`} kind="text" small disabled={disabled || loading} onPress={() => void disconnect(value.id)} style={{ minHeight: 44 }} />
         </View>)}
-        {connections?.length === 0 && !loading && <EmptyState message="No connected devices" />}
+        {connections?.length === 0 && !loading && <EmptyState message="No assistants connected" />}
         {!!error && <ErrorText live>{error}</ErrorText>}
       </DialogScrollBody>
     </KeyboardDialog>
