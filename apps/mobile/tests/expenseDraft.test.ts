@@ -112,8 +112,31 @@ test('save clears only after durable handoff and duplicate taps cannot enqueue t
  const app=form(db);const tree=await app.settle();const save=button(tree,'Save bill');save.props.onPress();save.props.onPress();await tick();await app.writes.current;assert.equal(app.saves.length,1);assert.equal(await readDraft(db,'account-a',group.id),null);app.unmount();raw.close();
 });
 
+test('invalid Save focuses Description with one nearby error, preserves the draft and saves after correction',async()=>{
+ const {raw,db}=await memory(),saved=snapshot({description:'',mode:'equal',splitValues:{}});
+ await saveDraft(db,'account-a',group.id,saved);
+ const app=form(db);let tree=await app.settle();let focused=0;
+ const description=field(tree,'TextField','Description');assert.ok(description.props.ref,'Description exposes its native focus target');
+ description.props.ref.current={focus:()=>focused++};
+ button(tree,'Save bill').props.onPress();await tick();tree=app.render();
+ assert.equal(focused,1);assert.equal(app.saves.length,0);assert.equal(app.discard.hasDraft,true);
+ assert.deepEqual(await readDraft(db,'account-a',group.id),saved);
+ assert.equal(field(tree,'AmountField','Amount (₹)').props.value,'31');
+ const input=field(tree,'TextField','Description'),siblings=tree.children.flat(Infinity);
+ const descriptionGroup=siblings.find((node:any)=>node?.children?.includes(input));assert.ok(descriptionGroup,'Description and its feedback share a field group');
+ assert.equal(field(descriptionGroup,'ErrorText',null).children.join(''),'Enter a description of up to 200 characters.');
+ assert.equal(siblings.filter((node:any)=>node?.type==='ErrorText').length,0,'description validation must not repeat at the Save footer');
+ input.props.onChangeText('Dinner');await app.writes.current;tree=app.render();assert.equal(field(tree,'ErrorText',null),null);
+ button(tree,'Save bill').props.onPress();await tick();await app.writes.current;
+ assert.equal(app.saves.length,1);assert.equal(app.saves[0][0].description,'Dinner');assert.equal(app.saves[0][0].total,'3100');assert.equal(focused,1);
+ assert.equal(await readDraft(db,'account-a',group.id),null);app.unmount();raw.close();
+});
+
 test('a failed bill save preserves draft and attachment for the next cold mount',async()=>{
- const {raw,db}=await memory();await saveDraft(db,'account-a',group.id,snapshot({mode:'equal',splitValues:{}}));const app=form(db,{onSave:async()=>{throw Error('Synthetic queue failure')}});const tree=await app.settle();button(tree,'Save bill').props.onPress();await tick();await app.writes.current;assert.equal((await readDraft<any>(db,'account-a',group.id))?.amount,'31');app.unmount();assert.equal(app.media.length,0);raw.close();
+ const {raw,db}=await memory();await saveDraft(db,'account-a',group.id,snapshot({mode:'equal',splitValues:{}}));const app=form(db,{onSave:async()=>{throw Error('Synthetic queue failure')}});const tree=await app.settle();button(tree,'Save bill').props.onPress();await tick();await app.writes.current;
+ assert.equal((await readDraft<any>(db,'account-a',group.id))?.amount,'31');
+ const failed=app.render(),error=field(failed,'ErrorText',null);assert.equal(error.children.join(''),'Synthetic queue failure');assert.ok(failed.children.flat(Infinity).includes(error),'general save errors remain beside Save');
+ app.unmount();assert.equal(app.media.length,0);raw.close();
 });
 
 test('a malformed or mismatched persisted scope is retained and blocks unsafe restore',async()=>{
