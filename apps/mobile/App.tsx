@@ -1,4 +1,5 @@
 import ReviewRequest, { RateMeroSplit } from './src/ReviewRequest';
+import { useSentryUser } from './src/sentry';
 import ScrollView from './src/HomeScrollView';
 import { hasOpenDialogs } from './src/DialogFocus';
 import { NoticeBanner } from './src/UIStates';
@@ -169,6 +170,7 @@ function AppContent() {
   const [nativeLinksReady, setNativeLinksReady] = useState(Platform.OS === 'web');
   const authEpoch = useRef(0), cookieCheck = useRef(false), validatedBrowserSession = useRef('');
   const authHeld = !nativeLinksReady || !!emailEntry || checkingCookie, authHeldRef = useRef(authHeld); authHeldRef.current = authHeld;
+  useSentryUser(ready && !authHeld && !expired ? session?.userId ?? null : null);
   const protectedContent = useRef<React.ComponentRef<typeof View>>(null);
   useEffect(() => {
     if (Platform.OS === 'web' && protectedContent.current) (protectedContent.current as unknown as HTMLElement).inert = authHeld;
