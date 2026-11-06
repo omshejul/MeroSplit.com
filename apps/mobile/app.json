@@ -3,14 +3,14 @@
     "name": "MeroSplit",
     "slug": "splitdumb",
     "scheme": "splitdumb",
-    "version": "1.2.2",
+    "version": "1.2.3",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.omshejul.splitdumb",
-      "buildNumber": "32",
+      "buildNumber": "33",
       "associatedDomains": [
         "applinks:merosplit.com",
         "applinks:merosplit.omshejul.com"
@@ -34,7 +34,7 @@
     },
     "android": {
       "package": "com.omshejul.splitdumb",
-      "versionCode": 32,
+      "versionCode": 33,
       "intentFilters": [
         {
           "action": "VIEW",
