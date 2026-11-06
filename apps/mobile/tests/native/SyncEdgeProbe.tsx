@@ -7,6 +7,8 @@ import * as SplashScreen from 'expo-splash-screen';
 import { SafeAreaProvider, initialWindowMetrics } from 'react-native-safe-area-context';
 import { UIProvider, Button } from '../../src/ui';
 import { LoadingProvider } from '../../src/LoadingOverlay';
+import { AppFrame } from '../../src/AppNavigation';
+import AppStack, { NavigationContainer } from '../../src/AppStack';
 import ExpenseForm from '../../src/ExpenseForm';
 import SettleForm from '../../src/SettleForm';
 import { getDatabase } from '../../src/native';
@@ -64,4 +66,4 @@ function Probe() {
       onArmReturn={async () => { throw Error('No real payments in fixture'); }} onReturnPaymentChange={async () => {}} onResolveReturn={async () => {}} />}
   </ScrollView>;
 }
-registerRootComponent(() => <SafeAreaProvider initialMetrics={initialWindowMetrics}><UIProvider><LoadingProvider><Probe /></LoadingProvider></UIProvider></SafeAreaProvider>);
+registerRootComponent(() => <SafeAreaProvider initialMetrics={initialWindowMetrics}><UIProvider><LoadingProvider><NavigationContainer><AppFrame><AppStack initialScreen="home" scope="native-edge" blocked={false} render={() => <Probe />} /></AppFrame></NavigationContainer></LoadingProvider></UIProvider></SafeAreaProvider>);
