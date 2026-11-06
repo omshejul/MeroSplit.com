@@ -1,3 +1,4 @@
+import { reportSyncDiagnostic, traceDiagnosticRequest } from './syncDiagnostics.ts';
 import { notifyReviewAction } from './reviewPolicy.ts';
 import { readPrefetch, readScope } from './prefetch.ts';
 import { recordConnection } from './connectivity.ts';
@@ -38,7 +39,10 @@ export async function request<T>(session: Session, path: string, method = 'GET',
 export function readLedgerHeads(session: Session, signal?: AbortSignal): Promise<{ groups: { id: string; version: number; hidden: boolean }[] }> {
   return networkRequest<{ groups: { id: string; version: number; hidden: boolean }[] }>(session, '/me/ledger-heads', 'GET', undefined, 'json', signal, false).then(value => { recordConnection(true); return value; });
 }
-async function networkRequest<T>(session: Session, path: string, method: string, body: unknown, responseType: 'json' | 'text', signal?: AbortSignal, connectionHint = true): Promise<T> {
+function networkRequest<T>(session: Session, path: string, method: string, body: unknown, responseType: 'json' | 'text', signal?: AbortSignal, connectionHint = true): Promise<T> {
+  return traceDiagnosticRequest({ userId: session.userId, method, route: `/api/v1${path}` }, () => performNetworkRequest<T>(session, path, method, body, responseType, signal, connectionHint));
+}
+async function performNetworkRequest<T>(session: Session, path: string, method: string, body: unknown, responseType: 'json' | 'text', signal?: AbortSignal, connectionHint = true): Promise<T> {
   const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 15_000);
   const cancel = () => controller.abort();
   if (signal?.aborted) cancel();
@@ -74,7 +78,9 @@ async function drainOutbox(db: Database, session: Session, mode: 'full' | 'summa
   if (!current()) throw new Error('The signed-in account changed.');
   const owner = accountOwner(session);
   const receipts: Record<string, unknown>[] = [];
-  for (const command of await pendingCommands(db, owner)) {
+  const pending = await pendingCommands(db, owner);
+  reportSyncDiagnostic({ phase: 'started', userId: session.userId, pending_count: pending.length });
+  for (const command of pending) {
     if (!current()) throw new Error('The signed-in account changed.');
     if (command.state !== 'pending') throw new Error('Resolve the earlier rejected/conflicting change before syncing later commands.');
     let writeAccepted = false;
@@ -97,10 +103,12 @@ async function drainOutbox(db: Database, session: Session, mode: 'full' | 'summa
         const group = await retainHistoryWindow(session, await fetchGroup(session, command.group_id, mode), previous?.group, current);
         await acceptCommand(db, owner, command.command_id, group);
       }
+      reportSyncDiagnostic({ phase: 'accepted', userId: session.userId, pending_count: pending.length - receipts.length - 1 });
       notifyReviewAction(owner, command);
       receipts.push(receipt);
       if (!current() || command.command_id === stopAfterCommandId) break;
     } catch (error) {
+      reportSyncDiagnostic({ phase: 'failed', userId: session.userId, pending_count: pending.length - receipts.length, ...(error instanceof ApiError ? { status: error.status } : {}) }, error);
       if (!writeAccepted && error instanceof ApiError && error.status >= 400 && error.status < 500 && error.status !== 401 && error.status !== 429) {
         await markCommand(db, owner, command.command_id, error.status === 409 ? 'conflict' : 'rejected', error.message);
       }

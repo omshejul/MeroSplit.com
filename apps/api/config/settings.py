@@ -47,6 +47,7 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "config.sentry.sentry_request_context",
     "config.middleware.browser_account_scope",
     "allauth.account.middleware.AccountMiddleware",
 ]
