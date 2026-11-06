@@ -1,5 +1,5 @@
 version = 1
-revision = 5
+revision = 3
 requires-python = ">=3.12"
 resolution-markers = [
     "python_full_version >= '3.14'",
@@ -1208,6 +1208,24 @@ wheels = [
 ]
 
 [[package]]
+name = "sentry-sdk"
+version = "2.74.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "certifi" },
+    { name = "urllib3" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/8e/7f/1b16ab4aee53cc5db976bac12e6df5d562aae3880965200cef812e7121d9/sentry_sdk-2.74.0.tar.gz", hash = "sha256:dd91d75aacaef636006b579ac3ddb2fdbc9dce35f00f4b353b6b1b110c6b256a", size = 1081514, upload-time = "2026-11-05T14:50:27.444Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/55/b1/736d4b4b308694b0071844a533522ac06669ad61751687b94edfbf863f17/sentry_sdk-2.74.0-py3-none-any.whl", hash = "sha256:40b205af015649df3ec9986e057ce24ce85956bee3fb75efa72c93aa7036bdff", size = 549800, upload-time = "2026-11-05T14:50:25.767Z" },
+]
+
+[package.optional-dependencies]
+django = [
+    { name = "django" },
+]
+
+[[package]]
 name = "six"
 version = "1.17.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1232,6 +1250,7 @@ dependencies = [
     { name = "psycopg", extra = ["binary"] },
     { name = "pypdf" },
     { name = "pypdfium2" },
+    { name = "sentry-sdk", extra = ["django"] },
     { name = "uvicorn" },
 ]
 
@@ -1255,6 +1274,7 @@ requires-dist = [
     { name = "psycopg", extras = ["binary"], specifier = ">=3.2,<4" },
     { name = "pypdf", specifier = ">=6.21,<7" },
     { name = "pypdfium2", specifier = ">=5.14,<6" },
+    { name = "sentry-sdk", extras = ["django"], specifier = ">=2,<3" },
     { name = "uvicorn", specifier = "==0.54.0" },
 ]
 

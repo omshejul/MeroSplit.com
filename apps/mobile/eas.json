@@ -9,7 +9,8 @@
       "credentialsSource": "remote",
       "environment": "production",
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://merosplit.com"
+        "EXPO_PUBLIC_API_URL": "https://merosplit.com",
+        "EXPO_PUBLIC_SENTRY_DSN": "https://b4a32b4446caf86877200fe09a58784a@o4511811806035968.ingest.de.sentry.io/4512382970822736"
       },
       "android": {
         "buildType": "app-bundle"

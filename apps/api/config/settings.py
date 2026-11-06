@@ -5,6 +5,10 @@ from urllib.parse import urlsplit as _urlsplit
 
 import dj_database_url
 
+from config.sentry import init_sentry
+
+init_sentry()
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 DEBUG = os.environ.get("DEBUG", "false").lower() == "true"
 R2_BUCKET = os.environ.get("R2_BUCKET", "")

@@ -23,3 +23,13 @@ Review `apps/mobile/app.json` and `apps/mobile/eas.json` before building or publ
 Native startup checks are reused. Foregrounding, reconnecting and app interaction can check again after a five-minute cooldown; the Me button bypasses it. Downloads run without confirmation. A completed download offers Restart now or Later on a safe main screen, once per update per running session. Later leaves Restart to update in Me. Restart flushes draft/chat writes and rechecks account, navigation, foreground, sync and modal guards.
 
 Manual update checks read `/api/v1/app-releases` before checking OTA. When the installed native build is older, they open the platform store listing. Update `apps/api/ledger/app_releases.py` only after verifying the exact release is available in the store, including the intended Play testing audience. An uploaded or pending-review build is not available. The store controls account, territory, device and staged-rollout eligibility. Release checks use installed binary metadata, never the OTA manifest version. Store lookup failures can still download a compatible OTA, but cannot report No new updates when both checks are needed.
+
+## Sentry
+
+The `om-shejul` organization has `merosplit-api` for Django and the notification worker, and `merosplit-app` for Expo native and web. Set `SENTRY_DSN`, `SENTRY_ENVIRONMENT=production` and `SENTRY_RELEASE` to the source revision on both backend services. Without a DSN, reporting is disabled.
+
+Set `EXPO_PUBLIC_SENTRY_DSN` for production client exports. EAS profiles contain the public client DSN. Local development reporting is disabled. The native SDK and Expo plugin require new binaries; this integration changes the fingerprint and must not be sent to older store builds by OTA. Native integration was explicitly approved on 6 November 2026. Store privacy declarations must reflect crash diagnostics before submitting those binaries.
+
+Metro adds debug IDs. `export:web` emits source maps, uploads them with the authenticated `sentry` CLI when a client DSN is set, then deletes the maps before deploying public assets. A failed upload fails the export. Native release builds upload maps/symbols through the Expo plugin using a private `SENTRY_AUTH_TOKEN` in the build environment. After future compatible OTA publication, run `pnpm exec sentry-expo-upload-sourcemaps dist` with that token. Never place the token in `EXPO_PUBLIC_*`.
+
+Replay, performance traces and breadcrumbs are disabled. JavaScript/Python error hooks remove request data, user identity, extra context, error text and local variables while retaining error types and stack locations. Native crash reports also contain SDK-provided device/runtime diagnostics.
