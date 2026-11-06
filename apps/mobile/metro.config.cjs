@@ -1,7 +1,7 @@
 const path = require('node:path');
 const fs = require('node:fs');
-const { getDefaultConfig } = require('expo/metro-config');
-const config = getDefaultConfig(__dirname);
+const { getSentryExpoConfig } = require('@sentry/react-native/metro');
+const config = getSentryExpoConfig(__dirname, { includeWebReplay: false, includeWebFeedback: false });
 config.watchFolders = [path.resolve(__dirname, '../../fixtures')];
 config.resolver.assetExts = [...new Set([...config.resolver.assetExts, 'wasm'])];
 // Node regression tests import explicit .ts files. Honor their browser siblings
