@@ -44,12 +44,15 @@ def visible_group(actor, group_id, *, lock=False):
     return group
 
 
-def previous_result(actor, command_id, operation, payload):
-    fingerprint = hashlib.sha256(
+def previous_result(actor, command_id, operation, payload, *, intent=None):
+    legacy_fingerprint = hashlib.sha256(
         json.dumps([operation, payload], sort_keys=True, separators=(",", ":")).encode()
     ).hexdigest()
+    fingerprint = legacy_fingerprint if intent is None else hashlib.sha256(
+        json.dumps([operation, payload, intent], sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
     receipt = CommandReceipt.objects.filter(actor=actor, command_id=command_id).first()
-    if receipt and receipt.fingerprint != fingerprint:
+    if receipt and receipt.fingerprint not in {fingerprint, legacy_fingerprint}:
         raise HttpError(409, "Command ID already used for different input")
     return receipt.result if receipt else None, fingerprint
 
@@ -186,7 +189,7 @@ def finance_state(participant_ids, expense_rows, settlement_rows, opening_balanc
     values = {person: str(amount) for person, amount in balances.items()}
     return {
         "balances": values,
-        "transfers": propose_transfers(values) if simplify_debts else direct_transfers(expense_rows, settlement_rows, opening_balances, debt_checkpoint),
+        "transfers": propose_transfers(values, max_length=None) if simplify_debts else direct_transfers(expense_rows, settlement_rows, opening_balances, debt_checkpoint),
         "totals": {
             "spending": str(spending),
             "paid": {person: str(amount) for person, amount in paid_totals.items()},
@@ -364,7 +367,12 @@ def save_expense(actor, group_id, payload, expense_id=None, *, category_supplied
         payload.pop("category_auto", None)
     group = visible_group(actor, group_id, lock=True)
     operation = f"expense:{group_id}:{expense_id or 'new'}"
-    previous, fingerprint = previous_result(actor, payload["command_id"], operation, payload)
+    # Presence changes edit behavior, even when schema defaults make the payloads equal.
+    # Existing receipts retain their original fingerprints for lost-ACK retries.
+    previous, fingerprint = previous_result(
+        actor, payload["command_id"], operation, payload,
+        intent={"category_supplied": category_supplied},
+    )
     if previous:
         return previous
     writable(group)

@@ -9,7 +9,7 @@ from django.db.models import Q
 from django.utils import timezone
 from ninja.errors import HttpError
 
-from .accounting import AccountingError, propose_transfers
+from .accounting import MAX_AMOUNT, AccountingError, propose_transfers
 from .expense_notifications import cancel_notices
 from .models import CommandReceipt, ExpenseNotice, ExpensePushDelivery, Invite, OpeningBalance, Participant
 from .services import (
@@ -251,7 +251,7 @@ def create_opening(actor, group_id, payload):
     members = people(group)
     if set(payload["balances"]) != set(members) or not any(v != "0" for v in payload["balances"].values()):
         raise AccountingError("Provide a nonzero opening vector for exactly these participants")
-    propose_transfers(payload["balances"])
+    propose_transfers(payload["balances"], maximum=MAX_AMOUNT)
     if OpeningBalance.objects.filter(group=group).exists():
         raise HttpError(409, "This group already has an opening-balance proposal")
     acknowledgments = {
