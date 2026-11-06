@@ -1,4 +1,5 @@
 import ReviewRequest, { RateMeroSplit } from './src/ReviewRequest';
+import { groupSettingReview, resolveGroupSetting } from './src/groupSettingReview';
 import { useSentryUser } from './src/sentry';
 import ScrollView from './src/HomeScrollView';
 import { hasOpenDialogs } from './src/DialogFocus';
@@ -1070,6 +1071,19 @@ function AppContent() {
     if (selected.group.archived) throw new Error('Reopen this group in settings before making changes.');
     await queue(command('POST', `/groups/${groupId}/settlements/${value.id}/reverse`, {}));
   }
+  async function resolveSavedSetting(apply: boolean) {
+    await perform(async () => {
+      if (!session || !selected || !reviewCommand) return;
+      const active = session, scope = owner, value = reviewCommand, group = selected.group;
+      const db = await getDatabase();
+      if (ownerRef.current !== scope || activeSessionRef.current?.token !== active.token) return;
+      await resolveGroupSetting(db, scope, value, group, apply ? uuid() : null);
+      await load(scope);
+      if (ownerRef.current !== scope || activeSessionRef.current?.token !== active.token) return;
+      setReviewCommand(null); navigate('savedChanges');
+      if (isOnline()) await sync();
+    });
+  }
   async function changeMembership(action: 'leave' | 'restore') {
     const route = navigation.ref.getRootState();
     if (!session || !groupId) throw new Error('Open a group to continue.');
@@ -1453,7 +1467,7 @@ function AppContent() {
   const visibleGroups = !direct && showHidden ? hiddenGroups : direct ? listedGroups.filter(row => !!session && visiblePeopleSummary(row.group, session.userId, commands.some(command => command.group_id === row.group.id))) : groupListRows(listedGroups, showArchived);
   const showAddExpense = screen === 'group' && !!selected && !selected.group.archived;
   const showCreate = screen === 'home' && (direct || tab === 'Groups' && !showArchived && !showHidden);
-  const title = screen === 'savedChanges' ? 'Saved changes' : screen === 'home' ? (tab === 'Friends' ? 'People' : tab === 'Account' ? 'Me' : tab === 'Groups' && showHidden ? 'Removed from my list' : tab === 'Groups' && showArchived ? 'Archived groups' : tab) : screen === 'signInMethods' ? 'Sign-in methods' : screen === 'login' ? 'Sign in' : screen === 'create' ? (direct ? 'Add a person' : 'New group') : screen === 'expense' ? (expenseId ? 'Edit bill' : 'Add expense') : screen === 'expenseVersions' ? 'Version history' : screen === 'billChat' ? 'Bill chat' : screen === 'expenseDetail' ? expense?.description ?? 'Bill' : screen === 'settle' ? 'Payment' : screen === 'members' ? 'Group settings' : screen === 'review' ? 'Review your bill' : screen === 'paymentDetail' ? 'Payment record' : screen === 'import' ? 'Import from Splitwise' : selected ? groupDisplayName(selected.group, session?.userId) : 'Group';
+  const title = screen === 'savedChanges' ? 'Saved changes' : screen === 'home' ? (tab === 'Friends' ? 'People' : tab === 'Account' ? 'Me' : tab === 'Groups' && showHidden ? 'Removed from my list' : tab === 'Groups' && showArchived ? 'Archived groups' : tab) : screen === 'signInMethods' ? 'Sign-in methods' : screen === 'login' ? 'Sign in' : screen === 'create' ? (direct ? 'Add a person' : 'New group') : screen === 'expense' ? (expenseId ? 'Edit bill' : 'Add expense') : screen === 'expenseVersions' ? 'Version history' : screen === 'billChat' ? 'Bill chat' : screen === 'expenseDetail' ? expense?.description ?? 'Bill' : screen === 'settle' ? 'Payment' : screen === 'members' ? 'Group settings' : screen === 'review' ? 'Review saved change' : screen === 'paymentDetail' ? 'Payment record' : screen === 'import' ? 'Import from Splitwise' : selected ? groupDisplayName(selected.group, session?.userId) : 'Group';
   const listNotice = <>{!!notice && <MotionReveal><NoticeBanner tone={feedback.tone === 'info' ? undefined : feedback.tone}>{notice}</NoticeBanner></MotionReveal>}
       {expired && screen !== 'login' && <Button title="Sign in again" kind="primary" onPress={() => { setChallenge(null); setCode(''); navigate('login'); }} />}</>;
   const savedChangesView = <SavedChanges expanded={screen === 'savedChanges'} commands={commands} groups={groups} busy={busy} expired={expired} onOpen={row => open(() => openGroup(row))} onReview={value => open(() => reviewChange(value))} onDiscard={value => confirm('Discard saved change?', 'Export first if needed. This removes only your unsent change. A request already accepted by the server is kept there.', async () => { await discardCommand(await getDatabase(), owner, value.command_id); }, 'Discard change')} onRetry={() => launch(sync)} />;
@@ -1507,7 +1521,7 @@ function AppContent() {
           onBusyChange={value => setSubmission(value, `${route.key}|attachments`)} onChanged={async () => { if (!session) return; const scope = accountOwner(session); const updated = await fetchGroup(session, selected.group.id); if (await saveReadGroup(session, updated, () => ownerRef.current === scope, false)) await load(scope); }} />} />
       </>}
       {screen === 'expense' && selected && <ExpenseForm key={`${owner}|${groupId}|${expenseId ?? 'new'}`} group={preview ?? selected.group} expense={reviewInput ?? expense} selfId={selfId} busy={busy} owner={owner} writes={draftWrites} onSave={(value, attachment, onQueued) => saveExpense(value, attachment, () => { onQueued?.(); billQueued(); })} />}
-      {screen === 'review' && selected && reviewCommand && <SavedChangeScreen command={reviewCommand} group={selected.group} busy={busy} onDiscard={() => confirm('Discard this unsent change?', 'Accepted records remain. Your saved change will be removed from this phone.', async () => { await discardCommand(await getDatabase(), owner, reviewCommand.command_id); setReviewCommand(null); navigate('group'); }, 'Discard change')} onEditSaved={value => { setReviewInput(value); navigate('expense', { expenseId: reviewCommand.method === 'PUT' ? value.id : null }); }} />}
+      {screen === 'review' && selected && reviewCommand && <SavedChangeScreen command={reviewCommand} group={selected.group} busy={busy} onApplySetting={() => void resolveSavedSetting(true)} onDiscard={() => groupSettingReview(reviewCommand, selected.group) ? confirm('Keep the current setting?', 'Only this unsent setting change will be removed. Your saved bills will stay and continue syncing.', () => resolveSavedSetting(false), 'Keep current setting') : confirm('Discard this unsent change?', 'Accepted records remain. Your saved change will be removed from this phone.', async () => { await discardCommand(await getDatabase(), owner, reviewCommand.command_id); setReviewCommand(null); navigate('group'); }, 'Discard change')} onEditSaved={value => { setReviewInput(value); navigate('expense', { expenseId: reviewCommand.method === 'PUT' ? value.id : null }); }} />}
       {screen === 'settle' && selected && preview && <SettleForm key={`${owner}|${groupId}`} group={preview} initial={transfer} busy={busy} selfId={selfId} onRemind={online && !pending.length ? remindPayment : undefined} onReviewAttempt={reviewPaymentAttempt} onPrepareUPI={prepareUPI} onCancelUPI={async id => { await groupAction(`/payment-attempts/${id}/cancel`, {}); await clearPaymentReturn(await getDatabase(), owner, id); await load(); }} returnPayment={returnPayment} onArmReturn={armPaymentReturn} onReturnPaymentChange={persistPaymentReturn} onResolveReturn={finishPaymentReturn} onSave={savePayment} onCancel={() => { setReturnAttemptId(null); back(); }} />}
       {screen === 'paymentDetail' && selected && settlement && <PaymentDetail payment={settlement} group={preview ?? selected.group} selfId={selfId} busy={busy} canReverse={!pending.length && !selected.group.archived} onReverse={() => confirm('Reverse payment record?', 'This removes the payment from the group’s balances.', () => reversePayment(settlement), 'Reverse payment')} />}
       {screen === 'members' && selected && <MembersScreen key={`${owner}|${groupId}`} session={session} onPhotoChanged={sync} group={preview ?? selected.group} selfId={selfId} busy={busy} onAction={groupAction} onMembership={action => { if (action === 'restore') launch(() => changeMembership(action)); else confirm('Delete group?', 'Leave this group and remove it from your list. Shared balances and history stay. Your saved drafts are kept.', () => changeMembership(action), 'Delete group'); }} addPersonRequest={addPersonRequest} />}

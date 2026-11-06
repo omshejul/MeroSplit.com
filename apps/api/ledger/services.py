@@ -608,6 +608,14 @@ def reverse_settlement(actor, group_id, settlement_id, payload):
     )
 
 
+def check_setting_revision(group, version, kind, **scope):
+    if group.version == version:
+        return
+    # A bill or a different person's nickname cannot invalidate this setting.
+    if version < 1 or version > group.version or group.changes.filter(sequence__gt=version, kind=kind, **scope).exists():
+        raise HttpError(409, "This setting changed. Review the latest value and try again.")
+
+
 @transaction.atomic
 def change_simplify(actor, group_id, payload):
     group = visible_group(actor, group_id, lock=True)
@@ -615,8 +623,7 @@ def change_simplify(actor, group_id, payload):
     if previous:
         return previous
     writable(group)
-    if group.version != payload["version"]:
-        raise HttpError(409, "This group changed. Refresh and try again.")
+    check_setting_revision(group, payload["version"], "simplify_debts_changed")
     if group.is_direct:
         raise AccountingError("Simplify debts is a group setting")
     changed = group.simplify_debts != payload["simplify_debts"]
@@ -677,8 +684,7 @@ def rename_group(actor, group_id, payload):
     writable(group)
     if group.is_direct:
         raise HttpError(422, "Change a shared group's name here")
-    if group.version != payload["version"]:
-        raise HttpError(409, "This group changed. Refresh and try again.")
+    check_setting_revision(group, payload["version"], "group_renamed")
     before = group.name
     group.name = payload["name"].strip()
     group.save(update_fields=["name"])
@@ -694,8 +700,7 @@ def rename_group_member(actor, group_id, participant_id, payload):
     writable(group)
     if group.is_direct:
         raise HttpError(422, "Nicknames are only available in shared groups")
-    if group.version != payload["version"]:
-        raise HttpError(409, "This group changed. Refresh and try again.")
+    check_setting_revision(group, payload["version"], "participant_nickname_changed", data__participant_id=str(participant_id))
     person = group.participants.filter(id=participant_id, removed=False).first()
     if not person:
         raise HttpError(404, "Person not found")

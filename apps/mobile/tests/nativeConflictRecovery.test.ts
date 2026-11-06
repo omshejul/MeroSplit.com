@@ -1,3 +1,4 @@
+import { groupSettingReview, resolveGroupSetting } from '../src/groupSettingReview.ts';
 import { withSharedUI } from './componentHarness.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -32,7 +33,7 @@ function variable(name: string, env: object): Element {
 function component(file: string, name: string, props: object): Element {
   const source = ts.createSourceFile(file, readFileSync(new URL(`../src/${file}`, import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   const body = source.statements.filter(node => !ts.isImportDeclaration(node)).map(node => node.getText(source).replace(/^export (?:default )?/, '')).join('\n');
-  return evaluate(`${body};return ${name}(props);`, { props, View: 'View', Text: 'Text', Button: 'Button', DetailDialog: 'DetailDialog', SectionHeading: 'SectionHeading', useUI: () => ({ ui: {}, palette: {} }), useMemo: (fn: () => unknown) => fn(), StyleSheet: { create: (value: unknown) => value }, radii: {}, validateExpense });
+  return evaluate(`${body};return ${name}(props);`, { props, groupSettingReview, View: 'View', Text: 'Text', Button: 'Button', DetailDialog: 'DetailDialog', SectionHeading: 'SectionHeading', useUI: () => ({ ui: {}, palette: {} }), useMemo: (fn: () => unknown) => fn(), StyleSheet: { create: (value: unknown) => value }, radii: {}, validateExpense });
 }
 function elements(tree: any): Element[] {
   if (Array.isArray(tree)) return tree.flatMap(elements);
@@ -76,12 +77,12 @@ test('Saved changes actual row and App route reach latest review, edit replaceme
     const reviewNode = find(node => ts.isJsxSelfClosingElement(node) && node.tagName.getText(app) === 'SavedChangeScreen');
     const discardable = { ...edit, command_id: 'discard-me' };
     await enqueue(db, owner, discardable);
-    const discardProps = evaluate(`return (${reviewNode.getText(app)});`, { ...env, reviewCommand: discardable, SavedChangeScreen: 'SavedChangeScreen' }).props;
+    const discardProps = evaluate(`return (${reviewNode.getText(app)});`, { ...env, groupSettingReview, reviewCommand: discardable, SavedChangeScreen: 'SavedChangeScreen' }).props;
     const discardScreen = component('SavedChangeScreen.tsx', 'SavedChangeScreen', discardProps);
     await elements(discardScreen).find(node => node.props.title === 'Discard saved change')!.props.onPress();
     assert.deepEqual((await pendingCommands(db, owner)).map(row => row.command_id), ['edit', 'later'], 'explicit discard removes only the selected saved command');
     env.reviewCommand = edit;
-    const reviewProps = evaluate(`return (${reviewNode.getText(app)});`, { ...env, SavedChangeScreen: 'SavedChangeScreen' }).props;
+    const reviewProps = evaluate(`return (${reviewNode.getText(app)});`, { ...env, groupSettingReview, SavedChangeScreen: 'SavedChangeScreen' }).props;
     const screen = component('SavedChangeScreen.tsx', 'SavedChangeScreen', reviewProps);
     elements(screen).find(node => node.props.title === 'Edit your change')!.props.onPress();
     assert.equal(env.reviewInput.description, 'Saved edit'); assert.equal(env.reviewInput.version, 2, 'review uses latest bill revision');
@@ -124,4 +125,11 @@ test('actual group callsite passes preview status separately from the live heade
   assert.equal(view.props.active, false);
   assert.equal(view.props.previewError, previewError, 'preview status must travel with the snapshot');
   assert.equal(elements(view.props.header).some(node => node.children.includes(previewError)), false, 'live header must not relabel a held optimistic snapshot');
+});
+
+test('stale group setting has an actionable review instead of the bill-only dead end', () => {
+  const setting: Command = { command_id: 'setting', group_id: 'g', method: 'POST', path: '/groups/g/simplify', body: { command_id: 'setting', version: 1, simplify_debts: false }, state: 'conflict', error: 'This group changed. Refresh and try again.', attempted: true };
+  const screen = component('SavedChangeScreen.tsx', 'SavedChangeScreen', { command: setting, group: { ...group, simplify_debts: true, can_change_simplify: true }, busy: false, onDiscard() {}, onEditSaved() {}, onApplySetting() {} });
+  assert.ok(elements(screen).some(node => node.type === 'Button' && node.props.title === 'Apply saved setting'), 'a reviewed setting must offer recovery without discarding the saved intent or later bills');
+  assert.ok(!JSON.stringify(screen).includes('This action cannot be edited here'));
 });

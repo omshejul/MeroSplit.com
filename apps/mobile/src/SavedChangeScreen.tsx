@@ -1,4 +1,5 @@
 import MarkdownNotes from './MarkdownNotes';
+import { groupSettingReview } from './groupSettingReview';
 import BillSummary from './BillSummary';
 import { PersonAmountRow } from './PersonRow';
 import { NoticeBanner } from './UIStates';
@@ -13,7 +14,7 @@ import type { Palette } from './ui';
 
 type Props = {
   command: Command; group: Group; busy: boolean;
-  onDiscard: () => void; onEditSaved: (expense: Expense) => void;
+  onDiscard: () => void; onEditSaved: (expense: Expense) => void; onApplySetting: () => void;
 };
 
 function SavedBillSummary({ expense, participants }: { expense: Expense; participants: Group['participants'] }) {
@@ -30,10 +31,11 @@ function SavedBillSummary({ expense, participants }: { expense: Expense; partici
   </BillSummary>;
 }
 
-export default function SavedChangeScreen({ command, group, busy, onDiscard, onEditSaved }: Props) {
+export default function SavedChangeScreen({ command, group, busy, onDiscard, onEditSaved, onApplySetting }: Props) {
   const { palette: colors, ui } = useUI();
   const s = useMemo(() => makeStyles(colors), [colors]);
   const body = command.body;
+  const setting = groupSettingReview(command, group);
   const current = group.expenses.find(expense => expense.id === body.id) ?? (group.focused_expense?.id === body.id ? group.focused_expense : undefined);
   const path = `/groups/${group.id}/expenses`;
   const creating = command.method === 'POST' && command.path === path;
@@ -69,10 +71,10 @@ export default function SavedChangeScreen({ command, group, busy, onDiscard, onE
 
   return <View style={s.content}>
     <Text style={ui.caption}>{group.name}</Text>
-    {!expenseCommand && <NoticeBanner tone="warning">This change has not synced.</NoticeBanner>}
+    {!expenseCommand && <NoticeBanner tone="warning">{setting ? 'This setting change has not synced. Later bills are waiting for it.' : 'This change has not synced.'}</NoticeBanner>}
     <View style={s.section}>
       <SectionHeading>Your change</SectionHeading>
-      {saved ? <SavedBillSummary expense={saved} participants={group.participants} /> : <Text accessibilityRole="alert" style={ui.body}>{issue}</Text>}
+      {setting ? <><Text style={ui.rowTitle}>{setting.label}</Text><Text style={ui.body}>Your saved setting: {setting.saved}</Text><Text style={ui.body}>Current setting: {setting.current}</Text></> : saved ? <SavedBillSummary expense={saved} participants={group.participants} /> : <Text accessibilityRole="alert" style={ui.body}>{issue}</Text>}
     </View>
     {expenseCommand && <>
       <View style={s.section}>
@@ -85,7 +87,9 @@ export default function SavedChangeScreen({ command, group, busy, onDiscard, onE
     </>}
     <View style={s.section}>
       {canEdit && <Button title="Edit your change" kind="primary" disabled={busy} onPress={editSaved} />}
-      <Button title="Discard saved change" kind="text" disabled={busy} onPress={onDiscard} />
+      {setting?.canApply && <Button title="Apply saved setting" icon="check" kind="primary" disabled={busy} onPress={onApplySetting} />}
+      {setting && !setting.canApply && <Text style={ui.caption}>This setting cannot be applied right now. Keep the current setting to continue syncing your bills.</Text>}
+      <Button title={setting ? 'Keep current setting' : 'Discard saved change'} kind="text" disabled={busy} onPress={onDiscard} />
     </View>
   </View>;
 }

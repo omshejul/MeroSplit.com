@@ -1,4 +1,5 @@
 import { reportSyncDiagnostic, traceDiagnosticRequest } from './syncDiagnostics.ts';
+import { isGroupSetting } from './groupSettingReview.ts';
 import { notifyReviewAction } from './reviewPolicy.ts';
 import { readPrefetch, readScope } from './prefetch.ts';
 import { recordConnection } from './connectivity.ts';
@@ -82,10 +83,10 @@ async function drainOutbox(db: Database, session: Session, mode: 'full' | 'summa
   reportSyncDiagnostic({ phase: 'started', userId: session.userId, pending_count: pending.length });
   for (const command of pending) {
     if (!current()) throw new Error('The signed-in account changed.');
-    if (command.state !== 'pending') throw new Error('Resolve the earlier rejected/conflicting change before syncing later commands.');
+    if (command.state !== 'pending' && !(command.state === 'conflict' && isGroupSetting(command))) throw new Error('Review the earlier saved change to continue syncing your bills.');
     let writeAccepted = false;
     try {
-      await db.runAsync('UPDATE outbox SET attempted=1 WHERE owner=? AND command_id=?', owner, command.command_id);
+      await db.runAsync("UPDATE outbox SET attempted=1,state='pending',error=NULL WHERE owner=? AND command_id=?", owner, command.command_id);
       if (!current()) throw new Error('The signed-in account changed.');
       const receipt = await request<Record<string, unknown>>(session, command.path, command.method, command.body);
       writeAccepted = true;
