@@ -1,12 +1,12 @@
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { readdir, readFile, writeFile, copyFile } from 'node:fs/promises';
+import { readdir, readFile, writeFile, copyFile, unlink } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, relative, resolve } from 'node:path';
 import { webManifest, webShell } from './web-shell.mjs';
 const project = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const destination = resolve(project, '../api/web-dist');
-const result = spawnSync(process.execPath, [join(project, 'node_modules/expo/bin/cli'), 'export', '--platform', 'web', '--output-dir', destination], { cwd: project, stdio: 'inherit', env: { ...process.env, EXPO_WEB_BUILD: '1', NODE_ENV: 'production' } });
+const result = spawnSync(process.execPath, [join(project, 'node_modules/expo/bin/cli'), 'export', '--platform', 'web', '--source-maps', '--output-dir', destination], { cwd: project, stdio: 'inherit', env: { ...process.env, EXPO_WEB_BUILD: '1', NODE_ENV: 'production' } });
 if (result.status !== 0) process.exit(result.status ?? 1);
 // Dependency-directory paths may be excluded by deployment uploaders, including
 // paths generated from a symlinked node_modules. SQLite uses this public URL.
@@ -20,6 +20,14 @@ await copyFile(join(project, '../../store-assets/google-play/icon-512.png'), joi
 await copyFile(join(project, '../api/ledger/assets/apple-touch-icon.png'), join(destination, 'apple-touch-icon.png'));
 async function files(folder) { const rows = await readdir(folder, { withFileTypes: true }); return (await Promise.all(rows.map(row => row.isDirectory() ? files(join(folder, row.name)) : join(folder, row.name)))).flat(); }
 const paths = await files(destination);
+if (process.env.EXPO_PUBLIC_SENTRY_DSN) {
+  const upload = spawnSync('sentry', ['sourcemap', 'upload', destination, '--no-rewrite'], {
+    cwd: project, stdio: 'inherit', env: { ...process.env, SENTRY_ORG: 'om-shejul', SENTRY_PROJECT: 'merosplit-app' },
+  });
+  if (upload.status !== 0) process.exit(upload.status ?? 1);
+}
+// Source maps go to Sentry, never the public app shell.
+await Promise.all(paths.filter(path => path.endsWith('.map')).map(path => unlink(path)));
 const manifest = paths.filter(path => !path.endsWith('.map')).map(path => '/app/' + relative(destination, path).split('\\').join('/'));
 const version = createHash('sha256').update(await readFile(join(destination, 'index.html'))).digest('hex').slice(0, 16);
 const worker = `const CACHE='merosplit-shell-${version}';const ASSETS=${JSON.stringify(manifest)};\nself.addEventListener('install',event=>event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(ASSETS))));\nself.addEventListener('activate',event=>event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(key=>key.startsWith('merosplit-shell-')&&key!==CACHE).map(key=>caches.delete(key)))).then(()=>self.clients.claim())));\nself.addEventListener('fetch',event=>{const url=new URL(event.request.url);if(event.request.method!=='GET'||url.origin!==self.location.origin||!url.pathname.startsWith('/app/')||url.pathname.startsWith('/app/media/'))return;if(event.request.mode==='navigate'){event.respondWith(fetch(event.request).catch(()=>caches.match('/app/index.html')));return;}if(ASSETS.includes(url.pathname))event.respondWith(caches.match(event.request,{ignoreSearch:true}).then(cached=>cached||fetch(event.request)));});\n`;
