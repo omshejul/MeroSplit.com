@@ -57,7 +57,7 @@ def recipient(group):
 @pytest.fixture
 def providers(monkeypatch):
     calls = {"push": [], "email": []}
-    def push(device, data):
+    def push(device, data, **content):
         assert not connection.in_atomic_block
         calls["push"].append(data)
         return f"synthetic-ticket-{len(calls['push'])}"
@@ -240,15 +240,15 @@ def test_sign_in_never_enables_email_from_legacy_disclosure(client, clock):
     assert not NotificationPreference.objects.filter(user=older_client_user).exists()
 
 
-def test_digest_waits_ten_minutes_despite_foreground_and_sends_generic_once_across_groups(client, group, recipient, clock, providers):
+def test_digest_waits_ten_minutes_and_summarizes_authorized_bills_once_across_groups(client, group, recipient, clock, providers):
     enable(recipient)
-    first = add_bill(client, group)
+    first = add_bill(client, group, total="9000")
     other_ids = [uid(), uid(), uid()]
     other_body = {"command_id": uid(), "id": uid(), "name": "Other synthetic group", "self_participant_id": other_ids[0],
                   "participants": [{"id": person, "name": "Synthetic person"} for person in other_ids]}
     assert send(client, "post", "/groups", other_body).status_code == 200
     Participant.objects.filter(pk=other_ids[1]).update(user=recipient.actor)
-    add_bill(client, (other_body["id"], other_ids, other_body))
+    add_bill(client, (other_body["id"], other_ids, other_body), total="9000")
     clock[0] += timedelta(minutes=9, seconds=59)
     assert notifications.send_pending_digests() == 0
     assert send(recipient, "post", "/me/notifications/foreground", {}).json() == {"ok": True}
@@ -261,9 +261,12 @@ def test_digest_waits_ten_minutes_despite_foreground_and_sends_generic_once_acro
     assert digest.state == "accepted" and digest.notices.count() == 2
     message = providers["email"][0]
     assert message["key"] == f"expense-digest/{digest.id}"
-    assert "Open MeroSplit" in message["payload"]["html"] and "cid:merosplit-logo" in message["payload"]["html"]
+    assert "Review bills" in message["payload"]["html"] and "cid:merosplit-logo" in message["payload"]["html"]
     assert message["payload"]["attachments"][0]["content_id"] == "merosplit-logo"
-    for secret in (first["description"], group[2]["name"], first["total"], group[1][1], first["id"]):
+    assert message["subject"] == "2 unread bills in MeroSplit"
+    for detail in (first["description"], group[2]["name"], "Other synthetic group", "A paid ₹90", "Your share: ₹30"):
+        assert detail in message["text"] and detail in message["payload"]["html"]
+    for secret in (group[1][1], first["id"]):
         assert secret not in message["text"] and secret not in message["payload"]["html"]
     clock[0] += timedelta(days=2)
     assert notifications.send_pending_digests() == 0 and len(providers["email"]) == 1
@@ -275,7 +278,7 @@ def test_seen_or_off_during_provider_submission_retains_honest_acceptance(client
     register(recipient)
     add_bill(client, group)
     clock[0] += timedelta(seconds=30)
-    def push(device, data):
+    def push(device, data, **content):
         assert not connection.in_atomic_block
         assert seen(recipient, [{"id": data["notice_id"], "expense_version": 1}]).json() == {"seen": 1}
         return "accepted-despite-in-flight-seen"
@@ -301,7 +304,7 @@ def test_missing_push_route_or_provider_failure_never_triggers_immediate_email(c
     enable(recipient)
     register(recipient)
     add_bill(client, group)
-    def unavailable(*args):
+    def unavailable(*args, **kwargs):
         raise PushFailure("network_error")
     monkeypatch.setattr("ledger.push_provider.send_bill_notification", unavailable)
     clock[0] += timedelta(seconds=30)
@@ -584,8 +587,8 @@ def test_seeded_due_queue_feed_and_claim_use_bounded_indexed_queries(client, gro
         identifier = notifications.create_due_digest()
     # One frozen auth grant adds four fixed identity/source queries; no per-notice
     # work or history expansion beyond the same first100 unread recipients.
-    # One mailbox suppression check enforces no-account opt-out for linked mail too.
-    assert identifier and ExpenseDigest.objects.get(pk=identifier).notices.count() == 100 and len(claimed) <= 17
+    # One mailbox suppression check and one bulk participant/name query for the summary.
+    assert identifier and ExpenseDigest.objects.get(pk=identifier).notices.count() == 100 and len(claimed) <= 18
     assert ExpenseNotice.objects.get(pk=original.pk).recipient_id == recipient.actor.pk
     oldest_due = ExpenseNotice.objects.filter(push_processed_at__isnull=True).order_by("push_due_at").first().push_due_at
     started = monotonic()
@@ -640,8 +643,8 @@ def test_effective_channels_legacy_empty_email_mute_restore_and_last_off(client)
     assert send(client, 'get', '/me/notifications/preferences').json() == muted
     assert save(True, True)['notifications_enabled'] is True
     last = save(True, False)
-    assert last['expense_updates'] is False and last['notifications_enabled'] is False
-    assert not NotificationPreference.objects.get(user=client.actor).expense_updates
+    assert last['expense_updates'] is True and last['notifications_enabled'] is False
+    assert NotificationPreference.objects.get(user=client.actor).expense_updates
 
 
 def test_effective_push_bindings_last_removal_and_registration_never_unmutes(client):
@@ -654,8 +657,11 @@ def test_effective_push_bindings_last_removal_and_registration_never_unmutes(cli
     assert send(client, 'delete', f'/me/push-devices/{first.id}').status_code == 200
     assert send(client, 'get', '/me/notifications/preferences').json()['notifications_enabled'] is True
     assert send(client, 'delete', f'/me/push-devices/{second.id}').status_code == 200
-    assert NotificationPreference.objects.get(user=client.actor).expense_updates is False
+    assert NotificationPreference.objects.get(user=client.actor).expense_updates is True
     assert send(client, 'get', '/me/notifications/preferences').json()['notifications_enabled'] is False
+    register(client)
+    assert send(client, 'get', '/me/notifications/preferences').json()['notifications_enabled'] is True
+    send(client, 'put', '/me/notifications/preferences', {'expense_updates': False, 'email_reminders': False})
     register(client)
     assert send(client, 'get', '/me/notifications/preferences').json()['notifications_enabled'] is False
 
@@ -672,18 +678,230 @@ def test_effective_push_rejects_stale_expired_and_rebound_sessions(client, clock
     assert not notifications.notification_settings(client.actor)['push_device_ids']
 
 
-def test_last_device_removal_retry_finishes_master_normalization(client, monkeypatch):
+def test_last_device_removal_and_retry_never_change_master_preference(client, monkeypatch):
     device = register(client)
     send(client, 'put', '/me/notifications/preferences', {'expense_updates': True, 'email_reminders': False})
-    original = notifications._locked_preference
-    def interrupted(actor):
-        raise RuntimeError('Synthetic interruption after binding removal')
-    monkeypatch.setattr(notifications, '_locked_preference', interrupted)
+    def unexpected_preference_write(actor):
+        raise AssertionError('Removing a channel must not change the master preference')
+    monkeypatch.setattr(notifications, '_locked_preference', unexpected_preference_write)
     from .push import remove_device
-    with pytest.raises(RuntimeError):
-        remove_device(client.actor, device.id)
+    assert remove_device(client.actor, device.id) == {'removed': True}
     assert not PushDevice.objects.filter(pk=device.id).exists()
     assert NotificationPreference.objects.get(user=client.actor).expense_updates
-    monkeypatch.setattr(notifications, '_locked_preference', original)
     assert remove_device(client.actor, device.id) == {'removed': True}
-    assert not NotificationPreference.objects.get(user=client.actor).expense_updates
+    assert NotificationPreference.objects.get(user=client.actor).expense_updates
+
+
+@pytest.mark.parametrize("change", ["seen", "removed", "edited", "deleted_notice"])
+def test_summary_drops_stale_details_before_first_attempt(client, group, recipient, clock, providers, change):
+    enable(recipient)
+    first = add_bill(client, group)
+    Expense.objects.filter(pk=first["id"]).update(description="Private old title")
+    second = add_bill(client, group)
+    Expense.objects.filter(pk=second["id"]).update(description="Still unread")
+    clock[0] += timedelta(minutes=10)
+    identifier = notifications.create_due_digest()
+    if change == "seen":
+        notice = ExpenseNotice.objects.get(expense_id=first["id"])
+        seen(recipient, [{"id": str(notice.id), "expense_version": 1}])
+    elif change == "removed":
+        Expense.objects.filter(pk=first["id"]).update(paid={group[1][0]: "10000"}, shares={group[1][0]: "10000"})
+    elif change == "edited":
+        Expense.objects.filter(pk=first["id"]).update(description="Current title", version=2, total=30000,
+            paid={group[1][0]: "30000"}, shares={person: "10000" for person in group[1]})
+    else:
+        ExpenseNotice.objects.filter(expense_id=first["id"]).delete()
+    notifications.send_pending_digests(limit=1)
+    message = providers["email"][0]
+    assert "Private old title" not in message["text"] and "Private old title" not in message["payload"]["html"]
+    assert "Still unread" in message["text"]
+    assert message["subject"] == ("2 unread bills in MeroSplit" if change == "edited" else "1 unread bill in MeroSplit")
+    if change == "edited":
+        assert "Current title" in message["text"] and "Your share: ₹100" in message["text"]
+    assert ExpenseDigest.objects.get(pk=identifier).state == "accepted"
+
+
+@pytest.mark.parametrize("change", ["seen", "removed", "edited", "deleted_notice"])
+def test_summary_never_retries_stale_private_details(client, group, recipient, clock, monkeypatch, change):
+    enable(recipient)
+    first, second = add_bill(client, group), add_bill(client, group)
+    calls = []
+    def uncertain(*args, **kwargs):
+        calls.append(kwargs["payload"])
+        raise email_delivery.EmailDeliveryUnavailable()
+    monkeypatch.setattr(email_delivery, "send_email", uncertain)
+    clock[0] += timedelta(minutes=10)
+    notifications.send_pending_digests(limit=1)
+    if change == "seen":
+        notice = ExpenseNotice.objects.get(expense_id=first["id"])
+        seen(recipient, [{"id": str(notice.id), "expense_version": 1}])
+    elif change == "removed":
+        Expense.objects.filter(pk=first["id"]).update(shares={group[1][0]: "10000"})
+    elif change == "edited":
+        Expense.objects.filter(pk=first["id"]).update(description="Edited title", version=2)
+    else:
+        ExpenseNotice.objects.filter(expense_id=first["id"]).delete()
+    clock[0] += timedelta(minutes=2)
+    notifications.send_pending_digests(limit=1)
+    assert len(calls) == 1
+    assert ExpenseDigest.objects.get().state == "cancelled"
+    assert ExpenseNotice.objects.get(expense_id=second["id"]).digest_id is not None
+
+
+def test_summary_handles_multiple_payers_payer_only_and_escapes_html(client, group, recipient, clock, providers):
+    enable(recipient)
+    Participant.objects.filter(pk=group[1][0]).update(display_name_override="<Bismay & co>")
+    body = expense(group[1], total="12345678")
+    body.update(description='<img src=x onerror="alert(1)">', paid={group[1][0]: "12345000", group[1][1]: "678"},
+        split={"mode": "exact", "values": {group[1][0]: "12345678"}})
+    assert send(client, "post", f"/groups/{group[0]}/expenses", body).status_code == 200
+    clock[0] += timedelta(minutes=10)
+    notifications.send_pending_digests(limit=1)
+    message = providers["email"][0]
+    assert "<Bismay & co>" in message["text"] and "you" in message["text"].lower() and "paid ₹1,23,456.78" in message["text"]
+    assert "Your share: ₹0" in message["text"] and "You paid: ₹6.78" in message["text"]
+    assert '<img src=x' not in message["payload"]["html"]
+    assert "&lt;img src=x" in message["payload"]["html"] and "&lt;Bismay &amp; co&gt;" in message["payload"]["html"]
+
+
+def test_summary_limits_email_size_and_omits_unrelated_bills(client, group, recipient, clock, providers):
+    enable(recipient)
+    for i in range(8):
+        bill = add_bill(client, group)
+        Expense.objects.filter(pk=bill["id"]).update(description=f"Visible bill {i}")
+    bill = add_bill(client, group, beneficiaries=[0])
+    Expense.objects.filter(pk=bill["id"]).update(description="Unrelated private bill")
+    clock[0] += timedelta(minutes=10)
+    notifications.send_pending_digests(limit=1)
+    message = providers["email"][0]
+    assert message["subject"] == "8 unread bills in MeroSplit"
+    assert message["text"].count("Your share:") == 5 and "3 more unread bills" in message["text"]
+    assert "Unrelated private bill" not in message["text"]
+    assert "If the link has expired" in message["text"]
+
+
+def test_summary_rechecks_edit_before_first_provider_call_without_stranding_unread_bill(client, group, recipient, clock, providers, monkeypatch):
+    enable(recipient)
+    bill = add_bill(client, group)
+    clock[0] += timedelta(minutes=10)
+    original = notifications._digest_still_eligible
+    checks = []
+    def edit_before_final_check(digest):
+        checks.append(True)
+        if len(checks) == 2:
+            Expense.objects.filter(pk=bill["id"]).update(description="Latest bill title", version=2)
+        return original(digest)
+    monkeypatch.setattr(notifications, "_digest_still_eligible", edit_before_final_check)
+    notifications.send_pending_digests(limit=1)
+    digest = ExpenseDigest.objects.get()
+    assert digest.state == "pending" and digest.first_attempt_at is None and digest.attempts == 0
+    assert not providers["email"]
+    notifications.send_pending_digests(limit=1)
+    digest.refresh_from_db()
+    assert digest.state == "accepted" and "Latest bill title" in providers["email"][0]["text"]
+
+
+def test_summary_user_text_cannot_materialize_authentication_markers(client, group, recipient, clock, providers):
+    enable(recipient)
+    bill = add_bill(client, group)
+    Expense.objects.filter(pk=bill["id"]).update(description="https://example.invalid/?code=MEROSPLIT_EMAIL_LOGIN_CODE")
+    Participant.objects.filter(pk=group[1][0]).update(display_name_override="MEROSPLIT_EMAIL_LOGIN_LINK")
+    Group.objects.filter(pk=group[0]).update(name="MEROSPLIT_EMAIL_LOGIN_EXPIRY")
+    clock[0] += timedelta(minutes=10)
+    notifications.send_pending_digests(limit=1)
+    payload = providers["email"][0]["payload"]
+    from .email_links import CODE_PLACEHOLDER, EXPIRY_PLACEHOLDER, LINK_PLACEHOLDER
+    assert payload["text"].count(LINK_PLACEHOLDER) == 1
+    assert CODE_PLACEHOLDER not in payload["text"] and EXPIRY_PLACEHOLDER not in payload["text"]
+    resolved = email_delivery.materialize_payload(payload)
+    assert "_expense_summary" not in resolved and "_review_notice_ids" not in resolved
+    assert "?code=MeroSplit EMAIL_LOGIN_CODE" in resolved["text"]
+
+
+@pytest.mark.parametrize('legacy', [False, True])
+def test_review_bills_email_link_resolves_the_bill_instead_of_home(client, group, recipient, clock, providers, configured, legacy):
+    from .email_links import delivery_url
+    from .models import EmailLoginGrant
+    from .test_email_links import exchange
+
+    enable(recipient)
+    bill = add_bill(client, group)
+    clock[0] += timedelta(minutes=11)
+    assert notifications.send_pending_digests() == 1
+    digest = ExpenseDigest.objects.get()
+    grant = EmailLoginGrant.objects.get(pk=digest.payload['_email_link_id'])
+    if legacy:
+        from .email_links import _stored_digest
+        grant.target = {'kind': 'home'}
+        grant.proof_digest = _stored_digest(grant)
+        grant.save(update_fields=['target', 'proof_digest'])
+        digest.payload.pop('_review_notice_ids', None)
+        digest.save(update_fields=['payload'])
+    assert '/app/sign-in/' in delivery_url(grant.id)
+    response = exchange(Client(), grant)
+    assert response.status_code == 200, response.content
+    assert response.json()['data']['target'] == {'kind': 'group', 'group_id': group[0], 'expense_id': bill['id']}
+
+
+@pytest.mark.parametrize('change', ['seen', 'edited', 'removed', 'deleted'])
+def test_review_email_keeps_bill_identity_but_rechecks_current_access(client, group, recipient, clock, providers, configured, change):
+    from .models import EmailLoginGrant
+    from .test_email_links import exchange
+    enable(recipient)
+    bill = add_bill(client, group)
+    clock[0] += timedelta(minutes=11)
+    notifications.send_pending_digests()
+    digest = ExpenseDigest.objects.get()
+    grant = EmailLoginGrant.objects.get(pk=digest.payload['_email_link_id'])
+    if change == 'seen':
+        ExpenseNotice.objects.update(seen_at=clock[0])
+    elif change == 'edited':
+        ExpenseNotice.objects.update(digest=None, expense_version=2)
+        Expense.objects.filter(pk=bill['id']).update(version=2)
+    elif change == 'removed':
+        Participant.objects.filter(pk=group[1][1]).update(removed=True)
+    else:
+        Expense.objects.filter(pk=bill['id']).update(deleted=True)
+    response = exchange(Client(), grant)
+    if change in ['seen', 'edited']:
+        assert response.status_code == 200, response.content
+        assert response.json()['data']['target']['expense_id'] == bill['id']
+    else:
+        assert response.status_code == 400
+        grant.refresh_from_db()
+        assert grant.consumed_at is None
+
+
+def test_renewed_review_email_retains_the_original_digest(client, group, recipient, clock, providers, configured):
+    from .email_links import renew_email_link
+    from .models import EmailLoginGrant
+    from .test_email_links import exchange
+    enable(recipient)
+    bill = add_bill(client, group)
+    clock[0] += timedelta(minutes=11)
+    notifications.send_pending_digests()
+    digest = ExpenseDigest.objects.get()
+    original = EmailLoginGrant.objects.get(pk=digest.payload['_email_link_id'])
+    clock[0] += timedelta(days=2)
+    assert renew_email_link(original.id, '192.0.2.0/24')
+    renewed = EmailLoginGrant.objects.get(renewal_of=original)
+    response = exchange(Client(), renewed)
+    assert response.status_code == 200, response.content
+    assert response.json()['data']['target'] == {'kind': 'group', 'group_id': group[0], 'expense_id': bill['id']}
+
+
+def test_review_email_opens_first_displayed_bill_even_if_another_notice_changes(client, group, recipient, clock, providers, configured):
+    from .models import EmailLoginGrant
+    from .test_email_links import exchange
+    enable(recipient)
+    older = add_bill(client, group)
+    clock[0] += timedelta(seconds=1)
+    displayed_first = add_bill(client, group)
+    clock[0] += timedelta(minutes=11)
+    notifications.send_pending_digests()
+    digest = ExpenseDigest.objects.get()
+    grant = EmailLoginGrant.objects.get(pk=digest.payload['_email_link_id'])
+    ExpenseNotice.objects.filter(expense_id=older['id']).update(created_at=clock[0], digest=None)
+    response = exchange(Client(), grant)
+    assert response.status_code == 200, response.content
+    assert response.json()['data']['target']['expense_id'] == displayed_first['id']

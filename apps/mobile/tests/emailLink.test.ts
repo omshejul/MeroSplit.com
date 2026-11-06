@@ -33,3 +33,9 @@ test('cold bootstrap and duplicate warm events retain only in-memory proof and s
     unsubscribe(); assert.equal(listeners.size, 0);
   } finally { forgetEmailProof(); Object.assign(globalThis, { window: originalWindow }); }
 });
+
+test('email authentication preserves the exact bill destination', () => {
+  const expense = '12345678-9abc-def0-1234-56789abcdef0';
+  assert.deepEqual(emailTarget({ kind: 'group', group_id: id, expense_id: expense }), { kind: 'group', group_id: id, expense_id: expense });
+  assert.throws(() => emailTarget({ kind: 'group', group_id: id, expense_id: '../other' }), /not available/);
+});

@@ -30,13 +30,18 @@ export function activityPresentation(item: ActivityItem) {
     case 'member_added': title = `${actor} added ${item.person?.is_self ? 'you' : person}`; break;
     case 'member_joined': title = `${person} joined the group`; break;
     case 'member_removed': title = `${actor} removed ${item.person?.is_self ? 'you' : person}`; break;
+    case 'simplify_debts_changed': title = `${actor} changed Simplify debts`; break;
+    case 'group_renamed': title = `${actor} renamed the group from ${item.name_change?.before ?? 'its previous name'} to ${item.name_change?.after ?? item.group.name}`; break;
+    case 'group_photo_changed': title = `${actor} changed the group photo`; break;
+    case 'group_photo_removed': title = `${actor} removed the group photo`; break;
+    case 'member_nickname_changed': title = `${actor} changed ${item.person?.is_self ? 'your' : `${item.name_change?.before ?? person}'s`} nickname to ${item.name_change?.after ?? person}`; break;
     case 'group_created': title = `${actor} created the group`; break;
     case 'group_archived': title = `${actor} archived the group`; break;
     case 'group_unarchived': title = `${actor} reopened the group`; break;
   }
   const cashflow = item.kind !== 'payment_recorded' || !item.payment || item.payment.reversed ? '0'
     : ((item.payment.recipient.is_self ? 1n : 0n) - (item.payment.sender.is_self ? 1n : 0n)) * BigInt(item.payment.amount);
-  const icon = item.kind.startsWith('bill_') ? 'bill' : item.kind === 'payment_reversed' ? 'refresh' : item.kind.startsWith('payment_') ? 'pay'
+  const icon = item.kind.startsWith('bill_') ? 'bill' : item.kind === 'payment_reversed' ? 'refresh' : item.kind.startsWith('payment_') ? 'payment'
     : item.kind === 'member_removed' ? 'remove' : item.kind.startsWith('member_') ? 'personAdd' : 'groups';
   return { title, target, cashflow: String(cashflow), amount: item.payment?.amount, icon } as const;
 }

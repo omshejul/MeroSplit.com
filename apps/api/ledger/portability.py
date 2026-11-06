@@ -66,6 +66,7 @@ def csv_export(export):
             "net_paise",
             "provenance",
             "reversed_or_deleted",
+            "time",
         ]
     )
 
@@ -89,6 +90,7 @@ def csv_export(export):
                     net,
                     "recorded_expense",
                     expense["deleted"],
+                    expense.get("time") or "",
                 ]
             )
     for payment in group["settlements"]:
@@ -106,6 +108,7 @@ def csv_export(export):
                     net,
                     payment["method"],
                     payment["reversed"],
+                    "",
                 ]
             )
     opening = group["opening_balance"]
@@ -123,6 +126,7 @@ def csv_export(export):
                     amount,
                     "acknowledged_opening",
                     False,
+                    "",
                 ]
             )
     return stream.getvalue()
@@ -173,6 +177,8 @@ def _remove_authored_text(group, actor_id):
         str(p.id): "Participant" for p in group.participants.filter(user__isnull=True)
         if authored_guests.get(str(p.id)) == p.name or (created_here and not any(
             c.kind == "participant_added" and c.data.get("id") == str(p.id) for c in changes))}}
+    nickname_edits = {c.data.get("participant_id"): (c.actor_id, c.data.get("after")) for c in changes if c.kind == "participant_nickname_changed"}
+    group_name_edit = next(((c.actor_id, c.data.get("after")) for c in reversed(changes) if c.kind == "group_renamed"), None)
     for change in changes:
         original = change.data
         data = _remove_user_ids(original, actor_id)
@@ -198,6 +204,8 @@ def _remove_authored_text(group, actor_id):
                 last[field] = original[field]
                 if provenance.get(field) == actor_id:
                     data[field] = placeholder
+        if change.kind in ("group_renamed", "participant_nickname_changed") and (change.actor_id == actor_id or data.get("participant_id") in own_people):
+            data.update(before="Removed name", after="Removed name")
         if change.actor_id == actor_id:
             for field, placeholder in {"name": "Removed content", "source": "Removed source", "source_hash": ""}.items():
                 if field in data:
@@ -223,9 +231,13 @@ def _remove_authored_text(group, actor_id):
             from .models import ExpenseCategoryDecision
             ExpenseCategoryDecision.objects.filter(expense=expense).delete()
             Expense.objects.filter(pk=expense.pk).update(**fields, version=F("version") + 1)
-    if created_here:
+    for person_id, (editor, label) in nickname_edits.items():
+        if editor == actor_id:
+            Participant.objects.filter(group=group, id=person_id, display_name_override=label).update(display_name_override="")
+    if created_here or group_name_edit == (actor_id, group.name):
         group.name = "Shared group"
-        group.import_source_hash = ""
+        if created_here:
+            group.import_source_hash = ""
         group.save(update_fields=["name", "import_source_hash"])
     for person in group.participants.filter(user__isnull=True):
         if guest_names.get(str(person.id)) == person.name or (created_here and not any(
@@ -284,7 +296,7 @@ def delete_account(actor):
                 .exclude(user=actor).order_by("id").first()
             )
             if not successor:
-                files = UploadedFile.objects.filter(expense__group=group)
+                files = UploadedFile.objects.filter(Q(expense__group=group) | Q(icon_group=group))
                 media_ids.extend(files.values_list("id", flat=True))
                 files.update(state="deleted", purged=False, name="", source_hash="", size=0)
                 group.delete()

@@ -136,7 +136,7 @@ test('production Yes is single-flight; uncertain retry preserves one frozen payl
 
 test('in-app multiple-app selection does not prepare or arm until a choice is made', async () => {
   let chooser: unknown;
-  const pay = productionFunction('pay', { lock: { current: false }, busy: false, group: { archived: false }, setSaving: () => {}, setError: () => {}, setNotice: () => {}, chooser: null, sender: 'self', recipient: 'other', amount: '3.34', rupeesToPaise: () => '334', selfId: 'self', validateUPIPayment: () => ({ vpa: identity.vpa, name: identity.payeeName }), Platform: { OS: 'ios' }, availableUPIApps: async () => [{ id: 'phonepe' }, { id: 'google-pay' }], Linking: { canOpenURL: async () => true }, mounted: { current: true }, handoff: () => assert.fail('chooser has not selected an app'), setChooser: (next: unknown) => { chooser = next; } });
+  const pay = productionFunction('pay', { lock: { current: false }, busy: false, group: { archived: false }, setSaving: () => {}, setSavingAction: () => {}, setError: () => {}, setNotice: () => {}, chooser: null, sender: 'self', recipient: 'other', amount: '3.34', rupeesToPaise: () => '334', selfId: 'self', validateUPIPayment: () => ({ vpa: identity.vpa, name: identity.payeeName }), Platform: { OS: 'ios' }, availableUPIApps: async () => [{ id: 'phonepe' }, { id: 'google-pay' }], Linking: { canOpenURL: async () => true }, mounted: { current: true }, handoff: () => assert.fail('chooser has not selected an app'), setChooser: (next: unknown) => { chooser = next; } });
   await pay(); assert.ok(chooser);
 });
 
@@ -151,7 +151,7 @@ test('production web preparation durably arms before rendering a clickable hando
 test('production web button invokes bound URL opener in the original gesture before a promise tick', async () => {
   const order: string[] = [];
   const frozen = paymentReturnEvent(fresh(), { type: 'opening' });
-  const openWebPayment = productionFunction('openWebPayment', { webQuote: { quote, target: { name: identity.payeeName, vpa: identity.vpa } }, lock: { current: false }, busy: false, returnRef: { current: frozen }, setSaving: () => {}, setError: () => {}, openUPIPayment, Linking: { bound: true, async openURL(this: { bound: boolean }, url: string) { assert.equal(this.bound, true); assert.match(url, /^upi:\/\/pay\?/); order.push('open URL'); } }, transitionReturn: async (event: PaymentReturnEvent) => { order.push(event.type); }, mounted: { current: true }, setWebQuote: () => {} });
+  const openWebPayment = productionFunction('openWebPayment', { webQuote: { quote, target: { name: identity.payeeName, vpa: identity.vpa } }, lock: { current: false }, busy: false, returnRef: { current: frozen }, setSaving: () => {}, setSavingAction: () => {}, setError: () => {}, openUPIPayment, Linking: { bound: true, async openURL(this: { bound: boolean }, url: string) { assert.equal(this.bound, true); assert.match(url, /^upi:\/\/pay\?/); order.push('open URL'); } }, transitionReturn: async (event: PaymentReturnEvent) => { order.push(event.type); }, mounted: { current: true }, setWebQuote: () => {} });
   queueMicrotask(() => order.push('promise tick'));
   openWebPayment();
   assert.deepEqual(order, ['open URL']);

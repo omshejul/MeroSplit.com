@@ -16,9 +16,16 @@ from django.core.exceptions import ImproperlyConfigured
 from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
+from django.utils.crypto import salted_hmac
 from django.views.decorators.debug import sensitive_variables
 
-from .mcp_models import McpOAuthClient, McpOAuthGrant, McpOAuthPendingAuthorization, McpOAuthRefreshDigest
+from .mcp_models import (
+    McpOAuthClient,
+    McpOAuthGrant,
+    McpOAuthPendingAuthorization,
+    McpOAuthRefreshDigest,
+    McpRateBucket,
+)
 from .otp import EmailCodeLimited, consume_limits
 
 MCP_SCOPE = "merosplit:mcp"
@@ -29,8 +36,9 @@ NATIVE_SCHEMES = {"codex", "cursor", "vscode", "vscode-insiders", "claude"}
 
 
 class OAuthError(Exception):
-    def __init__(self, error="invalid_request", status=400):
+    def __init__(self, error="invalid_request", status=400, *, retry_after_seconds=60):
         self.error, self.status = error, status
+        self.retry_after_seconds = retry_after_seconds
         super().__init__(error)
 
 
@@ -64,8 +72,43 @@ def _text(value, maximum, *, required=True):
     return value
 
 
+def consume_token_buckets(limits):
+    """Atomically debit all budgets, preserving fractional refill across workers."""
+    unit = 1_000_000
+    with transaction.atomic():
+        locked = []
+        for key, capacity, refill in sorted(limits):
+            key = _digest(f"mcp-token-bucket:{key}")
+            McpRateBucket.objects.get_or_create(key=key, defaults={"tokens": capacity * unit, "refilled_at": timezone.now()})
+            locked.append((McpRateBucket.objects.select_for_update().get(pk=key), capacity, refill))
+        now, pending, retry = timezone.now(), [], 0
+        for row, capacity, refill in locked:
+            elapsed = (now - row.refilled_at) // timedelta(microseconds=1)
+            available = min(capacity * unit, row.tokens + max(0, elapsed) * refill)
+            if available < unit:
+                # Include a future timestamp if a worker's clock moves backward.
+                missing = unit - available + max(0, -elapsed) * refill
+                retry = max(retry, (missing + refill * unit - 1) // (refill * unit))
+            pending.append((row, available))
+        if retry:
+            raise OAuthError("temporarily_unavailable", 429, retry_after_seconds=retry)
+        for row, available in pending:
+            row.tokens, row.refilled_at = available - unit, max(now, row.refilled_at)
+            row.save(update_fields=["tokens", "refilled_at"])
+
+
 def rate_limit(action, network, *, user_id=None, grant_id=None):
     """Persist abuse budgets separately, including when a later operation fails."""
+    if action in {"ingress", "connection", "tool"}:
+        transport = action != "tool"
+        buckets = [(f"{action}:global", 1000 if transport else 200, 100 if transport else 10)]
+        if action == "ingress":
+            buckets.append((f"{action}:network:{network}", 200, 10))
+        if user_id is not None:
+            buckets.append((f"{action}:user:{user_id}", 100 if transport else 40, 10 if transport else 2))
+        if grant_id is not None:
+            buckets.append((f"{action}:grant:{grant_id}", 100 if transport else 20, 10 if transport else 1))
+        return consume_token_buckets(buckets)
     limits = [(f"mcp-{action}-global", "all", 60, 600), (f"mcp-{action}-network", network, 60, 60)]
     if action == "register":
         limits += [("mcp-register-hour", network, 3600, 20), ("mcp-register-global-hour", "all", 3600, 300)]
@@ -200,10 +243,14 @@ def decide_authorization(actor, request_id, *, approved, expected_user_id, netwo
         if not approved:
             row.denied_at = now
             row.save(update_fields=["denied_at"])
-            return _redirect(row, error="access_denied")
+            return "/mcp/device?cancelled=1" if row.device_secret_digest else _redirect(row, error="access_denied")
         # User lock also serializes the per-account connection ceiling and deletion.
         if McpOAuthGrant.objects.filter(user=user, revoked_at__isnull=True, refresh_expires_at__gt=now).count() >= 50:
             raise OAuthError("access_denied", 403)
+        if row.device_secret_digest:
+            row.user, row.approved_at = user, now
+            row.save(update_fields=["user", "approved_at"])
+            return "/mcp/device?done=1"
         code = "mero_code_" + secrets.token_urlsafe(32)
         row.user, row.approved_at, row.code_digest = user, now, _digest(code)
         row.code_expires_at = now + timedelta(minutes=2)
@@ -290,8 +337,7 @@ def authenticate_access_token(raw, *, network=None, enforce_limits=True):
         scope=MCP_SCOPE, resource__in=trusted_resources(), user__is_active=True).first()
     if grant is None:
         return None
-    # SDK ingress supplies its trusted network when available; account/grant
-    # budgets always apply even when called independently of that adapter.
+    # Account/grant budgets survive token rotation and changes of network.
     if enforce_limits:
         rate_limit("tool", network or f"grant:{grant.id}", user_id=grant.user_id, grant_id=grant.id)
     McpOAuthGrant.objects.filter(pk=grant.pk).filter(Q(last_used_at__isnull=True) | Q(last_used_at__lt=now - timedelta(minutes=5))).update(last_used_at=now)
@@ -340,3 +386,72 @@ def pending_authorization(request):
         request.session.pop(MCP_PENDING_SESSION_KEY, None)
         return {"authorization_url": None}
     return {"authorization_url": f"/oauth/authorize?request={row.id}"}
+
+
+# This approval bridge returns the original PKCE callback to a waiting CLI.
+# It is deliberately separate from RFC 8628 token grants and OAuth discovery.
+def _user_code_digest(value):
+    value = _text(value, 32).replace("-", "").replace(" ", "").upper()
+    if not re.fullmatch(r"[A-HJ-NP-Z2-9]{8}", value):
+        raise OAuthError()
+    return salted_hmac("merosplit.mcp-device", value, algorithm="sha256").hexdigest()
+
+
+@sensitive_variables()
+def begin_device_authorization(data, network):
+    rate_limit("device-start", network)
+    row = begin_authorization(data, network)
+    secret = secrets.token_urlsafe(32)
+    code = "".join(secrets.choice("ABCDEFGHJKLMNPQRSTUVWXYZ23456789") for _ in range(8))
+    row.device_secret_digest, row.user_code_digest = _digest(secret), _user_code_digest(code)
+    row.save(update_fields=["device_secret_digest", "user_code_digest"])
+    return {"device_code": secret, "user_code": code[:4] + "-" + code[4:],
+            "verification_uri": issuer_url() + "/mcp/device", "expires_in": 600, "interval": 5}
+
+
+def pending_device_code(value, network):
+    # Short user codes need a tighter guessing budget than high-entropy secrets.
+    try:
+        with transaction.atomic():
+            consume_limits([("mcp-device-entry", network, 600, 20),
+                            ("mcp-device-entry-global", "all", 60, 600)])
+    except EmailCodeLimited:
+        raise OAuthError("temporarily_unavailable", 429) from None
+    row = McpOAuthPendingAuthorization.objects.filter(user_code_digest=_user_code_digest(value)).first()
+    return get_pending(row.id if row else None)
+
+
+@sensitive_variables()
+def poll_device_authorization(data, network):
+    rate_limit("device-poll", network)
+    client = _client(data.get("client_id"))
+    digest = _digest(_text(data.get("device_code"), 256))
+    error, result = None, None
+    with transaction.atomic():
+        row = McpOAuthPendingAuthorization.objects.select_for_update().filter(
+            device_secret_digest=digest, client=client).first()
+        now = timezone.now()
+        if not row or row.device_delivered_at or row.resource not in trusted_resources():
+            raise OAuthError("invalid_grant")
+        if row.expires_at <= now:
+            raise OAuthError("expired_token")
+        if row.denied_at:
+            raise OAuthError("access_denied")
+        if row.device_last_poll_at and (now - row.device_last_poll_at).total_seconds() < row.device_poll_interval:
+            row.device_poll_interval = min(60, row.device_poll_interval + 5)
+            error = "slow_down"
+        elif not row.approved_at:
+            error = "authorization_pending"
+        elif not get_user_model().objects.filter(pk=row.user_id, is_active=True).exists():
+            raise OAuthError("access_denied")
+        else:
+            code = "mero_code_" + secrets.token_urlsafe(32)
+            row.code_digest, row.code_expires_at, row.device_delivered_at = _digest(code), now + timedelta(minutes=2), now
+            row.save(update_fields=["code_digest", "code_expires_at", "device_delivered_at"])
+            result = {"redirect_url": _redirect(row, code=code)}
+        row.device_last_poll_at = now
+        row.save(update_fields=["device_last_poll_at", "device_poll_interval"])
+    # Persist polling limits even when returning a protocol error.
+    if error:
+        raise OAuthError(error)
+    return result

@@ -16,7 +16,13 @@ from django.utils import timezone
 
 from . import email_delivery, email_links
 from . import mcp_oauth as oauth
-from .mcp_models import McpOAuthClient, McpOAuthGrant, McpOAuthPendingAuthorization, McpOAuthRefreshDigest
+from .mcp_models import (
+    McpOAuthClient,
+    McpOAuthGrant,
+    McpOAuthPendingAuthorization,
+    McpOAuthRefreshDigest,
+    McpRateBucket,
+)
 from .models import EmailRateBucket
 from .test_web_app import exported_app as exported_app
 
@@ -149,7 +155,7 @@ def test_logged_out_request_retained_for_normal_login_then_explicit_consent():
     assert client.session[oauth.MCP_PENDING_SESSION_KEY] == request_id
     assert client.get("/api/v1/me/mcp/pending").json() == {"authorization_url": f"/oauth/authorize?request={request_id}"}
     response = client.get(f"/oauth/authorize?request={request_id}")
-    assert response.status_code == 200 and b"Allow" in response.content and b"Cancel" in response.content
+    assert response.status_code == 200 and b"Connect Synthetic client" in response.content and b"Cancel" in response.content
     assert actor.email.encode() in response.content and not McpOAuthGrant.objects.exists()
 
 
@@ -420,6 +426,8 @@ def test_invalid_http_bodies_are_also_network_limited_without_creating_clients()
         assert client.post("/oauth/register", data="[", content_type="application/json").status_code == 400
     response = client.post("/oauth/register", data="[", content_type="application/json")
     assert response.status_code == 429 and response["Retry-After"] == "60"
+    assert "Try again in a minute" in response.json()["error_description"]
+    assert "Connect again" not in response.json()["error_description"]
     assert not McpOAuthClient.objects.exists()
 
 
@@ -428,18 +436,20 @@ def test_tool_reauthentication_checks_each_time_without_double_charging_and_neve
     cookie = browser(actor).session.session_key
     assert not oauth.authenticate_access_token(cookie)
     assert oauth.authenticate_access_token(tokens["access_token"], network=NETWORK)
-    before = list(EmailRateBucket.objects.order_by("key").values_list("key", "count"))
+    before = list(McpRateBucket.objects.order_by("key").values_list("key", "tokens", "refilled_at"))
     for _ in range(3):
         assert oauth.authenticate_access_token(tokens["access_token"], enforce_limits=False)[0].pk == actor.pk
-    assert list(EmailRateBucket.objects.order_by("key").values_list("key", "count")) == before
+    assert list(McpRateBucket.objects.order_by("key").values_list("key", "tokens", "refilled_at")) == before
     McpOAuthGrant.objects.update(revoked_at=timezone.now())
     assert not oauth.authenticate_access_token(tokens["access_token"], enforce_limits=False)
 
 
 @pytest.mark.django_db(transaction=True)
-def test_tool_grant_rate_is_durable_across_new_database_connections():
+def test_tool_grant_rate_is_durable_across_new_database_connections(monkeypatch):
     _, _, tokens = granted()
-    for _ in range(60):
+    now = timezone.now()
+    monkeypatch.setattr(oauth.timezone, "now", lambda: now)
+    for _ in range(20):
         assert oauth.authenticate_access_token(tokens["access_token"], network=NETWORK)
     connections.close_all()
     with pytest.raises(oauth.OAuthError) as error:
@@ -550,6 +560,7 @@ def test_https_consent_uses_hidden_form_csrf_without_header(settings, host, deci
     assert "form-action" not in policy
     assert "'self'" in policy["style-src"] and "'self'" in policy["font-src"]
     assert policy["default-src"] == ["'none'"]
+    assert policy["img-src"] == ["'self'"]
     assert policy["frame-ancestors"] == ["'none'"] and policy["base-uri"] == ["'none'"]
     assert b'action="/oauth/authorize"' in page.content
     assert b'name="referrer" content="same-origin"' in page.content
@@ -601,3 +612,16 @@ def test_public_setup_verifies_without_financial_reads_or_manual_keys():
     assert 'claude mcp login' not in text
     assert '"mcpServers":{"merosplit":{"url":' in text
     assert 'Other Streamable HTTP clients' in text
+    assert 'config/mcpServer/reload' in text and 'mcpServerStatus/list' in text
+    assert 'Missing tools alone do not prove that sign-in expired.' in text
+    assert 'retry_after_seconds' in text and 'HTTP 429' in text
+    assert 'start a new chat to load the tools' not in text
+    assert 'Muse Code' in text and 'muse mcp login merosplit' in text and 'muse resume' in text
+    assert 'VS Code and Copilot' in text and 'MCP: List Servers' in text
+    assert 'complete browser OAuth if needed' in text
+    assert 'Report success only after the account check succeeds' in text
+    assert 'Settings → MCP servers → merosplit → Restart' in text
+    assert 'After the person replies, rediscover the tools' in text
+    assert 'If the same error remains, explain it instead of repeating the handoff.' in text
+    assert 'Open the provided authorization URL manually only if the browser did not open automatically' in text
+    assert 'use that same pending flow rather than starting another login' in text

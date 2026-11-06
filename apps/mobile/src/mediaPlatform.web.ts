@@ -1,5 +1,5 @@
 import { publicAppUrl } from './appLinks';
-import type { MediaMetadata, PickedMedia } from './media';
+import type { MediaMetadata, PickedMedia, MediaSource } from './media';
 import type { Session } from './types';
 import { chooseBrowserFile, stagedBlob, storeStagedBlob } from './webFiles';
 const images = ['image/jpeg', 'image/png', 'image/webp'];
@@ -9,8 +9,8 @@ export function validateMedia(file: PickedMedia, avatar = false): void {
   if (!Number.isSafeInteger(file.size) || file.size <= 0 || file.size > (avatar ? 5 : 20) * 1_048_576) throw new Error(`Choose a file above zero and up to ${avatar ? 5 : 20} MB.`);
   if (!file.uri.startsWith('blob:') && !stagedId(file.uri)) throw new Error('Choose a file from this browser.');
 }
-export async function pickMedia(photo: boolean, avatar = false): Promise<PickedMedia | null> {
-  const file = await chooseBrowserFile((photo || avatar ? images : [...images, 'application/pdf']).join(',')); if (!file) return null;
+export async function pickMedia(photo: MediaSource, avatar = false): Promise<PickedMedia | null> {
+  const file = await chooseBrowserFile((photo || avatar ? images : [...images, 'application/pdf']).join(','), photo === 'camera' ? 'environment' : undefined); if (!file) return null;
   const picked = { uri: URL.createObjectURL(file), name: file.name, type: file.type, size: file.size };
   try { validateMedia(picked, avatar); return picked; } catch (error) { URL.revokeObjectURL(picked.uri); throw error; }
 }
@@ -34,7 +34,10 @@ export async function openPrivateMedia(session: Session, media: MediaMetadata): 
   if (opened) opened.opener = null;
 }
 export async function clearMediaPreview(_media: MediaMetadata): Promise<void> {}
-export async function clearMediaPreviews(): Promise<void> {}
+export async function clearMediaPreviews(): Promise<void> {
+  const { clearProfilePhotoCache } = await import("./profilePhotoCache.web");
+  try { await clearProfilePhotoCache(); } catch { /* Cache cleanup must not prevent sign-out. */ }
+}
 
 export async function localMediaUrl(file: PickedMedia): Promise<string> { return URL.createObjectURL(await blob(file)); }
 export function clearLocalMediaUrl(uri: string): void { if (uri.startsWith('blob:')) URL.revokeObjectURL(uri); }

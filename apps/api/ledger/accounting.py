@@ -80,6 +80,17 @@ def validate_expense(
         shares = {person: _integer(value, maximum=MAX_AMOUNT) for person, value in values.items()}
         if sum(shares.values()) != amount:
             raise AccountingError("Exact shares must equal the expense total.")
+    elif mode == "adjustment":
+        adjustments = {person: _integer(value, signed=True) for person, value in values.items()}
+        if any(abs(value) > MAX_AMOUNT for value in adjustments.values()):
+            raise AccountingError("Adjustment is outside the supported range.")
+        remainder = amount - sum(adjustments.values())
+        if remainder < 0:
+            raise AccountingError("Adjustments cannot exceed the bill total.")
+        shares = _allocate(remainder, dict.fromkeys(values, 1))
+        shares = {person: shares[person] + value for person, value in adjustments.items()}
+        if any(value < 0 for value in shares.values()):
+            raise AccountingError("An adjustment makes someone's share negative. Reduce the subtraction.")
     elif mode == "percent":
         weights = {person: _weight(value, 2) for person, value in values.items()}
         if sum(weights.values()) != 10_000:
@@ -88,7 +99,7 @@ def validate_expense(
     elif mode == "shares":
         shares = _allocate(amount, {person: _weight(value, 4) for person, value in values.items()})
     else:
-        raise AccountingError("Split mode must be equal, exact, percent, or shares.")
+        raise AccountingError("Split mode must be equal, exact, percent, shares, or adjustment.")
     return (
         {person: str(contributions[person]) for person in people},
         {person: str(shares.get(person, 0)) for person in people},
@@ -119,3 +130,76 @@ def propose_transfers(balances: Mapping[str, str]) -> list[dict[str, str]]:
         if creditors[recipient] == 0:
             del creditors[recipient]
     return transfers
+
+
+def combine_transfers(transfers):
+    """Offset only mutual debts between the same two people. Preserve chains/cycles."""
+    pairs = {}
+    for row in transfers:
+        sender, recipient, amount = row["sender"], row["recipient"], int(row["amount"])
+        if sender == recipient:
+            raise AccountingError("Choose different participants")
+        pair = tuple(sorted((sender, recipient)))
+        pairs[pair] = pairs.get(pair, 0) + (amount if sender == pair[0] else -amount)
+    return [
+        {"sender": left if amount > 0 else right, "recipient": right if amount > 0 else left, "amount": str(abs(amount))}
+        for (left, right), amount in sorted(pairs.items()) if amount
+    ]
+
+
+def direct_transfers(expense_rows, settlement_rows, opening_balances=None, checkpoint=()):
+    """Allocate each bill independently, then subtract actual payments and a settled checkpoint."""
+    rows = []
+    for _, paid, shares in expense_rows:
+        nets = {person: str(int(paid.get(person, "0")) - int(shares.get(person, "0")))
+                for person in paid.keys() | shares.keys()}
+        rows.extend(propose_transfers(nets))
+    if opening_balances:
+        rows.extend(propose_transfers(opening_balances))
+    rows.extend({"sender": str(recipient), "recipient": str(sender), "amount": str(amount)}
+                for sender, recipient, amount in settlement_rows)
+    rows.extend({"sender": row["recipient"], "recipient": row["sender"], "amount": row["amount"]} for row in checkpoint)
+    return combine_transfers(rows)
+
+
+def credit_routed_payments(transfers, payments):
+    """Credit simplified payments through direct obligations without asking for refunds.
+
+    A pays C against A -> B -> C by reducing both debts. For separate
+    A -> B and D -> C debts, the same payment leaves D owing B instead.
+    The result changes routing only, never anyone's net balance.
+    """
+    payments = [(str(sender), str(recipient), int(amount)) for sender, recipient, amount in payments]
+    # The supplied direct plan already subtracts payments. Undo those deductions
+    # before allocating each payment to the debts it discharges.
+    rows = combine_transfers([*transfers, *(
+        {"sender": sender, "recipient": recipient, "amount": str(amount)}
+        for sender, recipient, amount in payments
+    )])
+    edges = {(row["sender"], row["recipient"]): int(row["amount"]) for row in rows}
+
+    def add(sender, recipient, amount):
+        if sender == recipient:
+            return
+        value = edges.pop((sender, recipient), 0) + amount - edges.pop((recipient, sender), 0)
+        if value:
+            edges[(sender, recipient) if value > 0 else (recipient, sender)] = abs(value)
+
+    for sender, recipient, amount in payments:
+        own = min(amount, edges.get((sender, recipient), 0))
+        add(sender, recipient, -own)
+        amount -= own
+        while amount:
+            outgoing = next(((s, r, n) for (s, r), n in sorted(edges.items()) if s == sender), None)
+            incoming = next(((s, r, n) for (s, r), n in sorted(edges.items()) if r == recipient), None)
+            portion = min(amount, outgoing[2] if outgoing else amount, incoming[2] if incoming else amount)
+            if outgoing:
+                add(outgoing[0], outgoing[1], -portion)
+            if incoming:
+                add(incoming[0], incoming[1], -portion)
+            add(incoming[0] if incoming else recipient, outgoing[1] if outgoing else sender, portion)
+            amount -= portion
+    return combine_transfers([
+        {"sender": sender, "recipient": recipient, "amount": str(amount)}
+        for (sender, recipient), amount in edges.items()
+    ])

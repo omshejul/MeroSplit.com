@@ -95,7 +95,7 @@ def test_login_template_keeps_one_click_cta_and_code_fallback():
 
 
 @pytest.mark.parametrize("template,url_name,label", [
-    ("invitation", "invite_url", "View ledger"), ("expense_digest", "app_url", "Open MeroSplit"),
+    ("invitation", "invite_url", "View ledger"), ("expense_digest", "app_url", "Review bills"),
 ])
 def test_invitation_and_digest_ctas_have_actual_expiry_and_keep_help_purpose(template, url_name, label):
     from .email_links import EXPIRY_PLACEHOLDER, LINK_PLACEHOLDER
@@ -103,9 +103,10 @@ def test_invitation_and_digest_ctas_have_actual_expiry_and_keep_help_purpose(tem
         url_name: LINK_PLACEHOLDER, "expires_at": EXPIRY_PLACEHOLDER, "inviter_name": "Synthetic organizer",
     })
     assert LINK_PLACEHOLDER in text and f'href="{LINK_PLACEHOLDER}"' in html and label in html
-    assert f"This link works until {EXPIRY_PLACEHOLDER}." in text and EXPIRY_PLACEHOLDER in html
     if template == "invitation":
+        assert f"This link works until {EXPIRY_PLACEHOLDER}." in text and EXPIRY_PLACEHOLDER in html
         assert "signs you in and joins this ledger" in text and "Opening the invitation does not accept" not in text
         assert 'href="mailto:mail@merosplit.com"' in html
     else:
+        assert "If the link has expired" in text and EXPIRY_PLACEHOLDER not in html
         assert "turn off Email reminders in Me" in text

@@ -46,7 +46,10 @@ def _can_leave(group, person):
         group.expenses.filter(deleted=False).values_list("total", "paid", "shares"),
         group.settlements.filter(reversed=False).values_list("sender_id", "recipient_id", "amount"),
         opening.balances if opening and opening.accepted else None,
+        simplify_debts=group.simplify_debts, debt_checkpoint=group.debt_checkpoint,
     )
+    if not group.simplify_debts and any(str(person.id) in (row["sender"], row["recipient"]) for row in finance["transfers"]):
+        raise HttpError(409, "Settle your repayments first")
     balance = abs(int(finance["balances"][str(person.id)]))
     if balance:
         amount = f"{balance // 100:,}" + (f".{balance % 100:02}" if balance % 100 else "")

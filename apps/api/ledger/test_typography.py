@@ -26,6 +26,19 @@ def test_public_asset_has_only_local_urls_and_keeps_glyph_fallbacks():
     assert 'font-weight: 200 700' in css and 'system-ui, sans-serif' in css
     assert "http" not in css and "* {" not in css
     for template in (settings.BASE_DIR / "ledger/templates/ledger").glob("*.html"):
+        if template.name == "mcp_group.html":
+            # MCP Apps are served from the host's sandbox, without our asset origin.
+            assert "<link" not in template.read_text()
+            continue
         assert 'href="/assets/typography.css"' in template.read_text(), template.name
     assert public_asset(RequestFactory().get("/"), "../../config/settings.py").status_code == 404
     assert Client().get("/assets/fonts/OFL-StackSansText.txt").status_code == 404
+
+
+def test_google_signin_allows_its_shared_typography_and_font():
+    from .google_browser import page
+
+    response = page(RequestFactory().get("/auth/google/callback"), {"process": "login"})
+    assert b'href="/assets/typography.css"' in response.content
+    assert "style-src 'self'" in response["Content-Security-Policy"]
+    assert "font-src 'self'" in response["Content-Security-Policy"]

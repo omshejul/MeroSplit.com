@@ -9,11 +9,17 @@ from uuid import UUID
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db import transaction
-from django.db.models import F, Q
+from django.db.models import Q
 from django.utils import timezone
 from ninja.errors import HttpError
 
-from .category_gateway import CATEGORIES, DEFINITION_REVISION, CategoryUnavailable, evaluate_title
+from .category_gateway import (
+    CATEGORIES,
+    DEFINITION_REVISION,
+    CategoryUnavailable,
+    evaluate_title,
+)
+from .expense_icon_catalog import canonical_icon
 from .models import Expense, ExpenseCategoryCache, ExpenseCategoryDecision
 from .services import visible_group
 
@@ -31,8 +37,8 @@ def normalized_title(title):
     return " ".join(unicodedata.normalize("NFC", unicodedata.normalize("NFC", title).casefold()).split())
 
 
-def cache_revision():
-    return hashlib.sha256(f"{NORMALIZATION_VERSION}:{DEFINITION_REVISION}".encode()).hexdigest()
+def cache_revision(definition=None):
+    return hashlib.sha256(f"{NORMALIZATION_VERSION}:{definition or DEFINITION_REVISION}".encode()).hexdigest()
 
 
 def normalized_digest(title):
@@ -40,7 +46,7 @@ def normalized_digest(title):
 
 
 def _binding(actor, expense):
-    """The reader owns this cache, even when someone else created the shared-group bill."""
+    """Authorize each bill separately, sharing only its normalized title's category."""
     raw, revision, now = title_digest(expense.description), cache_revision(), timezone.now()
     legacy = ExpenseCategoryDecision.objects.filter(
         expense=expense, requested_by=actor, title_digest=raw, cache__isnull=True,
@@ -51,7 +57,7 @@ def _binding(actor, expense):
     if legacy and legacy.state == "claimed":
         state, error = "uncertain", "legacy_dispatch"
     cache, _ = ExpenseCategoryCache.objects.select_for_update().get_or_create(
-        owner=actor, title_digest=normalized_digest(expense.description), definition_revision=revision,
+        owner=None, title_digest=normalized_digest(expense.description), definition_revision=revision,
         defaults={"state": state, "last_error": error, "category": legacy.category if legacy and state == "ready" else ""},
     )
     row, _ = ExpenseCategoryDecision.objects.get_or_create(
@@ -89,18 +95,7 @@ def automatic(expense):
 
 
 def manual_category(value):
-    key = "".join(c for c in value.casefold() if c.isalpha())
-    aliases = {
-        "foodanddrink": "food",
-        "diningout": "food",
-        "electricity": "utilities",
-        "gas": "utilities",
-        "transportation": "transport",
-        "hotel": "travel",
-        "medicine": "health",
-        "medical": "health",
-    }
-    return aliases.get(key, key if key in CATEGORIES else "general")
+    return canonical_icon(value)
 
 
 @transaction.atomic
@@ -160,7 +155,7 @@ def _available(actor_id, expense_id):
 
 def _matches(row, expense, cache):
     return (expense is not None and automatic(expense)
-            and row.requested_by_id == cache.owner_id
+            and cache.owner_id is None
             and title_digest(expense.description) == row.title_digest
             and normalized_digest(expense.description) == cache.title_digest
             and row.definition_revision == cache.definition_revision == cache_revision())
@@ -267,14 +262,15 @@ def process_category_decisions(*, evaluate=None):
         expired | Q(cache__state="uncertain", cache__last_error="abandoned_claim"))
     for identifier in bindings.order_by("pk").values_list("pk", flat=True)[:100]:
         bindings.filter(pk=identifier).update(state="uncertain", category="", last_error="abandoned_claim", lease_until=None)
-    identifier = (ExpenseCategoryDecision.objects.filter(state="pending", cache__state="pending", cache__owner_id=F("requested_by_id"))
+    identifier = (ExpenseCategoryDecision.objects.filter(state="pending", definition_revision=cache_revision(),
+                  cache__state="pending", cache__owner__isnull=True, cache__definition_revision=cache_revision())
                   .order_by("pk").values_list("pk", flat=True).first())
     if identifier is None or not (claim := _claim(identifier)):
         return 0
     row, title = claim
     try:
         category = (evaluate or evaluate_title)(title, key)
-        if category not in CATEGORIES or category == "general":
+        if category not in CATEGORIES:
             category = None
         state, error = ("ready" if category else "uncertain"), ""
     except CategoryUnavailable as cause:

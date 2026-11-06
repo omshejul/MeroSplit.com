@@ -1,3 +1,4 @@
+import { readPrefetch, readScope } from './prefetch.ts';
 import { accountOwner, ApiError, request } from './api.ts';
 import { readDraft, saveDraft, enqueue, discardCommand } from './storage.ts';
 import type { Database } from './storage.ts';
@@ -7,12 +8,13 @@ import { sessionRequest } from './transport.ts';
 export { validateMedia, pickMedia, clearPickedMedia, stageMediaUpload, clearStagedMedia, openPrivateMedia, clearMediaPreview, clearMediaPreviews } from './mediaPlatform.ts';
 
 export type MediaMetadata = { id: string; name: string; content_type: string; size: number };
+export type MediaSource = boolean | 'camera';
 export type PickedMedia = { uri: string; name: string; type: string; size: number };
 export type MediaList = { attachments: MediaMetadata[]; can_modify: boolean };
-export type AvatarResult = { avatar: MediaMetadata | null; cleanup_pending?: boolean };
+export type AvatarResult = { avatar: MediaMetadata | null; profile_photo?: import("./types").ProfilePhoto | null; cleanup_pending?: boolean };
 export type AttachmentResult = { attachment: MediaMetadata; version: number };
 export type MediaRemoval = { removed: true; cleanup_pending: boolean; version?: number };
-export type PendingMediaUpload = { id: string; path: string; file: PickedMedia };
+export type PendingMediaUpload = { id: string; path: string; file: PickedMedia; rejection?: string };
 const uploadDraftKey = (path: string) => `media-upload:${path}`;
 const pendingFilename = /^merosplit-upload-[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}\.(?:jpg|png|webp|pdf|bin)$/i;
 
@@ -20,9 +22,11 @@ const pendingFilename = /^merosplit-upload-[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-
 
 
 export async function uploadMedia<T>(session: Session, path: string, file: PickedMedia, id: string, fetcher: typeof fetch = fetch,
-  readBytes: (uri: string) => Promise<Uint8Array> = readMediaBytes): Promise<T> {
+  readBytes: (uri: string) => Promise<Uint8Array> = readMediaBytes, current: () => boolean = () => true): Promise<T> {
+  if (path === '/me/avatar' || /^\/groups\/[^/]+\/photo$/.test(path)) readPrefetch.invalidate(readScope(session));
   const body = new FormData(); body.append('id', id);
   body.append('file', await mediaFilePart(file, readBytes));
+  if (!current()) throw new Error('The signed-in account changed.');
   const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 60_000);
   try {
     const response = await sessionRequest(session, `/api/v1${path}`, { method: 'POST', body, signal: controller.signal }, fetcher)
@@ -31,7 +35,7 @@ export async function uploadMedia<T>(session: Session, path: string, file: Picke
     const data = await response.json();
     if (!response.ok) throw new ApiError(response.status, String(data.detail ?? data.error ?? 'Could not upload this file.'));
     return data as T;
-  } finally { clearTimeout(timer); }
+  } finally { clearTimeout(timer); if (path === '/me/avatar' || /^\/groups\/[^/]+\/photo$/.test(path)) readPrefetch.invalidate(readScope(session)); }
 }
 
 
@@ -86,7 +90,7 @@ export async function removePendingMediaUpload(db: Database, session: Session, p
   await cleanup(pending.file);
 }
 
-export async function retryMediaUpload(db: Database, session: Session, path: string, send: typeof request = request, post: typeof uploadMedia = uploadMedia, cleanup: (file: PickedMedia) => Promise<void> = clearStagedMedia): Promise<MediaMetadata> {
+export async function retryMediaUpload(db: Database, session: Session, path: string, send: typeof request = request, post: typeof uploadMedia = uploadMedia, cleanup: (file: PickedMedia) => Promise<void> = clearStagedMedia, current: () => boolean = () => true): Promise<MediaMetadata> {
   const pending = await pendingMediaUpload(db, session, path);
   if (!pending || pending.path !== path) throw new Error('There is no saved upload for this bill.');
   const clear = async () => {
@@ -96,10 +100,15 @@ export async function retryMediaUpload(db: Database, session: Session, path: str
   // A previous POST may already have succeeded. Never mint another upload ID.
   let accepted = (await send<MediaList>(session, path)).attachments.find(item => item.id === pending.id);
   if (!accepted) {
-    try { accepted = (await post<AttachmentResult>(session, path, pending.file, pending.id)).attachment; }
+    if (!current()) throw new Error('The signed-in account changed.');
+    try { accepted = (await post<AttachmentResult>(session, path, pending.file, pending.id, undefined, undefined, current)).attachment; }
     catch (cause) {
       // Even a rejected file stays available for preview, export and recovery.
-      if (cause instanceof ApiError && [400, 413, 415, 422].includes(cause.status)) throw cause;
+      if (!current()) throw cause;
+      if (cause instanceof ApiError && [400, 413, 415, 422].includes(cause.status)) {
+        await db.runAsync('UPDATE drafts SET body=? WHERE owner=? AND group_id=? AND body=?', JSON.stringify({ ...pending, rejection: cause.message }), accountOwner(session), uploadDraftKey(path), JSON.stringify(pending));
+        throw cause;
+      }
       try { accepted = (await send<MediaList>(session, path)).attachments.find(item => item.id === pending.id); }
       catch { /* Preserve both request and staged bytes while the outcome is unknown. */ }
       if (!accepted) throw cause;
@@ -141,14 +150,26 @@ export function mediaSize(bytes: number): string { return bytes < 1_048_576 ? `$
 
 // Upload only after the bill exists. GET/reconciliation in retryMediaUpload also
 // makes a lost bill response or upload response safe to retry with the same IDs.
-export async function retryAccountMediaUploads(db: Database, session: Session, retry = retryMediaUpload): Promise<number> {
+const accountUploads = new WeakMap<Database, Map<string, Promise<number>>>();
+export async function retryAccountMediaUploads(db: Database, session: Session, retry = retryMediaUpload, current: () => boolean = () => true): Promise<number> {
+  let jobs = accountUploads.get(db);
+  if (!jobs) { jobs = new Map(); accountUploads.set(db, jobs); }
+  const owner = accountOwner(session), previous = jobs.get(owner);
+  const job = (previous ?? Promise.resolve()).catch(() => {}).then(() => drainAccountMediaUploads(db, session, retry, current));
+  jobs.set(owner, job);
+  try { return await job; } finally { if (jobs.get(owner) === job) jobs.delete(owner); }
+}
+async function drainAccountMediaUploads(db: Database, session: Session, retry: typeof retryMediaUpload, current: () => boolean): Promise<number> {
+  if (!current()) throw new Error('The signed-in account changed.');
   const rows = await db.getAllAsync<{ body: string }>("SELECT body FROM drafts WHERE owner=? AND group_id LIKE 'media-upload:%'", accountOwner(session));
   let failed = 0;
   for (const row of rows) {
+    if (!current()) break;
     const upload = JSON.parse(row.body) as PendingMediaUpload | null;
     if (!upload || !/^\/groups\/[^/]+\/expenses\/[^/]+\/attachments$/.test(upload.path)) continue;
-    try { await retry(db, session, upload.path); }
-    catch (error) { if (error instanceof ApiError && error.status === 401) throw error; failed++; }
+    if (upload.rejection) { failed++; continue; }
+    try { await retry(db, session, upload.path, undefined, undefined, undefined, current); }
+    catch (error) { if (!current() || error instanceof ApiError && error.status === 401) throw error; failed++; }
   }
   return failed;
 }

@@ -122,3 +122,18 @@ def test_receipt_error_types(expo_http, code, invalid, permanent, resend):
         permanent,
         resend,
     )
+
+
+@pytest.mark.parametrize('platform', ['ios', 'android'])
+def test_chat_preview_transport_groups_per_conversation(expo_http, platform):
+    expo_http.body = {'data': {'status': 'ok', 'id': str(uuid4())}}
+    payload = {**data(), 'type': 'bill_chat'}
+    conversation = f"chat/{payload['recipient_user_id']}/{payload['expense_id']}"
+    send_bill_notification(SimpleNamespace(token='ExpoPushToken[synthetic]', platform=platform), payload,
+        title='Reuben · cycle', body='Did you include the helmet rental?', conversation_id=conversation)
+    sent = expo_http.calls[0][2]
+    assert sent['title'] == 'Reuben · cycle'
+    assert sent['body'] == 'Did you include the helmet rental?'
+    assert sent['tag'] == sent['collapseId'] == sent['threadId'] == conversation
+    assert sent['data'] == payload
+    assert len(json.dumps(sent, ensure_ascii=False).encode()) < 4096

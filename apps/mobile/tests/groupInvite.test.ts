@@ -7,6 +7,93 @@ import { parseNativeLink, APP_ORIGIN, confirmedGroupInvite } from '../src/appLin
 import { readAppLink, subscribeAppLinks, writeAppLink } from '../src/browserLinks.web.ts';
 const token = '01234567-89ab-cdef-0123-456789abcdef:' + 's'.repeat(43);
 const source = readFileSync(new URL('../scripts/email-link-bootstrap.js', import.meta.url), 'utf8');
+function browserStorage(values = new Map<string, string>()) {
+  return { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => { values.set(key, value); }, removeItem: (key: string) => { values.delete(key); } };
+}
+function inviteBrowser(pathname: string, hash = '') {
+  const location = { pathname, hash, search: '' };
+  return { location, history: { replaceState: (_a: unknown, _b: string, path: string) => { location.pathname = path; location.hash = ''; } } };
+}
+test('invitation survives email sign-in in a new tab and same-tab Google return without exposing the token', () => {
+  const prior = { window: globalThis.window, sessionStorage: globalThis.sessionStorage, localStorage: globalThis.localStorage };
+  const local = browserStorage(), firstTab = browserStorage(), first = inviteBrowser('/app/invite/join', '#token=' + encodeURIComponent(token));
+  try {
+    Object.assign(globalThis, { window: first, sessionStorage: firstTab, localStorage: local });
+    vm.runInNewContext(source, { window: first, location: first.location, history: first.history, sessionStorage: firstTab, localStorage: local });
+    assert.equal(captureGroupInvite(), token);
+    assert.equal(first.location.hash, '');
+    const emailTab = inviteBrowser('/app/sign-in/01234567-89ab-cdef-0123-456789abcdef', '#proof=' + 'p'.repeat(64));
+    Object.assign(globalThis, { window: emailTab, sessionStorage: browserStorage() });
+    assert.equal(captureGroupInvite(), token, 'email link opened without an opener still resumes invitation');
+    assert.ok(emailTab.location.hash.startsWith('#proof='));
+    Object.assign(globalThis, { window: inviteBrowser('/app/'), sessionStorage: firstTab });
+    assert.equal(captureGroupInvite(), token, 'Google returns to app home');
+    forgetGroupInvite();
+    Object.assign(globalThis, { window: emailTab, sessionStorage: browserStorage() });
+    assert.equal(captureGroupInvite(), null, 'cancel removes the cross-tab handoff');
+  } finally { Object.assign(globalThis, prior); }
+});
+test('invalid incoming invite clears older continuation before its fragment is scrubbed', () => {
+  const prior = { window: globalThis.window, sessionStorage: globalThis.sessionStorage, localStorage: globalThis.localStorage };
+  const local = browserStorage(), tab = browserStorage(), browser = inviteBrowser('/app/invite/join', '#token=' + encodeURIComponent(token));
+  try {
+    Object.assign(globalThis, { window: browser, sessionStorage: tab, localStorage: local });
+    assert.equal(captureGroupInvite(), token);
+    browser.location.hash = '#token=bad';
+    vm.runInNewContext(source, { window: browser, location: browser.location, history: browser.history, sessionStorage: tab, localStorage: local });
+    assert.equal(captureGroupInvite(), null);
+    Object.assign(globalThis, { window: inviteBrowser('/app/sign-in/new'), sessionStorage: browserStorage() });
+    assert.equal(captureGroupInvite(), null);
+  } finally { Object.assign(globalThis, prior); }
+});
+test('cross-tab invitation expires and ordinary home visits do not revive another tab invite', () => {
+  const prior = { window: globalThis.window, sessionStorage: globalThis.sessionStorage, localStorage: globalThis.localStorage }, now = Date.now;
+  const local = browserStorage();
+  try {
+    Object.assign(globalThis, { window: inviteBrowser('/app/invite/join', '#token=' + encodeURIComponent(token)), sessionStorage: browserStorage(), localStorage: local });
+    const started = now();Date.now = () => started;
+    assert.equal(captureGroupInvite(), token);
+    Object.assign(globalThis, { window: inviteBrowser('/app/'), sessionStorage: browserStorage() });
+    assert.equal(captureGroupInvite(), null);
+    Object.assign(globalThis, { window: inviteBrowser('/app/sign-in/01234567-89ab-cdef-0123-456789abcdef') });
+    assert.equal(captureGroupInvite(), token, 'shared handoff is available before expiry');
+    Object.assign(globalThis, { sessionStorage: browserStorage() });
+    Date.now = () => started + 31 * 60_000;
+    assert.equal(captureGroupInvite(), null);
+    Date.now = () => started;
+    assert.equal(captureGroupInvite(), null, 'expired handoff is removed');
+  } finally { Date.now = now;Object.assign(globalThis, prior); }
+});
+test('bootstrap reload retains tab continuation and blocked storage still allows the incoming invite', () => {
+  const prior = { window: globalThis.window, sessionStorage: globalThis.sessionStorage, localStorage: globalThis.localStorage };
+  const tab = browserStorage(), browser = inviteBrowser('/app/invite/join');
+  const blocked = { getItem() { throw new Error('blocked'); }, setItem() { throw new Error('blocked'); }, removeItem() { throw new Error('blocked'); } };
+  try {
+    tab.setItem('merosplit.pendingGroupInvite', token);
+    Object.assign(globalThis, { window: browser, sessionStorage: tab, localStorage: blocked });
+    vm.runInNewContext(source, { window: browser, location: browser.location, history: browser.history, sessionStorage: tab, localStorage: blocked });
+    assert.equal(captureGroupInvite(), token);
+    browser.location.hash = '#token=' + encodeURIComponent(token);
+    Object.assign(globalThis, { sessionStorage: blocked });
+    vm.runInNewContext(source, { window: browser, location: browser.location, history: browser.history, sessionStorage: blocked, localStorage: blocked });
+    assert.equal(captureGroupInvite(), token);
+    assert.equal(browser.location.hash, '');
+    forgetGroupInvite();
+  } finally { Object.assign(globalThis, prior); }
+});
+test('malformed stored invite capabilities and continuation records are removed', () => {
+  const prior = { window: globalThis.window, sessionStorage: globalThis.sessionStorage, localStorage: globalThis.localStorage };
+  const tab = browserStorage(), local = browserStorage(), key = 'merosplit.pendingGroupInvite';
+  try {
+    Object.assign(globalThis, { window: inviteBrowser('/app/sign-in/01234567-89ab-cdef-0123-456789abcdef'), sessionStorage: tab, localStorage: local });
+    for (const saved of ['not-json', JSON.stringify({ token: 'bad', expiresAt: Date.now() + 1000 }), JSON.stringify({ token, expiresAt: 'tomorrow' })]) {
+      tab.setItem(key, 'bad');local.setItem(key + '.continuation', saved);
+      assert.equal(captureGroupInvite(), null);
+      assert.equal(tab.getItem(key), null);
+      assert.equal(local.getItem(key + '.continuation'), null);
+    }
+  } finally { Object.assign(globalThis, prior); }
+});
 test('native cold/warm parsing accepts only canonical fragment group capabilities', () => {
   assert.deepEqual(parseNativeLink(`${APP_ORIGIN}/app/invite/join#token=${encodeURIComponent(token)}`), { kind: 'app', target: { groupInviteToken: token } });
   for (const hash of ['#token=short', '#token='+token+'&other=1', '#token=%xx', '']) assert.equal(parseNativeLink(`${APP_ORIGIN}/app/invite/join${hash}`), null);

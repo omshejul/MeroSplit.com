@@ -345,14 +345,16 @@ def test_immediate_unclaimed_notice_grants_no_access_or_login(setup, clock, prov
     assert '/chat' in providers['email'][0]['text'] and 'proof=' not in providers['email'][0]['text'].split('Stop')[0]
 
 
-def test_push_ticket_is_not_read_or_delivered_and_has_no_text(setup, clock, providers):
+def test_push_preview_is_not_read_or_delivered_and_data_has_no_text(setup, clock, providers):
     device = register(setup[1])
     response = send(setup[1], 'put', f'/me/push-devices/{device.id}', {'provider': device.provider, 'token': device.token, 'platform': device.platform, 'bill_chat': True})
     assert response.status_code == 200
     first = post(setup, 'Private synthetic text')
     notices.send_chat_notifications()
     assert len(providers['push']) == 1
-    assert first['text'] not in str(providers['push'])
+    assert providers['push'][0]['body'] == first['text']
+    assert first['text'] not in str(providers['push'][0]['data'])
+    assert providers['push'][0]['title'] == 'A · Test expense'
     job = BillChatDelivery.objects.get(channel='push')
     assert job.state == 'queued' and job.provider_id and not job.notice.seen_at
     clock[0] += timedelta(minutes=15)
@@ -609,3 +611,86 @@ def test_cloudflare_uncertain_chat_delivery_holds_immediately_without_another_se
     notices.send_chat_notifications(limit=1)
     row.refresh_from_db()
     assert calls == [1] and row.payload == frozen and row.attempts == 1
+
+
+def test_chat_push_summary_omits_hidden_and_blocked_messages(setup, providers):
+    device = register(setup[1])
+    send(setup[1], 'put', f'/me/push-devices/{device.id}', {
+        'provider': device.provider, 'token': device.token, 'platform': device.platform, 'bill_chat': True})
+    post(setup, 'First message')
+    newest = post(setup, 'Second message')
+    hidden = post(setup, 'Hidden message')
+    BillChatMessage.objects.filter(pk=hidden['id']).update(hidden_at=timezone.now())
+    notices.send_chat_notifications()
+    assert len(providers['push']) == 2
+    for payload in providers['push']:
+        assert payload['title'] == 'Test expense · 2 new messages'
+        assert 'First message' in payload['body'] and 'Second message' in payload['body']
+        assert 'Hidden message' not in payload['body']
+        assert payload['conversation_id'] == f'chat/{setup[1].actor.pk}/{setup[3]}'
+        assert payload['data']['message_id'] == newest['id']
+        assert payload['data']['event_id'] == str(BillChatNotice.objects.get(message_id=newest['id']).pk)
+    assert len({payload['conversation_id'] for payload in providers['push']}) == 1
+
+
+@pytest.mark.parametrize('change', ['block', 'remove', 'hide', 'archive', 'delete', 'logout', 'disable'])
+def test_chat_preview_never_bypasses_delivery_checks(setup, providers, change):
+    device = register(setup[1])
+    send(setup[1], 'put', f'/me/push-devices/{device.id}', {
+        'provider': device.provider, 'token': device.token, 'platform': device.platform, 'bill_chat': True})
+    message = post(setup, 'Should not leave the server')
+    if change == 'block':
+        BillChatBlock.objects.create(owner=setup[1].actor, blocked=setup[0].actor, active=True, changed_at=timezone.now())
+    elif change == 'remove':
+        Participant.objects.filter(group_id=setup[2], user=setup[1].actor).update(removed=True)
+    elif change == 'hide':
+        BillChatMessage.objects.filter(pk=message['id']).update(hidden_at=timezone.now())
+    elif change == 'archive':
+        Group.objects.filter(pk=setup[2]).update(archived=True)
+    elif change == 'delete':
+        Expense.objects.filter(pk=setup[3]).update(deleted=True)
+    elif change == 'logout':
+        device.session.delete()
+    else:
+        NotificationPreference.objects.filter(user=setup[1].actor).update(expense_updates=False)
+    notices.send_chat_notifications()
+    assert not providers['push']
+
+
+@pytest.mark.parametrize('raw,expected', [
+    ('  Reuben\n Shejul  ', 'Reuben Shejul'),
+    ('\u202eevil\u202c\x00', 'evil'),
+    ('👨\u200d👩\u200d👧', '👨\u200d👩\u200d👧'),
+    ('   ', 'Fallback'),
+    ('x' * 100, 'x' * 19 + '…'),
+])
+def test_notification_preview_sanitizes_and_bounds_text(raw, expected):
+    assert notices._preview(raw, 20, 'Fallback') == expected
+
+
+def test_chat_preview_has_safe_missing_names_and_bounded_unicode(setup, providers):
+    device = register(setup[1])
+    send(setup[1], 'put', f'/me/push-devices/{device.id}', {
+        'provider': device.provider, 'token': device.token, 'platform': device.platform, 'bill_chat': True})
+    post(setup, '😀' * 1000)
+    Participant.objects.filter(group_id=setup[2], user=setup[0].actor).update(name=' ', display_name_override='')
+    Expense.objects.filter(pk=setup[3]).update(description=' ')
+    notices.send_chat_notifications()
+    payload = providers['push'][0]
+    assert payload['title'] == 'Someone · Bill conversation'
+    assert len(payload['body']) == 180 and payload['body'].endswith('…')
+
+
+def test_chat_preview_cancels_if_read_during_dispatch(setup, providers, monkeypatch):
+    device = register(setup[1])
+    send(setup[1], 'put', f'/me/push-devices/{device.id}', {
+        'provider': device.provider, 'token': device.token, 'platform': device.platform, 'bill_chat': True})
+    post(setup)
+    original = notices.chat_push_content
+    def read_before_preview(job):
+        BillChatNotice.objects.filter(pk=job.notice_id).update(seen_at=timezone.now())
+        return original(job)
+    monkeypatch.setattr(notices, 'chat_push_content', read_before_preview)
+    notices.send_chat_notifications()
+    assert not providers['push']
+    assert BillChatDelivery.objects.get(channel='push').state == 'cancelled'

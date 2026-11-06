@@ -27,15 +27,15 @@ collect(source);
 assert.equal(declarations.length, names.length, 'each named production lifecycle function must exist exactly once');
 const compiled = ts.transpile(declarations.join('\n'), { target: ts.ScriptTarget.ES2022 });
 type Entry = { id: string; phase: string; error: string; sent: boolean; switchFromUserId?: number; target?: unknown };
-type Result = { session: Session; needsName: boolean; target: { kind: 'home' } | { kind: 'group'; group_id: string } };
+type Result = { session: Session; needsName: boolean; target: { kind: 'home' } | { kind: 'group'; group_id: string; expense_id?: string } };
 type Calls = { beginEmailLink: (link: typeof first) => void; restore: () => Promise<void>; finishEmailLink: (entry: Entry, epoch: number) => Promise<void>; openEmailTarget: (active: Session, target: Result['target'], epoch: number) => Promise<void>; finishSignIn: () => Promise<void> };
 function harness() {
   const events: string[] = [], resolved: unknown[][] = [], scopedWrites: { owner: string; id: string }[] = [];
-  const state = { persisted: old as Session | null, session: old as Session | null, entry: null as Entry | null, ready: false, paused: false, groupId: null as string | null, screen: '', tab: '', storageError: '', result: { session: fresh, needsName: false, target: { kind: 'home' } } as Result };
+  const state = { persisted: old as Session | null, session: old as Session | null, entry: null as Entry | null, ready: false, paused: false, groupId: null as string | null, screen: '', tab: '', expenseId: null as string | null, storageError: '', result: { session: fresh, needsName: false, target: { kind: 'home' } } as Result };
   const ref = <T>(current: T) => ({ current });
   const env: Record<string, any> = {
     EmailLinkError, NativeEmailLinkError,
-    navigate: (screen: string, params: any = {}) => { state.screen = screen; state.groupId = params.groupId ?? null; state.tab = params.tab ?? 'Groups'; },
+    navigate: (screen: string, params: any = {}) => { state.screen = screen; state.groupId = params.groupId ?? null; state.tab = params.tab ?? 'Groups'; state.expenseId = params.expenseId ?? null; },
     inspectNativeEmailLink: async () => ({email:state.result.session.email,userId:Number(state.result.session.userId),purpose:'login',currentUserId:1,currentEmail:old.email}),
     Platform: { OS: 'android' }, API_URL: baseUrl, authEpoch: ref(0), authHeldRef: ref(false), activeSessionRef: ref(old),
     emailProof: ref(null), emailEntryRef: ref(null), cookieCheck: ref(false), initialEmailLink: ref(null), validatedBrowserSession: ref(''), draftWrites: ref(Promise.resolve()),
@@ -52,9 +52,11 @@ function harness() {
     endPushSession: async () => { events.push('end-old-session'); },
     changeScope: (value: Session | null) => { events.push(`adopt:${value?.userId}`); state.session = value; env.activeSessionRef.current = value; },
     readProfile: async (value: Session) => { events.push(`profile:${value.userId}`); return { display_name: value.displayName }; },
+    withBill: async (_active: Session, group: unknown) => group,
     fetchGroup: async (_value: Session, id: string) => ({ id, is_direct: false }),
     accountOwner: (value: Session) => `${value.baseUrl}|${value.userId}`,
     saveGroup: async (_db: unknown, owner: string, group: { id: string }) => { scopedWrites.push({ owner, id: group.id }); },
+    saveReadGroup: async (active: Session, group: { id: string }, current: () => boolean) => { if (!current() || env.activeSessionRef.current?.token !== active.token) return false; scopedWrites.push({ owner: `${active.baseUrl}|${active.userId}`, id: group.id }); return true; },
     load: async (owner: string) => { events.push(`load:${owner}`); },
     forgetEmailProof: () => { events.push('forget-proof'); },
     setEmailEntry: (value: Entry | null) => { state.entry = value; },
@@ -189,4 +191,20 @@ test('native OTP persists its new token before revoking the old session and adop
   assert.ok(h.events.indexOf('end-old-session') < h.events.indexOf('adopt:2'));
   assert.equal(h.state.persisted, fresh); assert.equal(h.state.session, fresh);
   assert.equal(h.events.at(-1), 'sync:2');
+});
+
+
+test('cold and warm email authentication opens the exact bill on native and web, including outside the group summary', async () => {
+  for (const platform of ['android', 'web']) for (const cold of [true, false]) {
+    const h = harness(); h.env.Platform.OS = platform; h.env.resolveEmailLink = async () => h.state.result; h.env.inspectEmailLink = h.env.inspectNativeEmailLink;
+    if (cold) { h.state.session = null; h.env.activeSessionRef.current = null; }
+    const { entry, epoch } = h.begin();
+    h.state.result = { session: fresh, needsName: false, target: { kind: 'group', group_id: 'email-group', expense_id: 'email-bill' } };
+    const details: string[] = [];
+    h.env.withBill = async (_active: Session, group: unknown, id: string) => { details.push(id); return { ...group as object, focused_expense: { id } }; };
+    await h.api.finishEmailLink(entry, epoch);
+    assert.deepEqual(details, ['email-bill']);
+    assert.equal(h.state.screen, 'expenseDetail'); assert.equal(h.state.groupId, 'email-group'); assert.equal(h.state.expenseId, 'email-bill');
+    assert.equal(h.state.entry, null);
+  }
 });

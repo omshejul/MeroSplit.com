@@ -1,23 +1,29 @@
+import { DEFAULT_CURRENCY, isCurrency, type Currency } from './currency';
 import { serverReachable } from './connectivity';
 import * as SQLite from 'expo-sqlite';
 import * as SecureStore from 'expo-secure-store';
+import { digestStringAsync, CryptoDigestAlgorithm } from 'expo-crypto';
 import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { migrate } from './storage';
+import { serializedDatabase } from './database';
 import type { Database } from './storage';
 import type { Session } from './types';
-import { isColorFamily, type ColorFamily } from './theme';
+import { defaultColorFamily, isColorFamily, type ColorFamily } from './theme';
 
 let database: Promise<Database> | undefined;
 export function storageIsDurable(): boolean { return true; }
 export function isOnline(): boolean { return serverReachable(); }
 export function getDatabase(): Promise<Database> {
   database ??= (async () => {
-    const db = await SQLite.openDatabaseAsync('splitdumb.db');
-    await db.execAsync('PRAGMA journal_mode=WAL;');
-    await migrate(db);
-    return db;
-  })();
+    const connection = await SQLite.openDatabaseAsync('splitdumb.db');
+    try {
+      const db = serializedDatabase(connection, true);
+      await db.getFirstAsync('PRAGMA journal_mode=WAL');
+      await migrate(db);
+      return db;
+    } catch (error) { await connection.closeAsync().catch(() => {}); throw error; }
+  })().catch(error => { database = undefined; throw error; });
   return database;
 }
 
@@ -44,7 +50,7 @@ export async function saveAppearance(value: AppearancePreference): Promise<void>
 const COLOR_FAMILY_KEY = 'splitdumb.colorFamily';
 export async function savedColorFamily(): Promise<ColorFamily> {
   const value = await SecureStore.getItemAsync(COLOR_FAMILY_KEY);
-  return isColorFamily(value) ? value : 'basic';
+  return isColorFamily(value) ? value : defaultColorFamily;
 }
 export async function saveColorFamily(value: ColorFamily): Promise<void> {
   if (!isColorFamily(value)) throw new Error('Choose a color.');
@@ -66,4 +72,27 @@ export async function shareText(filename: string, data: string, mimeType: string
     file.write(data);
     await Sharing.shareAsync(file.uri, { mimeType, UTI: mimeType === 'application/json' ? 'public.json' : 'public.comma-separated-values-text' });
   } finally { if (file.exists) file.delete(); }
+}
+
+// Account-scoped preference, separate from drafts and financial records.
+export async function claimFirstSplitUPIPrompt(owner: string): Promise<boolean> {
+  const key = `splitdumb.upi-first-split.${await digestStringAsync(CryptoDigestAlgorithm.SHA256, owner)}`;
+  if (await SecureStore.getItemAsync(key)) return false;
+  await SecureStore.setItemAsync(key, 'shown');
+  return true;
+}
+
+// Remember the contextual invitation per account and backend on this device.
+export async function claimPushInvitation(owner: string): Promise<boolean> {
+  const key = `splitdumb.push-invitation.${await digestStringAsync(CryptoDigestAlgorithm.SHA256, owner)}`;
+  if (await SecureStore.getItemAsync(key)) return false;
+  await SecureStore.setItemAsync(key, 'shown');
+  return true;
+}
+
+const CURRENCY_KEY = 'merosplit.currency';
+export async function savedCurrency(): Promise<Currency> { const value = await SecureStore.getItemAsync(CURRENCY_KEY); return isCurrency(value) ? value : DEFAULT_CURRENCY; }
+export async function saveCurrency(value: Currency): Promise<void> {
+  if (!isCurrency(value)) throw new Error('Choose a currency.');
+  await SecureStore.setItemAsync(CURRENCY_KEY, value);
 }

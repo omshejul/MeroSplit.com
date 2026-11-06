@@ -1,3 +1,4 @@
+import { withSharedUI } from './componentHarness.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -8,7 +9,8 @@ import { migrate, enqueue, pendingCommands } from '../src/storage.ts';
 import { addPerson } from '../src/members.ts';
 const file = ts.createSourceFile('App.tsx', readFileSync(new URL('../App.tsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
 function declarations(name: string): ts.FunctionDeclaration[] { const result: ts.FunctionDeclaration[]=[]; function visit(node: ts.Node) { if(ts.isFunctionDeclaration(node) && node.name?.text===name) result.push(node); ts.forEachChild(node,visit); } visit(file); return result; }
-function production(name: string, env: object) { const node=declarations(name)[0]; assert.ok(node); return new Function('env', `with(env) { ${ts.transpile(node.getText(file),{target:ts.ScriptTarget.ES2022})}; return ${name}; }`)(env); }
+function production(name: string, env: object) {
+ if (name === 'runAccountRefresh') env = { groupVersions: { current: '' }, setLiveRevision() {}, readPrefetch: { invalidate() {} }, readScope: () => '', ...env }; const node=declarations(name)[0]; assert.ok(node); return new Function('env', `with(env) { ${ts.transpile(node.getText(file),{target:ts.ScriptTarget.ES2022})}; return ${name}; }`)(withSharedUI(env)); }
 
 test('actual App portal siblings have stable distinct account-scoped identities', () => {
  const keys:string[]=[];
@@ -66,7 +68,7 @@ test('actual App groupAction persists offline member once and returns pending, n
 test('actual syncAccount releases the UI action before the complete-history download finishes', async () => {
  let downloads=0;
  const active={userId:'1',token:'generation'},scope='server|1';
- const env={accountOwner:()=>scope,ownerRef:{current:scope},activeSessionRef:{current:active},activeGroupRef:{current:null},setSyncing(){},setSyncProblem(){},setVerifiedEmptyOwner(){},getDatabase:async()=>({}),readProfile:async()=>({}),request:async()=>({needs_invitation:false}),setNeedsInvitation(){},syncOutbox:async()=>[],ApiError:class extends Error{},retryAccountMediaUploads:async()=>0,setNotice(){},refreshGroups:async()=>[],load:async()=>{},setGroupId(){},setScreen(){},downloadOffline:()=>{downloads++;return new Promise(()=>{});}};
+ const env={scopeGeneration:{current:0},accountOwner:()=>scope,ownerRef:{current:scope},activeSessionRef:{current:active},activeGroupRef:{current:null},setSyncing(){},setSyncProblem(){},setVerifiedEmptyOwner(){},getDatabase:async()=>({}),readProfile:async()=>({}),request:async()=>({needs_invitation:false}),setNeedsInvitation(){},syncOutbox:async()=>[],ApiError:class extends Error{},retryAccountMediaUploads:async()=>0,setNotice(){},refreshGroups:async()=>[],load:async()=>{},setGroupId(){},setScreen(){},downloadOffline:()=>{downloads++;return new Promise(()=>{});}};
  const sync=production('runAccountRefresh',{...env,authHeldRef:{current:false}});
  await Promise.race([sync(active),new Promise((_,reject)=>setTimeout(()=>reject(new Error('History download held the UI action')),100))]);
  assert.equal(downloads,1);
@@ -74,7 +76,7 @@ test('actual syncAccount releases the UI action before the complete-history down
 
 test('actual App opens queued bill/payment previews without network or publishing pending data as accepted', async () => {
  const active={token:'generation'},group={id:'trip'},navigated:string[]=[];let expense='',payment='';
- const env={session:active,selected:{group},pending:[{body:{id:'bill'},path:'/groups/trip/expenses'},{body:{id:'payment'},path:'/groups/trip/settlements'}],perform:async(work:()=>unknown)=>work(),withBill:()=>{throw new Error('pending bill attempted server read');},withPayment:()=>{throw new Error('pending payment attempted server read');},activeSessionRef:{current:active},setExpenseId:(id:string)=>{expense=id;},setSettlementId:(id:string)=>{payment=id;},navigate:(screen:string,params:any)=>{navigated.push(screen);expense=params?.expenseId??expense;payment=params?.settlementId??payment;},saveGroup:()=>{throw new Error('pending preview persisted as accepted');}};
+ const env={browse:async(_key:string,work:any)=>work(()=>true),session:active,selected:{group},pending:[{body:{id:'bill'},path:'/groups/trip/expenses'},{body:{id:'payment'},path:'/groups/trip/settlements'}],perform:async(work:()=>unknown)=>work(),withBill:()=>{throw new Error('pending bill attempted server read');},withPayment:()=>{throw new Error('pending payment attempted server read');},activeSessionRef:{current:active},setExpenseId:(id:string)=>{expense=id;},setSettlementId:(id:string)=>{payment=id;},navigate:(screen:string,params:any)=>{navigated.push(screen);expense=params?.expenseId??expense;payment=params?.settlementId??payment;},saveGroup:()=>{throw new Error('pending preview persisted as accepted');}};
  await production('openBill',env)({id:'bill'}); await production('openPayment',env)('payment');
  assert.equal(expense,'bill');assert.equal(payment,'payment');assert.deepEqual(navigated,['expenseDetail','paymentDetail']);
 });
@@ -85,7 +87,7 @@ test('actual App history invalidation clears Synced for its current generation o
  function visit(n:ts.Node){if(ts.isJsxSelfClosingElement(n)&&n.tagName.getText(file)==='ExpenseVersionHistory'){const a=n.attributes.properties.find(a=>ts.isJsxAttribute(a)&&a.name.getText(file)==='onInvalidated')as ts.JsxAttribute;assert.ok(a?.initializer&&ts.isJsxExpression(a.initializer));callback=(a.initializer as ts.JsxExpression).expression;}ts.forEachChild(n,visit);}visit(file);assert.ok(callback);
  let confirmed:unknown='old',problem=false;const ownerRef={current:'server|1'},activeSessionRef:{current:{token:string}|null}={current:{token:'generation'}};
  const env={owner:'server|1',session:{token:'generation'},ownerRef,activeSessionRef,setLastConfirmed:(v:unknown)=>{confirmed=v;},setSyncProblem:(v:boolean)=>{problem=v;}};
- const invalidate=new Function('env',`with(env){return (${callback!.getText(file)});}`)(env);invalidate();assert.equal(confirmed,null);assert.equal(problem,true);
+ const invalidate=new Function('env',`with(env){return (${callback!.getText(file)});}`)(withSharedUI(env));invalidate();assert.equal(confirmed,null);assert.equal(problem,true);
  confirmed='newer';problem=false;activeSessionRef.current={token:'new-generation'};invalidate();assert.equal(confirmed,'newer');assert.equal(problem,false);
  activeSessionRef.current={token:'generation'};ownerRef.current='server|2';invalidate();assert.equal(confirmed,'newer');assert.equal(problem,false);
 });

@@ -135,12 +135,13 @@ def test_signature_and_exchanged_subject_are_both_verified(keys, settings, apple
     assert response.status_code == 400 and not SocialAccount.objects.exists()
 
 
-def test_existing_email_requires_explicit_connect_and_returning_sub_needs_no_name_or_email(keys, settings, apple):
+def test_existing_verified_email_auto_links_and_returning_sub_needs_no_name_or_email(keys, settings, apple):
     user = get_user_model().objects.create_user(username="owner", email="relay@privaterelay.appleid.com", first_name="Keep")
     EmailAddress.objects.create(user=user, email=user.email, primary=True, verified=True)
     anonymous = Client()
-    assert submit(anonymous, keys, settings, apple, challenge(anonymous)).status_code == 409
-    assert not SocialAccount.objects.exists()
+    response = submit(anonymous, keys, settings, apple, challenge(anonymous))
+    assert response.status_code == 200, response.content
+    assert SocialAccount.objects.get().user_id == user.pk
     client = authenticated_client(user)
     proof = challenge(client, "connect")
     stale = Session.objects.get(session_key=client.defaults["HTTP_X_SESSION_TOKEN"]).session_data
@@ -163,10 +164,30 @@ def test_connect_cannot_take_other_apple_identity_and_stale_actor_is_rejected(ke
     other = get_user_model().objects.create_user(username="other", email="other@example.invalid")
     SocialAccount.objects.create(user=owner, provider="apple", uid="apple-sub")
     client = authenticated_client(other)
-    assert submit(client, keys, settings, apple, challenge(client, "connect"), "connect").status_code == 409
+    response = submit(client, keys, settings, apple, challenge(client, "connect"), "connect")
+    assert response.status_code == 409
+    assert response.json()["errors"][0]["code"] == "apple_already_connected"
+    assert "another MeroSplit account" in response.json()["errors"][0]["message"]
+    assert send(client, "get", "/me").json()["id"] == other.pk
     proof = challenge(client, "connect")
     assert submit(client, keys, settings, apple, proof, "login").status_code == 409
     assert SocialAccount.objects.get().user_id == owner.pk
+
+
+def test_connect_integrity_failure_does_not_claim_another_account_owns_apple(keys, settings, apple, monkeypatch):
+    user = get_user_model().objects.create_user(username="connect-owner", email="owner@example.invalid")
+    SocialAccount.objects.create(user=user, provider="google", uid="existing-google")
+    client = authenticated_client(user)
+
+    def duplicate_account(*args):
+        SocialAccount.objects.create(user=user, provider="google", uid="existing-google")
+
+    monkeypatch.setattr("ledger.apple_signin.complete_token_login", duplicate_account)
+    response = submit(client, keys, settings, apple, challenge(client, "connect"), "connect")
+    assert response.status_code == 409
+    assert response.json()["errors"][0]["code"] == "apple_unavailable"
+    assert not SocialAccount.objects.filter(provider="apple").exists()
+    assert send(client, "get", "/me").json()["id"] == user.pk
 
 
 def test_offline_exchange_consumes_proof_without_local_adoption_or_automatic_retry(keys, settings, apple):
@@ -253,3 +274,16 @@ def test_cross_session_and_rate_limit_do_not_exchange_apple_proofs(keys, setting
         assert post(a, "challenge", {"process": "login"}).status_code == 200
     assert post(a, "challenge", {"process": "login"}).status_code == 429
     assert all(method == "GET" for method, _ in apple["calls"])
+
+
+def test_auto_link_off_requires_explicit_apple_connect(keys, settings, apple):
+    from .models import SignInPreference
+    user = get_user_model().objects.create_user(username='apple-owner', email='relay@privaterelay.appleid.com')
+    EmailAddress.objects.create(user=user, email=user.email, verified=True, primary=True)
+    SignInPreference.objects.create(user=user, auto_link=False)
+    fresh = Client()
+    response = submit(fresh, keys, settings, apple, challenge(fresh))
+    assert response.status_code == 409 and not SocialAccount.objects.exists()
+    owner = authenticated_client(user)
+    response = submit(owner, keys, settings, apple, challenge(owner, 'connect'), 'connect')
+    assert response.status_code == 200 and SocialAccount.objects.get().user_id == user.pk

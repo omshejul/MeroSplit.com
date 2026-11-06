@@ -1,3 +1,4 @@
+import { withSharedUI } from './componentHarness.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -29,12 +30,13 @@ function component(send: (...args: any[]) => Promise<any>) {
     useEffect: (fn: () => any, values: any[]) => { const id = cursor++; if (!dependencies[id] || values.some((v, i) => v !== dependencies[id][i])) { effects.push(() => { cleanup[id]?.(); cleanup[id] = fn(); }); dependencies[id] = values; } },
   };
   const hook = ts.createSourceFile('useScrollPagination.ts', readFileSync(new URL('../src/useScrollPagination.ts', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true);
-  const hookBody = hook.statements.filter(n => !ts.isImportDeclaration(n)).map(n => n.getText(hook).replace(/^export /, '')).join('\n');
-  Object.assign(env, { useScrollPagination: new Function('env', `with(env){${ts.transpile(hookBody, { target: ts.ScriptTarget.ES2022 })};return useScrollPagination;}`)(env) });
+  const hookBody = hook.statements.filter(n => !ts.isImportDeclaration(n) && !ts.isExportDeclaration(n)).map(n => n.getText(hook).replace(/^export /, '')).join('\n');
+  Object.assign(env, { useScrollPagination: new Function('env', `with(env){${ts.transpile(hookBody, { target: ts.ScriptTarget.ES2022 })};return useScrollPagination;}`)(withSharedUI(env)) });
   const source = ts.createSourceFile('ExpenseVersionHistory.tsx', readFileSync(new URL('../src/ExpenseVersionHistory.tsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
-  const body = source.statements.filter(n => !ts.isImportDeclaration(n)).map(n => n.getText(source).replace(/^export (?:default )?/, '')).join('\n');
-  const methods = new Function('env', `with(env){${ts.transpile(body, { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React })};return {ExpenseVersionHistory,VersionHistoryRow};}`)(env);
+  const body = source.statements.filter(n => !ts.isImportDeclaration(n) && !ts.isExportDeclaration(n)).map(n => n.getText(source).replace(/^export (?:default )?/, '')).join('\n');
+  const methods = new Function('env', `with(env){${ts.transpile(body, { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React })};return {ExpenseVersionHistory,VersionHistoryRow};}`)(withSharedUI(env));
   return { render: (changes: any = {}) => { cursor = 0; return methods.ExpenseVersionHistory({ session, groupId: 'group', expenseId: 'bill', groupVersion: 3, title: 'Dinner', active: true, online: true, onInvalidated: () => { invalidations++; }, ...changes }); },
+    cacheHistory: async (value: ExpenseHistoryPage, before?: number) => { await ready; return saveExpenseHistory(db, accountOwner(session), 'group', 'bill', value, before); },
     row: methods.VersionHistoryRow, invalidations: () => invalidations, commit: async () => { const run = effects; effects = []; run.forEach(fn => fn()); await tick(); }, unmount: () => { Object.values(cleanup).forEach(fn => fn?.()); raw.close(); } };
 }
 
@@ -76,7 +78,7 @@ test('actual history row survives the minute refresh when Hermes has no Relative
 
 test('screen fetches only its entity via GET, preserves newest order and accessible actual values', async () => {
   const calls: any[] = [], app = component(async (...args) => { calls.push(args); return page(); });
-  let tree = app.render(); assert.equal(tree.props.ListEmptyComponent.type, 'LoadingSpinner');
+  let tree = app.render(); assert.equal(tree.props.ListEmptyComponent, undefined, 'check local cache before showing network progress');
   await app.commit(); tree = app.render();
   assert.equal(calls.length, 1); assert.equal(calls[0][1], '/groups/group/expenses/bill/versions?limit=20'); assert.equal(calls[0][2], 'GET');
   assert.equal(tree.props.data[0].version.id, 'edit');
@@ -123,8 +125,8 @@ test('empty bounded pages retain earlier-history navigation instead of claiming 
     return { ...page('earlier-real-edit'), items: [{ ...version('earlier-real-edit'), sequence:1 }] };
   });
   app.render(); await app.commit(); let tree = app.render();
-  assert.equal(tree.props.ListEmptyComponent.children[0], 'No recorded changes on this page.');
-  tree.props.ListFooterComponent.children.flat(Infinity).find((node: any) => node?.props?.title === 'Load older').props.onPress();
+  assert.equal(tree.props.ListEmptyComponent.children.flat(Infinity).find((n: any) => n?.type === 'Text').children[0], 'No recorded changes on this page.');
+  footerButton(tree, 'Load older').props.onPress();
   await tick(); tree = app.render(); await app.commit();
   assert.equal(calls, 2); assert.equal(tree.props.data[0].version.id, 'earlier-real-edit');
   app.unmount();
@@ -146,7 +148,7 @@ test('a changed server revision clears old history instead of mixing redacted or
   let calls = 0;
   const app = component(async () => ++calls === 1 ? { ...page(), next_before: 2 } : { ...page('new'), version: 4 });
   app.render(); await app.commit(); let tree = app.render();
-  tree.props.ListFooterComponent.children.flat(Infinity).find((node: any) => node?.props?.title === 'Load older').props.onPress(); await tick(); tree = app.render(); await app.commit();
+  footerButton(tree, 'Load older').props.onPress(); await tick(); tree = app.render(); await app.commit();
   assert.equal(calls, 2); assert.equal(tree.props.data.length, 0);
   assert.equal(tree.props.ListEmptyComponent.children[0].children[0], 'History changed. Refresh to see the latest.');
   app.unmount();
@@ -157,7 +159,35 @@ const footerButton = (tree: any, title: string): any => {
   const find = (node: any): any => node?.props?.title === title ? node : (Array.isArray(node) ? node : node?.children || []).map(find).find(Boolean);
   return find(tree.props.ListFooterComponent);
 };
+const headerButton = (tree: any, title: string): any => footerButton({ props: { ListFooterComponent: tree.props.ListHeaderComponent } }, title);
 const historyBatch = (highest: number, lowest: number, next_before: number | null): ExpenseHistoryPage => ({ ...page(), items: Array.from({ length: highest - lowest + 1 }, (_, i) => ({ ...version(`version-${highest-i}`), sequence: highest-i, changes: [{ field: 'notes', before: `Before ${highest-i}`, after: `Body ${highest-i}` }] })), next_before });
+
+test('cached-history refresh 503 offers one explicit Retry and retains all 65 downloaded bodies', async () => {
+  let fail = true, finish: ((value: ExpenseHistoryPage) => void) | undefined; const calls: string[] = [];
+  const app = component(async (_session, path) => {
+    calls.push(path);
+    if (fail) throw new ApiError(503, 'Temporary failure');
+    return new Promise<ExpenseHistoryPage>(resolve => { finish = resolve; });
+  });
+  try {
+    await app.cacheHistory(historyBatch(65, 16, 16));
+    const downloaded = await app.cacheHistory(historyBatch(15, 1, null), 16);
+    app.render(); await app.commit(); let tree = app.render();
+    assert.deepEqual(tree.props.data.map((row: any) => row.version), downloaded.items);
+    const retry = headerButton(tree, 'Retry'); assert.ok(retry, 'downloaded rows must not hide refresh recovery');
+    assert.equal(footerButton(tree, 'Retry'), undefined);
+    fail = false; await app.commit(); assert.equal(calls.length, 1, 'recovery never retries automatically');
+    retry.props.onPress(); retry.props.onPress(); app.render(); await app.commit(); tree = app.render();
+    assert.deepEqual(calls, Array(2).fill('/groups/group/expenses/bill/versions?limit=20'));
+    assert.equal(headerButton(tree, 'Retry'), undefined, 'the cached header cannot retry again while its request is pending');
+    assert.equal(footerButton(tree, 'Retry'), undefined, 'older-page Retry is absent during a first-page refresh');
+    assert.deepEqual(tree.props.data.map((row: any) => row.version), downloaded.items);
+    finish!(historyBatch(65, 46, 46)); await tick(); tree = app.render();
+    assert.deepEqual(tree.props.data.map((row: any) => row.version), downloaded.items);
+    assert.equal(headerButton(tree, 'Retry'), undefined);
+    assert.equal(tree.props.data.length, 65);
+  } finally { app.unmount(); }
+});
 
 test('older-page 503 Retry requests the same cursor once and retains all 65 ordered history bodies', async () => {
   let tailFails = true; const calls: string[] = [];
@@ -175,6 +205,7 @@ test('older-page 503 Retry requests the same cursor once and retains all 65 orde
     footerButton(tree, 'Load older').props.onPress(); await tick(); tree = app.render(); await app.commit();
     assert.deepEqual(tree.props.data.map((row: any) => row.version), firstBodies);
     const retry = footerButton(tree, 'Retry'); assert.ok(retry);
+    assert.equal(headerButton(tree, 'Retry'), undefined, 'older-page failures keep only their cursor-aware Retry');
     tailFails = false; await app.commit(); assert.equal(calls.length, 2, 'recovery does not automatically retry');
     retry.props.onPress(); retry.props.onPress(); await tick(); tree = app.render(); await app.commit();
     assert.equal(calls.length, 3, 'one request from explicit Retry, double tap deduplicated');
@@ -203,4 +234,23 @@ test('older Retry callbacks cannot request after offline, account/session switch
       const before=calls;retry.props.onPress();await tick();assert.equal(calls,before,change+' stale Retry must not request');
     }finally{if(!closed)app.unmount();}
   }
+});
+
+test('history checks the local cache quietly and shows a spinner only after a cache miss', async () => {
+  let finish!: (page: ExpenseHistoryPage) => void;
+  const app = component(() => new Promise(resolve => finish = resolve));
+  assert.equal(app.render().props.ListEmptyComponent, undefined);
+  await app.commit();
+  assert.equal(app.render().props.ListEmptyComponent.type, 'LoadingSpinner');
+  finish(page()); await tick(); app.unmount();
+});
+
+test('cached empty history stays visible during slow background refresh without a spinner', async () => {
+  let finish!: (page: ExpenseHistoryPage) => void;
+  const app = component(() => new Promise(resolve => finish = resolve));
+  await app.cacheHistory({ ...page(), items: [] });
+  app.render(); await app.commit(); const tree = app.render();
+  assert.equal(tree.props.ListEmptyComponent.type, 'View');
+  assert.equal(tree.props.ListEmptyComponent.children.flat(Infinity).find((n: any) => n?.type === 'Text').children[0], 'No version history was recorded.');
+  finish({ ...page(), items: [] }); await tick(); app.unmount();
 });

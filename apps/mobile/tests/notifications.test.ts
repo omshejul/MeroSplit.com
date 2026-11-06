@@ -3,9 +3,10 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import ts from 'typescript';
 import { accountOwner, ApiError, request } from '../src/api.ts';
-import { consentToPush, dismissReadPushes, emptyPushPreferences, notificationForAccount, notificationTarget, pushPermission, refreshPushDevice, unregisterPushDevice } from '../src/notifications.ts';
+import { pushChoice, consentToPush, dismissReadPushes, emptyPushPreferences, notificationForAccount, notificationTarget, pushPermission, refreshPushDevice, unregisterPushDevice } from '../src/notifications.ts';
 import type { PushDevice, PushPreferences } from '../src/notifications.ts';
 import type { Group, Session } from '../src/types.ts';
+import { setDefaultCurrency } from '../src/currency.ts';
 
 const session: Session = { baseUrl: 'https://example.test', userId: '1', email: 'qa@example.test', token: 'synthetic' };
 const installation = '4b8f5680-c7c4-45ec-8a2f-842fb5854090';
@@ -17,6 +18,52 @@ const groupId = 'e8ba5bee-0f17-42a5-b46f-0e4f27b07260', expenseId = '13dc400e-26
 const data = { type: 'new_bill', recipient_user_id: '1', group_id: groupId, expense_id: expenseId, event_id: 'synthetic-event' };
 const membership = { type: 'group_membership', recipient_user_id: '1', group_id: groupId, event_id: `membership:${installation}:1` };
 const group: Group = { id: groupId, name: 'Synthetic trip', version: 1, participants: [], expenses: [{ id: expenseId, version: 1, description: 'Dinner', total: '100', paid: {}, shares: {}, split: { mode: 'equal', values: {} }, date: '2026-10-17', category: 'general', notes: '', deleted: false }], settlements: [], balances: {}, transfers: [], activity: [] };
+
+test('Financial push routes validate account and IDs, deleted bills and payments safely open the authorized group', async () => {
+  for (const type of ['bill_updated', 'bill_deleted', 'payment_recorded', 'payment_reminder']) {
+    const payload = { ...data, type, event_id: installation };
+    assert.equal(notificationForAccount(session, payload), true);
+    assert.equal(notificationForAccount(session, { ...payload, recipient_user_id: '2' }), false);
+    assert.equal(notificationForAccount(session, { ...payload, event_id: 'invalid' }), false);
+    let reads = 0;
+    const target = await notificationTarget(session, payload, async <T>(_session: Session, path: string): Promise<T> => {
+      reads++; assert.equal(path, `/groups/${groupId}/summary`); return group as T;
+    });
+    assert.equal(reads, 1);
+    assert.equal(target?.expenseId, type === 'bill_updated' ? expenseId : null);
+    assert.equal(await notificationTarget(session, payload, async () => { throw new ApiError(404, 'Access revoked'); }), null);
+  }
+});
+
+test('Registration sends the selected display currency and financial push capability without converting stored amounts', async () => {
+  setDefaultCurrency('EUR');
+  try {
+    await refreshPushDevice(session, opted, 'granted', async () => device, async () => {}, async <T>(_session: Session, _path: string, _method?: string, body?: unknown): Promise<T> => {
+      assert.deepEqual(body, { ...device, bill_chat: true, ledger_updates: true, currency: 'EUR' });
+      return { id: installation, enabled: true } as T;
+    });
+  } finally { setDefaultCurrency('INR'); }
+});
+
+test('Reminder retry reuses its command after a lost response and offline never sends', async () => {
+  const source = ts.createSourceFile('App.tsx', readFileSync(new URL('../App.tsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  let declaration: ts.FunctionDeclaration | undefined;
+  const visit = (node: ts.Node) => { if (ts.isFunctionDeclaration(node) && node.name?.text === 'remindPayment') declaration = node; ts.forEachChild(node, visit); };
+  visit(source); assert.ok(declaration);
+  const sent: any[] = [], notices: string[] = []; let ids = 0, connected = true;
+  const env = { perform: (work: () => Promise<void>) => work(), activeSessionRef: { current: session }, selected: { group }, isOnline: () => connected, pending: [], groupId,
+    reminderRetry: { current: null }, accountOwner, uuid: () => `command-${++ids}`, setNotice: (value: string) => notices.push(value),
+    request: async (_session: Session, path: string, method: string, body: unknown) => { sent.push({ path, method, body }); if (sent.length === 1) throw new Error('Response lost'); } };
+  const code = ts.transpile(`${declaration.getText(source)}; return remindPayment;`, { target: ts.ScriptTarget.ES2022 });
+  const remind = new Function('env', `with(env){${code}}`)(env);
+  const transfer = { sender: 'person', recipient: 'self', amount: '50000' };
+  await assert.rejects(remind(transfer), /Response lost/);
+  await remind(transfer);
+  assert.deepEqual(sent[0], sent[1]); assert.equal(ids, 1);
+  assert.equal(env.reminderRetry.current, null); assert.deepEqual(notices, ['Your reminder will be sent.']);
+  connected = false;
+  await assert.rejects(remind(transfer), /Reconnect/); assert.equal(sent.length, 2);
+});
 
 test('Notification permissions interpret iOS granular authorization and Android status', () => {
   for (const status of [2, 3, 4]) assert.equal(pushPermission({ status: 'denied', ios: { status } }), 'granted');
@@ -53,7 +100,7 @@ test('Consent is persisted before registration, and only confirmed current-token
   const consent = await consentToPush(session, initial, save);
   assert.equal(writes[0].opted_in, true); assert.equal(writes[0].binding, null);
   const send: typeof request = async <T>(active: Session, path: string, method?: string, body?: unknown): Promise<T> => {
-    calls.push(`${method} ${path}`); assert.equal(active, session); assert.deepEqual(body, { ...device, bill_chat: true }); assert.equal(writes.length, 1);
+    calls.push(`${method} ${path}`); assert.equal(active, session); assert.deepEqual(body, { ...device, bill_chat: true, ledger_updates: true, currency: 'INR' }); assert.equal(writes.length, 1);
     return { id: installation, enabled: true } as T;
   };
   const result = await refreshPushDevice(session, consent, 'granted', async () => device, save, send);
@@ -61,7 +108,7 @@ test('Consent is persisted before registration, and only confirmed current-token
   assert.deepEqual(calls, [`PUT /me/push-devices/${installation}`]);
   const newer = { ...device, token: 'ExpoPushToken[rotated]' };
   await refreshPushDevice(session, result, 'granted', async () => newer, save, async <T>(_active: Session, _path: string, _method?: string, body?: unknown): Promise<T> => {
-    assert.deepEqual(body, { ...newer, bill_chat: true }); return { id: installation, enabled: true } as T;
+    assert.deepEqual(body, { ...newer, bill_chat: true, ledger_updates: true, currency: 'INR' }); return { id: installation, enabled: true } as T;
   });
   assert.deepEqual(writes.at(-1)?.binding, newer);
 });
@@ -226,8 +273,35 @@ test('A failed native token refresh invalidates availability, including token ro
   function visit(node: ts.Node) { if (ts.isFunctionDeclaration(node) && node.name?.text === 'refreshNow') declaration = node.getText(source); ts.forEachChild(node, visit); }
   visit(source); assert.ok(declaration);
   let verified = true;
-  const env = { activeSession: { current: session }, state: async () => registered, mounted: { current: true }, setPermission() {}, setVerified: (value: boolean) => { verified = value; }, Notifications: { getPermissionsAsync: async () => ({ status: 'granted' }) }, pushPermission, refreshPushDevice: async () => { throw Error('Registry unavailable'); }, save() {} };
+  const env = { localWrites: {current:Promise.resolve()}, saved: {current:registered}, durable:{current:registered}, channelState:{current:undefined}, accountOwner, activeSession: { current: session }, state: async () => registered, mounted: { current: true }, setPermission() {}, setVerified: (value: boolean) => { verified = value; }, Notifications: { getPermissionsAsync: async () => ({ status: 'granted' }) }, pushPermission, refreshPushDevice: async () => { throw Error('Registry unavailable'); }, save() {} };
   const refresh = new Function('env', `with(env){${ts.transpile(declaration, { target: ts.ScriptTarget.ES2022 })};return refreshNow;}`)(env);
   await assert.rejects(refresh({ type: 'ios', data: 'synthetic-rotated' }), /Registry unavailable/);
   assert.equal(verified, false);
+});
+
+
+test('new push choices persist OFF immediately and keep its revision for an offline retry',async()=>{
+ const off=pushChoice(session,{...registered,revision:4},false);assert.equal(off.opted_in,false);assert.equal(off.pending_off,true);assert.equal(off.revision,5);let stored=off;const paths:string[]=[];
+ await assert.rejects(unregisterPushDevice(session,off,async value=>{stored=value},async <T>(_session:Session,path:string)=>{paths.push(path);throw Error('Offline')}),/Offline/);assert.equal(stored.opted_in,false);assert.equal(stored.pending_off,true);assert.match(paths[0],/preference_revision=5/);
+ await unregisterPushDevice(session,stored,async value=>{stored=value},async <T>(_session:Session,path:string)=>{paths.push(path);return{removed:true}as T});assert.equal(paths[0],paths[1]);assert.equal(stored.opted_in,false);assert.equal(stored.pending_off,false);assert.equal(stored.revision,5);assert.equal(pushChoice(session,stored,true).revision,6);
+});
+
+test('actual native save publishes the local choice before I/O and ignores stale binding receipts',async()=>{
+ const source=ts.createSourceFile('PushSettings.tsx',readFileSync(new URL('../src/PushSettings.tsx',import.meta.url),'utf8'),ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);let declaration='';const visit=(n:ts.Node)=>{if(ts.isFunctionDeclaration(n)&&n.name?.text==='save')declaration=n.getText(source);ts.forEachChild(n,visit)};visit(source);assert.ok(declaration);
+ const writes:{value:PushPreferences,finish:()=>void}[]=[];let rendered:any=null;const env={saved:{current:{...registered,revision:1}},durable:{current:{...registered,revision:1}},localWrites:{current:Promise.resolve()},activeSession:{current:session},accountOwner,mounted:{current:true},setPreferences:(value:any)=>{rendered=value},setSaving(){},setError(){},SecureStore:{setItemAsync:async(_key:string,value:string)=>new Promise<void>(resolve=>writes.push({value:JSON.parse(value),finish:resolve}))},CHOICE_KEY:'synthetic-choice'};
+ const save=new Function('env',`with(env){${ts.transpile(declaration,{target:ts.ScriptTarget.ES2022})};return save;}`)(env);const on=pushChoice(session,env.saved.current,true);const first=save(on);assert.equal(rendered.opted_in,true);const off=pushChoice(session,on,false);const second=save(off);assert.equal(rendered.opted_in,false);await save({...on,binding:device});assert.equal(env.saved.current.revision,off.revision);for(let i=0;i<10;i++)await Promise.resolve();assert.equal(writes.length,1);writes[0].finish();await first;for(let i=0;i<10;i++)await Promise.resolve();assert.equal(writes.length,2);assert.equal(writes[1].value.opted_in,false);writes[1].finish();await second;assert.equal(env.durable.current.revision,off.revision);assert.equal(env.durable.current.opted_in,false);
+});
+
+test('a failed native preference write keeps the latest displayed choice and reports local failure',async()=>{
+ const source=ts.createSourceFile('PushSettings.tsx',readFileSync(new URL('../src/PushSettings.tsx',import.meta.url),'utf8'),ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);let declaration='';function visit(n:ts.Node){if(ts.isFunctionDeclaration(n)&&n.name?.text==='save')declaration=n.getText(source);ts.forEachChild(n,visit)}visit(source);
+ let rendered:any=null,error='';const before={...registered,revision:1};const env={saved:{current:before},durable:{current:before},localWrites:{current:Promise.resolve()},activeSession:{current:session},accountOwner,mounted:{current:true},setPreferences:(v:any)=>{rendered=v},setSaving(){},setError:(v:string)=>{error=v},SecureStore:{setItemAsync:async()=>{throw Error('Disk full')}},CHOICE_KEY:'synthetic'};
+ const save=new Function('env',`with(env){${ts.transpile(declaration,{target:ts.ScriptTarget.ES2022})};return save;}`)(env);
+ const off=pushChoice(session,before,false);await assert.rejects(save(off),/Disk full/);assert.equal(rendered.opted_in,false);assert.equal(env.saved.current.opted_in,false);assert.equal(env.durable.current.opted_in,true);assert.match(error,/Could not save on this device/);
+});
+
+
+test('an OS permission refresh cannot change the stored push preference',async()=>{
+ const source=ts.createSourceFile('PushSettings.tsx',readFileSync(new URL('../src/PushSettings.tsx',import.meta.url),'utf8'),ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);let declaration='';function visit(n:ts.Node){if(ts.isFunctionDeclaration(n)&&n.name?.text==='refreshNow')declaration=n.getText(source);ts.forEachChild(n,visit)}visit(source);
+ const env={localWrites:{current:Promise.resolve()},saved:{current:registered},durable:{current:registered},channelState:{current:undefined},accountOwner,activeSession:{current:session},state:async()=>registered,mounted:{current:true},setPermission(){},setVerified(){},Notifications:{getPermissionsAsync:async()=>({status:'denied',canAskAgain:false})},pushPermission,refreshPushDevice:async()=>{assert.fail('blocked OS delivery must not rewrite user choice')},save(){assert.fail('permission refresh must not flip user preference')}};
+ const refresh=new Function('env',`with(env){${ts.transpile(declaration,{target:ts.ScriptTarget.ES2022})};return refreshNow;}`)(env);await refresh();assert.equal(env.saved.current.opted_in,true);
 });

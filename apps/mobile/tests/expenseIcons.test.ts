@@ -8,12 +8,16 @@ const tick = async () => { for (let i = 0; i < 20; i++) await Promise.resolve();
 class ApiError extends Error { status: number; constructor(status: number) { super('Synthetic failure'); this.status = status; } }
 const bill = { id: 'bill', groupId: 'group', title: 'Dinner', category: 'general', category_auto: true };
 const hint = (state = 'ready', category: string | null = 'food', fields = {}) => ({ items: [{ id: bill.id, group_id: bill.groupId, title: bill.title, state, category, ...fields }] });
-function fixture() {
-  let index = 0, props = { session: { userId: 'one', token: 'token-one' } as any, visible: [bill], active: true, online: true };
+function fixture(cache: Record<string, Record<string, string>> = {}) {
+  let index = 0, props = { session: { userId: 'one', token: 'token-one' } as any, visible: [bill], active: true, online: true, all: false };
   const state: any[] = [], deps: any[][] = [], cleanups: any[] = [], effects: (() => void)[] = [], timers = new Map<number, { fn: () => void; delay: number }>();
   const calls: { path: string; signal: AbortSignal; resolve: (value: any) => void; reject: (error: Error) => void }[] = [];
   let timerId = 0;
-  const env = { categoryKey, categoryIcon, ApiError, accountOwner: (session: any) => session.userId,
+  const env = { getDatabase: async () => ({}),
+    subscribeExpenseIcons: () => () => {}, cachedExpenseIcons: (owner: string) => cache[owner] ?? {},
+    saveExpenseIcons: async (_: any, owner: string, values: Record<string, string>) => { cache[owner] = { ...cache[owner], ...values }; },
+    clearExpenseIcons: async (_: any, owner: string) => { cache[owner] = {}; },
+    useSyncExternalStore: (_: any, snapshot: () => any) => snapshot(), categoryKey, categoryIcon, ApiError, accountOwner: (session: any) => session.userId,
     request: (_: any, path: string, _method: any, _body: any, _format: any, signal: AbortSignal) => new Promise((resolve, reject) => calls.push({ path, signal, resolve, reject })),
     useRef: (value: any) => state[index++] ??= { current: value },
     useState: (value: any) => { const key = index++; return [state[key] ??= value, (value: any) => { state[key] = typeof value === 'function' ? value(state[key]) : value; }]; },
@@ -23,7 +27,7 @@ function fixture() {
   const source = ts.createSourceFile('useExpenseIcons.ts', readFileSync(new URL('../src/useExpenseIcons.ts', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true);
   const body = source.statements.filter(n => !ts.isImportDeclaration(n)).map(n => n.getText(source).replace(/^export /, '')).join('\n');
   const hook = new Function('env', `with(env){${ts.transpile(body, { target: ts.ScriptTarget.ES2022 })};return useExpenseIcons;}`)(env);
-  return { calls, timers, render(changes: Partial<typeof props> = {}) { props = { ...props, ...changes }; index = 0; return hook(props.session, props.visible, props.active, props.online); },
+  return { calls, timers, render(changes: Partial<typeof props> = {}) { props = { ...props, ...changes }; index = 0; return hook(props.session, props.visible, props.active, props.online, props.all); },
     async commit(start = true) { effects.splice(0).forEach(fn => fn()); await tick(); if (start) for (const [id, timer] of timers) { if (timer.delay === 250) { timers.delete(id); timer.fn(); await tick(); } } }, async fire() { const [id, timer] = timers.entries().next().value!; timers.delete(id); timer.fn(); await tick(); },
     unmount() { cleanups.forEach(fn => fn?.()); } };
 }
@@ -97,4 +101,42 @@ test('scrolling cancels queued icon reads and preserves cached icons for older m
   const key = categoryKey('group', 'bill', 'Dinner');
   assert.equal(app.render({ visible: [{ ...bill, id: 'third' }] })[key], 'food');
   app.unmount();
+});
+
+
+test('full breakdown icons use bounded batches while ordinary lists retain the 20-bill window', async () => {
+ const refs=Array.from({length:45},(_,i)=>({...bill,id:`bill-${String(i).padStart(2,'0')}`,title:`Dinner ${i}`}));
+ const app=fixture();app.render({visible:refs,all:true});await app.commit();
+ for(let i=0;i<3;i++){
+  const ids=decodeURIComponent(app.calls[i].path.split('ids=')[1]).split(',');assert.equal(ids.length,[20,20,5][i]);
+  app.calls[i].resolve({items:ids.map(id=>{const ref=refs.find(row=>row.id===id)!;return{id,group_id:ref.groupId,title:ref.title,state:'ready',category:'food'}})});await tick();
+ }
+ assert.equal(Object.keys(app.render()).length,45);app.unmount();
+ const normal=fixture();normal.render({visible:refs});await normal.commit();assert.equal(decodeURIComponent(normal.calls[0].path.split('ids=')[1]).split(',').length,20);normal.unmount();
+});
+
+test('closing a breakdown aborts an in-flight icon batch and never starts the remaining batches', async () => {
+ const refs=Array.from({length:45},(_,i)=>({...bill,id:`bill-${i}`}));const app=fixture();app.render({visible:refs,all:true});await app.commit();
+ app.calls[0].resolve({items:[]});await tick();assert.equal(app.calls.length,2);
+ app.render({active:false});await app.commit(false);assert.equal(app.calls[1].signal.aborted,true);app.calls[1].resolve({items:[]});await tick();assert.equal(app.calls.length,2);assert.deepEqual(app.render(),{});app.unmount();
+});
+
+
+test('a newly opened screen reads resolved icons on its first offline render, including after token renewal', async () => {
+  const cache = {};
+  const first = fixture(cache); first.render(); await first.commit(); first.calls[0].resolve(hint()); await tick(); first.unmount();
+  const second = fixture(cache);
+  assert.equal(second.render({ online: false, session: { userId: 'one', token: 'renewed' } })[categoryKey('group', 'bill', 'Dinner')], 'food');
+  await second.commit(); assert.equal(second.calls.length, 0);
+  assert.deepEqual(second.render({ session: { userId: 'other', token: 'different' } }), {}); second.unmount();
+});
+
+
+test('background pending and temporary failures retain cached icons while ready results refresh them', async () => {
+  const key = categoryKey('group', 'bill', 'Dinner'), cache = { one: { [key]: 'food' } };
+  const app = fixture(cache); assert.equal(app.render()[key], 'food'); await app.commit();
+  app.calls[0].resolve(hint('pending', null)); await tick(); assert.equal(app.render()[key], 'food');
+  await app.fire(); app.calls[1].resolve(hint('ready', 'coffee')); await tick(); assert.equal(app.render()[key], 'coffee');
+  app.render({ online: false }); await app.commit(); app.render({ online: true }); await app.commit();
+  app.calls[2].reject(Error('Temporary failure')); await tick(); assert.equal(app.render()[key], 'coffee'); app.unmount();
 });

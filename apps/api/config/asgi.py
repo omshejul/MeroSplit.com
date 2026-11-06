@@ -17,6 +17,9 @@ class MeroSplitApplication:
         # The SDK lifespan is entered once per worker, not once per RPC request.
         if scope["type"] == "lifespan" or scope.get("path") == "/mcp":
             return await self.mcp(scope, receive, send)
+        if scope.get("path") == "/mcp/attachments/upload":
+            from ledger.mcp_uploads import upload_app
+            return await upload_app(scope, receive, send)
         return await self.django(scope, receive, send)
 
 

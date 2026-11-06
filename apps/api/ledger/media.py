@@ -1,4 +1,4 @@
-"""Private, processed profile photos and bill attachments; no raw object uploads."""
+"""Private, processed profile/group photos and bill attachments; no raw object uploads."""
 
 import base64
 import hashlib
@@ -131,8 +131,14 @@ def process_file(upload, *, avatar: bool) -> dict:
                 with warnings.catch_warnings():
                     warnings.simplefilter("error", Image.DecompressionBombWarning)
                     with Image.open(io.BytesIO(data)) as original:
-                        if original.format not in {"JPEG", "PNG", "WEBP"} or getattr(original, "n_frames", 1) != 1:
-                            raise AccountingError("Choose a single JPEG, PNG or WebP image, or a plain PDF for a bill")
+                        # Camera JPEGs can contain auxiliary pictures (for example a
+                        # gain map). Keep only their primary photo, never the extra layers.
+                        if original.format not in {"JPEG", "MPO", "PNG", "WEBP", "GIF"}:
+                            raise AccountingError("This image format is not supported. Save it as JPEG, PNG or WebP and choose it again")
+                        if original.format != "MPO" and getattr(original, "n_frames", 1) != 1:
+                            raise AccountingError("Animated images cannot be attached. Save a still image as JPEG, PNG or WebP and choose it again")
+                        if original.format == "GIF":
+                            raise AccountingError("GIF images cannot be attached. Save it as JPEG, PNG or WebP and choose it again")
                         if original.width * original.height > 40_000_000:
                             raise AccountingError("Image exceeds 40 megapixels; choose a smaller photo")
                         edge = 512 if avatar else 2400
@@ -181,6 +187,57 @@ def avatar_for(actor) -> dict | None:
     return metadata(file) if file else None
 
 
+def profile_photos(user_ids):
+    """Uploaded photos take precedence. Provider URLs are never fetched by the server."""
+    from urllib.parse import urlsplit
+
+    from allauth.socialaccount.models import SocialAccount
+
+    ids = set(user_ids) - {None}
+    photos = {}
+    for account in SocialAccount.objects.filter(user_id__in=ids, provider="google"):
+        url = account.extra_data.get("picture")
+        if isinstance(url, str) and len(url) < 2048:
+            try:
+                parsed = urlsplit(url)
+            except ValueError:
+                continue
+            if parsed.scheme == "https" and parsed.hostname and (parsed.hostname == "googleusercontent.com" or parsed.hostname.endswith(".googleusercontent.com")) and not parsed.username:
+                photos[account.user_id] = {"url": url}
+    for file in UploadedFile.objects.filter(avatar_owner_id__in=ids, state="active"):
+        photos[file.avatar_owner_id] = metadata(file)
+    return photos
+
+
+def group_photo(group):
+    file = group.photos.filter(state="active").first()
+    return metadata(file) if file else None
+
+
+def _upload_result(file, group, cleanup_pending=False):
+    if file.avatar_owner_id:
+        return {"avatar": metadata(file), "cleanup_pending": cleanup_pending}
+    return {"group_photo" if file.icon_group_id else "attachment": metadata(file), "version": group.version,
+            **({"cleanup_pending": cleanup_pending} if file.icon_group_id else {})}
+
+
+def _photo_group(actor, group_id, *, lock=False):
+    group = visible_group(actor, group_id, lock=lock)
+    writable(group)
+    if group.is_direct:
+        raise HttpError(422, "Choose a shared group to change its photo")
+    return group
+
+
+def _file_scope(file):
+    parts = file.object_key.split("/")
+    if parts[0] == "avatars":
+        return f"avatar:{parts[1]}"
+    if parts[0] == "group-photos":
+        return f"group-photo:{parts[1]}"
+    return f"bill:{parts[2]}"
+
+
 def _bill(actor, group_id, expense_id, *, lock=False, modify=False):
     group = visible_group(actor, group_id, lock=lock)
     if modify:
@@ -204,8 +261,7 @@ def purge_files(ids) -> bool:
     pending = False
     for file in UploadedFile.objects.filter(id__in=ids, purged=False).exclude(state="active"):
         try:
-            parts = file.object_key.split("/")
-            scope = f"avatar:{parts[1]}" if parts[0] == "avatars" else f"bill:{parts[2]}"
+            scope = _file_scope(file)
             with _media_lock(scope):
                 current = UploadedFile.objects.filter(id=file.id, purged=False).exclude(state="active").first()
                 if not current:
@@ -215,7 +271,7 @@ def purge_files(ids) -> bool:
                 if current.state == "deleted" and current.uploaded_by_id is None and current.avatar_owner_id is None:
                     # No in-flight PUT can now recreate this key. Remove the old
                     # avatar user ID/path association after confirmed cleanup.
-                    fields.update(object_key=f"deleted/{current.id}", expense=None)
+                    fields.update(object_key=f"deleted/{current.id}", expense=None, icon_group=None)
                 UploadedFile.objects.filter(id=current.id).exclude(state="active").update(**fields)
         except (BotoCoreError, ClientError, HttpError):
             pending = True
@@ -229,8 +285,7 @@ def purge_stale_files() -> dict:
     ).order_by("created_at")[:100]
     cleaned, pending = 0, 0
     for file in candidates:
-        parts = file.object_key.split("/")
-        scope = f"avatar:{parts[1]}" if parts[0] == "avatars" else f"bill:{parts[2]}"
+        scope = _file_scope(file)
         try:
             with _media_lock(scope):
                 current = UploadedFile.objects.filter(id=file.id, purged=False).exclude(state="active").first()
@@ -252,8 +307,8 @@ def _attachment_change(group, actor, file, removed=False):
     group.save(update_fields=["version"])
     Change.objects.create(
         group=group, sequence=group.version, actor=actor,
-        kind="attachment_removed" if removed else "attachment_added",
-        data={"id": str(file.id), "expense_id": str(file.expense_id)},
+        kind=("group_photo_removed" if removed else "group_photo_changed") if file.icon_group_id else ("attachment_removed" if removed else "attachment_added"),
+        data={"id": str(file.id), **({"expense_id": str(file.expense_id)} if file.expense_id else {})},
     )
 
 
@@ -279,7 +334,7 @@ def _lock_actor(actor):
 
 def upload_file(actor, file_id, upload, *, group_id=None, expense_id=None) -> dict:
     try:
-        with _media_lock(f"avatar:{actor.pk}" if group_id is None else f"bill:{expense_id}"):
+        with _media_lock(f"avatar:{actor.pk}" if group_id is None else f"bill:{expense_id}" if expense_id else f"group-photo:{group_id}"):
             return _upload_file(actor, file_id, upload, group_id=group_id, expense_id=expense_id)
     finally:
         upload.close()
@@ -287,15 +342,21 @@ def upload_file(actor, file_id, upload, *, group_id=None, expense_id=None) -> di
 
 def _upload_file(actor, file_id, upload, *, group_id=None, expense_id=None) -> dict:
     avatar = group_id is None
+    icon = group_id is not None and expense_id is None
+    photo = avatar or icon
     try:
         # Deny unauthorized files before decoding or contacting R2.
-        if not avatar:
+        if icon:
+            _photo_group(actor, group_id)
+        elif not avatar:
             _bill(actor, group_id, expense_id, modify=True)
-        processed = process_file(upload, avatar=avatar)
+        processed = process_file(upload, avatar=photo)
         with transaction.atomic():
             if avatar:
                 _lock_actor(actor)
                 group, expense = None, None
+            elif icon:
+                group, expense = _photo_group(actor, group_id, lock=True), None
             else:
                 group, expense = _bill(actor, group_id, expense_id, lock=True, modify=True)
             file = UploadedFile.objects.filter(id=file_id).first()
@@ -304,19 +365,20 @@ def _upload_file(actor, file_id, upload, *, group_id=None, expense_id=None) -> d
                     file.uploaded_by_id != actor.pk or file.source_hash != processed["source_hash"]
                     or file.avatar_owner_id != (actor.pk if avatar else None)
                     or file.expense_id != (expense.id if expense else None)
+                    or file.icon_group_id != (group.id if icon else None)
                 ):
                     raise HttpError(409, "Upload ID already used for different input")
                 if file.state == "deleted":
                     raise HttpError(409, "This file was removed; choose the file again")
                 if file.state == "active":
-                    waiting = UploadedFile.objects.filter(avatar_owner=actor, state="deleted", purged=False).exists() if avatar else False
-                    return {"avatar": metadata(file), "cleanup_pending": waiting} if avatar else {"attachment": metadata(file), "version": group.version}
+                    waiting = UploadedFile.objects.filter(**({"avatar_owner": actor} if avatar else {"icon_group": group}), state="deleted", purged=False).exists() if photo else False
+                    return _upload_result(file, group, waiting)
             else:
                 if expense and expense.attachments.filter(state="active").count() >= 10:
                     raise HttpError(409, "A bill can have at most 10 attachments")
-                key = f"avatars/{actor.pk}/{file_id}.jpg" if avatar else f"bills/{group.id}/{expense.id}/{file_id}{PurePath(processed['name']).suffix}"
+                key = f"avatars/{actor.pk}/{file_id}.jpg" if avatar else f"group-photos/{group.id}/{file_id}.jpg" if icon else f"bills/{group.id}/{expense.id}/{file_id}{PurePath(processed['name']).suffix}"
                 file = UploadedFile.objects.create(
-                    id=file_id, avatar_owner=actor if avatar else None, expense=expense,
+                    id=file_id, avatar_owner=actor if avatar else None, expense=expense, icon_group=group if icon else None,
                     uploaded_by=actor, object_key=key,
                     **{key: processed[key] for key in ("source_hash", "name", "content_type", "size")},
                 )
@@ -330,6 +392,8 @@ def _upload_file(actor, file_id, upload, *, group_id=None, expense_id=None) -> d
             with transaction.atomic():
                 if avatar:
                     _lock_actor(actor)
+                elif icon:
+                    group = _photo_group(actor, group_id, lock=True)
                 else:
                     group, expense = _bill(actor, group_id, expense_id, lock=True, modify=True)
                 current = UploadedFile.objects.select_for_update().get(id=file.id)
@@ -337,8 +401,8 @@ def _upload_file(actor, file_id, upload, *, group_id=None, expense_id=None) -> d
                     raise HttpError(409, "This upload was removed before it finished")
                 old_ids = []
                 if current.state != "active":
-                    if avatar:
-                        old = UploadedFile.objects.filter(avatar_owner=actor, state="active").exclude(id=current.id)
+                    if photo:
+                        old = UploadedFile.objects.filter(**({"avatar_owner": actor} if avatar else {"icon_group": group}), state="active").exclude(id=current.id)
                         old_ids = list(old.values_list("id", flat=True))
                         old.update(state="deleted")
                     elif expense.attachments.filter(state="active").count() >= 10:
@@ -354,7 +418,7 @@ def _upload_file(actor, file_id, upload, *, group_id=None, expense_id=None) -> d
                 raise HttpError(503, "Upload could not finish; retry the same file") from exc
             raise
         cleanup_pending = purge_files(old_ids)
-        return {"avatar": metadata(current), "cleanup_pending": cleanup_pending} if avatar else {"attachment": metadata(current), "version": group.version}
+        return _upload_result(current, group, cleanup_pending)
     finally:
         upload.close()
 
@@ -367,6 +431,19 @@ def remove_avatar(actor) -> dict:
             ids = list(files.values_list("id", flat=True))
             files.update(state="deleted")
         return {"removed": True, "cleanup_pending": purge_files(ids)}
+
+
+def remove_group_photo(actor, group_id, file_id) -> dict:
+    with _media_lock(f"group-photo:{group_id}"):
+        with transaction.atomic():
+            group = _photo_group(actor, group_id, lock=True)
+            file = UploadedFile.objects.filter(icon_group=group, id=file_id).first()
+            if file and file.state != "deleted":
+                if file.state == "active":
+                    _attachment_change(group, actor, file, removed=True)
+                file.state = "deleted"
+                file.save(update_fields=["state"])
+        return {"removed": True, "cleanup_pending": purge_files([file_id]) if file else False, "version": group.version}
 
 
 def remove_attachment(actor, group_id, expense_id, file_id) -> dict:
@@ -387,12 +464,20 @@ def _remove_attachment(actor, group_id, expense_id, file_id) -> dict:
 
 
 def _visible_file(actor, file_id) -> UploadedFile:
+    from .models import Group, Participant
+    from .store_review import groups_for_actor
+
     file = UploadedFile.objects.select_related("expense").filter(id=file_id, state="active").first()
     if not file:
         raise HttpError(404, "File not found")
     if file.avatar_owner_id:
-        if file.avatar_owner_id != actor.pk:
+        if file.avatar_owner_id != actor.pk and not Participant.objects.filter(
+                user_id=actor.pk, removed=False, group__in=groups_for_actor(Group.objects.all(), actor),
+                group__participants__user_id=file.avatar_owner_id,
+                group__participants__removed=False).exists():
             raise HttpError(404, "File not found")
+    elif file.icon_group_id:
+        visible_group(actor, file.icon_group_id)
     elif file.expense_id:
         _bill(actor, file.expense.group_id, file.expense_id)
     else:

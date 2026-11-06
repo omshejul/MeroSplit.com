@@ -4,8 +4,8 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { accountOwner, ApiError, requestEmailCode, confirmEmailCode, request, syncOutbox } from '../src/api.ts';
-import { migrate, enqueue, pendingCommands, readGroup, saveGroup, replaceCommand } from '../src/storage.ts';
+import { accountOwner, ApiError, requestEmailCode, confirmEmailCode, request, syncOutbox, refreshGroups } from '../src/api.ts';
+import { migrate, enqueue, pendingCommands, readGroup, saveGroup, replaceCommand, listGroups } from '../src/storage.ts';
 import { sqliteAdapter } from './sqlite.ts';
 import type { Command, Group, Session } from '../src/types.ts';
 
@@ -13,6 +13,56 @@ const session: Session = { token: 'synthetic-token', userId: '1', email: 'synthe
 const owner = accountOwner(session);
 const group: Group = { id: 'g', name: 'Trip', version: 0, participants: [], expenses: [], settlements: [], balances: {}, transfers: [], activity: [] };
 const command: Command = { command_id: 'c', group_id: 'g', method: 'POST', path: '/groups', body: { command_id: 'c', id: 'g' }, state: 'pending', error: null };
+
+test('an older background index cannot prune a concurrently accepted group but still removes unchanged revoked access', async () => {
+  const original = globalThis.fetch, raw = new DatabaseSync(':memory:'), db = sqliteAdapter(raw);
+  let release!: () => void, started!: () => void;
+  const gate = new Promise<void>(yes => { release = yes; }), fetching = new Promise<void>(yes => { started = yes; });
+  globalThis.fetch = async () => { started(); await gate; return Response.json({ groups: [] }); };
+  let job: Promise<unknown> | undefined;
+  try {
+    await migrate(db); await saveGroup(db, owner, { ...group, id: 'revoked', version: 1 }, 'shared');
+    job = refreshGroups(db, session); await fetching;
+    await saveGroup(db, owner, { ...group, id: 'newly-accepted', version: 1 }, 'shared');
+    release(); await job;
+    assert.deepEqual((await listGroups(db, owner)).map(row => row.group.id), ['newly-accepted']);
+  } finally { release(); await job?.catch(() => {}); globalThis.fetch = original; raw.close(); }
+});
+
+for (const conflict of [false, true]) test(`overlapping background and action drains stay ordered${conflict ? ' and hold dependent work after409' : ''}`, async () => {
+  const original = globalThis.fetch, raw = new DatabaseSync(':memory:'), db = sqliteAdapter(raw), posts: string[] = [];
+  let release!: () => void, started!: () => void;
+  const gate = new Promise<void>(yes => { release = yes; }), firstPost = new Promise<void>(yes => { started = yes; });
+  const jobs: Promise<unknown>[] = [];
+  globalThis.fetch = async (_url, options) => {
+    if (options?.method === 'POST') {
+      const id = JSON.parse(String(options.body)).command_id; posts.push(id);
+      if (id === 'c') { started(); await gate; }
+      if (conflict) return Response.json({ detail: 'Accepted revision changed.' }, { status: 409 });
+      return Response.json({ id: 'g', command_id: id, version: id === 'c' ? 1 : 2 });
+    }
+    return Response.json({ ...group, version: 2 });
+  };
+  try {
+    await migrate(db); await saveGroup(db, owner, group, 'shared'); await enqueue(db, owner, command);
+    const first = syncOutbox(db, session); jobs.push(first); await firstPost;
+    await enqueue(db, owner, { ...command, command_id: 'later', body: { command_id: 'later', id: 'later' } });
+    const later = syncOutbox(db, session); jobs.push(later);
+    // Both callers have had a chance to enter the real SQLite/request path.
+    for (let i = 0; i < 30; i++) await Promise.resolve();
+    assert.deepEqual(posts, ['c'], 'no concurrent duplicate HTTP replay'); release();
+    if (conflict) {
+      await assert.rejects(first, /Accepted revision/); await assert.rejects(later, /Resolve/);
+      const kept = await pendingCommands(db, owner);
+      assert.deepEqual(kept.map(row => [row.command_id, row.state, !!row.attempted]), [['c', 'conflict', true], ['later', 'pending', false]]);
+      assert.deepEqual(posts, ['c']);
+    } else {
+      assert.deepEqual((await first).map(row => row.command_id), ['c']);
+      assert.deepEqual((await later).map(row => row.command_id), ['later']);
+      assert.deepEqual(posts, ['c', 'later']); assert.equal((await pendingCommands(db, owner)).length, 0);
+    }
+  } finally { release(); await Promise.allSettled(jobs); globalThis.fetch = original; raw.close(); }
+});
 
 test('Lost responses retry the same command, conflicts remain durable and accounts stay isolated', async () => {
   const original = globalThis.fetch, raw = new DatabaseSync(':memory:'), db = sqliteAdapter(raw);

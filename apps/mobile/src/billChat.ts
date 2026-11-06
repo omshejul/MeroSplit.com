@@ -5,7 +5,7 @@ import type { Session } from './types.ts';
 
 export type ChatMessage = { id: string; client_id: string; sender_id: string; sender: string; text: string; hidden: boolean; created_at: string; seen_token: string };
 export type ChatPage = { messages: ChatMessage[]; older_cursor: string | null; after_cursor: string; has_more_newer: boolean; removed_ids: string[]; unread: number; can_send: boolean; policy_accepted: boolean; policy_version: number; blocked_users: { id: string; name: string }[] };
-export type PendingMessage = { id: string; text: string; error?: string; rejected?: boolean };
+export type PendingMessage = { id: string; text: string; error?: string; rejected?: boolean; created_at?: string };
 export type ChatWork = { draft: string; pending: PendingMessage[] };
 export const chatPath = (group: string, bill: string) => `/groups/${encodeURIComponent(group)}/expenses/${encodeURIComponent(bill)}/chat`;
 const key = (path: string) => `chat:${path}`;
@@ -52,7 +52,7 @@ export function queueChatMessage(db: Database, session: Session, path: string, i
     if (work.pending.length >= 20) throw Error('Retry the saved messages before adding more.');
     const existing = work.pending.find(row => row.id === id);
     if (existing && existing.text !== text) throw Error('This message ID is already used.');
-    return { draft: work.draft === text ? '' : work.draft, pending: existing ? work.pending : [...work.pending, { id, text }] };
+    return { draft: work.draft === text ? '' : work.draft, pending: existing ? work.pending : [...work.pending, { id, text, created_at: new Date().toISOString() }] };
   });
 }
 export async function sendChatMessage(db: Database, session: Session, path: string, id: string, send: typeof request = request): Promise<ChatMessage> {
@@ -85,6 +85,15 @@ export function mergeChatMessages(previous: ChatMessage[], incoming: ChatMessage
   const hidden = new Set(removed), all = new Map(previous.map(row => [row.id, row]));
   incoming.forEach(row => all.set(row.id, row));
   return [...all.values()].filter(row => !row.hidden && !hidden.has(row.id)).sort((a, b) => BigInt(a.id) < BigInt(b.id) ? -1 : BigInt(a.id) > BigInt(b.id) ? 1 : 0);
+}
+// Display-only optimistic rows never enter the authoritative messages/read-token state.
+export type ChatDisplayMessage = ChatMessage & { pending?: PendingMessage };
+export function chatMessageRows(messages: ChatMessage[], pending: PendingMessage[], userId: string): ChatDisplayMessage[] {
+  const accepted = new Set(messages.filter(row => row.sender_id === userId).map(row => row.client_id));
+  return [...messages, ...pending.filter(row => !accepted.has(row.id)).map(row => ({
+    id: row.id, client_id: row.id, sender_id: userId, sender: 'You', text: row.text,
+    hidden: false, created_at: row.created_at ?? '', seen_token: '', pending: row,
+  }))].reverse();
 }
 export function visibleChatTokens(messages: ChatMessage[], visibleIds: string[], active: boolean): string[] {
   if (!active) return [];

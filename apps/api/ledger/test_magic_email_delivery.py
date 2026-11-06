@@ -137,7 +137,7 @@ def test_digest_first_attempt_activates_expiry_and_retry_keeps_frozen_recipe(cli
     identifier = notifications.create_due_digest()
     digest = ExpenseDigest.objects.get(pk=identifier)
     grant = EmailLoginGrant.objects.get(source_key=f"expense-digest/{identifier}")
-    assert grant.purpose == "digest" and grant.target == {"kind": "home"} and grant.expires_at is None
+    assert grant.purpose == "digest" and grant.target == {"kind": "digest", "digest_id": str(digest.id)} and grant.expires_at is None
     assert "#proof=" not in json.dumps(digest.payload) and LINK_PLACEHOLDER in digest.payload["text"]
     clock[0] += timedelta(hours=6)
     monkeypatch.setattr(email_delivery, "render_message", lambda *args, **kwargs: pytest.fail("Queued work must use the frozen body"))
@@ -146,6 +146,7 @@ def test_digest_first_attempt_activates_expiry_and_retry_keeps_frozen_recipe(cli
     digest.refresh_from_db()
     assert grant.expires_at == digest.first_attempt_at + notifications.LINK_LIFETIME
     assert digest.first_attempt_at == clock[0] and len(provider) == 1
+    assert b"_expense_summary" not in provider[0]["data"]
     original_expiry = grant.expires_at
     clock[0] += timedelta(minutes=2)
     settings.PUBLIC_WEB_URL = "https://changed-synthetic.example.invalid"

@@ -1,7 +1,12 @@
+import ScrollView from './KeyboardScrollView';
+import ScrollBottomInset from './ScrollBottomInset';
+import { LoadingState } from './UIStates';
+import ResendControls from './ResendControls';
+import { Dialog } from './DialogParts';
 import React, { useState } from 'react';
-import { ActivityIndicator, ScrollView, View } from 'react-native';
-import { Dialog, Text } from 'react-native-paper';
-import DialogFocus from './DialogFocus';
+import { View } from 'react-native';
+import { Text } from 'react-native-paper';
+
 import KeyboardDialog from './KeyboardDialog';
 import { DialogScrollBody } from './DialogParts';
 import { TextField } from './FormFields';
@@ -11,24 +16,24 @@ import { AppFrame, pageContentStyle, ScreenHeader } from './AppNavigation';
 export function EmailLinkScreen({ title, busy, children }: { title: string; busy: boolean; children: React.ReactNode }) {
   return <AppFrame>
     <ScreenHeader title={title} brand busy={busy} />
-    <ScrollView role="main" contentContainerStyle={pageContentStyle} keyboardShouldPersistTaps="handled">{children}</ScrollView>
+    <ScrollView role="main" contentInsetAdjustmentBehavior="automatic" contentContainerStyle={pageContentStyle} keyboardShouldPersistTaps="handled">{children}<ScrollBottomInset /></ScrollView>
   </AppFrame>;
 }
 export function EmailLinkDialog({ title, children }: { title: string; children: React.ReactNode }) {
   return <KeyboardDialog visible dismissable={false} onDismiss={() => {}}>
-    <DialogFocus>
+
     <Dialog.Title aria-level={2}>{title}</Dialog.Title>
     <DialogScrollBody maxHeight={400} gap={12}>{children}</DialogScrollBody>
-    </DialogFocus>
+
   </KeyboardDialog>;
 }
 
 export function EmailLinkStatus({ opening, error, sent, canRenew, busy, onRetry, onRenew, onSignIn }: { opening: boolean; error: string; sent: boolean; canRenew: boolean; busy: boolean; onRetry: () => void; onRenew: () => void; onSignIn: () => void }) {
   const { ui } = useUI();
   return <View style={{ gap: 12 }}>
-    {opening ? <><ActivityIndicator accessibilityLabel="Opening" /><Text style={ui.body}>Opening…</Text></> : <>
+    {opening ? <LoadingState label="Opening…" spinner /> : <>
       <Text accessibilityRole={error ? 'alert' : undefined} style={error ? ui.error : ui.body}>{sent ? 'New link sent.' : error}</Text>
-      {canRenew && <Button title="Send new link" kind="primary" disabled={busy} onPress={onRenew} />}
+      {canRenew && <Button title={busy ? 'Sending…' : 'Send new link'} kind="primary" disabled={busy} onPress={onRenew} />}
       <Button title="Try again" disabled={busy} onPress={onRetry} />
       <Button title={canRenew ? 'Open MeroSplit' : 'Sign in'} kind="text" disabled={busy} onPress={onSignIn} />
     </>}
@@ -37,9 +42,7 @@ export function EmailLinkStatus({ opening, error, sent, canRenew, busy, onRetry,
 export function EmailLinkSent({ busy, resendSeconds, onResend, onCode, onChangeEmail }: { busy: boolean; resendSeconds: number; onResend: () => void; onCode: () => void; onChangeEmail: () => void }) {
   const { ui } = useUI();
   return <View style={{ gap: 12 }}><Text style={ui.body}>Open the sign-in link in your email.</Text>
-    <Button contentStyle={{ minHeight: 48 }} title={resendSeconds > 0 ? `Resend in ${resendSeconds}s` : 'Send new link'} disabled={busy || resendSeconds > 0} onPress={onResend} />
-    <Button contentStyle={{ minHeight: 48 }} title="Use a code instead" kind="text" disabled={busy} onPress={onCode} />
-    <Button contentStyle={{ minHeight: 48 }} title="Use another email" kind="text" disabled={busy} onPress={onChangeEmail} />
+    <ResendControls busy={busy} resendSeconds={resendSeconds} onResend={onResend} onChangeEmail={onChangeEmail} onAlternative={onCode} alternativeLabel="Use a code instead" resendLabel="Send new link" primary />
   </View>;
 }
 export function NameOnlyForm({ busy, onSave, autoFocus = true }: { autoFocus?: boolean; busy: boolean; onSave: (name: string) => Promise<void> }) {
@@ -48,6 +51,6 @@ export function NameOnlyForm({ busy, onSave, autoFocus = true }: { autoFocus?: b
   return <View style={{ gap: 12 }}>
     <TextField label="Name" autoFocus={autoFocus} value={name} maxLength={120} autoCapitalize="words" autoComplete="name" autoCorrect={false} editable={!busy} onChangeText={setName} returnKeyType="done" onSubmitEditing={() => { if (!busy && name.trim()) void save(); }} />
     {!!error && <ErrorText>{error}</ErrorText>}
-    <Button title="Continue" kind="primary" disabled={busy || !name.trim()} onPress={() => void save()} />
+    <Button title={busy ? 'Saving name…' : 'Save name'} kind="primary" disabled={busy || !name.trim()} onPress={() => void save()} />
   </View>;
 }

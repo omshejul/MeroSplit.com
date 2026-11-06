@@ -23,3 +23,15 @@ test('local native builds and both EAS release profiles target the same producti
   assert.equal(eas.build.production.extends, 'beta');
   assert.equal(eas.build.beta.environment, 'production');
 });
+
+
+test('browser startup exports every update control rendered by App', async () => {
+  const ts = await import('typescript');
+  const source = readFileSync(new URL('../src/AppUpdates.web.tsx', import.meta.url), 'utf8');
+  const { outputText } = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } });
+  const browser = await import('data:text/javascript;base64,' + Buffer.from(outputText).toString('base64'));
+  assert.equal(typeof browser.default, 'function');
+  assert.equal(typeof browser.AppUpdatePrompt, 'function');
+  assert.equal(browser.default({ update: {} }), null);
+  assert.equal(browser.AppUpdatePrompt({ update: {} }), null);
+});

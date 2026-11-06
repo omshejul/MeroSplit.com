@@ -15,7 +15,7 @@ from django.db.models import Q
 from django.utils import timezone
 from ninja.errors import HttpError
 
-from .models import ExpenseNotice, ExpensePushDelivery, Group, NotificationPreference, Participant, PushDevice
+from .models import NotificationChannelCursor, ExpenseNotice, ExpensePushDelivery, Group, NotificationPreference, Participant, PushDevice
 from .store_review import groups_for_actor, review_ids
 
 
@@ -34,7 +34,10 @@ def register_device(request, installation_id, payload):
     if not settings.PUSH_PROVIDER or payload["provider"] != settings.PUSH_PROVIDER:
         raise HttpError(503, "Push notifications are not configured for this provider")
     payload = dict(payload)
+    preference_revision = payload.pop("preference_revision", None)
     bill_chat = payload.pop("bill_chat", False)
+    ledger_updates = payload.pop("ledger_updates", False)
+    currency = payload.pop("currency", "INR")
     token = request.headers.get("X-Session-Token")
     session = app_settings.TOKEN_STRATEGY.lookup_session(token) if token else request.session
     user = get_session_user(session) if session else None
@@ -52,6 +55,12 @@ def register_device(request, installation_id, payload):
         )
         if not actor.is_active or not session_row:
             raise HttpError(401, "Sign in again to register this device")
+        if preference_revision is None and NotificationChannelCursor.objects.filter(user=actor, client_id=installation_id).exists():
+            return {"id": str(installation_id), "enabled": False}
+        if preference_revision is not None:
+            from .notification_channels import accept_revision
+            if not accept_revision(actor, installation_id, preference_revision, allow_same=True, push_enabled=True):
+                return {"id": str(installation_id), "enabled": False}
         token_hash = hashlib.sha256(payload["token"].encode()).hexdigest()
         # Lock both identities in a stable order; unique constraints also protect first registration races.
         devices = list(
@@ -71,33 +80,38 @@ def register_device(request, installation_id, payload):
         }
         if device:
             device.bill_chat = bill_chat
+            device.ledger_updates, device.currency = ledger_updates, currency
             if any(getattr(device, key) != value for key, value in binding.items()):
                 device.revision += 1
                 for key, value in binding.items():
                     setattr(device, key, value)
                 device.save()
             else:
-                device.save(update_fields=["updated_at", "bill_chat"])
+                device.save(update_fields=["updated_at", "bill_chat", "ledger_updates", "currency"])
         else:
-            device = PushDevice.objects.create(id=installation_id, bill_chat=bill_chat, **binding)
+            device = PushDevice.objects.create(id=installation_id, bill_chat=bill_chat, ledger_updates=ledger_updates, currency=currency, **binding)
     return {"id": str(device.id), "enabled": True}
 
 
-def remove_device(actor, installation_id):
-    from .expense_notifications import _locked_preference, account_email, update_preferences
-    # Finish device cascades before cancelling deliveries: logout locks Device first.
+def remove_device(actor, installation_id, preference_revision=None):
+    # Device removal never changes the account's explicit master preference.
     with transaction.atomic():
+        if preference_revision is None:
+            # Old clients can still opt out. Their later unversioned registration
+            # must not restore a route retired by a newer preference.
+            get_user_model().objects.select_for_update(no_key=True).filter(pk=actor.pk).first()
+            NotificationChannelCursor.objects.filter(user=actor, client_id=installation_id).update(push_disabled=True)
+        if preference_revision is not None:
+            from .notification_channels import accept_revision
+            if not get_user_model().objects.select_for_update(no_key=True).filter(pk=actor.pk, is_active=True).exists():
+                raise HttpError(401, "Sign in again to change notifications")
+            if not accept_revision(actor, installation_id, preference_revision, allow_same=True, push_enabled=False):
+                return {"removed": True}
         device = PushDevice.objects.select_for_update().filter(id=installation_id, user=actor).first()
         if device:
             device.delete()
         elif PushDevice.objects.filter(id=installation_id).exists():
             return {"removed": True}
-    with transaction.atomic():
-        if not get_user_model().objects.select_for_update(no_key=True).filter(pk=actor.pk, is_active=True).exists():
-            return {"removed": True}
-        pref = _locked_preference(actor)
-        if not (pref.email_reminders and account_email(actor)) and not registered_push_ids(actor):
-            update_preferences(actor, False, pref.email_reminders)
     return {"removed": True}
 
 
@@ -255,7 +269,8 @@ def send_pending_bill_notifications(*, limit=100):
             continue
         data["expense_version"] = notice.expense_version
         try:
-            provider_id = send_bill_notification(delivery.device, data)
+            from .notification_content import new_bill_content
+            provider_id = send_bill_notification(delivery.device, data, **new_bill_content(delivery))
         except PushFailure as error:
             if error.invalid_token:
                 PushDevice.objects.filter(id=delivery.device_id, revision=delivery.device_revision).delete()

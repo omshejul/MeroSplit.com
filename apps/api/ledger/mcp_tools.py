@@ -3,12 +3,15 @@
 from uuid import UUID
 
 from django.core import signing
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import transaction
 from django.db.models import F
 from ninja.errors import HttpError
 
-from . import services
+from . import media, services
+from .expense_icon_catalog import OPTIONS
 from .history_reads import expense_detail, history_page, settlement_detail
+from .mcp_files import download_file
 from .mcp_oauth import issuer_url
 from .models import Group, OpeningBalance
 from .profiles import display_name, participant_display_name
@@ -46,7 +49,9 @@ def get_account_context(actor):
     origin = issuer_url()
     return {"account": {"id": actor.pk, "display_name": display_name(actor)}, "currency": "INR",
             "minor_unit": "paise", "minor_units_per_unit": 100, "amount_format": "integer string",
-            "app_url": f"{origin}/app/", "setup_url": f"{origin}/mcp/setup"}
+            "app_url": f"{origin}/app/", "setup_url": f"{origin}/mcp/setup",
+            "icon_options": [{"value": "auto", "label": "Automatic", "description": "Choose from the bill title"},
+                *[{"value": key, "label": option[0], "description": option[2]} for key, option in OPTIONS.items()]]}
 
 
 def list_groups(actor, *, limit=50, cursor=None):
@@ -84,10 +89,11 @@ def get_group(actor, group_id):
         group.expenses.filter(deleted=False).values_list("total", "paid", "shares").iterator(chunk_size=1000),
         group.settlements.filter(reversed=False).values_list("sender_id", "recipient_id", "amount").iterator(chunk_size=1000),
         opening.balances if opening else None,
+        simplify_debts=group.simplify_debts, debt_checkpoint=group.debt_checkpoint,
     )
     return {
         "id": str(group.id), "name": group.name, "version": group.version,
-        "archived": group.archived, "is_direct": group.is_direct, "currency": "INR",
+        "archived": group.archived, "is_direct": group.is_direct, "simplify_debts": group.simplify_debts, "currency": "INR",
         "participants": [{"id": str(person.id), "name": participant_display_name(person),
                           "is_self": person.user_id == actor.pk and not person.removed, "removed": person.removed}
                          for person in people],
@@ -133,7 +139,7 @@ def create_group(actor, payload):
     return services.create_group(actor, body.model_dump(mode="json"))
 
 
-def save_expense(actor, group_id, payload, *, expense_id=None):
+def save_expense(actor, group_id, payload, *, expense_id=None, icon=None):
     """Save once through the ordinary transaction, requiring an exact edit revision."""
     body = ExpenseIn.model_validate(payload)
     if expense_id is not None:
@@ -142,7 +148,16 @@ def save_expense(actor, group_id, payload, *, expense_id=None):
             raise HttpError(422, "Editing requires the matching expense ID and version")
     elif body.version is not None:
         raise HttpError(422, "Omit version when creating a new expense")
-    return services.save_expense(actor, _uuid(group_id), body.model_dump(mode="json"), expense_id, category_supplied="category" in body.model_fields_set)
+    category_supplied = "category" in body.model_fields_set and (
+        body.category_auto is not None or body.category.strip().casefold() not in {"", "general", "other"}
+    )
+    data = body.model_dump(mode="json", exclude={"time"} if "time" not in body.model_fields_set else set())
+    if icon is not None:
+        if not isinstance(icon, str) or icon not in ("auto", *OPTIONS):
+            raise HttpError(422, "Choose an icon from get_account_context.icon_options")
+        data["category"], data["category_auto"] = ("general", True) if icon == "auto" else (icon, False)
+        category_supplied = True
+    return services.save_expense(actor, _uuid(group_id), data, expense_id, category_supplied=category_supplied)
 
 
 def reverse_expense(actor, group_id, bill_id, payload):
@@ -165,3 +180,11 @@ def reverse_external_payment(actor, group_id, payment_id, payload):
     """Reverse bookkeeping under the existing participant/organizer rules, never a bank refund."""
     body = Command.model_validate(payload)
     return services.reverse_settlement(actor, _uuid(group_id), _uuid(payment_id), body.model_dump(mode="json"))
+
+
+def upload_attachment(actor, group_id, bill_id, id, file):
+    group_id, bill_id, id = _uuid(group_id), _uuid(bill_id), _uuid(id)
+    media._bill(actor, group_id, bill_id, modify=True)  # Authorize before fetching source bytes.
+    data = download_file(file["download_url"])
+    upload = SimpleUploadedFile(file.get("file_name") or "attachment", data, content_type=file.get("mime_type") or "application/octet-stream")
+    return media.upload_file(actor, id, upload, group_id=group_id, expense_id=bill_id)

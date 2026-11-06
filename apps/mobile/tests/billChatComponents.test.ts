@@ -1,3 +1,4 @@
+import { withSharedUI } from './componentHarness.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -25,8 +26,8 @@ function component(db: any, send: typeof request, extra: Record<string, any> = {
   let receive!: (value: ChatPage, older: boolean) => void, fail!: (error: unknown) => void;
   let starts = 0, stops = 0;
   const env: Record<string, any> = { APP_ORIGIN, ...chat, React: { createElement: (type: any, props: any, ...children: any[]) => ({ type, props: props ?? {}, children }) },
-    Platform: { OS: 'native' }, storageIsDurable: () => true, View: 'View', Text: 'Text', FlatList: 'FlatList', ScrollView: 'ScrollView', Button: 'Button', TextField: 'TextField', IconAction: 'IconAction', SettingsRow: 'SettingsRow', ChatControls: 'ChatControls', ChatMenu: 'ChatMenu', KeyboardDialog: 'KeyboardDialog', Dialog: Object.assign(() => {}, { Title: 'Title', Content: 'Content', Actions: 'Actions' }),
-    Crypto: { randomUUID: () => 'synthetic-client-uuid' }, ApiError, accountOwner, request: send, getDatabase: async () => db, useUI: () => ({ ui: {}, palette: {} }), useWindowDimensions: () => ({ height: 720 }), Linking: { openURL: async () => {} },
+    Platform: { OS: 'native' }, KeyboardAvoidingView: 'KeyboardAvoidingView', useSafeAreaInsets: () => ({ top: 24, bottom: 24 }), storageIsDurable: () => true, View: 'View', BottomSafeArea: 'BottomSafeArea', Text: 'Text', FlatList: 'FlatList', ScrollView: 'ScrollView', Button: 'Button', TextField: 'TextField', TextInput: 'TextInput', Icon: 'Icon', ChatComposerSurface: 'ChatComposerSurface', IconAction: 'IconAction', SettingsRow: 'SettingsRow', ChatControls: 'ChatControls', ChatMenu: 'ChatMenu', KeyboardDialog: 'KeyboardDialog', Dialog: Object.assign(() => {}, { Title: 'Title', Content: 'Content', Actions: 'Actions' }),
+    Crypto: { randomUUID: () => 'synthetic-client-uuid' }, ApiError, accountOwner, request: send, getDatabase: async () => db, useUI: () => ({ ui: {}, palette: {}, motion: { enabled: true } }), useWindowDimensions: () => ({ height: 720 }), Linking: { openURL: async () => {} },
     sendChatMessage: (...args: any[]) => chat.sendChatMessage(args[0], args[1], args[2], args[3], send),
     startChatReads: (_session: any, _path: string, _known: any, onPage: any, onError: any) => { starts++; receive = onPage; fail = onError; return { stop: () => stops++, refresh: () => {}, older: async () => {}, hasOlder: () => true }; },
     useState: (initial: any) => { const id = cursor++; if (!(id in states)) states[id] = typeof initial === 'function' ? initial() : initial; return [states[id], (value: any) => { states[id] = typeof value === 'function' ? value(states[id]) : value; }]; },
@@ -34,16 +35,17 @@ function component(db: any, send: typeof request, extra: Record<string, any> = {
     useEffect: (fn: () => any, values: any[]) => { const id = cursor++; if (!deps[id] || values.some((value, i) => value !== deps[id][i])) { effects.push(() => { cleanups[id]?.(); cleanups[id] = fn(); }); deps[id] = values; } },
   };
   const pagingSource = ts.createSourceFile('useScrollPagination.ts', readFileSync(new URL('../src/useScrollPagination.ts', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true);
-  const pagingBody = pagingSource.statements.filter(node => !ts.isImportDeclaration(node)).map(node => node.getText(pagingSource).replace(/^export /, '')).join('\n');
-  env.useScrollPagination = new Function('env', `with(env){${ts.transpile(pagingBody, { target: ts.ScriptTarget.ES2022 })};return useScrollPagination;}`)(env);
+  const pagingBody = pagingSource.statements.filter(node => !ts.isImportDeclaration(node) && !ts.isExportDeclaration(node)).map(node => node.getText(pagingSource).replace(/^export /, '')).join('\n');
+  env.useScrollPagination = new Function('env', `with(env){${ts.transpile(pagingBody, { target: ts.ScriptTarget.ES2022 })};return useScrollPagination;}`)(withSharedUI(env));
   env.LoadingSpinner = 'LoadingSpinner';
+  env.ChatLoadingState = 'ChatLoadingState';
   Object.assign(env, extra);
   const source = ts.createSourceFile('BillChatScreen.tsx', readFileSync(new URL('../src/BillChatScreen.tsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
-  const body = source.statements.filter(node => !ts.isImportDeclaration(node)).map(node => node.getText(source).replace(/^export (?:default )?/, '')).join('\n');
+  const body = source.statements.filter(node => !ts.isImportDeclaration(node) && !ts.isExportDeclaration(node)).map(node => node.getText(source).replace(/^export (?:default )?/, '')).join('\n');
   const code = ts.transpile(body, { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React });
-  const render = new Function('env', `with(env){${code}; return {BillChatScreen,ChatComposer};}`)(env);
+  const render = new Function('env', `with(env){${code}; return {BillChatScreen,ChatComposer,ChatEmptyState,ChatMessageRow};}`)(withSharedUI(env));
   const props = { session, groupId: 'group', expenseId: 'bill', active: true, online: true };
-  return { render: (changes = {}) => { cursor = 0; return render.BillChatScreen({ ...props, ...changes }); }, composer: render.ChatComposer,
+  return { render: (changes = {}) => { cursor = 0; return render.BillChatScreen({ ...props, ...changes }); }, composer: render.ChatComposer, empty: render.ChatEmptyState, row: render.ChatMessageRow,
     commit: async () => { const pending = effects; effects = []; pending.forEach(fn => fn()); await tick(); },
     page: (value: ChatPage, older = false) => receive(value, older), fail: (error: unknown) => fail(error), counts: () => ({ starts, stops }), unmount: () => Object.values(cleanups).forEach(fn => fn?.()) };
 }
@@ -53,7 +55,7 @@ test('Production screen acknowledges actual foreground viewable rows, never the 
   const send: typeof request = async <T>(_active: Session, path: string, _method?: string, body?: unknown, _type?: 'json' | 'text', signal?: AbortSignal): Promise<T> => { calls.push({ path, body, signal }); return { seen: 1 } as T; };
   const app = component(db, send);
   try {
-    await migrate(db); app.render(); await app.commit(); app.page(page([message('1'), message('2')]));
+    await migrate(db); const empty = app.render(); assert.equal(find(empty, 'FlatList').props.inverted, false); await app.commit(); app.page(page([message('1'), message('2')]));
     let tree = app.render(); await app.commit(); assert.equal(calls.length, 0);
     const flat = find(tree, 'FlatList');
     assert.equal(flat.props.inverted, true); assert.equal(flat.props.viewabilityConfig.minimumViewTime, 500);
@@ -211,4 +213,161 @@ test('Temporary browser chat warns only for unsent text and removes its beforeun
     composer().props.onChange('Another draft'); app.render({ online: false, onUnsentChange: (unsent: boolean) => changed.push(unsent) }); await app.commit(); assert.equal(listeners.size, 1);
     app.unmount(); assert.equal(listeners.size, 0); assert.deepEqual(changed, [false, true, false, true]);
   } finally { app.unmount(); await chat.flushChatWrites(); raw.close(); }
+});
+
+
+test('Compact composer keeps drafts editable while sending and rejects empty sends', () => {
+  const raw = new DatabaseSync(':memory:'), app = component(sqliteAdapter(raw), async <T>() => ({}) as T);
+  try {
+    let tree = app.composer({ text: '   ', disabled: false, onChange: () => {}, onSend: () => {} });
+    assert.equal(find(tree, 'TextInput').props.accessibilityLabel, 'Message');
+    assert.equal(tree.props.style.alignItems, 'center');
+    const inputStyle = Object.assign({}, ...find(tree, 'TextInput').props.style);
+    assert.ok(23 + inputStyle.paddingTop + inputStyle.paddingBottom <= 44);
+    const sendButton = nodes(tree).find(node => node.props.accessibilityLabel === 'Send message')!;
+    const glyph = sendButton.props.icon({ color: '#000' });
+    assert.equal(glyph.type, 'Icon');
+    assert.equal(glyph.props.name, 'send');
+    assert.equal(glyph.props.style, undefined);
+    assert.equal(nodes(tree).find(node => node.props.accessibilityLabel === 'Send message')!.props.disabled, true);
+    tree = app.composer({ text: 'New draft', disabled: false, sendDisabled: true, onChange: () => {}, onSend: () => {} });
+    assert.equal(find(tree, 'TextInput').props.editable, true);
+    assert.equal(nodes(tree).find(node => node.props.accessibilityLabel === 'Send message')!.props.disabled, true);
+    assert.ok(!nodes(tree).some(node => node.props.label === 'Message' || node.props.title === 'Send'));
+  } finally { raw.close(); }
+});
+
+test('Empty-state suggestions only compose text, and read-only chats disable them', () => {
+  const raw = new DatabaseSync(':memory:'), app = component(sqliteAdapter(raw), async <T>() => ({}) as T), drafts: string[] = [];
+  try {
+    let tree = app.empty({ disabled: false, onSuggest: (text: string) => drafts.push(text) });
+    button(tree, 'Check my share').props.onPress();
+    button(tree, 'What’s included?').props.onPress();
+    assert.deepEqual(drafts, ['Can you confirm my share?', 'What’s included in this bill?']);
+    tree = app.empty({ disabled: true, onSuggest: () => {} });
+    assert.equal(button(tree, 'Check my share').props.disabled, true);
+  } finally { raw.close(); }
+});
+
+test('Quiet receipt keeps the same bubble key across server confirmation and excludes optimistic rows from read ACKs', async () => {
+  const raw = new DatabaseSync(':memory:'), db = sqliteAdapter(raw), calls: any[] = [];
+  let confirm!: (value: any) => void;
+  const send: typeof request = async <T>(_session: Session, path: string, _method?: string, body?: any): Promise<T> => {
+    calls.push({ path, body });
+    if (path.endsWith('/chat')) return new Promise(resolve => { confirm = resolve; });
+    return { seen: 1 } as T;
+  };
+  const app = component(db, send);
+  const composer = (tree: any) => nodes(tree).find(node => node.type?.name === 'ChatComposer')!;
+  try {
+    await migrate(db); app.render(); await app.commit(); app.page(page([]));
+    let tree = app.render(); await app.commit();
+    const scrolls: any[] = [];
+    let initial = find(tree, 'FlatList'); initial.props.ref.current = { scrollToOffset: (value: any) => scrolls.push(value) };
+    initial.props.onContentSizeChange(320, 80);
+    initial.props.onScrollBeginDrag(); initial.props.onScroll({ nativeEvent: { contentOffset: { y: 200 } } });
+    composer(tree).props.onChange('Yes, ₹200 each.'); tree = app.render(); await app.commit();
+    composer(tree).props.onSend(); await tick(); tree = app.render(); await app.commit();
+    let flat = find(tree, 'FlatList'), row = flat.props.data[0];
+    flat.props.onContentSizeChange(320, 160);
+    assert.deepEqual(scrolls.at(-1), { offset: 0, animated: false }, 'first local message positions the empty history immediately');
+    flat.props.onContentSizeChange(320, 180);
+    assert.deepEqual(scrolls.at(-1), { offset: 0, animated: true }, 'sending follows the pending bubble without waiting for confirmation');
+    assert.equal(row.pending.text, 'Yes, ₹200 each.');
+    assert.equal(flat.props.inverted, true);
+    const key = flat.props.keyExtractor(row);
+    const pendingView = app.row({ ...flat.props.renderItem({ item: row, index: 0 }).props });
+    assert.ok(nodes(pendingView).some(node => node.type === 'Icon' && node.props.name === 'history'));
+    assert.ok(!nodes(pendingView).some(node => node.props.title === 'Retry'));
+    assert.equal(composer(tree).props.disabled, false);
+    flat.props.onViewableItemsChanged({ viewableItems: [{ isViewable: true, item: row }] });
+    tree = app.render(); await app.commit();
+    assert.equal(calls.length, 1, 'A local bubble must never emit a seen request');
+    composer(tree).props.onChange('A new draft');
+    confirm({ ...message('99'), client_id: row.client_id, sender_id: session.userId, text: row.text });
+    await tick(); tree = app.render(); await app.commit();
+    flat = find(tree, 'FlatList'); row = flat.props.data[0];
+    assert.equal(flat.props.data.length, 1); assert.equal(row.pending, undefined);
+    assert.equal(flat.props.keyExtractor(row), key);
+    assert.equal(composer(tree).props.text, 'A new draft');
+    const savedView = app.row({ ...flat.props.renderItem({ item: row, index: 0 }).props });
+    assert.ok(nodes(savedView).some(node => node.type === 'Icon' && node.props.name === 'check'));
+    assert.ok(nodes(savedView).some(node => node.props.accessibilityLabel === 'Sent'));
+  } finally { app.unmount(); await chat.flushChatWrites(); raw.close(); }
+});
+
+test('Quiet receipt keeps failure/retry beside its bubble and reuses the immutable client ID', async () => {
+  const raw = new DatabaseSync(':memory:'), db = sqliteAdapter(raw), ids: string[] = []; let fail = true;
+  const send: typeof request = async <T>(_session: Session, path: string, _method?: string, body?: any): Promise<T> => {
+    if (path.endsWith('/chat')) {
+      ids.push(body.client_id);
+      if (fail) throw Error('Connection lost before confirmation');
+      return { ...message('101'), client_id: body.client_id, sender_id: session.userId, text: body.text } as T;
+    }
+    return { seen: 1 } as T;
+  };
+  const app = component(db, send);
+  try {
+    await migrate(db); app.render(); await app.commit(); app.page(page([])); let tree = app.render(); await app.commit();
+    const compose = () => nodes(tree).find(node => node.type?.name === 'ChatComposer')!;
+    compose().props.onChange('Saved message'); tree = app.render(); await app.commit(); compose().props.onSend();
+    await tick(); await chat.flushChatWrites(); await tick(); tree = app.render(); await app.commit();
+    const flat = find(tree, 'FlatList'), row = flat.props.data[0], rendered = flat.props.renderItem({ item: row, index: 0 });
+    const bubble = app.row(rendered.props);
+    assert.ok(nodes(bubble).some(node => node.props.accessibilityLabel === 'Not confirmed'));
+    assert.ok(button(bubble, 'Retry'));
+    assert.ok(!find(tree, 'BottomSafeArea').children.some((node: any) => node?.type === 'ScrollView'));
+    fail = false; rendered.props.onRetry(); await tick(); tree = app.render(); await app.commit();
+    assert.deepEqual(ids, ['synthetic-client-uuid', 'synthetic-client-uuid']);
+    assert.equal(find(tree, 'FlatList').props.data.length, 1);
+    assert.equal(find(tree, 'FlatList').props.data[0].pending, undefined);
+  } finally { app.unmount(); await chat.flushChatWrites(); raw.close(); }
+});
+
+test('Quiet receipt labels offline and rejected messages without claiming they were sent', () => {
+  const raw = new DatabaseSync(':memory:'), app = component(sqliteAdapter(raw), async <T>() => ({}) as T);
+  const pending = { id: 'client', text: 'Unsent', error: 'Unknown network outcome' };
+  const row = chat.chatMessageRows([], [pending], session.userId)[0];
+  try {
+    const offline = app.row({ message: row, own: true, active: false, showDate: false, online: false });
+    assert.ok(nodes(offline).some(node => node.props.accessibilityLabel === 'Waiting for connection'));
+    assert.ok(!nodes(offline).some(node => node.props.title === 'Retry'));
+    const rejected = app.row({ message: { ...row, pending: { ...pending, rejected: true } }, own: true, active: true, showDate: false, online: false });
+    assert.ok(button(rejected, 'Edit message'));
+    assert.ok(nodes(rejected).some(node => node.props.accessibilityLabel === 'Not sent'));
+  } finally { app.unmount(); raw.close(); }
+});
+
+for (const motion of [true, false]) test(`Chat follows new messages smoothly only when appropriate, motion=${motion}`, async () => {
+  const raw = new DatabaseSync(':memory:'), db = sqliteAdapter(raw), scrolls: any[] = [];
+  const app = component(db, async <T>() => ({ seen: 1 }) as T, { useUI: () => ({ ui: {}, palette: {}, motion: { enabled: motion } }) });
+  try {
+    await migrate(db); let tree = app.render(); await app.commit();
+    let flat = find(tree, 'FlatList'); flat.props.ref.current = { scrollToOffset: (v: any) => scrolls.push(v) };
+    flat.props.onContentSizeChange(320, 0);
+    app.page(page([message('1')])); tree = app.render(); await app.commit(); flat = find(tree, 'FlatList'); flat.props.onContentSizeChange(320, 100);
+    assert.equal(scrolls.at(-1).animated, false, 'initial history is positioned immediately');
+    app.page(page([message('2')])); tree = app.render(); await app.commit(); flat = find(tree, 'FlatList'); flat.props.onContentSizeChange(320, 200);
+    assert.equal(scrolls.at(-1).animated, motion, 'new incoming message follows smoothly');
+    flat.props.onScroll({ nativeEvent: { contentOffset: { y: 180 } } }); const following = scrolls.length;
+    app.page(page([message('25')])); tree = app.render(); await app.commit(); flat = find(tree, 'FlatList'); flat.props.onContentSizeChange(320, 240);
+    assert.equal(scrolls.length, following + 1, 'messages arriving during programmatic scrolling keep following');
+    flat.props.onScrollBeginDrag(); flat.props.onScroll({ nativeEvent: { contentOffset: { y: 300 } } }); const before = scrolls.length;
+    app.page(page([message('3')])); tree = app.render(); await app.commit(); flat = find(tree, 'FlatList'); flat.props.onContentSizeChange(320, 200);
+    assert.equal(scrolls.length, before, 'incoming message cannot pull the reader away');
+    assert.ok(button(tree, 'New messages')); button(tree, 'New messages').props.onPress();
+    assert.deepEqual(scrolls.at(-1), { offset: 0, animated: motion });
+  } finally { app.unmount(); await chat.flushChatWrites(); raw.close(); }
+});
+
+test('initial history shows placeholders, then only confirmed empty history shows suggestions',async()=>{
+ const raw=new DatabaseSync(':memory:'),db=sqliteAdapter(raw),app=component(db,async<T>()=>({seen:1})as T);
+ const empty=(tree:any)=>find(tree,'FlatList').props.ListEmptyComponent;
+ const has=(tree:any,type:string):boolean=>!!tree&&typeof tree==='object'&&(tree.type===type||tree.type?.name===type||(tree.children??[]).flat(Infinity).some((child:any)=>has(child,type)));
+ try{await migrate(db);assert.ok(has(empty(app.render()),'ChatLoadingState'));await app.commit();assert.ok(has(empty(app.render()),'ChatLoadingState'));app.page(page([]));const known=app.render();assert.equal(has(empty(known),'ChatLoadingState'),false);assert.ok(has(empty(known),'ChatEmptyState'))}finally{app.unmount();raw.close()}
+});
+test('failed, offline and background history do not claim to still be loading',async()=>{
+ const raw=new DatabaseSync(':memory:'),db=sqliteAdapter(raw),app=component(db,async<T>()=>({seen:1})as T);
+ const has=(tree:any):boolean=>!!tree&&typeof tree==='object'&&(tree.type==='ChatLoadingState'||(tree.children??[]).flat(Infinity).some(has));
+ try{await migrate(db);app.render();await app.commit();app.fail(Error('History unavailable'));assert.equal(has(find(app.render(),'FlatList').props.ListEmptyComponent),false);assert.equal(has(find(app.render({online:false}),'FlatList').props.ListEmptyComponent),false);assert.equal(has(find(app.render({active:false}),'FlatList').props.ListEmptyComponent),false)}finally{app.unmount();raw.close()}
 });

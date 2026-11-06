@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date as Date
+from datetime import datetime as DateTime
 from typing import Annotated, Literal
 from uuid import UUID
 
@@ -60,29 +61,48 @@ class Person(Input):
     email: Annotated[str, Field(max_length=254)] = ""
 
 
+class GroupNicknameIn(Command):
+    version: StrictInt
+    name: Annotated[StrictStr, Field(max_length=120)]
+
+
+class GroupNameIn(Command):
+    version: StrictInt
+    name: Annotated[StrictStr, Field(min_length=1, max_length=120, pattern=r"\S")]
+
+
 class GroupIn(Command):
     id: UUID
     name: Annotated[str, Field(min_length=1, max_length=120, pattern=r"\S")]
     self_participant_id: UUID
     participants: Annotated[list[Person], Field(min_length=1, max_length=100)]
     is_direct: bool = False
+    simplify_debts: StrictBool = True
+
+
+class SimplifyIn(Command):
+    simplify_debts: StrictBool
+    version: StrictInt = Field(ge=0)
 
 
 class Split(Input):
-    mode: Literal["equal", "exact", "percent", "shares"]
+    mode: Literal["equal", "exact", "percent", "shares", "adjustment"]
     values: dict[str, StrictStr]
 
 
 class ExpenseIn(Command):
+    # Read-only metadata may be echoed by older editing integrations.
+    created_at: DateTime | None = Field(default=None, exclude=True)
     id: UUID
     description: Annotated[str, Field(min_length=1, max_length=200, pattern=r"\S")]
     total: StrictStr
     paid: dict[str, StrictStr]
     split: Split
     date: Date
+    time: Annotated[StrictStr, Field(pattern=r"^(?:[01][0-9]|2[0-3]):[0-5][0-9]$")] | None = None
     category: Annotated[str, Field(max_length=40)] = "other"
     category_auto: bool | None = None
-    notes: Annotated[str, Field(max_length=2000)] = ""
+    notes: Annotated[str, Field(max_length=2000, description="GitHub Flavored Markdown notes, including tables. Stored as original text. Preserve existing notes on unrelated edits. HTML displays literally; images display as alt text.")] = ""
     version: int | None = Field(default=None, ge=1)
 
 
@@ -135,9 +155,21 @@ class BalanceStatementPreferencesIn(Input):
     frequency: Literal["weekly", "monthly"]
 
 
+class NotificationChannelsIn(Input):
+    client_id: UUID
+    revision: Annotated[StrictInt, Field(ge=1, le=9007199254740991)]
+    email_notifications: StrictBool | None = None
+    statement_frequency: Literal["weekly", "monthly"] | None = None
+    activate_push: StrictBool = False
+
+
 class NotificationPreferencesIn(Input):
     expense_updates: StrictBool
     email_reminders: StrictBool
+
+
+class SignInPreferencesIn(Input):
+    auto_link: StrictBool
 
 
 class SeenNoticeIn(Input):
@@ -192,7 +224,16 @@ class SplitwiseImportResult(WriteResult):
 
 
 class PushDeviceIn(Input):
+    preference_revision: Annotated[StrictInt, Field(ge=1, le=9007199254740991)] | None = None
     bill_chat: StrictBool = False
+    ledger_updates: StrictBool = False
+    currency: Literal["INR", "USD", "EUR", "GBP", "AED", "AUD", "CAD", "SGD", "NZD", "CHF", "JPY"] = "INR"
     provider: Literal["expo"]
     token: Annotated[str, Field(min_length=1, max_length=4096, pattern=r"^(ExpoPushToken|ExponentPushToken)\[[A-Za-z0-9_-]+\]$")]
     platform: Literal["ios", "android"]
+
+
+class PaymentReminderIn(Command):
+    sender: UUID
+    amount: Annotated[str, Field(pattern=r"^[1-9][0-9]{0,9}$")]
+    group_version: Annotated[StrictInt, Field(ge=0)]

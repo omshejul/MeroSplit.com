@@ -1,12 +1,13 @@
+import { DEFAULT_CURRENCY, isCurrency, type Currency } from './currency';
 import { serverReachable } from './connectivity';
 import * as SQLite from 'expo-sqlite';
 import { migrate } from './storage';
-import { serializedDatabase } from './webDatabase';
+import { serializedDatabase } from './database';
 import { openBrowserStorage } from './browserStorage';
 import type { Database } from './storage';
 import type { Session } from './types';
 import { cachedBrowserSession, readBrowserSession } from './browserAuth.ts';
-import { isColorFamily, type ColorFamily } from './theme';
+import { defaultColorFamily, isColorFamily, type ColorFamily } from './theme';
 
 const wasmURL = '/app/sqlite.wasm';
 let database: Promise<Database> | undefined;
@@ -52,7 +53,7 @@ export type AppearancePreference = 'system' | 'light' | 'dark';
 export async function savedAppearance(): Promise<AppearancePreference> { const value = readPreference(APPEARANCE_KEY); return value === 'light' || value === 'dark' ? value : 'system'; }
 export async function saveAppearance(value: AppearancePreference): Promise<void> { writePreference(APPEARANCE_KEY, value); }
 const COLOR_FAMILY_KEY = 'merosplit.web.colorFamily';
-export async function savedColorFamily(): Promise<ColorFamily> { const value = readPreference(COLOR_FAMILY_KEY); return isColorFamily(value) ? value : 'basic'; }
+export async function savedColorFamily(): Promise<ColorFamily> { const value = readPreference(COLOR_FAMILY_KEY); return isColorFamily(value) ? value : defaultColorFamily; }
 export async function saveColorFamily(value: ColorFamily): Promise<void> { if (!isColorFamily(value)) throw new Error('Choose a color.'); writePreference(COLOR_FAMILY_KEY, value); }
 export async function retireSyncPause(): Promise<void> { writePreference('splitdumb.syncPaused', null); }
 export async function shareJson(filename: string, data: unknown): Promise<void> { return shareText(`${filename}.json`, JSON.stringify(data, null, 2), 'application/json'); }
@@ -60,4 +61,20 @@ export async function shareText(filename: string, data: string, mimeType: string
   const url = URL.createObjectURL(new Blob([data], { type: mimeType })), link = document.createElement('a');
   try { link.href = url; link.download = filename; document.body.appendChild(link); link.click(); }
   finally { link.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000); }
+}
+
+export async function claimFirstSplitUPIPrompt(owner: string): Promise<boolean> {
+  const key = `merosplit.upi-first-split.${owner}`;
+  if (readPreference(key)) return false;
+  writePreference(key, 'shown');
+  return true;
+}
+
+export async function claimPushInvitation(_owner: string): Promise<boolean> { return false; }
+
+const CURRENCY_KEY = 'merosplit.web.currency';
+export async function savedCurrency(): Promise<Currency> { const value = readPreference(CURRENCY_KEY); return isCurrency(value) ? value : DEFAULT_CURRENCY; }
+export async function saveCurrency(value: Currency): Promise<void> {
+  if (!isCurrency(value)) throw new Error('Choose a currency.');
+  try { localStorage.setItem(CURRENCY_KEY, value); } catch { throw new Error('Could not save the currency. Allow site storage and try again.'); }
 }

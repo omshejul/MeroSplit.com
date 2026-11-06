@@ -1,3 +1,4 @@
+import { withSharedUI } from './componentHarness.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -6,17 +7,17 @@ import ts from 'typescript';
 type Element = { type: unknown; props: Record<string, any>; children: unknown[] };
 const React = { createElement: (type: unknown, props: Record<string, any> | null, ...children: unknown[]): Element => ({ type, props: props ?? {}, children }) };
 const Dialog = Object.assign(() => {}, { Title: 'Title', Content: 'Content', ScrollArea: 'ScrollArea', Actions: 'Actions' });
-let windowWidth = 375;
-const env = { motionDuration: { paperScale: 0.75 }, useWindowDimensions: () => ({ width: windowWidth }), Platform: { OS: 'native' }, DialogScrollBody: undefined as any, CancelDialogActions: undefined as any, React, Dialog, useEffect() {}, View: 'View', TouchableRipple: 'TouchableRipple', radii: { button: 8 }, Icon: 'Icon', UPIAppIcon: 'UPIAppIcon', CopyLinkIcon: 'CopyLinkIcon', Portal: 'Portal', KeyboardAvoidingView: 'KeyboardAvoidingView', KeyboardDialog: 'KeyboardDialog', ScrollView: 'ScrollView', Button: 'Button', Field: 'Field', FeedbackNote: 'FeedbackNote', Text: 'Text', s: { field: {} }, useUI: () => ({ ui: {}, palette: {}, motion: { enabled: true } }) };
+let windowWidth = 375, safeBottom = 0;
+const env = { DialogContext: { Provider: 'DialogProvider' }, DialogFocus: 'DialogFocus', useContext: () => ({ bodyHeight: 440 }), motionDuration: { paperScale: 0.75 }, useWindowDimensions: () => ({ width: windowWidth, height: 667 }), Platform: { OS: 'native' }, DialogScrollBody: undefined as any, CancelDialogActions: undefined as any, React, Dialog, useEffect() {}, View: 'View', TouchableRipple: 'TouchableRipple', radii: { button: 8 }, Icon: 'Icon', UPIAppIcon: 'UPIAppIcon', CopyLinkIcon: 'CopyLinkIcon', Portal: 'Portal', KeyboardAvoidingView: 'KeyboardAvoidingView', KeyboardDialog: 'KeyboardDialog', ScrollView: 'ScrollView', Button: 'Button', Field: 'Field', FeedbackNote: 'FeedbackNote', Text: 'Text', s: { field: {} }, useUI: () => ({ ui: {}, palette: { surface: '#fff', line: '#ddd' }, motion: { enabled: true } }) };
 function production(file: string, name: string) {
   const source = ts.createSourceFile(file, readFileSync(new URL(`../src/${file}`, import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   const declaration = source.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === name);
   assert.ok(declaration, name);
   const code = declaration.getText(source).replace(/^export (default )?/, '');
   let cursor = 0; const states: any[] = [];
-  const scope = { ...env, useSafeAreaInsets: () => ({ top: 20, bottom: 0 }),
+  const scope = { ...env, Modal: 'Modal', useSafeAreaInsets: () => ({ top: 20, bottom: safeBottom }),
     useState: (initial: any) => { const i = cursor++; if (!(i in states)) states[i] = initial; return [states[i], (value: any) => { states[i] = value; }]; } };
-  const render = new Function('env', `with(env) { ${ts.transpile(code, { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React })}; return ${name}; }`)(scope);
+  const render = new Function('env', `with(env) { ${ts.transpile(code, { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React })}; return ${name}; }`)(withSharedUI(scope));
   return (props: any) => { cursor = 0; return render(props); };
 }
 env.DialogScrollBody = production('DialogParts.tsx', 'DialogScrollBody');
@@ -46,11 +47,29 @@ test('hidden dialogs retain the height-measuring ancestor and keep scrolling con
       continue;
     }
     const dialog = one(tree, Dialog);
-    assert.equal(dialog.props.visible, visible); assert.equal(dialog.props.onDismiss, dismiss); assert.equal(dialog.props.dismissable, false); assert.equal(dialog.props.theme.animation.scale, visible ? 0.75 : 0, 'closing content is removed without an exit delay');
+    assert.equal(dialog.props.visible, visible); assert.equal(dialog.props.onDismiss, dismiss); assert.equal(dialog.props.dismissable, false); assert.equal(dialog.props.theme.animation.scale, 0, 'the local transition owns animation while Paper mounts opaque');
     assert.equal(dialog.props.style.flexShrink, 1); assert.equal(dialog.props.style.marginVertical, 0);
     assert.equal(elements(dialog).find(node => node.type === Dialog.ScrollArea), body);
     assert.equal(elements(dialog).find(node => node.type === Dialog.Actions), footer);
   }
+});
+
+test('bottom sheets keep dismissal guards and place their actions above the bottom safe area', () => {
+  safeBottom = 24;
+  try {
+    const render = production('KeyboardDialog.tsx', 'KeyboardDialog'), onDismiss = () => {};
+    const tree = render({ visible: true, placement: 'bottom', label: 'Restart to update', blocksAppRestart: false, dismissable: false, onDismiss, children: 'Restart actions' });
+    const modal = one(tree, 'Modal');
+    assert.equal(modal.props.style.justifyContent, 'flex-end');
+    assert.equal(modal.props.style.marginBottom, 0);
+    assert.equal(modal.props.contentContainerStyle.paddingBottom, 24);
+    assert.equal(modal.props.contentContainerStyle.width, 375);
+    assert.equal(modal.props.contentContainerStyle.borderBottomLeftRadius, 0);
+    assert.equal(modal.props.dismissable, false);
+    assert.equal(modal.props.dismissableBackButton, false);
+    assert.equal(modal.props.onDismiss, onDismiss);
+    assert.equal(one(tree, 'DialogFocus').props.modal, false);
+  } finally { safeBottom = 0; }
 });
 
 test('opted-in dialog cards track the measured keyboard viewport, safe area, rotation and a smaller caller cap', () => {
@@ -60,15 +79,16 @@ test('opted-in dialog cards track the measured keyboard viewport, safe area, rot
   const props = { visible: false, onDismiss() {}, maxHeight: 647, children: [body, footer] };
   let tree = render(props);
   assert.equal(elements(tree).filter(node => node.type === Dialog).length, 0);
-  for (const [height, callerCap, expected] of [[667, 647, 647], [433, 647, 413], [375, 355, 355], [300, 647, 280], [667, 400, 400], [667, 647, 647], [10, 647, 0]]) {
+  for (const [height, callerCap, expected] of [[667, 647, 615], [433, 647, 381], [375, 355, 323], [300, 647, 248], [667, 400, 400], [667, 647, 615], [10, 647, 0]]) {
     one(tree, 'KeyboardAvoidingView').props.onLayout({ nativeEvent: { layout: { height } } });
     tree = render({ ...props, visible: true, maxHeight: callerCap });
     assert.equal(one(tree, Dialog).props.style.maxHeight, expected);
     assert.equal(elements(one(tree, Dialog)).find(node => node.type === Dialog.Actions), footer);
     assert.equal(elements(body).includes(footer), false);
   }
+  one(tree, 'KeyboardAvoidingView').props.onLayout({ nativeEvent: { layout: { height: 667 } } });
   tree = render({ ...props, visible: true, maxHeight: undefined });
-  assert.equal(one(tree, Dialog).props.style.maxHeight, undefined, 'non-opted-in callers retain their original layout');
+  assert.equal(one(tree, Dialog).props.style.maxHeight, 615, 'all dialogs remain bounded by the safe viewport');
 });
 
 // Run the pinned Paper Modal function with deferred native animations. This tests
@@ -98,7 +118,7 @@ function paperModal() {
     Easing: { out: (value: unknown) => value, cubic: 'cubic' }, StyleSheet: { absoluteFill: {} }, AnimatedPressable: 'AnimatedPressable', View: 'View', Surface: 'Surface', styles: {}, BackHandler: {},
     addEventListener(_target: unknown, _event: string, fn: () => boolean) { back.push(fn); return { remove() { back.splice(back.indexOf(fn), 1); } }; },
   };
-  const modal = new Function('env', `with(env) { ${ts.transpile(declaration.getText(source), { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React })}; return Modal; }`)(scope);
+  const modal = new Function('env', `with(env) { ${ts.transpile(declaration.getText(source), { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React })}; return Modal; }`)(withSharedUI(scope));
   return {
     animations, back,
     render(props: any) {
@@ -163,9 +183,9 @@ test('Add person preserves drafts and action guards across hidden/open renders w
     const scroll = one(tree, 'ScrollView'), actions = one(tree, Dialog.Actions);
     assert.equal(scroll.props.keyboardShouldPersistTaps, 'handled');
     assert.equal(elements(scroll).includes(actions), false, 'actions must remain outside the scrolling input body');
-    const field = elements(tree).find(node => node.type === 'Field' && node.props.label === 'Email (optional)')!;
-    assert.equal(elements(tree).find(node => node.type === 'Field' && node.props.label === 'Name')!.props.autoFocus, true);
-    assert.equal(field.props.value, base.email); assert.equal(field.props.onChange, onEmail); field.props.onChange('edited@example.invalid');
+    const field = elements(tree).find(node => node.type === 'EmailField' && node.props.label === 'Email (optional)')!;
+    assert.equal(elements(tree).find(node => node.type === 'TextField' && node.props.label === 'Name')!.props.autoFocus, true);
+    assert.equal(field.props.value, base.email); assert.equal(field.props.onChangeText, onEmail); field.props.onChangeText('edited@example.invalid');
     const buttons = elements(actions).filter(node => node.type === 'Button');
     assert.equal(buttons[0].props.onPress, onClose); assert.equal(buttons[1].props.onPress, onSave);
   }
@@ -200,13 +220,13 @@ test('shared web dialog is centered and compact on desktop while retaining phone
   const props = { visible: true, onDismiss() {}, children: 'unchanged fields' };
   try {
     env.Platform.OS = 'web';
-    assert.equal(one(render({ ...props, visible: false }), Dialog).props.visible, false, 'web retains its existing mounted dialog/focus lifecycle');
-    for (const [width, expected] of [[1440, 520], [2000, 520], [540, 488], [375, 323]]) {
+    assert.equal(elements(render({ ...props, visible: false })).filter(node => node.type === Dialog).length, 0, 'fully closed web dialogs release their modal and focus lifecycle');
+    for (const [width, expected] of [[1440, 480], [2000, 480], [540, 480], [375, 343]]) {
       windowWidth = width; const dialog = one(render(props), Dialog);
       assert.equal(dialog.props.style.width, expected); assert.equal(dialog.props.style.alignSelf, 'center');
-      assert.equal(dialog.children[0], props.children);
+      assert.ok(elements(dialog).some(node => node.type === 'DialogFocus' && node.children[0] === props.children));
     }
     env.Platform.OS = 'native'; const dialog = one(render(props), Dialog);
-    assert.equal(dialog.props.style.width, undefined); assert.equal(dialog.props.style.alignSelf, undefined);
+    assert.equal(dialog.props.style.width, 343); assert.equal(dialog.props.style.alignSelf, 'center');
   } finally { env.Platform.OS = 'native'; windowWidth = 375; }
 });

@@ -1,3 +1,4 @@
+import { withSharedUI } from './componentHarness.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -7,6 +8,7 @@ import { expenseBalanceChange, formatMoney } from '../src/accounting.ts';
 import { paymentPresentation } from '../src/activityPresentation.ts';
 import { personalSettlements, personalTransfers } from '../src/personalBalances.ts';
 import { previewPending } from '../src/ledger.ts';
+import { cachedTimeline } from '../src/groupTimeline.ts';
 import type { Command, Group } from '../src/types.ts';
 
 type Element = { type: unknown; props: Record<string, any>; children: unknown[] };
@@ -17,7 +19,7 @@ function production(name: string, overrides: Record<string, any> = {}) {
   const helpers = source.statements.filter(node => ts.isVariableStatement(node) && node.declarationList.declarations.some(d => ['billImpact', 'participantName', 'displayDate', 's'].includes(d.name.getText(source)))).map(node => node.getText(source)).join('\n');
   const node = source.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === name); assert.ok(node);
   const code = ts.transpile(`${helpers}\n${node.getText(source).replace(/^export (?:default )?/, '')}\nreturn ${name};`, { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React });
-  return new Function('env', `with(env) { ${code} }`)({ React, Animated, Platform: { OS: 'web' }, useLayoutEffect: () => {}, useEffect: () => {}, categoryIcon, categoryMeaning, expenseCategory, TransactionIcon: 'TransactionIcon', PagingFooter: 'PagingFooter', LegacyPayments: 'LegacyPayments', FlatList: 'FlatList', ScrollView: 'ScrollView', pageContentStyle: {}, LoadingSpinner: 'LoadingSpinner', useScrollPagination: () => ({ events: {}, loading: false, failed: false }), expenseBalanceChange, formatMoney, paymentPresentation, personalSettlements, personalTransfers, BalanceExplanation: 'BalanceExplanation', balanceKey: () => '', useRef: () => ({ current: null }), useState: (initial: unknown) => [typeof initial === 'function' ? initial() : initial, () => {}], Avatar: 'Avatar', AmountText: 'AmountText', Text: 'Text', SectionHeading: 'SectionHeading', View: 'View', Pressable: 'Pressable', Icon: 'Icon', Button: 'Button', RecordSummary: 'RecordSummary', ParticipantAmountRow: 'ParticipantAmountRow', LogRow: 'LogRow', LogDate: 'LogDate', BillEffect: 'BillEffect', VisibleExpense: 'VisibleExpense', HistoryPages: 'HistoryPages', BillSearch: 'BillSearch', PaymentRow: 'PaymentRow', BillTimelineRow: 'BillTimelineRow', Disclosure: 'Disclosure', BillPeople: 'BillPeople', RecordAttribution: 'RecordAttribution', PersonalTransferRow: 'PersonalTransferRow', PendingChangeRow: 'PendingChangeRow', StyleSheet: { create: (styles: unknown) => styles }, radii: { surface: 16 }, balanceColor: (amount: string) => BigInt(amount) < 0n ? 'negative' : 'positive', useUI: () => ({ motion: { enabled: false }, ui: { numeric: { fontSize: 32, fontWeight: '600' }, caption: { fontSize: 14 }, row: { minHeight: 52, paddingVertical: 6 } }, palette: { muted: 'muted', line: '#334455', surface: 'surface', text: 'text' } }), ...overrides });
+  return new Function('env', `with(env) { const StaggerItem = 'StaggerItem'; ${code} }`)(withSharedUI({ React, Animated, Keyboard: { dismiss() {} }, TextInput: 'TextInput', Platform: { OS: 'web' }, useLayoutEffect: () => {}, useEffect: () => {}, categoryIcon, categoryMeaning, expenseCategory, TransactionIcon: 'TransactionIcon', BillIconButton: 'BillIconButton', PagingFooter: 'PagingFooter', LegacyPayments: 'LegacyPayments', FlatList: 'FlatList', ScrollView: 'ScrollView', pageContentStyle: {}, LoadingSpinner: 'LoadingSpinner', useScrollPagination: (options: any) => ({ events: {}, loading: false, failed: false, canLoadMore: !!options.cursor, loadMore() {}, retry() {} }), expenseBalanceChange, formatMoney, paymentPresentation, cachedTimeline, personalSettlements, personalTransfers, BalanceExplanation: 'BalanceExplanation', balanceKey: () => '', useRef: (initial: unknown) => ({ current: initial }), useState: (initial: unknown) => [typeof initial === 'function' ? initial() : initial, () => {}], Avatar: 'Avatar', AmountText: 'AmountText', Text: 'Text', SectionHeading: 'SectionHeading', View: 'View', Pressable: 'Pressable', Icon: 'Icon', Button: 'Button', RecordSummary: 'RecordSummary', ParticipantAmountRow: 'ParticipantAmountRow', LogRow: 'LogRow', LogDate: 'LogDate', BillEffect: 'BillEffect', VisibleExpense: 'VisibleExpense', HistoryPages: 'HistoryPages', BillSearch: 'BillSearch', PaymentRow: 'PaymentRow', BillTimelineRow: 'BillTimelineRow', DetailDialog: 'DetailDialog', BillPeople: 'BillPeople', RecordAttribution: 'RecordAttribution', PersonalTransferRow: 'PersonalTransferRow', PendingChangeRow: 'PendingChangeRow', StyleSheet: { create: (styles: unknown) => styles }, radii: { surface: 16 }, balanceColor: (amount: string) => BigInt(amount) < 0n ? 'negative' : 'positive', useUI: () => ({ motion: { enabled: false }, ui: { numeric: { fontSize: 32, fontWeight: '600' }, caption: { fontSize: 14 }, row: { minHeight: 52, paddingVertical: 6 } }, palette: { muted: 'muted', line: '#334455', surface: 'surface', text: 'text' } }), ...overrides }));
 }
 function elements(tree: unknown): Element[] {
   if (Array.isArray(tree)) return tree.flatMap(elements);
@@ -83,9 +85,25 @@ test('BillEffect labels direction in words and shows the exact unsigned amount i
   assert.equal(render({ change: '1', involved: true, reversed: false }).props.style.maxWidth, '45%');
 });
 
+test('responsive bill rows retain one exact balance effect, spoken facts and details action across text sizes', () => {
+  const bill = billRow(), opened: unknown[] = [];
+  let label: string | undefined;
+  for (const dimensions of [{ width: 390, fontScale: 1 }, { width: 390, fontScale: 1.5 }, { width: 780, fontScale: 1.5 }]) {
+    const tree = production('BillTimelineRow', { useWindowDimensions: () => dimensions })({ expense: bill, group, selfId: 'self', busy: false, onExpense: (value: unknown) => opened.push(value) });
+    const row = elements(tree).find(node => node.type === 'LogRow')!;
+    const effects = [...elements(row.children), ...elements(row.props.trailing)].filter(node => node.type === 'BillEffect');
+    assert.equal(effects.length, 1, 'moving the balance into the content must not duplicate or omit it');
+    assert.equal(effects[0].props.change, '-266'); assert.equal(effects[0].props.involved, true);
+    label ??= row.props.label; assert.equal(row.props.label, label);
+    assert.ok(text(row.children).includes(`You and Noor paid ${formatMoney('1001')}`));
+    row.props.onPress();
+  }
+  assert.deepEqual(opened, [bill, bill, bill]);
+});
+
 test('log row keeps a 44px+ button target with a date column and the full spoken label', () => {
   const tree = production('LogRow')({ date: '2026-10-18', label: 'Bill, Lunch', busy: false, onPress() {}, trailing: 'Effect', children: 'Body' });
-  assert.equal(tree.type, 'Pressable'); assert.equal(tree.props.accessibilityRole, 'button'); assert.equal(tree.props.accessibilityLabel, 'Bill, Lunch');
+  assert.equal(tree.type, 'Button'); assert.equal(tree.props.accessibilityRole, 'button'); assert.equal(tree.props.accessibilityLabel, 'Bill, Lunch');
   const styles = Object.assign({}, ...tree.props.style({ pressed: false }).filter(Boolean));
   assert.ok(styles.minHeight >= 44);
   assert.deepEqual(tree.children.flat().filter((node: any) => node != null).map((node: any) => node?.type ?? node), ['LogDate', 'View', 'Effect']);
@@ -153,20 +171,84 @@ test('virtualized timeline and legacy bill/payment lists preserve server order',
   const bill = { id: 'bill', description: 'Lunch', date: '2026-10-18' };
   const first = { id: 'first', sender: 'self', recipient: 'other', amount: '334' };
   const second = { ...first, id: 'second', reversed: true };
-  const value = { ...group, expenses: [bill], settlements: [first, second], transfers: [], transactions: [{ kind: 'bill', bill }, { kind: 'payment', payment: first }, { kind: 'payment', payment: second }] };
+  const value = { ...group, read_mode: 'summary', expenses: [bill], settlements: [first, second], transfers: [], transactions: [{ kind: 'bill', bill }, { kind: 'payment', payment: first }, { kind: 'payment', payment: second }] };
   const props = { group: value, accepted: value, selfId: 'self', pending: [], busy: true, onPayment() {}, onExpense() {} };
   const list = elements(render(props)).find(node => node.type === 'FlatList')!;
   assert.deepEqual(list.props.data.map((row: any) => row.bill?.id ?? row.payment.id), ['bill', 'first', 'second']);
-  const rows = list.props.data.map((item: any) => list.props.renderItem({ item }));
+  const rows = list.props.data.map((item: any) => list.props.renderItem({ item }).children[0].children[0]);
   assert.ok(rows.every((row: any) => row.props.busy));
   assert.ok(rows.filter((row: any) => row.type === 'PaymentRow').every((row: any) => row.props.accepted === value && row.props.onPayment === props.onPayment));
-  const fallback = { ...value, transactions: undefined };
+  const fallback = { ...value, read_mode: 'summary', transactions: undefined };
   const history = render({ ...props, group: fallback, accepted: fallback });
   assert.deepEqual(elements(history).find(node => node.type === 'FlatList')!.props.data.map((row: any) => row.bill.id), ['bill']);
   const payments = elements(history).find(node => node.type === 'LegacyPayments')!;
   assert.equal(payments.props.group, fallback);
-  assert.ok(elements(history).some(node => node.type === 'Disclosure' && node.props.title === 'Payment records'));
+  assert.ok(elements(history).some(node => node.type === 'DetailDialog' && node.props.title === 'Payment records'));
   assert.ok(!elements(history).some(node => node.type === 'HistoryPages'));
+});
+
+test('balances group canonical transfers by direction, sum exact paise, and preserve each payment target', () => {
+  const transfers = [
+    { sender: 'other', recipient: 'self', amount: '82834' },
+    { sender: 'self', recipient: 'other', amount: '41666' },
+    { sender: 'self', recipient: 'third', amount: '109081' },
+    { sender: 'third', recipient: 'self', amount: '123533' },
+  ];
+  const value = { ...group, name: 'Trip', version: 1, participants: [...group.participants, { id: 'third', name: 'Asha' }], transfers, expenses: [], settlements: [], balances: { self: '55620', other: '-41168', third: '-14452' }, activity: [] };
+  const original = structuredClone(value);
+  const nodes = elements(production('GroupScreen')({ group: value, accepted: value, selfId: 'self', pending: [], busy: false }));
+  const sections = nodes.filter(node => ['You owe', 'Owed to you'].includes(node.props.accessibilityLabel));
+  assert.deepEqual(sections.map(node => node.props.accessibilityLabel), ['You owe', 'Owed to you']);
+  assert.ok(text(sections[0]).includes(formatMoney('150747')));
+  assert.ok(text(sections[1]).includes(formatMoney('206367')));
+  assert.deepEqual(sections.flatMap(section => elements(section).filter(node => node.type === 'PersonalTransferRow').map(node => node.props.transfer)), [transfers[1], transfers[2], transfers[0], transfers[3]]);
+  assert.deepEqual(value, original);
+  const incoming = { ...value, transfers: [transfers[0]] };
+  const incomingNodes = elements(production('GroupScreen')({ group: incoming, accepted: incoming, selfId: 'self', pending: [], busy: false }));
+  assert.equal(incomingNodes.filter(node => node.props.accessibilityLabel === 'You owe').length, 0);
+  assert.ok(!incomingNodes.some(node => node.type === 'Text' && text(node) === formatMoney('82834')), 'a single balance does not repeat its amount in the section heading');
+});
+
+test('complete offline caches keep every payment in the dated bill timeline and preserve detail actions', () => {
+  const bill = billRow({ id: 'newer', date: '2026-10-28' }), old = billRow({ id: 'older', date: '2026-10-25' });
+  const payment = { id: 'received', sender: 'other', recipient: 'self', amount: '500', date: '2026-10-27', reversed: true };
+  const betweenOthers = { ...payment, id: 'other-members', sender: 'other', recipient: 'third', date: '2026-10-26', reversed: false };
+  const value = { ...group, name: 'Trip', expenses: [old, bill], settlements: [payment, betweenOthers], transfers: [] };
+  const open: unknown[] = [];
+  for (const is_direct of [false, true]) {
+    const full = { ...value, is_direct };
+    const tree = production('GroupScreen')({ group: full, accepted: full, selfId: 'self', pending: [], busy: false, online: false, onPayment: (row: unknown) => open.push(row) });
+    const nodes = elements(tree), list = nodes.find(node => node.type === 'FlatList')!;
+    assert.deepEqual(list.props.data.map((row: any) => row.bill?.id ?? row.payment.id), ['newer', 'received', 'other-members', 'older']);
+    assert.ok(!nodes.some(node => node.type === 'DetailDialog' && node.props.title === 'Payment records'));
+    const row = list.props.renderItem({ item: list.props.data[1] }).children[0].children[0];
+    assert.equal(row.type, 'PaymentRow');
+    elements(production('PaymentRow')(row.props)).find(node => node.type === 'LogRow')!.props.onPress();
+  }
+  assert.deepEqual(open, [payment, payment]);
+});
+
+test('offline search uses downloaded bill descriptions and notes and excludes payments like server search', () => {
+  let cursor = 0; const states: any[] = [];
+  const render = production('GroupScreen', { useState: (initial: any) => { const i = cursor++; if (!(i in states)) states[i] = typeof initial === 'function' ? initial() : initial; return [states[i], (value: any) => { states[i] = value; }]; } });
+  const bill = billRow({ notes: 'airport pickup' });
+  const value = { ...group, expenses: [bill], settlements: Array.from({ length: 5 }, (_, i) => ({ id: String(i), sender: 'other', recipient: 'self', amount: '100', date: '2026-10-17' })), transfers: [] };
+  const view = () => { cursor = 0; return elements(render({ group: value, accepted: value, pending: [], selfId: 'self', busy: false, online: false })); };
+  view().find(node => node.props.accessibilityLabel === 'Search bills')!.props.onPress();
+  for (const [query, ids] of [['pickup', ['bill']], ['Lunch', ['bill']], ['nothing', []], ['', ['bill', '4', '3', '2', '1', '0']]] as const) {
+    view().find(node => node.type === 'BillSearch')!.props.onChange(query);
+    const tree = view();
+    assert.ok(tree.some(node => node.type === 'BillSearch'));
+    assert.deepEqual(tree.find(node => node.type === 'FlatList')!.props.data.map((row: any) => row.bill?.id ?? row.payment.id), ids);
+  }
+});
+
+test('payment-only complete caches render payment rows without a separate dialog', () => {
+  const payment = { id: 'received', sender: 'other', recipient: 'self', amount: '500', date: null };
+  const value = { ...group, expenses: [], settlements: [payment], transfers: [] };
+  const nodes = elements(production('GroupScreen')({ group: value, accepted: value, selfId: 'self', pending: [], busy: false, online: false }));
+  assert.deepEqual(nodes.find(node => node.type === 'FlatList')!.props.data.map((row: any) => row.kind), ['payment']);
+  assert.ok(!nodes.some(node => node.type === 'DetailDialog'));
 });
 
 test('actual GroupScreen transaction rows expose offline new/edit bills and their detail callback', () => {
@@ -182,7 +264,7 @@ test('actual GroupScreen transaction rows expose offline new/edit bills and thei
   assert.deepEqual(list.props.data.map((row: any) => row.bill.id), ['photo', 'accepted']);
   assert.equal(list.props.data[1].bill.description, 'Saved accepted edit');
   assert.deepEqual(list.props.data.map(list.props.keyExtractor), ['bill:photo', 'bill:accepted']);
-  const row = list.props.renderItem({ item: list.props.data[0] });
+  const row = list.props.renderItem({ item: list.props.data[0] }).children[0].children[0];
   assert.equal(row.props.group, projected);
   const rendered = production('BillTimelineRow')(row.props);
   elements(rendered).find(node => node.type === 'LogRow')!.props.onPress();
@@ -191,7 +273,7 @@ test('actual GroupScreen transaction rows expose offline new/edit bills and thei
   assert.deepEqual(projected.history, accepted.history);
 });
 
-test('own saved payload changes adopt the same queued ID while conflict and acknowledgement keep the reading snapshot', () => {
+test('own saved payload changes remain during conflict and adopt confirmed records when pending work clears', () => {
   const slots: any[] = [];
   let cursor = 0, dirty = false, effects: (() => void)[] = [];
   const effect = (callback: () => void, deps: unknown[]) => { const index = cursor++, previous = slots[index]; if (!previous || deps.some((value, i) => !Object.is(value, previous[i]))) { slots[index] = deps; effects.push(callback); } };
@@ -211,7 +293,7 @@ test('own saved payload changes adopt the same queued ID while conflict and ackn
   assert.equal(view({ ...props, group: second, pending: [edited] }).props.data[0].bill.description, 'Saved edited');
   assert.equal(view({ ...props, group: accepted, pending: [{ ...edited, state: 'conflict' }] }).props.data[0].bill.description, 'Saved edited');
   const acknowledged = { ...accepted, version: 2 };
-  assert.equal(view({ ...props, group: acknowledged, accepted: acknowledged, pending: [] }).props.data[0].bill.description, 'Saved edited');
+  assert.deepEqual(view({ ...props, group: acknowledged, accepted: acknowledged, pending: [] }).props.data, [], 'confirmed records adopt automatically when pending work clears');
   assert.deepEqual(view({ ...props, group: acknowledged, accepted: acknowledged, pending: [], revision: 1 }).props.data, []);
 });
 
@@ -257,9 +339,9 @@ test('held optimistic total keeps its pending label until Show updates adopts ac
   assert.equal(elements(refreshed).find(node => node.type === 'PersonalTransferRow')!.props.disabled, true);
 });
 
-test('background summaries preserve displayed bills and accepted payments until an explicit read or own saved change', async () => {
+test('live summaries adopt safely while inactive, busy and pending views retain their reading snapshot', async () => {
   const slots: any[] = [], updates: boolean[] = [], reads: any[][] = [], offsets: unknown[] = [];
-  let cursor = 0, dirty = false, layout: (() => void)[] = [], effects: (() => void)[] = [], paging: any;
+  let cursor = 0, dirty = false, layout: (() => void)[] = [], effects: (() => void)[] = [], paging: any, lastRoot: Element;
   const effect = (queue: (() => void)[], callback: () => void, deps: unknown[]) => {
     const index = cursor++, previous = slots[index];
     if (!previous || deps.some((value, i) => !Object.is(value, previous[i]))) { slots[index] = deps; queue.push(callback); }
@@ -276,36 +358,51 @@ test('background summaries preserve displayed bills and accepted payments until 
     useScrollPagination: (options: any) => { paging = options; return { events: {}, loading: false, failed: false }; },
   });
   const bill = billRow(), payment = { id: 'older-payment', sender: 'self', recipient: 'other', amount: '10' };
-  const original = { ...group, version: 1, read_mode: 'summary', expenses: [bill], settlements: [payment], transfers: [], transactions: [{ kind: 'bill', bill }, { kind: 'payment', payment }], history: { transactions: { next_cursor: 'older' } } };
+  const original = { ...group, version: 1, read_mode: 'summary', expenses: [bill], settlements: [payment], transfers: [{ sender: 'other', recipient: 'self', amount: '10' }], transactions: [{ kind: 'bill', bill }, { kind: 'payment', payment }], history: { transactions: { next_cursor: 'older' } } };
   const initial = { ...original }, props = { group: initial, accepted: original, selfId: 'self', pending: [], busy: false, revision: 0, onUpdatesAvailable: (value: boolean) => updates.push(value), onHistoryPage: async (...args: any[]) => { reads.push(args); return true; } };
   const view = (next: any) => {
     let tree: Element;
     do { dirty = false; cursor = 0; layout = []; effects = []; tree = render(next); layout.forEach(fn => fn()); effects.forEach(fn => fn()); } while (dirty);
-    return elements(tree!).find(node => node.type === 'FlatList')!;
+    lastRoot = tree!; return elements(tree!).find(node => node.type === 'FlatList')!;
   };
   const first = view(props);
   first.props.ref.current = { scrollToOffset: (value: unknown) => offsets.push(value) };
   const latestBill = billRow({ id: 'newest' }), latest = { ...original, version: 2, expenses: [latestBill], settlements: [], transactions: [{ kind: 'bill', bill: latestBill }], history: { transactions: { next_cursor: 'newer-window' } } };
-  const background = view({ ...props, group: latest, accepted: latest });
+  const background = view({ ...props, group: latest, accepted: latest, active: false });
   assert.equal(background.props.data, original.transactions, 'background head replacement preserves every displayed row');
-  const oldPayment = background.props.renderItem({ item: original.transactions[1] });
+  const oldPayment = background.props.renderItem({ item: original.transactions[1] }).children[0].children[0];
   assert.equal(oldPayment.props.accepted, original, 'accepted payment membership advances with the displayed snapshot');
   assert.equal(updates.at(-1), true); assert.deepEqual(offsets, []);
   await paging.load(undefined);
   assert.equal(reads[0][4], original, 'paging uses the accepted displayed version rather than an optimistic preview or newer background summary');
   const refreshed = view({ ...props, group: latest, accepted: latest, revision: 1 });
   assert.equal(refreshed.props.data, latest.transactions); assert.equal(updates.at(-1), false);
-  assert.deepEqual(offsets, [{ offset: 0, animated: false }]);
+  assert.deepEqual(offsets, []);
   const own = { ...latest, transactions: [...latest.transactions, { kind: 'bill', bill }] };
   const saved = view({ ...props, group: own, accepted: latest, revision: 1, pending: [{ command_id: '00000000-0000-4000-8000-000000000001', state: 'pending' }] });
   assert.equal(saved.props.data, own.transactions, 'own saved changes appear without waiting for another refresh');
   const acknowledged = { ...latest, version: 3 };
   const afterSync = view({ ...props, group: acknowledged, accepted: acknowledged, revision: 1 });
-  assert.equal(afterSync.props.data, own.transactions, 'background acknowledgment keeps the displayed rows');
-  assert.deepEqual(offsets, [{ offset: 0, animated: false }], 'acknowledgment does not move the reader');
-  assert.equal(updates.at(-1), true);
-  const adopted = view({ ...props, group: acknowledged, accepted: acknowledged, revision: 2 });
-  assert.equal(adopted.props.data, acknowledged.transactions);
+  assert.equal(afterSync.props.data, acknowledged.transactions, 'remote and push refreshes adopt without a separate manual revision');
+  assert.deepEqual(offsets, [], 'acknowledgment does not move the reader');
+  assert.equal(updates.at(-1), false);
+  const liveBill = billRow({id: 'live-arrival'}), next = { ...acknowledged, version: 4, transactions: [{kind:'bill',bill:liveBill}, ...acknowledged.transactions] };
+  assert.equal(view({ ...props, group: next, accepted: next, revision: 1, busy: true }).props.data, acknowledged.transactions);
+  const live = view({ ...props, group: next, accepted: next, revision: 1, busy: false });
+  assert.equal(live.props.data, next.transactions);
+  assert.equal(live.props.renderItem({item:next.transactions[0]}).children[0].props.entry,undefined,'a live arrival waits until visible');
+  live.props.onViewableItemsChanged({viewableItems:[{item:next.transactions[0],index:0,isViewable:true},{item:next.transactions[1],index:1,isViewable:true}]});
+  const entrance=live.props.renderItem({item:next.transactions[0]}).children[0].props.entry;
+  assert.equal(entrance.played,false,'only a genuinely new live row receives an entrance');
+  assert.equal(live.props.renderItem({item:next.transactions[1]}).children[0].props.entry.played,true,'an existing row does not replay');
+  elements(lastRoot!).find(node=>node.type==='PersonalTransferRow')!.props.onExplain(next.transfers[0],()=>{});
+  view({ ...props, group: next, accepted: next, revision: 1 });
+  const newer={...next,version:5,transactions:[{kind:'bill',bill:billRow({id:'after-sheet'})},...next.transactions]};
+  assert.equal(view({ ...props, group: newer, accepted: newer, revision:1 }).props.data,next.transactions,'an open explanation holds its current rows');
+  elements(lastRoot!).find(node=>node.type==='BalanceExplanation')!.props.onClose();
+  assert.equal(view({ ...props, group:newer,accepted:newer,revision:1 }).props.data,newer.transactions,'closing the sheet adopts the waiting version');
+  const adopted = view({ ...props, group: next, accepted: next, revision: 2 });
+  assert.equal(adopted.props.data, next.transactions);
   assert.equal(updates.at(-1), false);
 });
 
@@ -322,11 +419,11 @@ test('search opens from the heading line, stays open for an active query, and pa
   assert.ok(view(base, { ...base }).filter(node => node.type === 'BillTimelineRow').every(node => node.props.noticeVisibility === undefined), 'previews never mark bills seen');
   const queried = view({ ...base, history: { transactions: { query: 'rent', next_cursor: null } } });
   const field = queried.find(node => node.type === 'BillSearch')!;
-  assert.equal(field.props.value, 'rent'); assert.equal(field.props.showSubmit, true); assert.equal(field.props.autoFocus, false);
+  assert.equal(field.props.value, 'rent'); assert.equal(field.props.showSubmit, true); assert.equal(field.props.autoFocus, true);
   assert.ok(!queried.some(node => node.type === 'Button' && node.props.title === 'Search'));
   const partial = view({ ...base, expenses: bills.slice(0, 1), transactions: base.transactions.slice(0, 1), history: { transactions: { next_cursor: 'older' } } });
   assert.ok(partial.some(node => node.type === 'Button' && node.props.title === 'Search'));
-  assert.ok(partial.some(node => node.type === 'PagingFooter'));
+  assert.ok(partial.some(node => node.props.title === 'Load older'));
   assert.ok(!partial.some(node => node.type === 'HistoryPages'));
   const few = view({ ...base, expenses: bills.slice(0, 2), transactions: base.transactions.slice(0, 2) });
   assert.ok(!few.some(node => node.type === 'BillSearch' || node.type === 'Button' && node.props.title === 'Search'));
@@ -348,7 +445,7 @@ test('saved bill details expose one guarded reversal action and retain reversed 
   assert.equal(buttons(retained).length, 0);
   assert.ok(text(retained).includes('The original and its reversal are kept in history.'));
   assert.equal(elements(retained).find(node => node.type === 'RecordSummary')!.props.amount, '1001');
-  assert.ok(elements(retained).some(node => node.type === 'ParticipantAmountRow' && node.props.amount === '1001'));
+  assert.ok(elements(retained).some(node => node.type === 'AmountText' && node.props.amount === '1001'));
 });
 
 
@@ -357,7 +454,7 @@ test('settled presentation celebrates only a known accepted zero without pending
   const value = { ...group, balances: { self: '0', other: '0' }, expenses: [], settlements: [], transfers: [], activity: [] };
   const base = { group: value, accepted: value, selfId: 'self', pending: [], busy: false };
   const heading = elements(render(base)).find(node => node.type === 'Text' && text(node) === '🎉 All settled')!;
-  assert.equal(heading.props.style.fontSize, 32); assert.equal(heading.props.numberOfLines, undefined);
+  assert.equal(Object.assign({}, ...heading.props.style).fontSize, 36); assert.equal(heading.props.numberOfLines, undefined);
   for (const props of [
     { pending: [{ state: 'pending' }] },
     { accepted: { ...value, balances: {} } },
@@ -391,18 +488,34 @@ test('manual payment details omit an unconfirmed label and dangling separator', 
 });
 
 
+test('balance rows have just one Record or Pay action', () => {
+  const render = production('PersonalTransferRow');
+  const linked = { ...group, participants: [{ id: 'self', name: 'You', user_id: 1 }, { id: 'other', name: 'Noor', user_id: 2, payment_profile: { vpa: 'noor@example' } }] };
+  for (const outgoing of [false, true]) {
+    const transfer = { sender: outgoing ? 'self' : 'other', recipient: outgoing ? 'other' : 'self', amount: '50000' };
+    let opened = false;
+    const tree = render({ transfer, group: linked, selfId: 'self', disabled: false,
+      onSettle: (value: unknown) => { assert.equal(value, transfer); opened = true; }, onExplain() {} });
+    const buttons = elements(tree).filter(node => node.type === 'Button' && node.props.title);
+    assert.equal(buttons.length, 1);
+    assert.equal(buttons[0].props.title, outgoing ? 'Pay' : 'Settle');
+    buttons[0].props.onPress(); assert.equal(opened, true);
+  }
+});
+
 test('balance explanation target and Record remain independent siblings with unchanged payment guards', () => {
   const render = production('PersonalTransferRow'), transfer = { sender: 'other', recipient: 'self', amount: '501' };
   let explanations = 0, records = 0;
   const props = { transfer, group, selfId: 'self', disabled: false, onSettle: (row: unknown) => { assert.equal(row, transfer); records++; }, onExplain: (row: unknown, focus: unknown) => { assert.equal(row, transfer); assert.equal(typeof focus, 'function'); explanations++; } };
   const tree = render(props), direct = tree.children.filter(Boolean) as Element[];
-  assert.deepEqual(direct.map(node => node.type), ['Pressable', 'Button']);
+  assert.deepEqual(direct.map(node => node.type), ['Button', 'View']);
+  const record = (tree: unknown) => elements(tree).find(node => node.props.title === 'Settle')!;
   direct[0].props.onPress(); assert.equal(explanations, 1); assert.equal(records, 0);
-  direct[1].props.onPress(); assert.equal(explanations, 1); assert.equal(records, 1);
-  assert.equal(direct[1].props.title, 'Record'); assert.equal(direct[1].props.disabled, false);
-  assert.equal((render({ ...props, disabled: true }).children[1] as Element).props.disabled, true);
+  record(tree).props.onPress(); assert.equal(explanations, 1); assert.equal(records, 1);
+  assert.equal(record(tree).props.disabled, false);
+  assert.equal(record(render({ ...props, disabled: true })).props.disabled, true);
   const removed = { ...group, participants: group.participants.map(person => ({ ...person, removed: person.id === 'other' })) };
-  assert.equal((render({ ...props, group: removed }).children[1] as Element).props.disabled, true);
+  assert.equal(record(render({ ...props, group: removed })).props.disabled, true);
 });
 
 
@@ -422,16 +535,16 @@ test('local full-history search remains editable and clearable after filtering b
   }
 });
 
-test('group and direct-person Pay use the same outlined icon button without changing guards', () => {
+test('group and direct-person UPI actions use the same primary button without changing guards', () => {
   const render = production('PersonalTransferRow'), transfer = { sender: 'self', recipient: 'other', amount: '501' };
   const payable = { ...group, participants: group.participants.map(person => person.id === 'other' ? { ...person, user_id: 2, payment_profile: { vpa: 'other@bank' } } : person) };
   for (const direct of [false, true]) {
     let calls = 0;
     const props = { group: { ...payable, is_direct: direct }, transfer, selfId: 'self', disabled: false, onSettle: (value: unknown) => { assert.equal(value, transfer); calls++; }, onExplain() {} };
-    const button = render(props).children[1] as Element;
-    assert.equal(button.props.title, 'Pay'); assert.equal(button.props.kind, 'outlined'); assert.equal(button.props.icon, 'pay'); assert.equal(button.props.compact, true);
+    const button = elements(render(props)).find(node => node.props.title === 'Pay')!;
+    assert.equal(button.props.title, 'Pay'); assert.equal(button.props.kind, 'primary'); assert.equal(button.props.compact, true);
     button.props.onPress(); assert.equal(calls, 1);
-    assert.equal((render({ ...props, disabled: true }).children[1] as Element).props.disabled, true);
+    assert.equal(elements(render({ ...props, disabled: true })).find(node => node.props.title === 'Pay')!.props.disabled, true);
   }
 });
 
@@ -474,8 +587,8 @@ test('pending and offline detail retain the receipt in the same slot as a ready 
   const ready = elements(detail({ ...base, categoryIcons: { [JSON.stringify(['g', 'bill', 'Lunch'])]: 'food' } })).find(node => node.type === 'RecordSummary')!;
   const manual = elements(detail({ ...base, expense: { ...expense, category_auto: false }, categoryIcons: { [JSON.stringify(['g', 'bill', 'Lunch'])]: 'food' } })).find(node => node.type === 'RecordSummary')!;
   for (const [value, name] of [[pending, 'bill'], [ready, 'food'], [manual, 'bill']] as const) {
-    const header = elements(summary({ ...value.props, children: value.children })).find(node => node.type === 'TransactionIcon');
-    assert.ok(header, 'every expense detail reserves its decorative icon slot'); assert.equal(header.props.name, name);
+    const header = elements(summary({ ...value.props, children: value.children })).find(node => node.type === 'BillIconButton');
+    assert.ok(header, 'every expense detail reserves its icon control'); assert.equal(categoryIcon(header.props.category), name);
   }
 });
 
@@ -497,4 +610,82 @@ test('pending bill stays editable but cannot request server history or reversal 
  assert.equal(buttons.find(node=>node.props.title==='Reverse record')?.props.disabled,true);
  assert.equal(buttons.find(node=>node.props.title==='Version history')?.props.disabled,true);
  assert.ok(!elements(tree).some(node=>node.type==='RecordAttribution'&&node.props.action==='Added'));
+});
+
+test('inline search has one close X and bottom spacing before results', () => {
+  let closed = 0;
+  const render = production('BillSearch');
+  for (const value of ['', 'rent']) {
+    const tree = render({ value, onChange() {}, onSearch() {}, onClose: () => closed++, showSubmit: true, autoFocus: true });
+    const actions = elements(tree).filter(node => node.type === 'Button');
+    const closes = actions.filter(node => node.props.icon === 'close');
+    assert.equal(closes.length, 1);
+    assert.equal(closes[0].props.accessibilityLabel, 'Close search');
+    closes[0].props.onPress();
+    assert.equal(tree.props.style.paddingBottom, 12);
+    for (const action of actions) { assert.ok(action.props.style.minWidth >= 44); assert.ok(action.props.style.minHeight >= 44); }
+    assert.ok(!(tree.children[0] as Element).children.flat().includes(closes[0]), 'close stays outside the field');
+  }
+  assert.equal(closed, 2);
+});
+
+test('closing local search restores all rows, hides the field and permits reopening', () => {
+  let cursor = 0; const states: any[] = [];
+  const render = production('GroupScreen', { useState: (initial: any) => { const i = cursor++; if (!(i in states)) states[i] = typeof initial === 'function' ? initial() : initial; return [states[i], (value: any) => { states[i] = value; }]; } });
+  const value = { ...group, expenses: Array.from({ length: 6 }, (_, i) => ({ ...billRow(), id: `b${i}`, description: `Bill ${i}` })), transfers: [], settlements: [] };
+  const view = () => { cursor = 0; return elements(render({ group: value, accepted: value, pending: [], busy: false, selfId: 'self' })); };
+  view().find(node => node.props.accessibilityLabel === 'Search bills')!.props.onPress();
+  view().find(node => node.type === 'BillSearch')!.props.onChange('Bill 1');
+  assert.equal(view().find(node => node.type === 'FlatList')!.props.data.length, 1);
+  view().find(node => node.type === 'BillSearch')!.props.onClose();
+  assert.ok(!view().some(node => node.type === 'BillSearch'));
+  assert.equal(view().find(node => node.type === 'FlatList')!.props.data.length, 6);
+  view().find(node => node.props.accessibilityLabel === 'Search bills')!.props.onPress();
+  assert.equal(view().find(node => node.type === 'BillSearch')!.props.value, '');
+});
+
+test('closing a server search clears its query, cancels older requests and stays open on reset failure', async () => {
+  const slots: any[] = []; let cursor = 0, dismissed = 0;
+  const reads: { query: string; signal: AbortSignal; resolve: (applied: boolean) => void }[] = [];
+  const render = production('GroupScreen', {
+    Keyboard: { dismiss() { dismissed++; } },
+    useState: (initial: any) => { const i = cursor++; if (!(i in slots)) slots[i] = typeof initial === 'function' ? initial() : initial; return [slots[i], (value: any) => { slots[i] = value; }]; },
+    useRef: (initial: any) => { const i = cursor++; return slots[i] ??= { current: initial }; },
+  });
+  const value = { ...group, expenses: [], transfers: [], settlements: [], read_mode: 'summary', history: { bills: { query: 'rent' } } };
+  const view = () => { cursor = 0; return elements(render({ group: value, accepted: value, pending: [], busy: false, selfId: 'self', onHistoryPage: (_resource: string, _direction: string, query: string, signal: AbortSignal) => new Promise<boolean>(resolve => reads.push({ query, signal, resolve })) })); };
+  const field = () => view().find(node => node.type === 'BillSearch');
+  field()!.props.onSearch(); assert.equal(reads[0].query, 'rent');
+  field()!.props.onClose(); assert.equal(reads[0].signal.aborted, true); assert.equal(reads[1].query, '');
+  reads[1].resolve(false); await new Promise(resolve => setImmediate(resolve));
+  assert.ok(field(), 'failed reset cannot hide an active filter'); assert.equal(field()!.props.value, 'rent');
+  field()!.props.onClose(); reads[2].resolve(true); await new Promise(resolve => setImmediate(resolve));
+  assert.ok(!field(), 'successful reset closes search'); assert.equal(dismissed, 2);
+  reads[0].resolve(true); await new Promise(resolve => setImmediate(resolve));
+  assert.ok(!field(), 'late aborted search cannot reopen it');
+});
+
+test('transaction entrance follows visible batches beyond row eight and never re-registers a row', () => {
+  const bills = Array.from({ length: 60 }, (_, i) => billRow({ id: String(i) }));
+  const value = { ...group, expenses: bills, settlements: [], transfers: [], transactions: bills.map(bill => ({ kind: 'bill', bill })) };
+  const noticed: string[][] = [];
+  const list = elements(production('GroupScreen')({ group: value, accepted: value, pending: [], selfId: 'self', busy: false, onVisibleBills: (ids: string[]) => noticed.push(ids) })).find(node => node.type === 'FlatList')!;
+  const entry = (i: number) => list.props.renderItem({ item: value.transactions[i], index: i }).children[0].props.entry;
+  assert.equal(entry(0), undefined); assert.equal(entry(59), undefined);
+  const show = (ids: number[]) => list.props.onViewableItemsChanged({ viewableItems: ids.map(index => ({ index, isViewable: true, item: value.transactions[index] })) });
+  show(Array.from({ length: 12 }, (_, i) => i));
+  assert.equal(entry(0).delay, 0); assert.equal(entry(10).delay, 210, 'every visible row is included with a bounded delay');
+  assert.equal(entry(0).played, true, 'initial rows do not animate as live arrivals');
+  const first = entry(0); first.played = true;
+  show([40, 41, 42]); assert.equal(entry(40).delay, 0); assert.equal(entry(42).delay, 70);
+  show([0, 1]); assert.equal(entry(0), first); assert.equal(entry(0).played, true, 'scrolling back cannot replay');
+  assert.deepEqual(noticed.at(-2), ['40', '41', '42'], 'bill visibility notifications remain intact');
+});
+
+test('a bill for one person omits the shared split method caption', () => {
+ const render=production('ExpenseDetail');
+ const expense={id:'single',version:1,description:'Lunch',total:'1000',paid:{self:'1000'},shares:{other:'1000'},split:{mode:'equal',values:{other:'1'}},date:'2026-11-03',deleted:false};
+ const props={expense,group:{...group,expenses:[expense]},selfId:'self',busy:false,canEdit:true,onEdit(){},onReverse(){}};
+ assert.ok(!text(render(props)).includes('Shared equally'));
+ assert.ok(text(render({...props,expense:{...expense,shares:{self:'500',other:'500'},split:{mode:'equal',values:{self:'1',other:'1'}}}})).includes('Shared equally'));
 });

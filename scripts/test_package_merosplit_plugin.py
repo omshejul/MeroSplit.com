@@ -60,6 +60,19 @@ def test_adapter_must_share_identity_and_endpoint(package):
         plugin.validate(package)
 
 
+@pytest.mark.parametrize("change", [
+    lambda extension: extension["interface"].update(termsOfServiceURL="http://other.invalid/terms"),
+    lambda extension: extension["interface"].update(shortDescription="x" * 31),
+    lambda extension: extension["interface"].update(logo="../../outside.png"),
+    lambda extension: extension["review"]["test_cases"]["positive"].pop(),
+    lambda extension: extension["review"]["test_cases"]["negative"][0].update(password="must-not-ship"),
+])
+def test_listing_and_review_materials_are_complete_and_bounded(package, change):
+    edit(package, "plugin.json", lambda data: change(data["extensions"]["com.openai"]))
+    with pytest.raises(ValueError):
+        plugin.validate(package)
+
+
 def test_package_excludes_unreviewed_files_and_symlinks(package, tmp_path):
     extra = package / ".env"
     extra.write_text("synthetic-private-material")

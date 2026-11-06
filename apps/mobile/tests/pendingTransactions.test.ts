@@ -100,7 +100,21 @@ test('transaction IDs remain scoped by bill/payment kind, and undated payments k
   const group: Group = { ...accepted, settlements: [...accepted.settlements, undated], transactions: [...accepted.transactions!, { kind: 'payment', date: null, payment: undated }] };
   const sameIdBill = { ...photo, body: { ...photo.body, id: payment.id, date: payment.date } };
   const preview = previewPending(group, [sameIdBill]);
-  assert.deepEqual(keys(preview.transactions), ['payment:payment', 'bill:payment', 'bill:bill', 'payment:undated']);
+  assert.deepEqual(keys(preview.transactions), ['bill:payment', 'payment:payment', 'bill:bill', 'payment:undated']);
   assert.deepEqual(preview.transactions!.at(-1), group.transactions!.at(-1));
   assert.deepEqual(previewPending(group, [sameIdBill, sameIdBill]).transactions, preview.transactions);
+});
+
+
+test('same-day pending bills appear newest first, while an edit keeps its original position in both history formats', () => {
+  const first = { ...bill, id: 'zzz', created_at: '2026-10-25T08:00:00.000000+00:00' };
+  const second = { ...bill, id: 'aaa', created_at: '2026-10-25T09:00:00.000000+00:00' };
+  const group = { ...accepted, expenses: [first, second], transactions: [{ kind: 'bill' as const, date: second.date, bill: second }, { kind: 'bill' as const, date: first.date, bill: first }] };
+  const changed = command('edit-first', 'PUT', '/expenses/zzz', { ...first, description: 'Edited first' });
+  const added = command('newest', 'POST', '/expenses', { ...bill, id: '000' });
+  const preview = previewPending(group, [changed, added]);
+  assert.deepEqual(keys(preview.transactions), ['bill:000', 'bill:aaa', 'bill:zzz']);
+  assert.deepEqual(preview.expenses.map(row => row.id), ['zzz', 'aaa', '000']);
+  assert.equal(preview.expenses[0].created_at, first.created_at);
+  assert.deepEqual(previewPending({ ...group, transactions: undefined }, [changed]).expenses.map(row => row.id), ['zzz', 'aaa']);
 });

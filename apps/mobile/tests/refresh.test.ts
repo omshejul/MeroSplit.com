@@ -7,7 +7,7 @@ import { sqliteAdapter } from './sqlite.ts';
 import type { Group, Session } from '../src/types.ts';
 const session: Session = { baseUrl: 'https://refresh.test', token: 'synthetic', userId: 'one', email: 'one@example.test' };
 const owner = accountOwner(session);
-const group = (id: string, version: number): Group => ({ attribution_version: 1, id, name: id, version, participants: [], expenses: [], settlements: [], balances: {}, transfers: [], activity: [] });
+const group = (id: string, version: number): Group => ({ attribution_version: 1, simplify_debts: true, id, name: id, version, participants: [], expenses: [], settlements: [], balances: {}, transfers: [], activity: [] });
 
 test('An unchanged complete index costs one request and zero cache writes', async () => {
   const raw = new DatabaseSync(':memory:'), db = sqliteAdapter(raw), original = globalThis.fetch, calls: string[] = [];
@@ -70,4 +70,19 @@ test('old equal-version member caches refresh once for authoritative account ema
     await refreshGroups(db,session);assert.equal(calls.length,2);assert.equal((await readGroup(db,owner,'a'))?.group.participants[0].account_email,'actual@example.invalid');
     calls.length=0;await refreshGroups(db,session);assert.equal(calls.length,1);
   }finally{raw.close();globalThis.fetch=original;}
+});
+
+test('Photo metadata refreshes at equal ledger version without downloading group history', async () => {
+  const raw = new DatabaseSync(':memory:'), db = sqliteAdapter(raw), original = globalThis.fetch;
+  const person = { id: 'p', name: 'Person', recorded_name: 'Person', account_email: 'person@example.test', user_id: 2 };
+  let photos: Record<string, { url: string }> = { '2': { url: 'https://lh3.googleusercontent.com/v1' } }, requests = 0;
+  try {
+    await migrate(db); await saveGroup(db, owner, { ...group('a', 1), participants: [person] }, 'shared');
+    globalThis.fetch = async url => { requests++; assert.ok(String(url).endsWith('/groups')); return Response.json({ groups: [{ id: 'a', version: 1 }], profile_photos: photos }); };
+    await refreshGroups(db, session);
+    assert.deepEqual((await readGroup(db, owner, 'a'))?.group.participants[0].profile_photo, photos['2']);
+    photos = {}; await refreshGroups(db, session);
+    assert.equal((await readGroup(db, owner, 'a'))?.group.participants[0].profile_photo, null);
+    assert.equal((await readGroup(db, owner, 'a'))?.group.version, 1); assert.equal(requests, 2);
+  } finally { raw.close(); globalThis.fetch = original; }
 });

@@ -1,10 +1,15 @@
+import { useLoading } from './LoadingOverlay';
+import ScrollBottomInset from './ScrollBottomInset';
+import { ErrorState } from './UIStates';
+import { EmptyState } from './UIStates';
+import PaginationFooter from './PaginationFooter';
 import React, { useEffect, useRef, useState } from 'react';
 import { FlatList, StyleSheet, View } from 'react-native';
 import { Text } from 'react-native-paper';
 import { accountOwner, ApiError, request } from './api';
 import { getDatabase } from './native';
 import { readExpenseHistory, saveExpenseHistory, forgetExpenseHistory } from './storage';
-import { Button, ErrorText, useUI } from './ui';
+import { useUI } from './ui';
 import LoadingSpinner from './LoadingSpinner';
 import { pageContentStyle } from './AppNavigation';
 import { useScrollPagination } from './useScrollPagination';
@@ -52,10 +57,12 @@ export default function ExpenseVersionHistory({ session, groupId, expenseId, gro
     const timer = setInterval(() => setNow(Date.now()), 60_000);
     return () => clearInterval(timer);
   }, [active]);
+  const [cacheScope, setCacheScope] = useState('');
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [retry, setRetry] = useState(0);
   const controller = useRef<AbortController | null>(null), mounted = useRef(false), allowed = useRef(active), connected = useRef(online);
   allowed.current = active; connected.current = online;
   const shown = active && page?.scope === scope ? page : null;
+  useLoading(active && busy && !shown);
   const list = useRef<FlatList<Row>>(null);
   async function load(before?: number, signal?: AbortSignal) {
     if (!allowed.current) return false;
@@ -68,7 +75,7 @@ export default function ExpenseVersionHistory({ session, groupId, expenseId, gro
     try {
       const db = await getDatabase(), cached = await readExpenseHistory(db, owner, groupId, expenseId, groupVersion);
       if (!valid()) return false;
-      if (!before) setPage(cached ? { ...cached, scope } : null);
+      if (!before) { setPage(cached ? { ...cached, scope } : null); setCacheScope(scope); }
       if (!connected.current) { if (!cached) setError('This version history has not downloaded. Reconnect to finish.'); return false; }
       const result = await request(session, path + (before ? `?before=${before}&limit=20` : '?limit=20'), 'GET', undefined, 'json', read.signal) as ExpenseHistoryPage;
       fetched = true;
@@ -101,17 +108,15 @@ export default function ExpenseVersionHistory({ session, groupId, expenseId, gro
   const paging = useScrollPagination({ scope, cursor: shown?.next_before, enabled: active && online, load: signal => load(shown?.next_before ?? undefined, signal).then(Boolean) });
   if (!active) return null;
   const rows: Row[] = shown?.items.flatMap(version => version.kind === 'created' ? [{ version }] : version.changes.map(change => ({ version, change }))) ?? [];
-  return <FlatList ref={list} scrollEventThrottle={100} onEndReachedThreshold={0.3} data={rows} keyExtractor={({ version, change }) => `${version.id}:${change?.field || 'created'}`}
+  return <FlatList ref={list} contentInsetAdjustmentBehavior="automatic" scrollEventThrottle={100} onEndReachedThreshold={0.3} data={rows} keyExtractor={({ version, change }) => `${version.id}:${change?.field || 'created'}`}
     renderItem={({ item }) => <VersionHistoryRow {...item} now={now} />} contentContainerStyle={[pageContentStyle, { gap: 0 }]}
-    ListHeaderComponent={<View style={styles.subtitle}><Text style={ui.body}>{title}</Text>{shown && !online && <Text style={ui.caption}>Downloaded version history. Connect to check for newer changes.</Text>}{shown && !!error && <ErrorText live>{error}</ErrorText>}</View>}
-    ListEmptyComponent={error ? <View style={styles.status}><ErrorText live>{error}</ErrorText>{online && <Button title="Retry" onPress={() => setRetry(value => value + 1)} />}</View>
-      : busy || !shown ? <LoadingSpinner visible /> : <Text style={ui.body}>{shown.next_before ? 'No recorded changes on this page.' : 'No version history was recorded.'}</Text>}
-    ListFooterComponent={<View style={styles.status}>
+    ListHeaderComponent={<View style={styles.subtitle}><Text style={ui.body}>{title}</Text>{shown && !online && <Text style={ui.caption}>Downloaded version history. Connect to check for newer changes.</Text>}{shown && !!error && <ErrorState error={error} disabled={busy} onRetry={online && !paging.failed ? () => setRetry(value => value + 1) : undefined} />}</View>}
+    ListEmptyComponent={error ? <ErrorState error={error} onRetry={online ? () => setRetry(value => value + 1) : undefined} style={styles.status} />
+      : !shown ? (cacheScope === scope ? <LoadingSpinner visible /> : undefined) : <EmptyState message={shown.next_before ? 'No recorded changes on this page.' : 'No version history was recorded.'} />}
+    ListFooterComponent={<><PaginationFooter paging={paging} error="Could not load earlier changes." loadingLabel="Loading…" style={styles.status}>
       {shown?.legacy_gap && rows.length > 0 && <Text style={ui.caption}>Some earlier details weren’t recorded.</Text>}
       {shown?.next_before != null && !online && <Text style={ui.caption}>Earlier changes have not downloaded. Reconnect to finish.</Text>}
-      {paging.loading && <LoadingSpinner visible />}{paging.canLoadMore && !paging.failed && <Button title="Load older" kind="text" disabled={paging.loading} onPress={paging.loadMore} />}
-      {paging.failed && shown && <><ErrorText live>Could not load earlier changes.</ErrorText><Button title="Retry" kind="text" onPress={paging.retry} /></>}
-    </View>} />;
+    </PaginationFooter><ScrollBottomInset /></>} />;
 }
 const styles = StyleSheet.create({
   subtitle: { paddingBottom: 18 },

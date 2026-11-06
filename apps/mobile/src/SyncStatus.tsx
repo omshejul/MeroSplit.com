@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { ActivityIndicator, Pressable } from 'react-native';
 import { Menu, Text } from 'react-native-paper';
 import type { Command } from './types';
 import { syncStatus } from './syncState';
@@ -12,10 +11,11 @@ export default function SyncStatus(props: { commands: Command[]; pendingFiles: n
   const label = updates ? 'Updates available' : status.label;
   const color = updates ? palette.accent : ['Synced', 'Online'].includes(status.label) ? palette.positive : status.label === 'Needs attention' ? palette.warning : palette.muted;
   const icon = updates ? 'info' : ['Synced', 'Online'].includes(status.label) ? 'check' : status.label === 'Needs attention' ? 'info' : status.label === 'Offline' ? 'offline' : 'history';
+  if (!props.updatesAvailable && ['Synced', 'Online', 'Syncing'].includes(status.label)) return null;
   return <Menu visible={open} onDismiss={() => setOpen(false)} anchorPosition="bottom" overlayAccessibilityLabel="Close sync status" contentStyle={{ maxWidth: 288, padding: 16, borderRadius: 12 }} anchor={
-    <Pressable accessibilityRole="button" accessibilityLabel={`Sync status: ${label}`} accessibilityHint="Show sync details" accessibilityState={{ expanded: open }} onPress={() => setOpen(value => !value)} style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}>
-      {status.label === 'Syncing' ? <ActivityIndicator color={palette.accent} size={22} /> : <Icon name={icon} size={22} color={color} />}
-    </Pressable>
+    <Button kind="plain" accessibilityRole="button" accessibilityLabel={`Sync status: ${label}`} accessibilityHint="Show sync details" accessibilityState={{ expanded: open }} onPress={() => setOpen(value => !value)} style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}>
+      <Icon name={icon} size={22} color={color} />
+    </Button>
   }>
     <DialogFocus active={open} label="Sync details" onEscape={() => setOpen(false)} style={{ gap: 8, maxWidth: 256 }}>
       <Text accessibilityRole="header" aria-level={2} style={ui.rowTitle}>{label}</Text>

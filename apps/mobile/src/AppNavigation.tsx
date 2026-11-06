@@ -1,35 +1,44 @@
+import { pageWidthStyle } from './pageLayout';
+import AppLogo from './AppLogo';
+import FloatingActionContainer from './FloatingActionContainer';
+import BottomSafeArea from './BottomSafeArea';
+import AddActionButton from './AddActionButton';
 import React from 'react';
-import { ActivityIndicator, Animated, Image, KeyboardAvoidingView, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { Animated, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import { FAB, Text, useTheme } from 'react-native-paper';
-import { Icon, IconAction, radii, useUI } from './ui';
+import { Text } from 'react-native-paper';
+import { Button, Icon, IconAction, radii, useUI } from './ui';
 import { useMotionValue } from './motion';
 import TabBarSurface from './TabBarSurface';
 
 export function AppFrame({ children, onTouchStart }: { children: React.ReactNode; onTouchStart?: () => void }) {
   const { palette, dark } = useUI();
-  return <SafeAreaView style={{ flex: 1, backgroundColor: palette.background }} edges={Platform.OS === 'web' ? ['top', 'right', 'bottom', 'left'] : ['top', 'bottom']} onTouchStart={onTouchStart}>
+  // iOS scroll views own bottom insets so their surfaces reach the window edge.
+  // Headers keep the top/cutout inset; sticky controls protect their own bottom edge.
+  return <View style={{ flex: 1, backgroundColor: palette.background }} onTouchStart={onTouchStart}>
     <StatusBar style={dark ? 'light' : 'dark'} />
-    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>{children}</KeyboardAvoidingView>
-  </SafeAreaView>;
+    <SafeAreaView style={{ flex: 1 }} edges={Platform.OS === 'ios' ? ['top', 'left', 'right'] : ['top', 'left', 'right', 'bottom']}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}><View style={{ flex: 1 }}>{children}</View></KeyboardAvoidingView>
+    </SafeAreaView>
+  </View>;
 }
 
-const pageWidthStyle = Platform.OS === 'web' ? { width: '100%' as const, maxWidth: 760, alignSelf: 'center' as const } : {};
+export { pageWidthStyle } from './pageLayout';
 export const pageContentStyle = { padding: 16, gap: 12, paddingBottom: 24, ...pageWidthStyle };
 
-export function ScreenHeader({ title, busy, onBack, onFeedback, brand = false, children }: { brand?: boolean; title: string; busy: boolean; onFeedback?: () => void; onBack?: () => void; children?: React.ReactNode }) {
+export function ScreenHeader({ title, busy, onBack, onFeedback, brand = false, children, status, showTitle = true }: { showTitle?: boolean; brand?: boolean; title: string; busy: boolean; onFeedback?: () => void; onBack?: () => void; children?: React.ReactNode; status?: React.ReactNode }) {
   const { palette } = useUI();
-  // The working indicator floats over the title's trailing edge, so actions never shift.
   return <View role="banner" style={styles.header}>
-    {brand && <Image source={require('../assets/brand/mark.png')} accessible={false} accessibilityIgnoresInvertColors style={{ width: 32, height: 32 }} />}
-    {onBack && <IconAction name="back" label="Back" disabled={busy} onPress={onBack} />}
+    {brand && <AppLogo />}
+    {onBack && <IconAction name="back" label="Back" onPress={onBack} />}
     <View style={styles.titleArea}>
-      <Text style={[styles.title, { color: palette.text }]} accessibilityRole="header" aria-level={1} numberOfLines={1} ellipsizeMode="tail" accessibilityLabel={title}>{title}</Text>
-      {busy && !onFeedback && <View pointerEvents="none" style={[styles.working, { backgroundColor: palette.background }]}><ActivityIndicator accessibilityLabel="Working" color={palette.accent} /></View>}
+      {showTitle && <Text style={[styles.title, { color: palette.text }]} accessibilityRole="header" aria-level={1} numberOfLines={1} ellipsizeMode="tail" accessibilityLabel={title}>{title}</Text>}
     </View>
-    {onFeedback && <View style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}>{busy ? <ActivityIndicator accessibilityLabel="Working" color={palette.accent} /> : <IconAction name="feedback" label="Feedback" onPress={onFeedback} />}</View>}
+    {status}
     {children}
+    {onFeedback && <IconAction name="feedback" label="Feedback" onPress={onFeedback} />}
+
   </View>;
 }
 
@@ -37,36 +46,30 @@ const tabs = [{ value: 'Groups', label: 'Groups', icon: 'groups' }, { value: 'Fr
 function TabButton({ item, selected, busy, onSelect }: { item: typeof tabs[number]; selected: boolean; busy: boolean; onSelect: (value: string) => void }) {
   const { palette, motion } = useUI();
   const opacity = useMotionValue(selected ? 1 : 0, motion.enabled);
-  return <Pressable accessibilityRole={Platform.OS === 'web' ? 'button' : 'tab'} aria-current={Platform.OS === 'web' && selected ? 'page' : undefined} accessibilityState={Platform.OS === 'web' ? { disabled: busy } : { selected, disabled: busy }} disabled={busy} onPress={() => onSelect(item.value)} style={styles.tab}>
-    <Animated.View pointerEvents="none" accessible={false} style={[StyleSheet.absoluteFill, { borderRadius: radii.surface, backgroundColor: palette.soft, opacity }]} />
+  return <Button kind="plain" accessibilityRole={Platform.OS === 'web' ? 'button' : 'tab'} aria-current={Platform.OS === 'web' && selected ? 'page' : undefined} accessibilityState={Platform.OS === 'web' ? undefined : { selected }} onPress={() => onSelect(item.value)} style={styles.tab}>
+    <Animated.View pointerEvents="none" accessible={false} style={[StyleSheet.absoluteFill, { borderRadius: radii.navigation, backgroundColor: palette.soft, opacity }]} />
     <View style={styles.tabContent}>
       <Icon name={item.icon} color={selected ? palette.accent : palette.muted} />
       <Text style={[styles.tabText, { color: selected ? palette.accent : palette.muted }]}>{item.label}</Text>
     </View>
-  </Pressable>;
+  </Button>;
 }
 export function AppTabs({ selected, busy, onSelect }: { selected: string; busy: boolean; onSelect: (value: string) => void }) {
-  return <View role="navigation" accessibilityLabel="Main navigation" style={pageWidthStyle}><TabBarSurface style={styles.tabs}>
+  return <BottomSafeArea role="navigation" accessibilityLabel="Main navigation" style={pageWidthStyle}><TabBarSurface style={styles.tabs}>
     {tabs.map(item => <TabButton key={item.value} item={item} selected={selected === item.value} busy={busy} onSelect={onSelect} />)}
-  </TabBarSurface></View>;
+  </TabBarSurface></BottomSafeArea>;
 }
-export function AddExpenseButton({ disabled, onPress }: { disabled: boolean; onPress: () => void }) {
-  const { colors } = useTheme();
-  return <View pointerEvents="box-none" style={styles.floating}>
-    <View pointerEvents="box-none" style={[pageWidthStyle, styles.floatingContent]}>
-      <FAB animated={false} label="Add expense" accessibilityLabel="Add expense" disabled={disabled} onPress={onPress} color={colors.onPrimary} style={{ backgroundColor: colors.primary }} icon={({ size, color }) => <Icon name="add" size={size} color={color} />} />
-    </View>
-  </View>;
+export function AddExpenseButton({ disabled, onPress, onHeight }: { disabled: boolean; onPress: () => void; onHeight?: (height: number) => void }) {
+  return <FloatingActionContainer onHeight={onHeight}><AddActionButton title="Add expense" disabled={disabled} onPress={onPress} /></FloatingActionContainer>;
 }
 const styles = StyleSheet.create({
-  floating: { position: 'absolute', left: 0, right: 0, bottom: 16 },
+  floating: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingBottom: 16 },
   floatingContent: { width: '100%', alignItems: 'flex-end', paddingHorizontal: 16 },
   header: { ...pageWidthStyle, flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 56, paddingHorizontal: 16, paddingTop: 4, paddingBottom: 8 },
   titleArea: { flex: 1, minWidth: 0, overflow: 'hidden', justifyContent: 'center' },
   title: { fontSize: 24, lineHeight: 30, fontWeight: '600' },
-  working: { position: 'absolute', right: 0, top: 0, bottom: 0, justifyContent: 'center', paddingLeft: 8 },
   tabs: { flexDirection: 'row', marginHorizontal: 16, marginBottom: 8, borderRadius: radii.navigation, padding: 4, gap: 4 },
-  tab: { flex: 1, minHeight: 48, alignItems: 'center', justifyContent: 'center', gap: 4, borderRadius: radii.surface, paddingVertical: 6 },
-  tabContent: { zIndex: 1, alignItems: 'center', gap: 4 },
+  tab: { flex: 1, minHeight: 48, alignItems: 'center', justifyContent: 'center', gap: 4, borderRadius: radii.navigation, paddingVertical: 6 },
+  tabContent: { zIndex: 1, alignItems: 'center', gap: Platform.OS === 'ios' ? 4 : 1 },
   tabText: { fontSize: 13, fontWeight: '500' },
 });

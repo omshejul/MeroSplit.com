@@ -12,6 +12,7 @@ import type { Group, Session } from '../src/types.ts';
 
 const source = ts.createSourceFile('App.tsx', readFileSync(new URL('../App.tsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true);
 function production(name: string, env: any) {
+ if (name === 'runAccountRefresh') env = { groupVersions: { current: '' }, setLiveRevision() {}, readPrefetch: { invalidate() {} }, readScope: () => '', ...env };
   let body = '';
   function visit(node: ts.Node) { if (ts.isFunctionDeclaration(node) && node.name?.text === name) body = node.getText(source); ts.forEachChild(node, visit); }
   visit(source); assert.ok(body);
@@ -24,7 +25,7 @@ test('actual pull refresh recovers the October bill from a persisted May page at
   const file=join(folder,'history.sqlite'),owner=accountOwner(session),original=globalThis.fetch;let raw=new DatabaseSync(file),db=sqliteAdapter(raw);
   const bill = (id: string, description: string, date: string) => ({ id, description, date, total:'30000', paid:{self:'30000'}, shares:{self:'10000',second:'10000',third:'10000'}, deleted:false, version:1 });
   const october = bill('october', 'Garbage man', '2026-10-19'), may = bill('may', 'Electricity april', '2026-05-15');
-  const page = (value: any, cursor: string | null): Group => ({ attribution_version:1, id:'g', name:'Synthetic house', version:100, read_mode:'summary', participants:['self','second','third'].map(id=>({id,name:id,recorded_name:id,account_email:null})), expenses:[value], settlements:[], activity:[], balances:{self:'20000',second:'-10000',third:'-10000'}, transfers:[], totals:{spending:'30000',paid:{self:'30000'},shares:{self:'10000',second:'10000',third:'10000'}}, transactions:[{kind:'bill',date:value.date,bill:value}], history:{transactions:{cursor,next_cursor:'next',previous:[]}} } as Group);
+  const page = (value: any, cursor: string | null): Group => ({ attribution_version:1,simplify_debts:true, id:'g', name:'Synthetic house', version:100, read_mode:'summary', participants:['self','second','third'].map(id=>({id,name:id,recorded_name:id,account_email:null})), expenses:[value], settlements:[], activity:[], balances:{self:'20000',second:'-10000',third:'-10000'}, transfers:[], totals:{spending:'30000',paid:{self:'30000'},shares:{self:'10000',second:'10000',third:'10000'}}, transactions:[{kind:'bill',date:value.date,bill:value}], history:{transactions:{cursor,next_cursor:'next',previous:[]}} } as Group);
   let latest = page(october, null); const older = page(may, 'older-page');
   let offline = false, failHead = false, writes = 0; const november = bill('november', 'New bill', '2026-11-01');
   let done = Promise.resolve(), shown: Group | undefined;
@@ -41,11 +42,11 @@ test('actual pull refresh recovers the October bill from a persisted May page at
   const env: any = { ApiError, session, owner, setLedgerRevision:()=>{}, screen:'group', tab:'Groups', selected:{group:older}, groupId:'g', ownerRef:{current:owner}, activeGroupRef:{current:'g'}, activeSessionRef:{current:session}, accountOwner, request, refreshGroups, syncOutbox,
     getDatabase:async()=>db, readProfile:async()=>{}, retryAccountMediaUploads:async()=>false, load:async(scope:string)=>{if(env.ownerRef.current===scope)shown=(await readVisibleGroup(db,scope,'g'))?.group;},
     setVerifiedEmptyOwner:()=>{}, setNeedsInvitation:()=>{}, setNotice:()=>{}, setGroupId:()=>{}, setScreen:()=>{}, setPulling:()=>{},
-    perform:(fn:any)=>{done=fn();return done;} };
+    background:(fn:any)=>{done=fn();return done;} };
   try {
     await migrate(db); await saveGroup(db,owner,older,'shared'); await saveGroup(db,'other-account',older,'shared');
     raw.close();raw=new DatabaseSync(file);db=sqliteAdapter(raw); // real SQLite reopen, as on app restart
-    env.authHeldRef={current:false}; env.publishIfChanged=async()=>{}; env.setSyncing=()=>{}; env.setSyncProblem=()=>{}; env.downloadOffline=()=>{}; env.accountRefresh={current:null}; env.runAccountRefresh=production('runAccountRefresh',env);
+    env.scopeGeneration={current:0}; env.authHeldRef={current:false}; env.publishIfChanged=async()=>{}; env.setSyncing=()=>{}; env.setSyncProblem=()=>{}; env.downloadOffline=()=>{}; env.accountRefresh={current:null}; env.runAccountRefresh=production('runAccountRefresh',env);
     env.syncAccount = production('syncAccount',env); env.sync = production('sync',env);
     production('pullToRefresh',env)(); await done;
     assert.equal(shown?.transactions?.[0].kind === 'bill' ? shown.transactions[0].bill.id : '', 'october', 'balances include the October bill, so a user refresh must recover the newest history page');

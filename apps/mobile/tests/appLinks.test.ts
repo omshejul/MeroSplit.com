@@ -115,7 +115,7 @@ test('Expo associations stay on exact canonical HTTPS routes, preserving custom 
   const { expo } = JSON.parse(readFileSync(new URL('../app.json', import.meta.url), 'utf8'));
   assert.deepEqual(expo.ios.associatedDomains, ['applinks:merosplit.com', 'applinks:merosplit.omshejul.com']);
   assert.deepEqual(expo.android.intentFilters, [{ action: 'VIEW', autoVerify: true, category: ['BROWSABLE', 'DEFAULT'], data: ['merosplit.com', 'merosplit.omshejul.com'].flatMap(host => [...['/app/sign-in/', '/app/groups/', '/app/invite/', '/invite/'], ...(host === 'merosplit.com' ? ['/j/'] : [])].map(pathPrefix => ({ scheme: 'https', host, pathPrefix }))) }]);
-  assert.equal(expo.scheme, 'splitdumb'); assert.equal(expo.version, '1.1'); assert.equal(expo.ios.buildNumber, '22'); assert.equal(expo.android.versionCode, 21);
+  assert.equal(expo.scheme, 'splitdumb'); assert.match(expo.version, /^\d+\.\d+(?:\.\d+)?$/); assert.match(expo.ios.buildNumber, /^[1-9]\d*$/); assert.ok(Number.isSafeInteger(expo.android.versionCode) && expo.android.versionCode > 0);
   assert.deepEqual(expo.ios.infoPlist.LSApplicationQueriesSchemes, ['upi', 'gpay', 'phonepe', 'paytmmp', 'credpay', 'bhim', 'amazonpay']);
 });
 

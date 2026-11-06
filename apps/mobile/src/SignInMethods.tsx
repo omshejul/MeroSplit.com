@@ -1,42 +1,66 @@
-import React from 'react';
-import { Image, Platform, StyleSheet, View } from 'react-native';
+import { useLoading } from './LoadingOverlay';
+import React, { useState } from 'react';
+import { Image, Platform, View } from 'react-native';
 import { Text } from 'react-native-paper';
 import AppleSignInButton from './AppleSignInButton';
 import GoogleSignInButton from './GoogleSignInButton';
-import type { GoogleAuthenticate } from './googleSignIn';
+import { ProviderSignInError, type GoogleAuthenticate } from './googleSignIn';
 import type { Session } from './types';
 import type { ProviderConnections } from './useLinkedProviders';
+import type { ConnectedProvider } from './linkedProviders';
+import { Alert } from './alerts';
+import ListRow from './ListRow';
+import RowGroup from './RowGroup';
+import NotificationSwitch from './NotificationSwitch';
+import { ErrorState, NoticeBanner } from './UIStates';
 import { Button, Icon, useUI } from './ui';
 
+function ConnectedProviderRow({ account, leading, disabled, onDisconnect }: { account: ConnectedProvider; leading: React.ReactNode; disabled: boolean; onDisconnect: () => void }) {
+  const { ui, palette } = useUI(), name = account.provider === 'google' ? 'Google' : 'Apple';
+  return <ListRow leading={leading} style={{ minHeight: 72, paddingVertical: 14, flexWrap: 'wrap' }} bodyStyle={{ flexBasis: 160 }} trailing={
+    <Button title="Disconnect" accessibilityLabel={`Disconnect ${name}: ${account.email || account.uid}`} kind="text" small style={{ minWidth: 72, minHeight: 48, paddingHorizontal: 4, paddingVertical: 0, flexShrink: 0 }} disabled={disabled || !account.can_disconnect} onPress={onDisconnect}>
+      <View pointerEvents="none" style={{ alignItems: 'center', gap: 4 }}><View accessible={false} aria-hidden><Icon name="unlink" size={26} color={palette.accent} /></View><Text style={[ui.caption, { color: palette.accent, fontSize: 12, lineHeight: 16, fontWeight: '500' }]}>Disconnect</Text></View>
+    </Button>}>
+    <Text style={ui.body}>{name}</Text><Text selectable style={ui.caption}>{account.email || `${name} ID: ${account.uid}`}</Text>
+    {account.email.endsWith('@privaterelay.appleid.com') && <Text style={ui.caption}>Apple private email</Text>}
+    {!account.can_disconnect && <Text style={ui.caption}>Verify your email before disconnecting.</Text>}
+  </ListRow>;
+}
 export default function SignInMethods({ session, busy, connections, onGoogle, onApple }: {
   session: Session; busy: boolean; connections: ProviderConnections;
   onGoogle: (authenticate: GoogleAuthenticate) => void; onApple: (authenticate: GoogleAuthenticate) => void;
 }) {
-  const { palette, ui, dark } = useUI();
-  const row = { minHeight: 56, paddingVertical: 14, flexDirection: 'row' as const, alignItems: 'center' as const,
-    flexWrap: 'wrap' as const, gap: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: palette.line };
-  const linked = connections.status === 'ready' ? connections.connected : null;
+  const { ui, dark } = useUI(), linked = connections.connected;
+  const [appleError, setAppleError] = useState<Error | null>(null);
+  const disabled = busy || connections.working || connections.status !== 'ready';
+  useLoading(connections.working || !connections.connected && connections.status === 'loading');
+  function disconnect(account: ConnectedProvider) {
+    const name = account.provider === 'google' ? 'Google' : 'Apple';
+    Alert.alert(`Disconnect ${name}?`, `Remove ${account.email || account.uid} as a sign-in method. You can use your other sign-in methods.`, [
+      { text: 'Cancel', style: 'cancel' }, { text: 'Disconnect', style: 'destructive', onPress: () => { void connections.disconnect(account.id); } },
+    ]);
+  }
   return <View style={{ gap: 20 }}>
-    <View style={row}>
-      <Icon name="mail" /><Text style={ui.body}>Email</Text>
-      <Text selectable style={[ui.caption, { flexBasis: 180, flexGrow: 1, flexShrink: 1, minWidth: 0, maxWidth: '100%', textAlign: 'right' }]}>{session.email}</Text>
-    </View>
-    {!linked ? <View style={{ gap: 12 }}>
-      <Text accessibilityLiveRegion="polite" accessibilityRole={connections.status === 'error' ? 'alert' : undefined} style={ui.caption}>
-        {connections.status === 'loading' ? 'Checking sign-in methods…' : connections.status === 'error' ? 'Could not check sign-in methods. Try again when you’re online.' : 'Connect to the internet to check sign-in methods.'}
-      </Text>
-      {connections.status !== 'loading' && <Button title="Try again" kind="text" disabled={busy} onPress={connections.refresh} />}
-    </View> : <>
-      {linked.google ? <View style={row}>
-        <Image accessible={false} importantForAccessibility="no" source={dark ? require('../assets/oauth/google-g-dark.png') : require('../assets/oauth/google-g-light.png')} resizeMode="contain" style={{ width: 22, height: 22 }} />
-        <Text style={[ui.body, { flexGrow: 1 }]}>Google</Text><Text style={ui.caption}>Connected</Text><Icon name="check" size={20} />
-      </View> : <View style={{ gap: 12 }}>
-        <Text style={ui.caption}>Add Google as another way to sign in.</Text>
-        <GoogleSignInButton baseUrl={session.baseUrl} process="connect" current={session} busy={busy} onAuthenticate={onGoogle} />
+    {linked && <NotificationSwitch immediate={false} icon="key" label="Auto-link accounts" description="Link sign-ins with the same verified email." checked={linked.autoLink} disabled={disabled} onChange={value => { void connections.setAutoLink(value); }} />}
+    <RowGroup>
+      <ListRow leading={<Icon name="mail" />}><Text style={ui.body}>Email</Text><Text selectable style={ui.caption}>{session.email}</Text></ListRow>
+      {linked?.accounts.map(account => <ConnectedProviderRow key={account.id} account={account} disabled={disabled} onDisconnect={() => disconnect(account)} leading={account.provider === 'google'
+        ? <Image accessible={false} importantForAccessibility="no" source={dark ? require('../assets/oauth/google-g-dark.png') : require('../assets/oauth/google-g-light.png')} resizeMode="contain" style={{ width: 26, height: 26 }} /> : <Icon name="apple" />} />)}
+    </RowGroup>
+    {linked ? <>
+      {!linked.google && <View style={{ gap: 12 }}><Text style={ui.caption}>Add Google as another way to sign in.</Text><GoogleSignInButton baseUrl={session.baseUrl} process="connect" current={session} busy={disabled} onAuthenticate={onGoogle} /></View>}
+      {!linked.apple && Platform.OS === 'ios' && <View style={{ gap: 12 }}>
+        {appleError && <NoticeBanner tone="error">{appleError instanceof ProviderSignInError && appleError.code === 'apple_already_connected' && <Text style={{ fontWeight: '600' }}>Apple ID already connected{'\n'}</Text>}{appleError.message}</NoticeBanner>}
+        <AppleSignInButton baseUrl={session.baseUrl} process="connect" current={session} busy={disabled} onAuthenticate={authenticate => {
+          setAppleError(null);
+          onApple(async stillCurrent => {
+            try { return await authenticate(stillCurrent); }
+            catch (error) { if (stillCurrent()) setAppleError(error instanceof ProviderSignInError ? error : new Error("Couldn't connect Apple. Please try again.")); return null; }
+          });
+        }} />
       </View>}
-      {linked.apple ? <View style={row}>
-        <Icon name="key" /><Text style={[ui.body, { flexGrow: 1 }]}>Apple</Text><Text style={ui.caption}>Connected</Text><Icon name="check" size={20} />
-      </View> : Platform.OS === 'ios' && <AppleSignInButton baseUrl={session.baseUrl} process="connect" current={session} busy={busy} onAuthenticate={onApple} />}
-    </>}
+    </> : <Text accessibilityLiveRegion="polite" style={ui.caption}>{connections.status === 'loading' ? 'Checking sign-in methods…' : 'Connect to the internet to check sign-in methods.'}</Text>}
+    {!!connections.error && <ErrorState error={connections.error} disabled={busy || connections.working} onRetry={connections.status === 'error' ? connections.refresh : undefined} />}
+    {connections.status === 'unknown' && <Button title="Try again" kind="text" disabled={busy} onPress={connections.refresh} />}
   </View>;
 }

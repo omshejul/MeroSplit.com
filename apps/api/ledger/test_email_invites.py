@@ -109,7 +109,8 @@ def test_saving_group_contact_revokes_manual_pending_claim_and_requires_explicit
     group_id, people, _ = group
     command, token = manual_invite(client, group_id, people[1])
     target = verified_person()
-    assert send(target, "post", f"/invites/{token}/claim", {"command_id": uid()}).status_code == 200
+    # Existing pre-upgrade pending claim.
+    Invite.objects.filter(pk=command).update(claimant=target.actor)
     assert send(client, "post", f"/groups/{group_id}/participants/{people[1]}/contact", {
         "command_id": uid(), "email": target.actor.email,
     }).status_code == 200
@@ -128,7 +129,7 @@ def test_legacy_manual_token_with_saved_email_cannot_claim_or_approve(client, gr
     group_id, people, _ = group
     command, token = manual_invite(client, group_id, people[1])
     target = verified_person()
-    assert send(target, "post", f"/invites/{token}/claim", {"command_id": uid()}).status_code == 200
+    Invite.objects.filter(pk=command).update(claimant=target.actor)
     # Simulate pre-upgrade data: the old contact code did not revoke manual tokens.
     Participant.objects.filter(pk=people[1]).update(contact_email=target.actor.email)
     assert send(target, "post", f"/invites/{token}/claim", {"command_id": uid()}).status_code == 409

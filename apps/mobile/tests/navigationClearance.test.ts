@@ -1,0 +1,36 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import ts from 'typescript';
+const read=(path:string)=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
+const parse=(path:string)=>ts.createSourceFile(path,read(path),ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
+const app=parse('App.tsx');
+function find(source:ts.SourceFile,predicate:(node:ts.Node)=>boolean){let result:ts.Node|undefined;function visit(node:ts.Node){if(predicate(node))result=node;ts.forEachChild(node,visit);}visit(source);return result;}
+const main=find(app,node=>ts.isJsxElement(node)&&node.openingElement.tagName.getText(app)==='ScrollView'&&node.openingElement.attributes.properties.some(a=>ts.isJsxAttribute(a)&&a.name.getText(app)==='role'&&a.initializer?.getText(app)==='"main"')) as ts.JsxElement;
+const footers=main.children.filter(child=>/ScrollBottomInset/.test(child.getText(app))).map(child=>child.getText(app));
+const React={Fragment:'Fragment',createElement:(type:any,props:any,...children:any[])=>({type,props:props??{},children})};
+function evaluate(expression:string,env:Record<string,any>){const program=ts.transpile(`function render(){return (${expression});}`,{jsx:ts.JsxEmit.React,target:ts.ScriptTarget.ES2022});return new Function('env',`with(env){${program};return render();}`)({React,ScrollBottomInset:'PhysicalInset',...env});}
+function count(value:any):number{return Array.isArray(value)?value.reduce((n,v)=>n+count(v),0):value&&typeof value==='object'?(value.type==='PhysicalInset'?1:0)+count(value.children):0;}
+
+test('home scrollers own tab clearance while stack pages keep their physical inset',()=>{
+ for(const tab of ['Groups','Friends','Account'])for(const showCreate of [false,true]){
+  const result=evaluate(`<>${footers.join('')}</>`,{screen:'home',tab,showCreate});
+  assert.equal(count(result),0,`${tab}, create=${showCreate}: safe area belongs to the shared home scroller`);
+ }
+ assert.equal(count(evaluate(`<>${footers.join('')}</>`,{screen:'expenseDetail',showCreate:false})),1,'stack pages still own their physical home-indicator inset');
+});
+
+test('Activity consumes its native tab inset inside the list content',()=>{
+ const source=parse('src/ActivityScreen.tsx');const attribute=find(source,node=>ts.isJsxAttribute(node)&&node.name.getText(source)==='ListFooterComponent') as ts.JsxAttribute;
+ const expression=(attribute.initializer as ts.JsxExpression).expression!.getText(source);
+ assert.equal(count(evaluate(expression,{footer:'Inbox',PaginationFooter:'PaginationFooter',paging:{},s:{message:{}}})),0);
+ const content=find(source,node=>ts.isJsxAttribute(node)&&node.name.getText(source)==='contentContainerStyle') as ts.JsxAttribute;
+ const style=evaluate((content.initializer as ts.JsxExpression).expression!.getText(source),{pageContentStyle:{paddingBottom:24},bottom:83});
+ assert.equal(Object.assign({},...style).paddingBottom,107,'the viewport stays full height while the last row clears native navigation');
+});
+
+test('bill list bottom spacing grows with the measured floating action',()=>{
+ const source=parse('src/GroupScreen.tsx');const attribute=find(source,node=>ts.isJsxAttribute(node)&&node.name.getText(source)==='contentContainerStyle'&&node.getText(source).includes('paddingBottom')) as ts.JsxAttribute;
+ const value=evaluate((attribute.initializer as ts.JsxExpression).expression!.getText(source),{pageContentStyle:{paddingBottom:24},bottomClearance:196});
+ assert.ok(Object.assign({},...value).paddingBottom>=196,'large-text action cannot cover the last bill');
+});

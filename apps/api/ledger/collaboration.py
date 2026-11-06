@@ -11,7 +11,7 @@ from ninja.errors import HttpError
 
 from .accounting import AccountingError, propose_transfers
 from .expense_notifications import cancel_notices
-from .models import ExpenseNotice, ExpensePushDelivery, Invite, OpeningBalance, Participant
+from .models import CommandReceipt, ExpenseNotice, ExpensePushDelivery, Invite, OpeningBalance, Participant
 from .services import (
     clean_contact_email,
     keep_removed_balances_zero,
@@ -123,7 +123,7 @@ def guest_view(token):
             ],
             "expenses": expenses,
             "settlements": settlements,
-            "claim_pending": bool(invite.claimant_id),
+            "claim_pending": bool(invite.claimant_id) and not invite.approved,
             "approved": invite.approved,
         }
 
@@ -135,7 +135,7 @@ def claim_invite(actor, token, payload):
         raise HttpError(401, "Sign in again to accept this invitation")
     invite = valid_invite(token)
     group = invite.participant.group
-    # Lock group before invite, consistently with organizer approval.
+    # Serialize every claim to this person under the group and invite locks.
     group = type(group).objects.select_for_update().get(id=group.id)
     invite = valid_invite(token, lock=True)
     require_group_scope(actor, group)
@@ -147,18 +147,27 @@ def claim_invite(actor, token, payload):
     previous, fingerprint = previous_result(actor, payload["command_id"], f"claim:{invite.id}", payload)
     if previous:
         return previous
+    if invite.approved and invite.participant.user_id == actor.pk:
+        result = {"id": str(group.id), "version": group.version}
+        CommandReceipt.objects.create(actor=actor, command_id=payload["command_id"], fingerprint=fingerprint, result=result)
+        return result
     if invite.participant.user_id or Participant.objects.filter(group=group, user=actor).exists():
         raise HttpError(409, "Participant or account is already linked in this group")
     if invite.claimant_id and invite.claimant_id != actor.pk:
         raise HttpError(409, "Another claim is pending; ask the organizer to revoke and reissue")
-    invite.claimant = actor
-    invite.save(update_fields=["claimant"])
+    writable(group)
+    invite.participant.user = actor
+    invite.participant.save(update_fields=["user"])
+    invite.claimant, invite.approved = actor, True
+    invite.save(update_fields=["claimant", "approved"])
+    from .bill_email import promote_current_bill_emails
+    promote_current_bill_emails(invite.participant)
     return record_change(
         group,
         actor,
         payload["command_id"],
         fingerprint,
-        "participant_claim_requested",
+        "participant_claim_approved",
         {"id": str(invite.id), "participant_id": str(invite.participant_id), "claimant_id": actor.pk},
     )
 
@@ -192,6 +201,12 @@ def review_invite(actor, group_id, invite_id, payload, approve):
             raise HttpError(409, "Send an email invitation before linking this person")
         if invite.intended_email and not EmailAddress.objects.filter(user_id=invite.claimant_id, email__iexact=invite.intended_email, verified=True).exists():
             raise HttpError(403, "The claimant must verify the email address that received this invitation")
+        # Older installed clients may still call approve after an immediate join.
+        if invite.approved and invite.claimant_id and not invite.revoked and invite.expires_at > timezone.now() and not invite.participant.removed and invite.participant.user_id == invite.claimant_id:
+            require_group_scope(invite.claimant, group)
+            result = {"id": str(group.id), "version": group.version}
+            CommandReceipt.objects.create(actor=actor, command_id=payload["command_id"], fingerprint=fingerprint, result=result)
+            return result
         if (
             invite.revoked
             or invite.expires_at <= timezone.now()
@@ -231,6 +246,8 @@ def create_opening(actor, group_id, payload):
     if previous:
         return previous
     writable(group)
+    if not group.simplify_debts:
+        raise HttpError(409, "Previous net balances require Simplify debts. Add the original bills instead.")
     members = people(group)
     if set(payload["balances"]) != set(members) or not any(v != "0" for v in payload["balances"].values()):
         raise AccountingError("Provide a nonzero opening vector for exactly these participants")
@@ -392,7 +409,10 @@ def remove_participant(actor, group_id, participant_id, payload):
         raise HttpError(409, "The organizer cannot be removed")
     if person.removed:
         raise HttpError(409, "This person was already removed")
-    balance = abs(int(snapshot(group)["balances"][str(person.id)]))
+    current = snapshot(group)
+    if not group.simplify_debts and any(str(person.id) in (row["sender"], row["recipient"]) for row in current["transfers"]):
+        raise HttpError(409, "Settle this person's repayments first")
+    balance = abs(int(current["balances"][str(person.id)]))
     if balance:
         amount = f"{balance // 100:,}" + (f".{balance % 100:02}" if balance % 100 else "")
         raise HttpError(409, f"Settle ₹{amount} first")

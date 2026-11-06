@@ -1,6 +1,7 @@
-export function chooseBrowserFile(accept: string): Promise<File | null> {
+export function chooseBrowserFile(accept: string, capture?: 'environment'): Promise<File | null> {
   return new Promise(resolve => {
     const input = document.createElement('input'); input.type = 'file'; input.accept = accept;
+    if (capture) input.setAttribute('capture', capture);
     input.style.display = 'none'; document.body.appendChild(input);
     let done = false;
     const finish = (file: File | null) => { if (done) return; done = true; input.remove(); resolve(file); };

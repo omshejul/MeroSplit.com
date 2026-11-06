@@ -34,7 +34,7 @@ def page(request, data):
     response["Content-Security-Policy"] = (
         f"default-src 'none'; script-src 'nonce-{nonce}' https://accounts.google.com/gsi/client; "
         "connect-src 'self' https://accounts.google.com/gsi/; frame-src https://accounts.google.com/gsi/; "
-        "style-src 'unsafe-inline' https://accounts.google.com/gsi/style; img-src https://accounts.google.com; "
+        "style-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/style; font-src 'self'; img-src https://accounts.google.com; "
         "base-uri 'none'; form-action 'self' https://accounts.google.com; frame-ancestors 'none'"
     )
     return response

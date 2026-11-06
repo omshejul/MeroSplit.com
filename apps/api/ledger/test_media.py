@@ -529,3 +529,29 @@ def test_json_exports_include_metadata_without_object_keys_or_signed_urls(client
         assert "temporary=signature" not in serialized and "expires_at" not in serialized
         assert all(file.object_key not in serialized for file in UploadedFile.objects.all())
     assert not storage.signatures
+
+
+@pytest.mark.parametrize("avatar", [False, True])
+def test_camera_jpeg_with_auxiliary_image_saves_only_primary_photo(client, bill, storage, avatar):
+    output = io.BytesIO()
+    with Image.new("RGB", (80, 60), "red") as primary, Image.new("RGB", (20, 15), "blue") as auxiliary:
+        primary.save(output, "MPO", save_all=True, append_images=[auxiliary])
+    with Image.open(io.BytesIO(output.getvalue())) as source:
+        assert source.format == "MPO" and source.n_frames == 2
+    response = post_file(client, "/me/avatar" if avatar else bill[2], data=output.getvalue(), name="IMG_1340.jpeg", content_type="image/jpeg")
+    assert response.status_code == 200, response.content
+    with Image.open(io.BytesIO(next(iter(storage.objects.values())))) as saved:
+        assert saved.format == "JPEG" and getattr(saved, "n_frames", 1) == 1
+        assert saved.size == (80, 60) and saved.getpixel((0, 0))[0] > 200
+        assert not saved.getexif() and "mp" not in saved.info
+
+
+@pytest.mark.parametrize("kind", ["PNG", "WEBP", "GIF"])
+def test_animated_upload_explains_how_to_choose_a_still_image(client, bill, storage, kind):
+    output = io.BytesIO()
+    with Image.new("RGB", (80, 60), "red") as first, Image.new("RGB", (80, 60), "blue") as second:
+        first.save(output, kind, save_all=True, append_images=[second], duration=100, loop=0)
+    response = post_file(client, bill[2], data=output.getvalue(), name="image." + kind.lower())
+    assert response.status_code == 422
+    assert "Animated" in response.json()["detail"] and "still" in response.json()["detail"]
+    assert not storage.puts

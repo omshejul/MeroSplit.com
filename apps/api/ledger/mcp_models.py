@@ -24,6 +24,11 @@ class McpOAuthPendingAuthorization(models.Model):
     resource = models.URLField(max_length=2048)
     scope = models.CharField(max_length=40)
     expires_at = models.DateTimeField(db_index=True)
+    device_secret_digest = models.CharField(max_length=64, unique=True, null=True)
+    user_code_digest = models.CharField(max_length=64, unique=True, null=True)
+    device_last_poll_at = models.DateTimeField(null=True)
+    device_poll_interval = models.PositiveIntegerField(default=5)
+    device_delivered_at = models.DateTimeField(null=True)
     code_digest = models.CharField(max_length=64, unique=True, null=True)
     code_expires_at = models.DateTimeField(null=True)
     approved_at = models.DateTimeField(null=True)
@@ -54,3 +59,10 @@ class McpOAuthRefreshDigest(models.Model):
     digest = models.CharField(primary_key=True, max_length=64)
     grant = models.ForeignKey(McpOAuthGrant, on_delete=models.CASCADE)
     expires_at = models.DateTimeField(db_index=True)
+
+
+class McpRateBucket(models.Model):
+    """Shared continuous-refill budget, with tokens stored in millionths."""
+    key = models.CharField(max_length=64, primary_key=True)
+    tokens = models.PositiveBigIntegerField()
+    refilled_at = models.DateTimeField()

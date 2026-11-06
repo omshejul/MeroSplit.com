@@ -4,7 +4,7 @@ from django.conf import settings
 from django.db import models
 from django.db.models import Q
 from django.db.models.fields.json import KeyTextTransform
-from django.db.models.functions import Coalesce
+from django.db.models.functions import Coalesce, Now
 from django.utils import timezone
 
 
@@ -15,6 +15,8 @@ class Group(models.Model):
     version = models.PositiveIntegerField(default=0)
     archived = models.BooleanField(default=False)
     is_direct = models.BooleanField(default=False)
+    simplify_debts = models.BooleanField(default=True, db_default=True)
+    debt_checkpoint = models.JSONField(default=list, db_default=[])
     import_source_hash = models.CharField(max_length=64, blank=True, default="")
 
     class Meta:
@@ -55,13 +57,15 @@ class Expense(models.Model):
     shares = models.JSONField()
     split = models.JSONField()
     date = models.DateField()
+    time = models.TimeField(null=True, blank=True)
+    created_at = models.DateTimeField(default=timezone.now, db_default=Now(), editable=False)
     category = models.CharField(max_length=40, default="other")
     category_auto = models.BooleanField(null=True, default=None)
     notes = models.TextField(blank=True, max_length=2000)
     deleted = models.BooleanField(default=False)
 
     class Meta:
-        indexes = [models.Index(fields=["group", "date", "id"], name="bill_history_keyset")]
+        indexes = [models.Index(fields=["group", "date", "created_at", "id"], name="bill_added_keyset")]
         constraints = [
             models.CheckConstraint(
                 condition=Q(total__gt=0, total__lte=1_000_000_000), name="expense_amount_bound"
@@ -114,8 +118,8 @@ class Settlement(models.Model):
 
     class Meta:
         indexes = [models.Index(fields=["group", "created_at", "id"], name="payment_history_keyset"),
-                   models.Index(fields=["group", "date", "id"], name="payment_transaction_date", condition=Q(date__isnull=False)),
-                   models.Index(fields=["group", "id"], name="payment_unknown_date", condition=Q(date__isnull=True))]
+                   models.Index(fields=["group", "date", "created_at", "id"], name="payment_transaction_date", condition=Q(date__isnull=False)),
+                   models.Index(fields=["group", "created_at", "id"], name="payment_unknown_date", condition=Q(date__isnull=True))]
         constraints = [
             models.CheckConstraint(
                 condition=Q(amount__gt=0, amount__lte=1_000_000_000), name="settlement_amount_bound"
@@ -177,6 +181,11 @@ class PaymentProfile(models.Model):
     version = models.PositiveIntegerField(default=1)
 
 
+class SignInPreference(models.Model):
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, primary_key=True, on_delete=models.CASCADE)
+    auto_link = models.BooleanField(default=True)
+
+
 class Change(models.Model):
     group = models.ForeignKey(Group, on_delete=models.CASCADE, related_name="changes")
     sequence = models.PositiveIntegerField()
@@ -190,7 +199,8 @@ class Change(models.Model):
         indexes = [models.Index(fields=["-created_at", "-id"], name="human_activity_order", condition=Q(kind__in=[
             "expense_saved", "expense_deleted", "expense_restored", "expense_reversed", "manual_settlement", "payment_confirm",
             "settlement_reversed", "participant_added", "participant_claim_approved", "participant_removed",
-            "group_created", "group_archived", "group_unarchived",
+            "group_created", "group_archived", "group_unarchived", "group_renamed",
+            "group_photo_changed", "group_photo_removed", "participant_nickname_changed",
         ])), models.Index(models.F("group"), Coalesce(KeyTextTransform("settlement_id", "data"), KeyTextTransform("id", "data")), models.F("id"),
             name="payment_activity_identity", condition=Q(kind__in=["manual_settlement", "payment_confirm", "expense_reversed", "settlement_reversed"]))]
 
@@ -212,6 +222,7 @@ class UploadedFile(models.Model):
         settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name="profile_photos"
     )
     expense = models.ForeignKey(Expense, null=True, on_delete=models.SET_NULL, related_name="attachments")
+    icon_group = models.ForeignKey(Group, null=True, on_delete=models.SET_NULL, related_name="photos")
     uploaded_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL)
     object_key = models.CharField(max_length=300, unique=True)
     source_hash = models.CharField(max_length=64)
@@ -226,14 +237,19 @@ class UploadedFile(models.Model):
         constraints = [
             models.CheckConstraint(
                 condition=Q(state="deleted") | (
-                    Q(avatar_owner__isnull=False, expense__isnull=True)
-                    | Q(avatar_owner__isnull=True, expense__isnull=False)
+                    Q(avatar_owner__isnull=False, expense__isnull=True, icon_group__isnull=True)
+                    | Q(avatar_owner__isnull=True, expense__isnull=False, icon_group__isnull=True)
+                    | Q(avatar_owner__isnull=True, expense__isnull=True, icon_group__isnull=False)
                 ),
                 name="uploaded_file_has_one_scope",
             ),
             models.UniqueConstraint(
                 fields=["avatar_owner"], condition=Q(state="active", avatar_owner__isnull=False),
                 name="one_active_profile_photo",
+            ),
+            models.UniqueConstraint(
+                fields=["icon_group"], condition=Q(state="active", icon_group__isnull=False),
+                name="one_active_group_photo",
             ),
             models.CheckConstraint(condition=Q(state__in=["pending", "active", "deleted"]), name="uploaded_file_state"),
         ]
@@ -249,6 +265,8 @@ class PushDevice(models.Model):
     platform = models.CharField(max_length=7)
     revision = models.PositiveIntegerField(default=1)
     bill_chat = models.BooleanField(default=False)
+    ledger_updates = models.BooleanField(default=False)
+    currency = models.CharField(max_length=3, default="INR")
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -288,6 +306,50 @@ class ExpensePushDelivery(models.Model):
             ),
         ]
         indexes = [models.Index(fields=["state", "due_at"], name="expense_push_due")]
+
+
+class ActivityPush(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    change = models.ForeignKey(Change, null=True, on_delete=models.CASCADE)
+    command = models.ForeignKey(CommandReceipt, null=True, on_delete=models.CASCADE)
+    group = models.ForeignKey(Group, on_delete=models.CASCADE)
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name="authored_activity_pushes")
+    created_at = models.DateTimeField(default=timezone.now)
+    participant = models.ForeignKey(Participant, on_delete=models.CASCADE)
+    recipient = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    device = models.ForeignKey(PushDevice, on_delete=models.CASCADE)
+    device_revision = models.PositiveIntegerField()
+    event_id = models.UUIDField(default=uuid.uuid4)
+    kind = models.CharField(max_length=24)
+    payload = models.JSONField(default=dict)
+    state = models.CharField(max_length=9, default="pending")
+    due_at = models.DateTimeField()
+    first_attempt_at = models.DateTimeField(null=True)
+    attempts = models.PositiveSmallIntegerField(default=0)
+    lease_id = models.UUIDField(null=True)
+    lease_until = models.DateTimeField(null=True)
+    provider_id = models.CharField(max_length=200, blank=True)
+    last_error = models.CharField(max_length=40, blank=True)
+
+    class Meta:
+        indexes = [models.Index(fields=["state", "due_at", "id"], name="activity_push_due")]
+        constraints = [
+            models.UniqueConstraint(fields=["change", "device", "device_revision"], name="activity_push_once"),
+            models.UniqueConstraint(fields=["command", "device", "device_revision"], name="reminder_push_once"),
+            models.CheckConstraint(condition=Q(change__isnull=False, command__isnull=True) | Q(change__isnull=True, command__isnull=False), name="activity_push_source"),
+            models.CheckConstraint(condition=Q(kind__in=["bill_updated", "bill_deleted", "payment_recorded", "payment_reminder"]), name="activity_push_kind"),
+            models.CheckConstraint(condition=Q(state__in=["pending", "sending", "queued", "sent", "cancelled", "held"]), name="activity_push_state"),
+        ]
+
+
+class NotificationChannelCursor(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    client_id = models.UUIDField()
+    revision = models.PositiveBigIntegerField(default=0)
+    push_disabled = models.BooleanField(default=False)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['user', 'client_id'], name='notification_channel_client')]
 
 
 class NotificationPreference(models.Model):
@@ -405,6 +467,7 @@ from .mcp_models import (  # noqa: E402,F401
     McpOAuthGrant,
     McpOAuthPendingAuthorization,
     McpOAuthRefreshDigest,
+    McpRateBucket,
 )
 
 
@@ -487,8 +550,8 @@ class GroupInviteLink(models.Model):
 
 
 class ExpenseCategoryCache(models.Model):
-    """One title-only classification per authenticated account and normalized title."""
-    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    """A shared title-only classification; owned rows support rolling upgrades."""
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.CASCADE)
     title_digest = models.CharField(max_length=64)
     definition_revision = models.CharField(max_length=64)
     state = models.CharField(max_length=12, default="pending")
@@ -499,6 +562,7 @@ class ExpenseCategoryCache(models.Model):
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=["owner", "title_digest", "definition_revision"], name="account_category_title_once"),
+                       models.UniqueConstraint(fields=["title_digest", "definition_revision"], condition=Q(owner__isnull=True), name="shared_category_title_once"),
                        models.CheckConstraint(condition=Q(state__in=["pending", "claimed", "ready", "uncertain", "failed"]), name="account_category_state")]
         indexes = [models.Index(fields=["state", "last_used_at"], name="account_category_retention")]
 

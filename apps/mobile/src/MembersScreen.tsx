@@ -1,28 +1,39 @@
+import { useLoading } from './LoadingOverlay';
+import RowGroup from './RowGroup';
+import GroupIdentity from './GroupIdentity';
+import EditableName from './EditableName';
+import { NoticeBanner } from './UIStates';
+import { CloseDialogActions } from './DialogParts';
+import FieldDialog from './FieldDialog';
+import { PersonDetailsFields } from './FormFields';
+import PersonRow, { PersonAmountRow } from './PersonRow';
+import PersonInviteDialog from './PersonInviteDialog';
+import { useToast } from './Toast';
+import DetailDialog from './DetailDialog';
+import { Dialog } from './DialogParts';
 import { confirmedGroupInvite, publicAppUrl } from './appLinks';
 import { copyText } from './clipboard';
 import { DialogScrollBody, CancelDialogActions } from './DialogParts';
 import KeyboardDialog from './KeyboardDialog';
 import SendInviteDialog from './SendInviteDialog';
-import LoadingSpinner from './LoadingSpinner';
 import { GroupMembershipActions } from './GroupMembershipActions';
 import React, { useEffect, useRef, useState } from 'react';
-import { Keyboard, Platform, Pressable, Share, StyleSheet, View } from 'react-native';
+import { Keyboard, Platform, Share, StyleSheet, Switch, View, useWindowDimensions } from 'react-native';
 import type { TextInputProps } from 'react-native';
-import { Dialog, Text } from 'react-native-paper';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import { Text } from 'react-native-paper';
 import * as Crypto from 'expo-crypto';
 import { Alert } from './alerts';
 import { formatMoney } from './accounting';
-import type { Group, Participant } from './types';
+import type { Group, Participant, Session } from './types';
 import { addPerson, currentEmailInvite, emailInvitationRequest, personRequest, saveContact, sendInvitation } from './members';
 import type { AddPersonRequest, EmailInviteRequest } from './members';
 import { EmailField, TextField } from './FormFields';
-import { Avatar, Button, Disclosure, IconAction, SettingsRow, useUI } from './ui';
-
-const CopyLinkIcon = (props: { size: number; color: string }) => <MaterialCommunityIcons {...props} name="content-copy" accessible={false} />;
+import { Button, Icon, IconAction, SettingsRow, useUI } from './ui';
 
 type Props = {
   group: Group;
+  session?: Session | null;
+  onPhotoChanged?: () => void | Promise<void>;
   selfId: string;
   busy: boolean;
   addPersonRequest?: number;
@@ -47,44 +58,27 @@ function balanceDescription(amount: string) {
 
 function FeedbackNote({ section, feedback }: { section: string; feedback: Feedback }) {
   const { ui } = useUI();
-  return feedback?.section === section && !!feedback.text
+  return feedback?.section === section && feedback.error && !!feedback.text
     ? <Text style={feedback.error ? ui.error : ui.caption} accessibilityLiveRegion="polite" accessibilityRole={feedback.error ? 'alert' : undefined}>{feedback.text}</Text>
     : null;
 }
 
-function MemberRow({ group, person, selfId, organizer, disabled, working, feedback, cooldown, contactChanged, onAddEmail, onRename, onSend, onRemove }: {
-  group: Group; person: Participant; selfId: string; organizer: boolean; disabled: boolean; working: boolean; feedback: Feedback;
-  cooldown: number; contactChanged: boolean; onAddEmail: () => void; onRename: () => void; onSend: () => void; onRemove: () => void;
+function MemberRow({ group, person, selfId, organizer, disabled, onInvite, onAction, canEditNickname }: {
+  group: Group; person: Participant; selfId: string; organizer: boolean; disabled: boolean;
+  onInvite: () => void; canEditNickname: boolean; onAction: Props["onAction"];
 }) {
   const { ui } = useUI();
-  const removable = organizer && !person.removed && person.id !== selfId && person.user_id !== group.owner_id;
-  const balance = BigInt(group.balances[person.id] ?? '0'), blocked = removable && balance !== 0n;
-  const inviteSection = `email-invite:${person.id}`;
-  const canRename = organizer && !group.archived && !person.removed && person.id !== selfId && person.user_id == null;
-  const canAddEmail = organizer && !group.is_direct && !group.archived && !person.removed && person.id !== selfId && person.user_id == null && !person.email;
-  const canInvite = organizer && !person.removed && person.user_id == null && !!person.email;
-  const status = person.removed ? 'Removed' : person.user_id != null ? person.user_id === group.owner_id ? 'Organizer' : 'Joined' : '';
-  const reason = blocked ? `Settle ${formatMoney((balance < 0n ? -balance : balance).toString())} first` : '';
-  const displayName = `${person.name}${person.id === selfId && person.name.toLowerCase() !== 'you' ? ' (you)' : ''}`;
-  return <View style={ui.row}>
-    <Avatar name={person.name} />
-    <View style={ui.rowBody}>
-      <Pressable accessibilityRole={canRename ? 'button' : undefined} accessibilityLabel={canRename ? `Edit ${person.name}'s name` : undefined} disabled={disabled || !canRename} onPress={onRename} style={{ minHeight: canRename ? 44 : undefined, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-        <View style={ui.rowBody}><Text numberOfLines={1} ellipsizeMode="tail" accessibilityLabel={displayName} style={ui.rowTitle}>{displayName}</Text>
-          {!!person.account_email && person.user_id != null && !person.removed && <Text style={ui.rowSub} accessibilityLabel={person.account_email}>{person.account_email}</Text>}
-          {!!(reason || status) && <Text style={ui.rowSub} accessibilityLabel={[status, reason].filter(Boolean).join('. ')}>{[status, reason].filter(Boolean).join(' · ')}</Text>}
-        </View>
-      </Pressable>
-      {canInvite && <>
-        <Text numberOfLines={1} accessibilityLabel={person.email} style={ui.rowSub}>{person.email}</Text>
-        <Button title={working && feedback?.section === inviteSection ? 'Sending' : 'Send'} accessibilityLabel={`Send invite to ${person.name} at ${person.email}`} kind="text"
-          disabled={disabled || !!group.archived || cooldown > 0 || contactChanged} onPress={onSend} />
-        <FeedbackNote section={inviteSection} feedback={feedback} />
-      </>}
-    </View>
-    {canAddEmail && <IconAction name="mail" label={`Add email and invite ${person.name}`} disabled={disabled} onPress={onAddEmail} />}
-    {removable && <IconAction name="remove" label={`Remove ${person.name}`} hint={reason || undefined} disabled={disabled || blocked || !!group.archived} onPress={onRemove} />}
-  </View>;
+  const self = person.id === selfId, joined = person.user_id != null;
+  const isOwner = person.user_id === group.owner_id;
+  const { fontScale } = useWindowDimensions();
+  // Match EditableName inset while keeping its full tap area inside the header.
+  const titleInset = Math.max(0, 44 - 23 * fontScale);
+  const title = `${person.name}${self && person.name.toLowerCase() !== 'you' ? ' (you)' : ''}`;
+  return <PersonRow name={person.name} title={title} photo={person.profile_photo} titleContent={<View style={{ flexDirection: 'row', alignItems: 'flex-end', flexWrap: 'wrap', columnGap: 8, zIndex: 1, paddingBottom: titleInset, marginBottom: -titleInset }}>{!group.is_direct ? <EditableName name={person.name} displayName={title} title="Group nickname" label={`Edit nickname for ${person.name}`} path={`/participants/${person.id}/nickname`} version={group.version} busy={disabled} editable={canEditNickname && !person.removed} onAction={onAction} allowEmpty /> : <Text style={ui.rowTitle}>{title}</Text>}{isOwner && <Text style={[ui.rowSub, { fontSize: ui.rowTitle.fontSize, lineHeight: ui.rowTitle.lineHeight }]}>Organizer</Text>}</View>} trailing={organizer && !self && (joined ? <IconAction name="more" label={`Manage ${person.name}`} disabled={disabled} onPress={onInvite} />
+      : <Button title="Invite" icon="mail" compact accessibilityLabel={`Invite ${person.name}`} disabled={disabled || !!group.archived} onPress={onInvite} />)}>
+      {!!person.account_email && joined && !person.removed && <Text accessibilityLabel={person.account_email} style={ui.rowSub}>{person.account_email}</Text>}
+      {!joined && !isOwner && <Text style={ui.rowSub}>Not joined</Text>}
+  </PersonRow>;
 }
 
 function PreviousMembersDialog({ people, onClose }: { people: Participant[]; onClose: () => void }) {
@@ -92,12 +86,9 @@ function PreviousMembersDialog({ people, onClose }: { people: Participant[]; onC
   return <KeyboardDialog visible onDismiss={onClose} maxHeight={480}>
     <Dialog.Title aria-level={2}>Previous members</Dialog.Title>
     <DialogScrollBody maxHeight={300} gap={0}>
-      {people.filter(person => person.removed).map(person => <View key={person.id} style={ui.row}>
-        <Avatar name={person.name} />
-        <View style={ui.rowBody}><Text style={ui.rowTitle}>{person.name}</Text></View>
-      </View>)}
+      <RowGroup>{people.filter(person => person.removed).map(person => <PersonRow key={person.id} name={person.name} photo={person.profile_photo} />)}</RowGroup>
     </DialogScrollBody>
-    <CancelDialogActions cancelTitle="Done" disabled={false} onCancel={onClose} />
+    <CancelDialogActions cancelTitle="Close previous members" disabled={false} onCancel={onClose} />
   </KeyboardDialog>;
 }
 
@@ -108,9 +99,8 @@ function AddPersonDialog({ visible, disabled, working, archived, name, email, on
   return <KeyboardDialog visible={visible} onDismiss={() => { if (!disabled) onClose(); }}>
     <Dialog.Title aria-level={2}>Add person</Dialog.Title>
     <DialogScrollBody maxHeight={280} gap={8}>
-      <Field label="Name" value={name} onChange={onName} disabled={disabled} autoFocus autoCapitalize="words" />
-      <Field label="Email (optional)" value={email} onChange={onEmail} disabled={disabled} keyboardType="email-address" maxLength={254} />
-      <Button title="Copy link" icon={CopyLinkIcon} kind="text" disabled={disabled || archived} onPress={onLink} />
+      <PersonDetailsFields name={{ label: 'Name', value: name, onChangeText: onName, editable: !disabled, autoFocus: true, maxLength: 120 }} email={{ label: 'Email (optional)', value: email, onChangeText: onEmail, editable: !disabled, maxLength: 254 }} />
+      <Button title={feedback?.section === 'group-link' && !feedback.error ? 'Copied' : 'Copy link'} icon={feedback?.section === 'group-link' && !feedback.error ? 'check' : 'copy'} kind="text" disabled={disabled || archived} onPress={onLink} />
       <FeedbackNote section="add-person" feedback={feedback} />
     </DialogScrollBody>
     <CancelDialogActions disabled={disabled} onCancel={onClose}>
@@ -119,69 +109,34 @@ function AddPersonDialog({ visible, disabled, working, archived, name, email, on
 }
 
 function EditNameDialog({ person, name, disabled, working, unavailable, onName, onClose, onSave, feedback }: { person?: Participant; name: string; disabled: boolean; working: boolean; unavailable: boolean; onName: (value: string) => void; onClose: () => void; onSave: () => void; feedback: Feedback }) {
-  return <KeyboardDialog visible={!!person} dismissable={!disabled} onDismiss={() => { if (!disabled) onClose(); }}>
-    <Dialog.Title aria-level={2}>Edit name</Dialog.Title>
-    <DialogScrollBody maxHeight={200} gap={8}>
-      <Field label="Name" value={name} onChange={onName} disabled={disabled || unavailable} autoFocus autoCapitalize="words" />
-      <FeedbackNote section="person-name" feedback={feedback} />
-    </DialogScrollBody>
-    <CancelDialogActions disabled={disabled} onCancel={onClose}><View style={{ width: 20, height: 20 }}><LoadingSpinner visible={working} /></View><Button title="Save" kind="primary" disabled={disabled || unavailable || !name.trim() || name.trim() === person?.name} onPress={onSave} /></CancelDialogActions>
-  </KeyboardDialog>;
+  return <FieldDialog visible={!!person} title="Edit name" disabled={disabled} canSave={!unavailable && !!name.trim() && name.trim() !== person?.name} saveLabel={working ? 'Saving name…' : 'Save name'} onClose={onClose} onSave={onSave} maxHeight={200}>
+    <Field label="Name" value={name} onChange={onName} disabled={disabled || unavailable} autoFocus autoCapitalize="words" /><FeedbackNote section="person-name" feedback={feedback} />
+  </FieldDialog>;
 }
 
 function PersonEmailDialog({ person, email, disabled, working, unavailable, onEmail, onClose, onSave, feedback }: { person?: Participant; email: string; disabled: boolean; working: boolean; unavailable: boolean; onEmail: (value: string) => void; onClose: () => void; onSave: () => void; feedback: Feedback }) {
-  return <KeyboardDialog visible={!!person} dismissable={!disabled} onDismiss={() => { if (!disabled) onClose(); }}>
-    <Dialog.Title aria-level={2}>Invite {person?.name}</Dialog.Title>
-    <DialogScrollBody maxHeight={280} gap={8}>
-      <EmailField label="Email" value={email} onChangeText={onEmail} editable={!disabled && !unavailable} maxLength={254} autoFocus />
-      <FeedbackNote section={`email-invite:${person?.id}`} feedback={feedback} />
-    </DialogScrollBody>
-    <CancelDialogActions disabled={disabled} onCancel={onClose}><Button title={working ? 'Sending' : 'Send'} kind="primary" icon="mail" disabled={disabled || unavailable || !email.trim()} onPress={onSave} /></CancelDialogActions>
-  </KeyboardDialog>;
-}
-
-function ManualInviteRow({ name, disabled, onInvite }: { name: string; disabled: boolean; onInvite: () => void }) {
-  const { ui } = useUI();
-  return <View style={s.section}>
-    <Text style={ui.rowTitle}>{name}</Text>
-    <Button title="Invite" accessibilityLabel={`Invite ${name}`} disabled={disabled} onPress={onInvite} />
-  </View>;
-}
-
-function ShareInviteRow({ link, disabled, onShare }: { link: InviteLink; disabled: boolean; onShare: () => void }) {
-  const { ui } = useUI();
-  return <View style={s.field}>
-    <Text style={ui.label}>Invite for {link.name}</Text>
-    <Button title="Share invite" accessibilityLabel={`Share invite for ${link.name}`} disabled={disabled} onPress={onShare} />
-  </View>;
-}
-
-function InviteRow({ invite, name, disabled, onApprove, onRevoke }: { invite: Invite; name: string; disabled: boolean; onApprove: () => void; onRevoke: () => void }) {
-  const { palette: colors, ui } = useUI();
-  return <View style={[s.row, { borderBottomColor: colors.line }]}>
-    <Text style={ui.rowTitle}>{name}</Text>
-    <Text style={ui.caption}>{invite.approved ? 'Account approved' : invite.intended_email || (invite.claimant_email ? `Requested by ${invite.claimant_email}` : 'Waiting for someone to request to join.')}</Text>
-    {!invite.intended_email && !invite.approved && invite.claimant_id != null && invite.claimant_email && <Button title="Approve request" accessibilityLabel={`Approve ${invite.claimant_email} for ${name}`} kind="primary" disabled={disabled} onPress={onApprove} />}
-    <Button title="Revoke invite" accessibilityLabel={`Revoke invite for ${name}`} kind="text" disabled={disabled} onPress={onRevoke} />
-  </View>;
+  return <FieldDialog visible={!!person} title={`Add email for ${person?.name}`} disabled={disabled} canSave={!unavailable && !!email.trim()} saveLabel={working ? 'Saving email…' : 'Save email'} onClose={onClose} onSave={onSave}>
+    <EmailField label="Email" value={email} onChangeText={onEmail} editable={!disabled && !unavailable} maxLength={254} autoFocus /><FeedbackNote section={`email-invite:${person?.id}`} feedback={feedback} />
+  </FieldDialog>;
 }
 
 function PreviousBalanceRow({ person, selfId, balance, agreed }: { person: Participant; selfId: string; balance: string; agreed: boolean }) {
   const { palette: colors, ui } = useUI();
-  return <View style={ui.row}>
-    <View style={ui.rowBody}><Text style={ui.rowTitle}>{person.name}{person.id === selfId && person.name.toLowerCase() !== 'you' ? ' (you)' : ''}</Text>
-      {agreed && <Text style={ui.rowSub}>Agreed</Text>}</View>
-    <Text style={[s.amount, { color: colors.text }]}>{balanceDescription(balance)}</Text>
-  </View>;
+  return <PersonAmountRow name={person.name} title={`${person.name}${person.id === selfId && person.name.toLowerCase() !== 'you' ? ' (you)' : ''}`} avatar={false} amountLabel={balanceDescription(balance)} amountStyle={[s.amount, { color: colors.text }]}>
+    {agreed && <Text style={ui.rowSub}>Agreed</Text>}
+  </PersonAmountRow>;
 }
 
 export default function MembersScreen(props: Props) {
   return <MemberSettings key={`${props.group.id}|${props.selfId}`} {...props} />;
 }
 
-function MemberSettings({ group, selfId, busy, addPersonRequest = 0, onAction, onMembership }: Props) {
+function MemberSettings({ group, session, onPhotoChanged, selfId, busy, addPersonRequest = 0, onAction, onMembership }: Props) {
+  const notify = useToast();
   const { ui } = useUI();
   const [showPrevious, setShowPrevious] = useState(false);
+  const [managedPersonId, setManagedPersonId] = useState<string | null>(null);
+  const [contactOpen, setContactOpen] = useState(false);
   const previousMembers = group.participants.filter(person => person.removed);
   const [newName, setNewName] = useState(''), [newEmail, setNewEmail] = useState(''), [addingPerson, setAddingPerson] = useState(false);
   const pendingPerson = useRef<AddPersonRequest | null>(null), lastAddRequest = useRef(addPersonRequest);
@@ -213,6 +168,7 @@ function MemberSettings({ group, selfId, busy, addPersonRequest = 0, onAction, o
   const savedEmail = directPerson?.email ?? '', email = contactEmail ?? savedEmail;
   const emailChanged = email.trim().toLowerCase() !== savedEmail.trim().toLowerCase();
   const disabled = busy || working;
+  useLoading(working);
   useEffect(() => {
     if (lastAddRequest.current === addPersonRequest) return;
     lastAddRequest.current = addPersonRequest;
@@ -222,12 +178,6 @@ function MemberSettings({ group, selfId, busy, addPersonRequest = 0, onAction, o
     }
   }, [addPersonRequest, organizer, group.is_direct, group.archived, disabled]);
   useEffect(() => {
-    if (Platform.OS !== 'web' || !addingPerson && !emailPersonId && !namePersonId) return;
-    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape' && !disabled && !inFlight.current) { event.preventDefault(); if (namePersonId) closeName(); else if (emailPersonId) closePersonEmail(); else closeAddPerson(); } };
-    document.addEventListener('keydown', escape, true);
-    return () => document.removeEventListener('keydown', escape, true);
-  }, [addingPerson, emailPersonId, namePersonId, disabled]);
-  useEffect(() => {
     if (!Object.values(inviteCooldowns).some(value => value > 0)) return;
     const timer = setTimeout(() => setInviteCooldowns(current => Object.fromEntries(Object.entries(current).map(([id, value]) => [id, Math.max(0, value - 1)]))), 1000);
     return () => clearTimeout(timer);
@@ -236,8 +186,6 @@ function MemberSettings({ group, selfId, busy, addPersonRequest = 0, onAction, o
   const needsOpeningAgreement = !!opening && !opening.accepted && self?.user_id != null
     && (opening.balances[selfId] ?? '0') !== '0' && !Object.hasOwn(opening.acknowledgments, selfId);
   const name = (id: string) => group.participants.find(person => person.id === id)?.name ?? 'Former member';
-  const hasInvites = !!inviteLink || group.participants.some(person => !person.removed && person.user_id == null && !person.email)
-    || (group.invites ?? []).some(invite => !invite.revoked);
 
   async function perform(section: string, work: () => Promise<void>, success?: string) {
     if (disabled || inFlight.current) return;
@@ -246,7 +194,7 @@ function MemberSettings({ group, selfId, busy, addPersonRequest = 0, onAction, o
     setFeedback(null);
     try {
       await work();
-      if (success) setFeedback({ section, text: success, error: false });
+      if (success) { setFeedback({ section, text: success, error: false }); if (section !== 'group-link') notify(success); }
     } catch (error) {
       setFeedback({ section, text: error instanceof Error ? error.message : 'Please try again.', error: true });
     } finally {
@@ -255,7 +203,7 @@ function MemberSettings({ group, selfId, busy, addPersonRequest = 0, onAction, o
     }
   }
 
-  function confirm(title: string, detail: string, action: () => void, label = 'Confirm') {
+  function confirm(title: string, detail: string, action: () => void, label: string) {
     Alert.alert(title, detail, [{ text: 'Cancel', style: 'cancel' }, { text: label, onPress: action }]);
   }
 
@@ -337,9 +285,10 @@ function MemberSettings({ group, selfId, busy, addPersonRequest = 0, onAction, o
         ? pendingContact.current : { personId: person.id, email, id: Crypto.randomUUID() };
       pendingContact.current = request;
       await saveContact(current.id, person.id, { command_id: request.id, email }, latestAction.current);
-      pendingContact.current = null; closePersonEmail();
-      try { await deliverEmailInvite({ ...person, email }); }
-      catch (error) { throw new Error(`Contact saved. ${error instanceof Error ? error.message : 'Check the invitation before retrying.'}`); }
+      pendingContact.current = null;
+      const live = latestGroup.current, target = live.participants.find(value => value.id === person.id), actor = live.participants.find(value => value.id === selfId);
+      if (!mounted.current || live.id !== current.id || live.archived || actor?.removed || actor?.user_id !== live.owner_id || !target || target.removed || target.user_id != null || target.email && target.email.trim().toLowerCase() !== email) return;
+      closePersonEmail(); setInvitePerson({ ...target, email });
     });
   }
 
@@ -370,21 +319,61 @@ function MemberSettings({ group, selfId, busy, addPersonRequest = 0, onAction, o
     }, 'Link copied');
   }
 
+  const managedPerson = group.participants.find(person => person.id === managedPersonId && !person.removed);
+  const managedInvites = (group.invites ?? []).filter(invite => !invite.revoked && invite.participant_id === managedPersonId);
+  function removeManagedPerson() {
+    if (!managedPerson || disabled || !organizer || group.archived || managedPerson.id === selfId || managedPerson.user_id === group.owner_id || BigInt(group.balances[managedPerson.id] ?? '0') !== 0n) return;
+    const person = managedPerson;
+    confirm(`Remove ${person.name}?`, `${person.user_id != null ? 'They will lose access to this group. ' : ''}Existing bills and payment history remain.`,
+      () => void perform('members', async () => { await onAction(`/participants/${person.id}/remove`, {}); setManagedPersonId(null); }, 'Person removed.'), 'Remove person');
+  }
+  async function sharePersonInvite() {
+    const person = managedPerson;
+    if (!person || disabled || !organizer || group.archived || person.user_id != null) return;
+    await perform('invites', async () => {
+      let link = inviteLink?.participantId === person.id ? inviteLink : null;
+      if (!link) {
+        const result = await onAction('/invites', { participant_id: person.id });
+        if (typeof result.url !== 'string' || !/^https?:\/\//.test(result.url)) throw new Error('The link is not available yet. Sync and try again.');
+        const current = latestGroup.current, target = current.participants.find(value => value.id === person.id), actor = current.participants.find(value => value.id === selfId);
+        if (!mounted.current || current.id !== group.id || current.archived || actor?.user_id !== current.owner_id || actor?.removed || !target || target.removed || target.user_id != null) return;
+        link = { participantId: person.id, name: person.name, url: result.url }; setInviteLink(link);
+      }
+      await Share.share({ message: `Join ${group.name} as ${link.name}: ${publicAppUrl(link.url)}` });
+    });
+  }
+  function revokeInvite(invite: Invite) {
+    confirm('Revoke this invitation?', `This link will stop opening ${group.name}. Someone who has already joined will keep their group membership.`,
+      () => void perform('invites', async () => { await onAction(`/invites/${invite.id}/revoke`, {}); if (inviteLink?.participantId === invite.participant_id) setInviteLink(null); }, 'Invitation revoked.'), 'Revoke invitation');
+  }
+
   return <View style={s.content}>
+    {!group.is_direct && <GroupIdentity group={group} session={session ?? null} busy={disabled} editable={!!self && !self.removed && self.user_id != null && !group.archived} onAction={onAction} onPhotoChanged={onPhotoChanged} />}
     {organizer && !group.is_direct && <View style={s.section}>
-      <Button title="Copy link" icon={CopyLinkIcon} disabled={disabled || !!group.archived} onPress={() => void createGroupLink()} />
+      <Button title={feedback?.section === 'group-link' && !feedback.error ? 'Copied' : 'Copy group link'} icon={feedback?.section === 'group-link' && !feedback.error ? 'check' : 'copy'} disabled={disabled || !!group.archived} onPress={() => void createGroupLink()} />
       <FeedbackNote section="group-link" feedback={feedback} />
     </View>}
-    <View>
-      {group.participants.filter(person => !person.removed).map(person => <MemberRow key={person.id} group={group} person={person} selfId={selfId} organizer={organizer} disabled={disabled} working={working} feedback={feedback}
-        cooldown={inviteCooldowns[person.id] ?? 0} contactChanged={person.id === directPerson?.id && emailChanged}
-        onRename={() => editName(person)} onAddEmail={() => editPersonEmail(person)} onSend={() => sendEmailInvite(person)} onRemove={() => confirm(
-            `Remove ${person.name}?`, `${person.user_id != null ? 'They will lose access to this group. ' : ''}Existing bills and payment history remain.`,
-            () => void perform('members', async () => { await onAction(`/participants/${person.id}/remove`, {}); }, 'Person removed.'), 'Remove')} />)}
-    </View>
+    <RowGroup>
+      {group.participants.filter(person => !person.removed).map(person => <MemberRow key={person.id} group={group} person={person} selfId={selfId} organizer={organizer} disabled={disabled} canEditNickname={!!self && !self.removed && self.user_id != null && !group.archived} onAction={onAction} onInvite={() => setManagedPersonId(person.id)} />)}
+    </RowGroup>
     {previousMembers.length > 0 && <SettingsRow icon="people" label="Previous members" value={String(previousMembers.length)} onPress={() => setShowPrevious(true)} />}
     {showPrevious && previousMembers.length > 0 && <PreviousMembersDialog people={previousMembers} onClose={() => setShowPrevious(false)} />}
-    {directPerson && <Disclosure title="Contact email">
+    <PersonInviteDialog person={managedPerson} invites={managedInvites} busy={disabled}
+      canInvite={organizer && !group.archived && managedPerson?.user_id == null}
+      canEditContact={!!directPerson && directPerson.id === managedPersonId}
+      canRename={organizer && !group.archived && managedPerson?.user_id == null}
+      canRemove={organizer && managedPerson?.id !== selfId && managedPerson?.user_id !== group.owner_id}
+      removeReason={managedPerson && BigInt(group.balances[managedPerson.id] ?? '0') !== 0n ? 'Settle their balance before removing them.' : group.archived ? 'Reopen this group to make changes.' : undefined}
+      error={feedback?.error && ['invites', 'members', `email-invite:${managedPersonId}`].includes(feedback.section) ? feedback.text : undefined}
+      onClose={() => setManagedPersonId(null)} onEmail={() => {
+        if (!managedPerson) return;
+        if (!managedPerson.email) { if (directPerson?.id === managedPerson.id) setContactOpen(true); else editPersonEmail(managedPerson); }
+        else setInvitePerson(managedPerson);
+      }} onContact={() => setContactOpen(true)} onShare={() => void sharePersonInvite()}
+      onRename={() => { if (managedPerson) editName(managedPerson); }} onRemove={removeManagedPerson}
+      onRevoke={revokeInvite} />
+    {directPerson && <KeyboardDialog visible={contactOpen} dismissable={!disabled} onDismiss={() => { if (!disabled) setContactOpen(false); }}>
+      <Dialog.Title icon="mail">Contact email</Dialog.Title><DialogScrollBody maxHeight={280} gap={12}>
       <Field label="Email (optional)" value={email} onChange={value => { setContactEmail(value); setFeedback(null); }} disabled={disabled || !!group.archived} keyboardType="email-address" maxLength={254} />
       {emailChanged && <Button title="Save contact" disabled={disabled || !!group.archived} onPress={() => void perform('contact', async () => {
         await onAction(`/participants/${directPerson.id}/contact`, { email: email.trim() });
@@ -395,7 +384,7 @@ function MemberSettings({ group, selfId, busy, addPersonRequest = 0, onAction, o
       <FeedbackNote section="contact" feedback={feedback} />
       <Text style={ui.caption}>{emailChanged ? 'Save before sending an invitation.' : savedEmail ? 'Only this email can accept the invitation.' : 'Add an email to invite them later.'}</Text>
       {!!group.archived && <Text style={ui.caption}>Reopen this group to change the email or send an invitation.</Text>}
-    </Disclosure>}
+    </DialogScrollBody><CloseDialogActions title="Close contact" disabled={disabled} onClose={() => setContactOpen(false)} /></KeyboardDialog>}
     <EditNameDialog person={namePerson} name={personName} disabled={disabled} working={working} unavailable={!organizer || !!group.archived || !!namePerson?.removed || namePerson?.user_id != null} onName={setPersonName} onClose={closeName} onSave={saveName} feedback={feedback} />
     <PersonEmailDialog person={emailPerson} email={personEmail} disabled={disabled} working={working} unavailable={!organizer || !!group.archived || !!emailPerson?.removed || emailPerson?.user_id != null} onEmail={setPersonEmail} onClose={closePersonEmail} onSave={savePersonEmail} feedback={feedback} />
     <AddPersonDialog visible={addingPerson} disabled={disabled} working={working} archived={!!group.archived} name={newName} email={newEmail}
@@ -405,54 +394,36 @@ function MemberSettings({ group, selfId, busy, addPersonRequest = 0, onAction, o
       onSend={sendConfirmedInvite} onCancel={() => { if (!disabled) { setInvitePerson(null); setFeedback(null); } }} />
     <FeedbackNote section="members" feedback={feedback} />
 
-    {organizer && hasInvites && <Disclosure title="Invite people">
-      {group.participants.filter(person => !person.removed && person.user_id == null && !person.email).map(person => <ManualInviteRow key={person.id} name={person.name} disabled={disabled || !!group.archived} onInvite={() => void perform('invites', async () => {
-          const result = await onAction('/invites', { participant_id: person.id });
-          if (typeof result.url !== 'string' || !/^https?:\/\//.test(result.url)) throw new Error('The link is not available yet. Sync and try again.');
-          const link = { participantId: person.id, name: person.name, url: result.url };
-          setInviteLink(link);
-          const shared = await Share.share({ message: `Join ${group.name} as ${link.name}: ${publicAppUrl(link.url)}` });
-          if (shared.action === Share.sharedAction) setInviteLink(null);
-        })} />)}
-      {inviteLink && <ShareInviteRow link={inviteLink} disabled={disabled || !!group.archived} onShare={() => void perform('invites', async () => {
-          const shared = await Share.share({ message: `Join ${group.name} as ${inviteLink.name}: ${publicAppUrl(inviteLink.url)}` });
-          if (shared.action === Share.sharedAction) setInviteLink(null);
-        })} />}
-      {(group.invites ?? []).filter(invite => !invite.revoked).map(invite => <InviteRow key={invite.id} invite={invite} name={name(invite.participant_id)} disabled={disabled || !!group.archived}
-        onApprove={() => confirm(
-          `Approve this account for ${name(invite.participant_id)}?`, `${invite.claimant_email}\nConfirm that this is the person you invited. They will be able to see and change this group's records.`,
-          () => void perform('invites', async () => { await onAction(`/invites/${invite.id}/approve`, {}); }, 'Account approved.'), 'Approve')}
-        onRevoke={() => confirm(
-          'Revoke this invitation?', `This link will stop opening ${group.name}. An already approved account will keep its group membership.`,
-          () => void perform('invites', async () => {
-            await onAction(`/invites/${invite.id}/revoke`, {});
-            if (inviteLink?.participantId === invite.participant_id) setInviteLink(null);
-          }, 'Invitation revoked.'), 'Revoke')} />)}
-      <FeedbackNote section="invites" feedback={feedback} />
-    </Disclosure>}
-
-    {opening && <Disclosure title="Previous balances" initialOpen={needsOpeningAgreement}>
-        <Text style={[ui.notice, opening.accepted ? ui.success : ui.warning]}>{opening.accepted ? 'Agreed and included in balances.' : 'Waiting for agreement. Not included in balances yet.'}</Text>
+    {!group.is_direct && <View style={s.section}>
+      <View style={ui.row}><Icon name="simplify" /><Text style={[ui.rowTitle, { flex: 1 }]}>Simplify debts</Text><Switch accessibilityLabel="Simplify debts" value={group.simplify_debts !== false}
+        disabled={disabled || !self || !!self.removed || self.user_id == null || !!group.archived || group.can_change_simplify !== true}
+        onValueChange={simplify_debts => void perform('simplify', async () => { await onAction('/simplify', { simplify_debts, version: group.version }); }, 'Repayment setting saved.')} /></View>
+      <Text style={ui.caption}>{group.simplify_debts !== false ? "Reduces payments using everyone's net balance." : 'Each person repays the member who paid for them.'}</Text>
+      {group.can_change_simplify === false && <Text style={ui.caption}>Finish pending payments and starting balances before changing this.</Text>}
+      <FeedbackNote section="simplify" feedback={feedback} />
+    </View>}
+    {opening && <DetailDialog busy={disabled} icon="payment" title="Previous balances" initialOpen={needsOpeningAgreement}>
+        <NoticeBanner tone={opening.accepted ? 'success' : 'warning'}>{opening.accepted ? 'Agreed and included in balances.' : 'Waiting for agreement. Not included in balances yet.'}</NoticeBanner>
         <Text style={ui.body}>From {opening.source}</Text><Text style={ui.caption}>As of {opening.cutoff}</Text>
-        {group.participants.map(person => <PreviousBalanceRow key={person.id} person={person} selfId={selfId} balance={opening.balances[person.id] ?? '0'} agreed={Object.hasOwn(opening.acknowledgments, person.id)} />)}
+        <RowGroup>{group.participants.map(person => <PreviousBalanceRow key={person.id} person={person} selfId={selfId} balance={opening.balances[person.id] ?? '0'} agreed={Object.hasOwn(opening.acknowledgments, person.id)} />)}</RowGroup>
         {needsOpeningAgreement && <>
           <Button title="I agree to my previous balance" kind="primary" disabled={disabled || !!group.archived} onPress={() => confirm(
             'Agree to your previous balance?', `${balanceDescription(opening.balances[selfId])}. From ${opening.source}, as of ${opening.cutoff}. It affects balances once all required members agree.`,
-            () => void perform('opening', async () => { await onAction(`/opening-balances/${opening.id}/acknowledge`, {}); }, 'Your agreement was saved.'), 'Agree')} />
+            () => void perform('opening', async () => { await onAction(`/opening-balances/${opening.id}/acknowledge`, {}); }, 'Your agreement was saved.'), 'Agree to balance')} />
           {group.archived && <Text style={ui.caption}>Reopen the group before agreeing to previous balances.</Text>}
         </>}
 
       <FeedbackNote section="opening" feedback={feedback} />
-    </Disclosure>}
+    </DetailDialog>}
 
       {organizer && <>
         <Button icon="archive" title={group.archived ? 'Reopen group' : 'Archive group'} kind="text" disabled={disabled} onPress={() => confirm(
           group.archived ? 'Reopen this group?' : 'Archive this group?', group.archived ? 'Members can add expenses again.' : 'Existing records stay available. Reopen the group to add expenses again.',
-          () => void perform('archive', async () => { await onAction('/archive', { archived: !group.archived }); }, group.archived ? 'Group reopened.' : 'Group archived.'), group.archived ? 'Reopen' : 'Archive')} />
+          () => void perform('archive', async () => { await onAction('/archive', { archived: !group.archived }); }, group.archived ? 'Group reopened.' : 'Group archived.'), group.archived ? 'Reopen group' : 'Archive group')} />
         <FeedbackNote section="archive" feedback={feedback} />
       </>}
-    <GroupMembershipActions hidden={!!group.hidden} busy={disabled} canLeave={BigInt(group.balances[selfId] ?? '0') === 0n}
-      blockedReason={BigInt(group.balances[selfId] ?? '0') !== 0n ? 'Settle your balance before deleting this group.' : undefined}
+    <GroupMembershipActions hidden={!!group.hidden} busy={disabled} canLeave={BigInt(group.balances[selfId] ?? '0') === 0n && !group.transfers.some(row => row.sender === selfId || row.recipient === selfId)}
+      blockedReason={BigInt(group.balances[selfId] ?? '0') !== 0n || group.transfers.some(row => row.sender === selfId || row.recipient === selfId) ? 'Settle your balance before deleting this group.' : undefined}
       onLeave={() => onMembership('leave')} onRestore={() => onMembership('restore')} />
   </View>;
 }

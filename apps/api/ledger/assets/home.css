@@ -94,6 +94,8 @@ p { margin: 0; max-width: 62ch; }
 .landing { width: min(67.5rem, 100% - 2.5rem); display: grid; grid-template-columns: 1.1fr .9fr; gap: 4rem; align-items: center; padding-block: clamp(2.5rem, 6vw, 5rem); }
 .pitch h1 { font-size: clamp(2.8rem, 5.5vw, 4.5rem); font-weight: 650; line-height: 1.03; max-width: 14ch; }
 .pitch .lede { margin-top: 1.5rem; font-size: 1.0625rem; color: var(--quiet); max-width: 36ch; }
+.source-note { margin-top: 1rem; font-size: .9375rem; color: var(--quiet); }
+.source-note a { font-weight: 500; }
 .install { margin-top: 2rem; scroll-margin-block: 1rem; }
 .badges { display: flex; flex-wrap: wrap; gap: .75rem; align-items: center; }
 .badges a { display: inline-flex; min-height: 3.25rem; border-radius: 10px; }

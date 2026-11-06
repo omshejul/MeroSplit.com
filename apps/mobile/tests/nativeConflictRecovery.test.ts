@@ -1,3 +1,4 @@
+import { withSharedUI } from './componentHarness.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -18,7 +19,7 @@ function find(predicate: (node: ts.Node) => boolean) {
   visit(app); assert.ok(result); return result;
 }
 function evaluate(code: string, env: object) {
-  return new Function('env', `with(env){${ts.transpile(code, { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React })}}`)({ React, Text: 'Text', ...env });
+  return new Function('env', `with(env){${ts.transpile(code, { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React })}}`)(withSharedUI({ React, Text: 'Text', ...env }));
 }
 function production(name: string, env: object) {
   const declaration = find(node => ts.isFunctionDeclaration(node) && node.name?.text === name);
@@ -31,7 +32,7 @@ function variable(name: string, env: object): Element {
 function component(file: string, name: string, props: object): Element {
   const source = ts.createSourceFile(file, readFileSync(new URL(`../src/${file}`, import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   const body = source.statements.filter(node => !ts.isImportDeclaration(node)).map(node => node.getText(source).replace(/^export (?:default )?/, '')).join('\n');
-  return evaluate(`${body};return ${name}(props);`, { props, View: 'View', Text: 'Text', Button: 'Button', Disclosure: 'Disclosure', SectionHeading: 'SectionHeading', useUI: () => ({ ui: {}, palette: {} }), useMemo: (fn: () => unknown) => fn(), StyleSheet: { create: (value: unknown) => value }, radii: {}, validateExpense });
+  return evaluate(`${body};return ${name}(props);`, { props, View: 'View', Text: 'Text', Button: 'Button', DetailDialog: 'DetailDialog', SectionHeading: 'SectionHeading', useUI: () => ({ ui: {}, palette: {} }), useMemo: (fn: () => unknown) => fn(), StyleSheet: { create: (value: unknown) => value }, radii: {}, validateExpense });
 }
 function elements(tree: any): Element[] {
   if (Array.isArray(tree)) return tree.flatMap(elements);
@@ -45,7 +46,7 @@ const edit: Command = { command_id: 'edit', group_id: 'g', method: 'PUT', path: 
 test('Saved changes actual row and App route reach latest review, edit replacement and discard for the command group', async () => {
   const raw = new DatabaseSync(':memory:'), db = sqliteAdapter(raw), routes: any[] = [], originalFetch = globalThis.fetch;
   const later: Command = { ...edit, command_id: 'later', method: 'POST', path: '/groups/g/expenses', body: { ...edit.body, id: 'later', command_id: 'later' }, state: 'pending', error: null, attempted: undefined };
-  const env: any = { session, owner, groupId: null, selected: null, commands: [edit, later], groups: [{ kind: 'shared', group }], busy: false, expired: false, screen: 'savedChanges',
+  const env: any = { browse: async (_key: string, work: any) => work(() => true), syncQuietly() {}, open: (work: any) => work(), accountOwner, readVisibleGroup, session, owner, groupId: null, selected: null, commands: [edit, later], groups: [{ kind: 'shared', group }], busy: false, expired: false, screen: 'savedChanges',
     ownerRef: { current: owner }, activeSessionRef: { current: session }, getDatabase: async () => db, saveGroup, ApiError,
     fetchGroup: async (_session: Session, id: string) => { assert.equal(id, 'g'); return group; }, withBill: async (_session: Session, current: Group) => current,
     load: async () => { env.selected = await readVisibleGroup(db, owner, 'g'); },
@@ -60,7 +61,7 @@ test('Saved changes actual row and App route reach latest review, edit replaceme
     await assert.rejects(syncOutbox(db, session), /Bill changed/);
     env.commands = await pendingCommands(db, owner);
     assert.equal(attempts.length, 1, 'known 409 holds later work without attempting it');
-    env.reviewChange = production('reviewChange', env);
+    env.saveReadGroup = production('saveReadGroup', env); env.reviewChange = production('reviewChange', env);
     const saved = variable('savedChangesView', env);
     const list = component('AccountRecovery.tsx', 'SavedChanges', saved.props);
     const row = elements(list).find(node => node.props.command?.command_id === 'edit')!;
@@ -107,17 +108,20 @@ test('an uncertain attempted pending bill still opens read-only and never offers
 test('review fetch cannot publish a screen or cache after the account/session generation changes', async () => {
   for (const change of ['owner', 'token']) {
     let saves = 0, navigations = 0;
-    const env: any = { session, owner, groupId: null, ownerRef: { current: owner }, activeSessionRef: { current: session }, ApiError,
+    const env: any = { browse: async (_key: string, work: any) => work(() => true), syncQuietly() {}, open: (work: any) => work(), accountOwner, readVisibleGroup, session, owner, groupId: null, ownerRef: { current: owner }, activeSessionRef: { current: session }, ApiError,
       fetchGroup: async () => group, withBill: async () => { if (change === 'owner') env.ownerRef.current = 'other-account'; else env.activeSessionRef.current = { ...session, token: 'new-generation' }; return group; },
       getDatabase: async () => ({}), saveGroup: async () => { saves++; }, load: async () => {}, setReviewInput() {}, setReviewCommand() {}, navigate: () => { navigations++; } };
-    await production('reviewChange', env)(edit);
+    env.saveReadGroup = production('saveReadGroup', env); await production('reviewChange', env)(edit);
     assert.equal(saves, 0); assert.equal(navigations, 0);
   }
 });
 
 test('actual group callsite passes preview status separately from the live header', () => {
   const previewError = 'Balances show accepted records. Sync or review saved changes before previewing a new total.';
-  const view = variable('groupView', { screen: 'group', selected: { group }, preview: group, previewError, GroupScreen: 'GroupScreen', categoryIcons: {}, listNotice: null, noticeVisibility: undefined, owner, groupId: 'g', ledgerRevision: 0, setLedgerUpdates() {}, pending: [edit], busy: false, selfId: 'a', loadBalanceGroup() {}, browseScope: '', focused: true, foreground: true, expired: false, authHeld: false, online: true, pullToRefresh() {}, pulling: false });
+  const view = variable('groupView', { session, expenseClearance:120, screen: 'group', selected: { group }, preview: group, previewError, GroupScreen: 'GroupScreen', categoryIcons: {}, listNotice: null, noticeVisibility: undefined, owner, groupId: 'g', ledgerRevision: 0, liveRevision: 0, setLedgerUpdates() {}, pending: [edit], busy: false, selfId: 'a', loadBalanceGroup() {}, browseScope: '', remindPayment() {}, focused: false, foreground: true, expired: false, authHeld: false, online: true, pullToRefresh() {}, pulling: false });
+  assert.equal(view.props.session, session);
+  assert.equal(view.props.iconsActive, true, 'an open native sheet must not disable its icon loading');
+  assert.equal(view.props.active, false);
   assert.equal(view.props.previewError, previewError, 'preview status must travel with the snapshot');
   assert.equal(elements(view.props.header).some(node => node.children.includes(previewError)), false, 'live header must not relabel a held optimistic snapshot');
 });

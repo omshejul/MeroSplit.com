@@ -138,7 +138,7 @@ def test_delivery_generic_payload_and_no_network_transaction(client, group, join
     payload = new_bill(client, group)
     sent = []
 
-    def provider(device, data):
+    def provider(device, data, **content):
         assert not connection.in_atomic_block
         sent.append(data)
         return "provider-request-id"
@@ -249,7 +249,7 @@ def test_transient_retry_backoff_and_success(client, group, joined, monkeypatch)
     new_bill(client, group)
     calls = []
 
-    def provider(device, data):
+    def provider(device, data, **content):
         calls.append(data["event_id"])
         if len(calls) == 1:
             raise PushFailure("timeout")
@@ -269,7 +269,7 @@ def test_transient_retry_backoff_and_success(client, group, joined, monkeypatch)
 def test_invalid_token_retires_device(client, group, joined, monkeypatch):
     new_bill(client, group)
 
-    def provider(*args):
+    def provider(*args, **kwargs):
         raise PushFailure("invalid_token", invalid_token=True)
 
     monkeypatch.setattr("ledger.push_provider.send_bill_notification", provider)
@@ -329,7 +329,7 @@ def test_retry_exhaustion_is_durable(client, group, joined, monkeypatch):
     new_bill(client, group)
     ExpensePushDelivery.objects.update(attempts=7)
 
-    def provider(*args):
+    def provider(*args, **kwargs):
         raise PushFailure("unavailable")
 
     monkeypatch.setattr("ledger.push_provider.send_bill_notification", provider)
@@ -375,7 +375,7 @@ def test_concurrent_create_retry_queues_once(client, group, joined):
 
 
 def ticketed_bill(client, group, monkeypatch):
-    monkeypatch.setattr("ledger.push_provider.send_bill_notification", lambda *_: str(uuid4()))
+    monkeypatch.setattr("ledger.push_provider.send_bill_notification", lambda *_, **kwargs: str(uuid4()))
     new_bill(client, group)
     send_pending_bill_notifications()
     row = ExpensePushDelivery.objects.get()

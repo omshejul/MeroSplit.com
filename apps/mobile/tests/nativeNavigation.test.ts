@@ -21,9 +21,9 @@ function module(env: Record<string, any> = {}) {
   const context = { render: () => null, blocked: false };
   const scope = { ...routes, React, StackActions, getStateFromPath, Platform: { OS: 'web' }, createContext: () => context,
     createNativeStackNavigator: () => ({ Navigator: 'Navigator', Screen: 'Screen', Group: 'Group' }), useUI: () => ({ palette: {}, motion: { enabled: true } }),
-    KeyboardDialog: 'KeyboardDialog', DialogFocus: 'DialogFocus', Dialog: { Title: 'Title' }, CancelDialogActions: 'CancelDialogActions', Button: 'Button',
-    ScreenRemovalLock: { Provider: 'Lock' }, useCallback: (fn: any) => fn, ...env };
-  return new Function('env', `with(env){${code};return {useAppNavigation,RouteScene,AppStack,webLinking};}`)(scope);
+    KeyboardDialog: 'KeyboardDialog', DialogFocus: 'DialogFocus', Dialog: { Title: 'Title' }, CancelDialogActions: 'CancelDialogActions', Button: 'Button', NativeSheetProvider: 'NativeSheetProvider', NativeSheetScreen: 'NativeSheetScreen',
+    ScreenDraftDiscard: { Provider: 'DraftDiscard' }, ScreenRemovalLock: { Provider: 'Lock' }, useCallback: (fn: any) => fn, ...env };
+  return new Function('env', `with(env){ const useLoading = env.useLoading ?? (() => {}), LoadingOverlay = env.LoadingOverlay ?? 'LoadingOverlay';${code};return {useAppNavigation,RouteScene,AppStack,webLinking};}`)(scope);
 }
 function navigationHarness() {
   const router = StackRouter({ initialRouteName: 'home' });
@@ -33,8 +33,9 @@ function navigationHarness() {
   const ref: any = { isReady: () => true, addListener: () => () => {}, getRootState: () => state, getCurrentRoute: () => state.routes[state.index], canGoBack: () => state.index > 0,
     goBack: () => ref.dispatch(CommonActions.goBack()), dispatch: (action: any) => { actions.push(action); if (intercept) intercept(action); else apply(action); } };
   ref.current = ref;
-  const api = module({ useNavigationContainerRef: () => ref, useSyncExternalStore: (_subscribe: any, snapshot: any) => snapshot() });
-  return { apply, intercept: (handler: (action: any) => void) => { intercept = handler; }, navigation: () => api.useAppNavigation(), state: () => state, names: () => state.routes.map((route: any) => route.name), actions,
+  let cursor=0;const slots:any[]=[],effects:(()=>void)[]=[];
+  const api = module({ useNavigationContainerRef: () => ref, useSyncExternalStore: (_subscribe: any, snapshot: any) => snapshot(),useRef:(initial:any)=>slots[cursor++]??={current:initial},useEffect:(effect:()=>void)=>effects.push(effect) });
+  return { apply, intercept: (handler: (action: any) => void) => { intercept = handler; }, navigation: () => {cursor=0;const value=api.useAppNavigation();effects.splice(0).forEach(effect=>effect());return value;}, state: () => state, names: () => state.routes.map((route: any) => route.name), actions,
     reset: (route: routes.AppRoute) => ref.dispatch(CommonActions.reset({ index: 0, routes: [route] })) };
 }
 
@@ -80,7 +81,28 @@ function sceneHarness(name: routes.Screen = 'expense', accept: (action: any) => 
     blocked: (value: boolean) => { blocked = value; }, focus: (value: boolean) => { focused = value; }, prevented: () => prevent };
 }
 
-test('supported removal guard: Cancel retains exact route/form, Discard redispatches original action with red trash', () => {
+test('Back leaves a confirmed untouched bill without prompting but protects edited, restored and unknown drafts',()=>{
+ for(const hasDraft of [false,true,undefined]){
+  const h=sceneHarness(),action={type:'GO_BACK'};const tree=h.render();
+  nodes(tree).find(node=>node.type==='DraftDiscard').props.value.hasDraft=hasDraft;
+  h.remove(action);
+  assert.equal(h.dispatched.length,hasDraft===false?1:0);
+  assert.equal(nodes(h.render()).find(node=>node.type==='KeyboardDialog').props.visible,hasDraft!==false);
+ }
+});
+
+test('deferred app navigation rechecks whether a bill changed while its locks were held',()=>{
+ for(const hasDraft of [false,true]){
+  const h=sceneHarness(),action={...StackActions.popTo('group'),appNavigation:true};
+  h.blocked(true);const tree=h.render();const draft=nodes(tree).find(node=>node.type==='DraftDiscard').props.value;
+  draft.hasDraft=false;h.remove(action);h.render();h.flush();assert.equal(h.dispatched.length,0);
+  draft.hasDraft=hasDraft;h.blocked(false);h.render();h.flush();
+  assert.equal(h.dispatched.length,hasDraft?0:1);
+  assert.equal(nodes(h.render()).find(node=>node.type==='KeyboardDialog').props.visible,hasDraft);
+ }
+});
+
+test('supported removal guard: Cancel retains exact route/form, Discard redispatches original action with red trash', async () => {
   const h = sceneHarness(), action = { type: 'POP', source: 'exact-form-instance', target: 'native-stack' };
   h.render(); h.remove(action); let tree = h.render();
   assert.equal(h.dispatched.length, 0); assert.equal(h.rendered[0][0], h.rendered.at(-1)[0]);
@@ -88,7 +110,7 @@ test('supported removal guard: Cancel retains exact route/form, Discard redispat
   nodes(tree).find(node => node.type === 'CancelDialogActions').props.onCancel(); tree = h.render();
   assert.equal(nodes(tree).find(node => node.type === 'KeyboardDialog').props.visible, false); assert.equal(h.dispatched.length, 0);
   h.remove(action); tree = h.render(); const discard = nodes(tree).find(node => node.type === 'Button');
-  assert.equal(discard.props.kind, 'danger'); assert.equal(discard.props.icon, 'remove'); discard.props.onPress(); assert.equal(h.dispatched[0], action);
+  assert.equal(discard.props.kind, 'danger'); assert.equal(discard.props.icon, 'remove'); discard.props.onPress(); await new Promise(resolve => setImmediate(resolve)); assert.equal(h.dispatched[0], action);
 });
 
 test('busy/local payment and attachment work block user removal; committed save can return without discard', () => {
@@ -122,9 +144,9 @@ test('App renders each retained route using its own group and record; account ad
   const app = ts.createSourceFile('App.tsx', appText, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   let render: ts.FunctionDeclaration | undefined;
   function visit(node: ts.Node) { if (ts.isFunctionDeclaration(node) && node.name?.text === 'renderScreen') render = node; ts.forEachChild(node, visit); } visit(app);
-  const declarations = render!.body!.statements.slice(0, 10).map(node => node.getText(app)).join('\n');
-  const compute = new Function('env', `with(env){${ts.transpile(declarations + ';return {screen,selected,expense,noticeVisibility};', { target: ts.ScriptTarget.ES2022 })}}`);
-  const env = { route: { name: 'group', params: { groupId: 'behind' } }, focused: false, groups: [{ group: { id: 'behind', participants: [], expenses: [{ id: 'b' }], settlements: [] } }, { group: { id: 'front', participants: [], expenses: [], settlements: [] } }], commands: [], session: { userId: '1' },
+  const declarations = render!.body!.statements.slice(0, 11).map(node => node.getText(app)).join('\n');
+  const compute = new Function('env', `with(env){ const useLoading = env.useLoading ?? (() => {}), LoadingOverlay = env.LoadingOverlay ?? 'LoadingOverlay';${ts.transpile(declarations + ';return {screen,selected,expense,noticeVisibility};', { target: ts.ScriptTarget.ES2022 })}}`);
+  const env = { submissions: { current: new Set() }, route: { name: 'group', params: { groupId: 'behind' } }, focused: false, groups: [{ group: { id: 'behind', participants: [], expenses: [{ id: 'b' }], settlements: [] } }, { group: { id: 'front', participants: [], expenses: [], settlements: [] } }], commands: [], session: { userId: '1' },
     notices: { notices: [], acknowledgeVisible() {} }, authHeld: false, foreground: true, expired: false, alertOpen: false, viewport: null, scrollEpoch: 0, owner: 'account', online: true, groupVersions: { current: '' } };
   assert.equal(compute(env).selected.group.id, 'behind'); assert.equal(compute(env).noticeVisibility.enabled, false);
   assert.equal(compute({ ...env, route: { name: 'expenseDetail', params: { groupId: 'behind', expenseId: 'b' } } }).expense.id, 'b');
@@ -147,7 +169,7 @@ test('the actual form commit callback transfers both file ownership and navigati
     ts.forEachChild(node, visit);
   } visit(source);
   const calls: string[] = [], expense = {}, attachment = {};
-  const handler = new Function('env', `with(env){${ts.transpile('const handler = ' + callback!.getText(source), { target: ts.ScriptTarget.ES2022 })};return handler;}`)({
+  const handler = new Function('env', `with(env){ const useLoading = env.useLoading ?? (() => {}), LoadingOverlay = env.LoadingOverlay ?? 'LoadingOverlay';${ts.transpile('const handler = ' + callback!.getText(source), { target: ts.ScriptTarget.ES2022 })};return handler;}`)({
     saveExpense: (value: unknown, file: unknown, onQueued: () => void) => { assert.equal(value, expense); assert.equal(file, attachment); calls.push('commit'); onQueued(); },
     billQueued: () => calls.push('navigation-ownership'),
   });
@@ -162,7 +184,7 @@ test('an uncached browser route attempts resolution once and cannot auto-loop af
   let reads = 0;
   const env = { ready: true, session: { token: 'current' }, authHeld: false, expired: false, busy: false, appLink: null, groupId: 'g', expenseId: null, settlementId: null, selected: null, expense: null, settlement: null,
     screen: 'group', resolvedRoute: { current: '' }, navigation: { route: { key: 'entry-one' } }, setAppLink: () => reads++ };
-  const run = new Function('env', `with(env){${ts.transpile('const handler = ' + callback!.getText(source), { target: ts.ScriptTarget.ES2022 })};return handler;}`)(env);
+  const run = new Function('env', `with(env){ const useLoading = env.useLoading ?? (() => {}), LoadingOverlay = env.LoadingOverlay ?? 'LoadingOverlay';${ts.transpile('const handler = ' + callback!.getText(source), { target: ts.ScriptTarget.ES2022 })};return handler;}`)(env);
   run(); run(); assert.equal(reads, 1); env.navigation.route.key = 'entry-two'; run(); assert.equal(reads, 2);
 });
 
@@ -237,7 +259,7 @@ test('actual payment Save commits before returning and waits for app and form lo
   let declaration: ts.FunctionDeclaration | undefined;
   function visit(node: ts.Node) { if (ts.isFunctionDeclaration(node) && node.name?.text === 'savePayment') declaration = node; ts.forEachChild(node, visit); } visit(source);
   let committed = false; const completion = h.navigation();
-  const save = new Function('env', `with(env){${ts.transpile(declaration!.getText(source), { target: ts.ScriptTarget.ES2022 })};return savePayment;}`)({
+  const save = new Function('env', `with(env){ const useLoading = env.useLoading ?? (() => {}), LoadingOverlay = env.LoadingOverlay ?? 'LoadingOverlay';${ts.transpile(declaration!.getText(source), { target: ts.ScriptTarget.ES2022 })};return savePayment;}`)({
     selected: { group: { archived: false } }, selfId: 'self', pending: [], session: null, uuid: () => 'payment-id', groupId: 'g',
     command: (_method: string, path: string, body: any) => ({ path, body }),
     queue: async (command: any) => { assert.equal(command.path, '/groups/g/settlements'); assert.equal(command.body.id, 'payment-id'); committed = true; },
@@ -258,4 +280,88 @@ test('an old completion cannot navigate a different current route or a later acc
   old.complete('group'); assert.equal(h.state(), other);
   h.reset({ name: 'home', params: { tab: 'Account' } }); const account = h.state();
   old.complete('group', { groupId: 'g' }); assert.equal(h.state(), account);
+});
+
+
+test('pending draft discard accepts one action and never redispatches after losing focus', async () => {
+  for (const loseFocus of [false, true]) {
+    const h = sceneHarness(); h.render(); h.remove({ type: 'GO_BACK' }); let tree = h.render();
+    let clears = 0, finish!: (value: boolean) => void;
+    nodes(tree).find(node => node.type === 'DraftDiscard').props.value.current = () => { clears++; return new Promise(resolve => { finish = resolve; }); };
+    const button = nodes(tree).find(node => node.type === 'Button'); button.props.onPress(); button.props.onPress();
+    assert.equal(clears, 1, 'only one persistence operation may own a removal');
+    const busy = h.render(); assert.equal(nodes(busy).find(node => node.type === 'KeyboardDialog').props.dismissable,false);
+    nodes(busy).find(node => node.type === 'CancelDialogActions').props.onCancel(); assert.equal(nodes(h.render()).find(node => node.type === 'KeyboardDialog').props.visible,true);
+    if (loseFocus) { h.focus(false); h.render(); }
+    finish(true); await new Promise(resolve => setImmediate(resolve));
+    assert.equal(h.dispatched.length, loseFocus ? 0 : 1);
+    assert.equal(nodes(h.render()).find(node => node.type === 'KeyboardDialog').props.visible,false);
+  }
+});
+
+
+test('one completed discard cannot navigate a scene that lost focus while storage was pending', async () => {
+  const h = sceneHarness(); h.render(); h.remove({ type:'GO_BACK' }); const tree = h.render();
+  let finish!: (value:boolean)=>void;
+  nodes(tree).find(node => node.type === 'DraftDiscard').props.value.current = () => new Promise(resolve => { finish = resolve; });
+  nodes(tree).find(node => node.type === 'Button').props.onPress(); h.focus(false); h.render(); finish(true);
+  await new Promise(resolve => setImmediate(resolve)); assert.equal(h.dispatched.length,0);
+});
+
+test('the native icon sheet pushes over the bill and dismissal keeps the same bill scene',()=>{
+ const h=navigationHarness();h.navigation().go('group',{groupId:'g'});h.navigation().go('expenseDetail',{expenseId:'bill'});
+ const billKey=h.state().routes.at(-1).key;h.navigation().go('expenseIcon' as routes.Screen);
+ assert.deepEqual(h.names(),['home','group','expenseDetail','expenseIcon']);assert.deepEqual(h.state().routes.at(-1).params,{tab:'Groups',groupId:'g',expenseId:'bill'});
+ h.navigation().back(true);assert.equal(h.state().routes.at(-1).key,billKey);assert.deepEqual(h.names(),['home','group','expenseDetail']);
+});
+
+test('icon and person selectors share the existing native form sheet options',()=>{
+ for(const OS of ['ios','android','web']){
+  const tree=module({Platform:{OS}}).AppStack({render(){},blocked:false,initialScreen:'home',scope:'one'});
+  const screens=nodes(tree).filter(node=>node.type==='Screen'),picker=screens.find(node=>node.props.name==='expenseIcon');assert.ok(picker);
+  assert.equal(picker.props.options.presentation,OS==='web'?'transparentModal':'formSheet');assert.deepEqual(picker.props.options.sheetAllowedDetents,[.65,.9]);assert.equal(picker.props.options.sheetGrabberVisible,true);
+  const people=screens.find(node=>node.props.name==='sheet');assert.equal(people.props.options,picker.props.options);
+  assert.ok(screens.filter(node=>node!==picker&&node!==people).every(node=>node.props.options===undefined));
+ }
+ const cold=module().webLinking.getStateFromPath('/app/groups/g/bills/b/icon',{screens:routes.routePaths});assert.deepEqual(cold.routes.map((route:any)=>route.name),['home','group','expenseDetail','expenseIcon']);
+ const h=navigationHarness();h.navigation().go('expenseDetail',{groupId:'g',expenseId:'b'});h.navigation().go('expenseIcon');h.navigation().complete('expenseDetail');assert.deepEqual(h.names(),['home','group','expenseDetail']);
+});
+
+test('person sheet preserves the exact expense route and Back removes only the overlay',()=>{
+ const h=navigationHarness();h.navigation().go('expense',{groupId:'g',expenseId:null});const form=h.state().routes.at(-1);
+ h.apply(StackActions.push('sheet',{...form.params,sheetId:'payer',ownerKey:form.key}));
+ assert.equal(h.navigation().route.key,form.key);assert.equal(h.navigation().route.name,'expense');
+ h.navigation().back(true);assert.deepEqual(h.names(),['home','group','expense']);assert.equal(h.state().routes.at(-1).key,form.key);
+});
+
+test('app navigation dismisses the person sheet before asking to discard its parent draft',()=>{
+ const h=navigationHarness();h.navigation().go('expense',{groupId:'g'});const form=h.state().routes.at(-1);
+ h.apply(StackActions.push('sheet',{sheetId:'split',ownerKey:form.key}));h.navigation().go('group');
+ assert.deepEqual(h.names(),['home','group','expense'],'first action removes only the overlay');
+ let requested:any;h.intercept(action=>{requested=action;});h.navigation();
+ assert.equal(requested.type,'POP_TO');assert.equal(requested.payload.name,'group');assert.equal(h.state().routes.at(-1).key,form.key,'draft remains until its guard accepts');
+});
+
+test('a sheet navigation completion cannot replay after account replacement or another current screen',()=>{
+ for(const replacement of [{name:'home',params:{tab:'Account'}},{name:'expense',params:{groupId:'other'}}] as routes.AppRoute[]){
+  const h=navigationHarness();h.navigation().go('expense',{groupId:'g'});const form=h.state().routes.at(-1);
+  h.apply(StackActions.push('sheet',{sheetId:'split',ownerKey:form.key}));h.navigation().go('group');h.reset(replacement);const before=h.state();h.navigation();assert.equal(h.state(),before);
+ }
+});
+
+
+test('late sheet cleanup targets the removed overlay and cannot pop its parent draft',()=>{
+ const h=navigationHarness();h.navigation().go('expense',{groupId:'g'});const form=h.state().routes.at(-1);h.apply(StackActions.push('sheet',{sheetId:'id',ownerKey:form.key}));
+ const sheet=h.state().routes.at(-1),close={...StackActions.pop(1),source:sheet.key,target:h.state().key};h.apply(close);const before=h.state();h.apply(close);assert.equal(h.state(),before);assert.equal(h.state().routes.at(-1).key,form.key);
+});
+
+test('opening an Activity bill preserves the existing feed route for Back',()=>{
+ const h=navigationHarness();h.navigation().go('home',{tab:'Activity'});const feed=h.state().routes.at(-1);
+ h.navigation().go('expenseDetail',{groupId:'g',expenseId:'bill'});
+ h.navigation().back(true);
+ assert.equal(h.state().routes.at(-1).key,feed.key);assert.equal(h.state().routes.at(-1).params.tab,'Activity');
+});
+
+test('changing home tabs updates the same route without replacing its mounted lists',()=>{
+ const h=navigationHarness(),home=h.state().routes[0];h.navigation().go('home',{tab:'Activity'});assert.equal(h.state().routes.length,1);assert.equal(h.state().routes[0].key,home.key);h.navigation().go('home',{tab:'Groups'});assert.equal(h.state().routes[0].key,home.key);
 });

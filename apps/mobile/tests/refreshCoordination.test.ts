@@ -5,6 +5,8 @@ import { DatabaseSync } from 'node:sqlite';
 import ts from 'typescript';
 import { accountOwner, refreshGroups } from '../src/api.ts';
 import { storageRevision, migrate, saveGroup, readVisibleGroup, listGroups, pendingCommands, listLegacyGroups, listLegacyRecoveries, listUnavailableGroups, confirmedSync } from '../src/storage.ts';
+import { hydrateExpenseIcons, cachedExpenseIcons, saveExpenseIcons } from '../src/expenseIconCache.ts';
+import { categoryKey } from '../src/categoryIcons.ts';
 import { listPaymentReturns } from '../src/paymentReturnStorage.ts';
 import { sqliteAdapter } from './sqlite.ts';
 import type { Group, Session } from '../src/types.ts';
@@ -15,11 +17,11 @@ function production(name: string, env: any) {
   let code=''; function visit(n: ts.Node) { if(ts.isFunctionDeclaration(n)&&n.name?.text===name)code=n.getText(source);ts.forEachChild(n,visit); } visit(source);assert.ok(code);
   return new Function('env',`with(env){${ts.transpile(code,{target:ts.ScriptTarget.ES2022})};return ${name};}`)(env);
 }
-const group=(id='g',version=1):Group=>({id,version,name:'Reuben',attribution_version:1,participants:[],expenses:[],settlements:[],activity:[],transfers:[],balances:{}});
+const group=(id='g',version=1):Group=>({id,version,name:'Reuben',attribution_version:1,simplify_debts:true,participants:[],expenses:[],settlements:[],activity:[],transfers:[],balances:{}});
 
 test('concurrent refresh triggers share one operation and a full refresh follows a targeted one once',async()=>{
  let calls=0,finish!:()=>void;
- const env:any={accountOwner,accountRefresh:{current:null},runAccountRefresh:()=>{calls++;return new Promise<void>(resolve=>finish=resolve);}};
+ const env:any={accountOwner,scopeGeneration:{current:0},accountRefresh:{current:null},runAccountRefresh:()=>{calls++;return new Promise<void>(resolve=>finish=resolve);}};
  env.syncAccount=production('syncAccount',env);
  const a=env.syncAccount(session),b=env.syncAccount(session,['g']),c=env.syncAccount(session);
  assert.equal(a,b);assert.equal(a,c);assert.equal(calls,1);finish();await a;
@@ -48,7 +50,7 @@ test('unchanged persisted data publishes once; failed refresh and stale loads re
  const setter=()=>{};
  const env:any={ownerRef:{current:owner},activeGroupRef:{current:'g'},getDatabase:async()=>db,isOnline:()=>true,
   publishedStorage:{current:{scope:'',view:'',changes:-1}},loadGeneration:{current:0},groupVersions:{current:''},activityOwner:{current:''},
-  storageRevision,listGroups,pendingCommands,listLegacyGroups,listLegacyRecoveries,listUnavailableGroups,listPaymentReturns,confirmedSync,
+  hydrateExpenseIcons,storageRevision,listGroups,pendingCommands,listLegacyGroups,listLegacyRecoveries,listUnavailableGroups,listPaymentReturns,confirmedSync,
   setLastConfirmed:setter,setPendingFiles:setter,setActivity:setter,setGroups:(fn:any)=>{const next=fn(shown);if(next!==shown)publishes++;shown=next;},setCommands:setter,setLegacy:setter,setRecoveries:setter,setUnavailable:setter,setHasDrafts:setter,setReturns:setter};
  try{
   await migrate(db);await saveGroup(db,owner,group(),'shared');const load=production('load',env);
@@ -68,4 +70,41 @@ test('storage revisions detect native-style commits on a separate SQLite connect
   assert.equal(await storageRevision(db),second,'reads alone never cause a publish');
   await db.runAsync("DELETE FROM sync_state WHERE owner='owner'");assert.notEqual(await storageRevision(db),second);
  }finally{writer.close();raw.close();rmSync(folder,{recursive:true,force:true});}
+});
+
+
+test('a new client scope generation does not rejoin the prior same-token refresh', async () => {
+ const finishes: (() => void)[] = [];
+ const env: any = { accountOwner, scopeGeneration: { current: 0 }, accountRefresh: { current: null }, runAccountRefresh: () => new Promise<void>(resolve => finishes.push(resolve)) };
+ const sync = production('syncAccount', env), old = sync(session);
+ ++env.scopeGeneration.current; const current = sync(session); assert.notEqual(old, current); assert.equal(finishes.length, 2);
+ finishes[0](); await old; assert.equal(env.accountRefresh.current.promise, current, 'old finally must not clear the replacement job');
+ finishes[1](); await current; assert.equal(env.accountRefresh.current, null);
+});
+
+
+test('push and notice refreshes invalidate Activity before publishing and advance the live revision only for changed heads', async () => {
+ let invalidated=false,live=0,nextVersion='g:2';const heads={current:'g:1'};
+ const env:any={groupVersions:heads,scopeGeneration:{current:0},ownerRef:{current:owner},activeSessionRef:{current:session},authHeldRef:{current:false},activeGroupRef:{current:null},accountOwner,
+  setSyncing(){},setSyncProblem(){},setVerifiedEmptyOwner(){},getDatabase:async()=>({}),readProfile:async()=>{},request:async()=>({needs_invitation:false}),setNeedsInvitation(){},
+  syncOutbox:async()=>assert.fail('targeted live reads never replay writes'),retryAccountMediaUploads:async()=>assert.fail('targeted live reads never retry uploads'),
+  refreshGroups:async()=>[],readPrefetch:{invalidate(){invalidated=true;}},readScope:()=>owner,load:async()=>{assert.equal(invalidated,true,'old Activity cache expires before new group versions publish');heads.current=nextVersion;},setLiveRevision:(update:(n:number)=>number)=>live=update(live),downloadOffline(){},ApiError:class extends Error{},publishIfChanged:async()=>{}};
+ const read=production('runAccountRefresh',env);
+ await read(session,['g']);assert.equal(live,1);
+ invalidated=false;await read(session,['g']);assert.equal(live,1,'duplicate notice and heads arrivals do not create another live transition');
+ nextVersion='g:3';await read(session,['g']);assert.equal(live,2);
+});
+
+
+test('live recovery probes ignore a failed request hint but stop for browser offline, background or blocked auth', () => {
+ let options:ts.ObjectLiteralExpression|undefined;
+ function visit(node:ts.Node) {if(ts.isCallExpression(node)&&node.expression.getText(source)==='useLiveLedger')options=node.arguments[1] as ts.ObjectLiteralExpression;ts.forEachChild(node,visit);} visit(source);assert.ok(options);
+ const enabled=options.properties.find(node=>ts.isPropertyAssignment(node)&&node.name.getText(source)==='enabled') as ts.PropertyAssignment;
+ const evaluate=new Function('env',`with(env){return ${enabled.initializer.getText(source)};}`);
+ const env={ready:true,foreground:true,online:false,expired:false,authHeld:false,authPending:false,Platform:{OS:'android'},navigator:{onLine:true}};
+ assert.equal(evaluate(env),true,'native foreground probes can restore a soft reachability failure');
+ assert.equal(evaluate({...env,Platform:{OS:'web'}}),true);
+ assert.equal(evaluate({...env,Platform:{OS:'web'},navigator:{onLine:false}}),false);
+ for(const key of ['expired','authHeld','authPending'])assert.equal(evaluate({...env,[key]:true}),false);
+ assert.equal(evaluate({...env,foreground:false}),false);
 });

@@ -1,4 +1,5 @@
 export type Palette = { background: string; surface: string; text: string; muted: string; accent: string; soft: string; line: string; outline: string; error: string; positive: string; negative: string; info: string; warning: string; switchOn: string };
+export const defaultColorFamily = 'orchid' as const;
 export type ColorFamily = 'basic' | 'cove' | 'orchid' | 'rose' | 'obsidian';
 type PairedFamily = Exclude<ColorFamily, 'obsidian'>;
 export type ThemeColors = { palette: Palette; elevation: readonly [string, string, string, string, string] };

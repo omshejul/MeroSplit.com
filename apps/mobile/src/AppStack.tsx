@@ -1,14 +1,17 @@
+import { useLoading } from './LoadingOverlay';
+import { Dialog } from './DialogParts';
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Platform } from 'react-native';
-import { Dialog } from 'react-native-paper';
+
 import { NavigationContainer, StackActions, getStateFromPath, useIsFocused, useNavigationContainerRef, usePreventRemove, type NavigationAction } from '@react-navigation/native';
 import { createNativeStackNavigator, type NativeStackScreenProps } from '@react-navigation/native-stack';
 import KeyboardDialog from './KeyboardDialog';
-import DialogFocus from './DialogFocus';
+
 import { CancelDialogActions } from './DialogParts';
 import { Button, useUI } from './ui';
-import { ScreenRemovalLock } from './screenRemoval';
-import { destination, routeParents, routePaths, sameRoute, screenNames, type AppRoute, type RouteParams, type Routes, type Screen } from './routes';
+import { ScreenDraftDiscard, ScreenRemovalLock, type DraftDiscard } from './screenRemoval';
+import { contentRoute, destination, routeParents, routePaths, sameRoute, screenNames, type AppRoute, type RouteParams, type Routes, type Screen } from './routes';
+import { NativeSheetProvider, NativeSheetScreen } from './NativeSheet';
 
 export { NavigationContainer };
 const Stack = createNativeStackNavigator<Routes>();
@@ -31,18 +34,35 @@ export function useAppNavigation() {
   const ref = useNavigationContainerRef<Routes>();
   const subscribe = useCallback((listener: () => void) => ref.addListener('state', listener), [ref]);
   const state = useSyncExternalStore(subscribe, () => ref.current?.getRootState(), () => undefined);
-  const route: AppRoute = state?.routes[state.index] as AppRoute ?? initial;
+  const route: AppRoute = state ? contentRoute(state) : initial;
+  const afterSheet = useRef<{ name: Screen; params?: RouteParams; ownerKey?: string } | null>(null);
+  useEffect(() => {
+    if (!afterSheet.current || !state || state.routes[state.index].name === 'sheet') return;
+    const target = afterSheet.current; afterSheet.current = null;
+    // A replaced account/navigation scope must never replay a previous sheet's action.
+    if (contentRoute(state).key === target.ownerKey) go(target.name, target.params);
+  }, [state]);
   function go(name: Screen, params?: RouteParams) {
     if (!ref.isReady()) return;
     const current = ref.getRootState();
     if (!current) return;
+    if (current.routes[current.index].name === 'sheet') {
+      afterSheet.current = { name, params, ownerKey: contentRoute(current).key };
+      ref.dispatch({ ...StackActions.pop(1), appNavigation: true } as AppAction);
+      return;
+    }
     const target = destination(current.routes[current.index] as AppRoute, name, params);
+    if (name === 'home' && current.routes[current.index].name === 'home') {
+      ref.dispatch({ type: 'SET_PARAMS', payload: { params: target.params }, source: current.routes[current.index].key, appNavigation: true } as AppAction);
+      return;
+    }
     const index = current.routes.findLastIndex(value => sameRoute(value as AppRoute, target));
     if (index >= 0) {
       ref.dispatch({ ...StackActions.popTo(name, target.params), appNavigation: true } as AppAction);
     } else {
       const parents = routeParents(target), parent = parents.at(-1);
-      if (!parent || sameRoute(current.routes[current.index] as AppRoute, parent)) {
+      if (!parent || sameRoute(current.routes[current.index] as AppRoute, parent)
+        || current.routes[0].name === 'home' && (current.routes[0].params as RouteParams)?.tab === 'Activity' && !current.routes.some(route => route.name === 'group') && ['expenseDetail', 'paymentDetail', 'billChat'].includes(name)) {
         ref.dispatch({ ...StackActions.push(name, target.params), appNavigation: true } as AppAction);
       } else {
         // Link/notification entry has a real parent stack even when opened cold.
@@ -60,7 +80,8 @@ export function useAppNavigation() {
     }
   }
   function complete(name: Screen, params?: RouteParams) {
-    if (ref.getCurrentRoute()?.key === route.key) go(name, params);
+    const current = ref.getRootState();
+    if (current && contentRoute(current).key === route.key) go(name, params);
   }
   return { ref, route, go, back, complete };
 }
@@ -68,44 +89,60 @@ export function useAppNavigation() {
 function RouteScene({ route, navigation }: NativeStackScreenProps<Routes, Screen>) {
   const { render, blocked } = useContext(SceneContext), focused = useIsFocused();
   const [localBlocked, setLocalBlocked] = useState(false), [pending, setPending] = useState<NavigationAction | null>(null);
+  const [discarding, setDiscarding] = useState(false), discardLock = useRef(false);
+  useLoading(discarding);
   const [deferred, setDeferred] = useState<NavigationAction | null>(null);
-  const [queued, setQueued] = useState(false), committed = useRef(false);
+  const [queued, setQueued] = useState(false), committed = useRef(false), draftDiscard: DraftDiscard = useRef<(() => Promise<boolean>) | null>(null);
   const onQueued = useCallback(() => { committed.current = true; setQueued(true); }, []);
   const draft = route.name === 'expense' && !queued;
   useEffect(() => {
     if (!deferred) return;
     if (!focused || !navigation.isFocused()) { setDeferred(null); return; }
-    if (blocked || localBlocked) return;
+    if (blocked || localBlocked || discarding) return;
     setDeferred(null);
-    if (draft && !committed.current) setPending(deferred);
+    if (draft && !committed.current && draftDiscard.hasDraft !== false) setPending(deferred);
     else navigation.dispatch(deferred);
-  }, [deferred, blocked, localBlocked, draft, focused, navigation]);
-  usePreventRemove(blocked || localBlocked || draft, ({ data }) => {
-    if (blocked || localBlocked) {
+  }, [deferred, blocked, localBlocked, discarding, draft, focused, navigation]);
+  usePreventRemove(blocked || localBlocked || discarding || draft, ({ data }) => {
+    if (blocked || localBlocked || discarding) {
       // Completion and link actions share the same locks. Replay only while
       // this scene is still current, after its form and app work have settled.
       if ((data.action as AppAction).appNavigation) setDeferred(data.action);
       return;
     }
-    if (!draft || committed.current) { navigation.dispatch(data.action); return; }
+    if (!draft || committed.current || draftDiscard.hasDraft === false) { navigation.dispatch(data.action); return; }
     setPending(data.action);
   });
-  return <ScreenRemovalLock.Provider value={setLocalBlocked}>
+  return <ScreenRemovalLock.Provider value={setLocalBlocked}><ScreenDraftDiscard.Provider value={draftDiscard}>
     {render(route, focused, onQueued)}
-    <KeyboardDialog visible={!!pending} onDismiss={() => setPending(null)}>
-      <DialogFocus active={!!pending} label="Discard draft" onEscape={() => setPending(null)}>
+    <KeyboardDialog label="Discard draft" visible={!!pending} dismissable={!discarding} onDismiss={() => { if (!discardLock.current) setPending(null); }}>
+
         <Dialog.Title>Do you want to discard the draft?</Dialog.Title>
-        <CancelDialogActions disabled={blocked || localBlocked} onCancel={() => setPending(null)}>
-          <Button title="Discard" kind="danger" icon="remove" disabled={blocked || localBlocked} onPress={() => { if (pending) navigation.dispatch(pending); setPending(null); }} />
+        <CancelDialogActions disabled={blocked || localBlocked || discarding} onCancel={() => { if (!discardLock.current) setPending(null); }}>
+          <Button title="Discard" kind="danger" icon="remove" disabled={blocked || localBlocked || discarding} onPress={() => {
+            if (!pending || blocked || localBlocked || discardLock.current) return;
+            discardLock.current = true; setDiscarding(true);
+            void (async () => {
+              try {
+                if (await draftDiscard.current?.() !== false && navigation.isFocused()) navigation.dispatch(pending);
+                setPending(null);
+              } finally { discardLock.current = false; setDiscarding(false); }
+            })();
+          }} />
         </CancelDialogActions>
-      </DialogFocus>
+
     </KeyboardDialog>
-  </ScreenRemovalLock.Provider>;
+  </ScreenDraftDiscard.Provider></ScreenRemovalLock.Provider>;
 }
 
 export default function AppStack({ render, blocked, initialScreen, scope }: { render: RenderScreen; blocked: boolean; initialScreen: Screen; scope: string }) {
   const { palette, motion } = useUI();
-  return <SceneContext.Provider value={{ render, blocked }}><Stack.Navigator screenOptions={{
+  const sheetOptions = { presentation: Platform.OS === 'web' ? 'transparentModal' as const : 'formSheet' as const, sheetAllowedDetents: [0.65, 0.9], sheetGrabberVisible: true, sheetCornerRadius: 24, contentStyle: { backgroundColor: Platform.OS === 'web' ? 'transparent' : palette.surface } };
+  return <NativeSheetProvider key={scope}><SceneContext.Provider value={{ render, blocked }}><Stack.Navigator screenOptions={{
     headerShown: false, contentStyle: { backgroundColor: palette.background }, animation: motion.enabled ? 'default' : 'none', gestureEnabled: !blocked,
-  }}><Stack.Group navigationKey={scope}>{[initialScreen, ...screenNames.filter(name => name !== initialScreen)].map(name => <Stack.Screen key={name} name={name} initialParams={{ tab: initialScreen === 'signInMethods' ? 'Account' : 'Groups' }} component={RouteScene} />)}</Stack.Group></Stack.Navigator></SceneContext.Provider>;
+  }}><Stack.Group navigationKey={scope}>{[initialScreen, ...screenNames.filter(name => name !== initialScreen && name !== 'sheet')].map(name => <Stack.Screen key={name} name={name} initialParams={{ tab: initialScreen === 'signInMethods' ? 'Account' : 'Groups' }} component={RouteScene} options={name === 'expenseIcon' ? sheetOptions : undefined} />)}<Stack.Screen name="sheet" component={SheetScene} options={sheetOptions} /></Stack.Group></Stack.Navigator></SceneContext.Provider></NativeSheetProvider>;
+}
+
+function SheetScene(props: NativeStackScreenProps<Routes, 'sheet'>) {
+  return <NativeSheetScreen {...props} blocked={useContext(SceneContext).blocked} />;
 }

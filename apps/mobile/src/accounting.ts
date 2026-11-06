@@ -1,6 +1,7 @@
+import { currencySymbol } from './currency.ts';
 export const MAX_AMOUNT = 1_000_000_000n;
 export type Amounts = Record<string, string>;
-export type Split = { mode: 'equal' | 'exact' | 'percent' | 'shares'; values: Amounts };
+export type Split = { mode: 'equal' | 'exact' | 'percent' | 'shares' | 'adjustment'; values: Amounts };
 export type Transfer = { sender: string; recipient: string; amount: string };
 
 export function integer(value: string, signed = false): bigint {
@@ -22,17 +23,24 @@ function scaled(value: string, precision: number): bigint {
 
 export function rupeesToPaise(value: string): string {
   const amount = scaled(value, 2);
-  if (amount <= 0n || amount > MAX_AMOUNT) throw new Error('Amount must be above zero and at most ₹1,00,00,000.');
+  if (amount <= 0n || amount > MAX_AMOUNT) throw new Error(`Amount must be above zero and at most ${currencySymbol()}1,00,00,000.`);
   return amount.toString();
 }
 
-export function formatMoney(value: string): string {
+export function adjustmentToPaise(value: string): string {
+  const negative = value.startsWith('-');
+  const amount = scaled(negative ? value.slice(1) : value, 2);
+  if (amount > MAX_AMOUNT) throw new Error('Adjustment is outside the supported range.');
+  return (negative ? -amount : amount).toString();
+}
+
+export function formatMoney(value: string, currency?: string): string {
   const amount = integer(value, true);
   const absolute = amount < 0n ? -amount : amount;
   const whole = (absolute / 100n).toString();
   const tail = whole.slice(-3);
   const head = whole.slice(0, -3).replace(/\B(?=(\d{2})+(?!\d))/g, ',');
-  return `${amount < 0n ? '-' : ''}₹${head ? `${head},` : ''}${tail}.${(absolute % 100n).toString().padStart(2, '0')}`;
+  return `${amount < 0n ? '-' : ''}${currencySymbol(currency)}${head ? `${head},` : ''}${tail}.${(absolute % 100n).toString().padStart(2, '0')}`;
 }
 
 export function validateExpense(
@@ -56,6 +64,15 @@ export function validateExpense(
   if (split.mode === 'exact') {
     shares = Object.fromEntries(ids.map(id => [id, integer(split.values[id] ?? '0')]));
     if (Object.values(shares).reduce((a, b) => a + b, 0n) !== amount) throw new Error('Exact shares must add up to the bill.');
+  } else if (split.mode === 'adjustment') {
+    const adjustments = Object.fromEntries(selected.map(id => [id, integer(split.values[id], true)]));
+    if (Object.values(adjustments).some(value => value < -MAX_AMOUNT || value > MAX_AMOUNT)) throw new Error('Adjustment is outside the supported range.');
+    const remainder = amount - Object.values(adjustments).reduce((sum, value) => sum + value, 0n);
+    if (remainder < 0n) throw new Error('Adjustments cannot exceed the bill total.');
+    const count = BigInt(selected.length), base = remainder / count, extra = remainder % count;
+    shares = Object.fromEntries(ids.map(id => [id, 0n]));
+    selected.forEach((id, index) => { shares[id] = base + (BigInt(index) < extra ? 1n : 0n) + adjustments[id]; });
+    if (Object.values(shares).some(value => value < 0n)) throw new Error('An adjustment makes someone’s share negative. Reduce the subtraction.');
   } else {
     let weights: Record<string, bigint>;
     if (split.mode === 'equal') {
@@ -134,4 +151,36 @@ export function proposeTransfers(balances: Amounts): Transfer[] {
     if (!creditor.amount) creditors.shift();
   }
   return transfers;
+}
+
+
+/** Offset mutual debts, preserving debts through other people and circular debts. */
+export function combineTransfers(rows: Transfer[]): Transfer[] {
+  const pairs = new Map<string, { left: string; right: string; amount: bigint }>();
+  for (const row of rows) {
+    const [left, right] = [row.sender, row.recipient].sort();
+    if (left === right) throw new Error('Choose different participants.');
+    const key = JSON.stringify([left, right]), before = pairs.get(key)?.amount ?? 0n;
+    pairs.set(key, { left, right, amount: before + integer(row.amount) * (row.sender === left ? 1n : -1n) });
+  }
+  return [...pairs.values()].sort((a, b) => a.left < b.left ? -1 : a.left > b.left ? 1 : a.right < b.right ? -1 : a.right > b.right ? 1 : 0)
+    .filter(row => row.amount !== 0n).map(({ left, right, amount }) => ({ sender: amount > 0n ? left : right, recipient: amount > 0n ? right : left, amount: (amount > 0n ? amount : -amount).toString() }));
+}
+
+export function billTransfers(paid: Amounts, shares: Amounts): Transfer[] {
+  const ids = [...new Set([...Object.keys(paid), ...Object.keys(shares)])];
+  return proposeTransfers(Object.fromEntries(ids.map(id => [id, (integer(paid[id] ?? '0') - integer(shares[id] ?? '0')).toString()])));
+}
+
+export function reverseTransfers(rows: Transfer[]): Transfer[] {
+  return rows.map(row => ({ sender: row.recipient, recipient: row.sender, amount: row.amount }));
+}
+
+export function directTransfers(expenses: { paid: Amounts; shares: Amounts; deleted?: boolean }[], settlements: { sender: string; recipient: string; amount: string; reversed?: boolean }[], opening?: Amounts, checkpoint: Transfer[] = []): Transfer[] {
+  return combineTransfers([
+    ...expenses.filter(row => !row.deleted).flatMap(row => billTransfers(row.paid, row.shares)),
+    ...(opening ? proposeTransfers(opening) : []),
+    ...reverseTransfers(settlements.filter(row => !row.reversed)),
+    ...reverseTransfers(checkpoint),
+  ]);
 }

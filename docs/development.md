@@ -35,3 +35,44 @@ Django allauth owns identity and sessions. Account linking is explicit. Keep acc
 ## UPI handoff
 
 The client can hand off to installed payment apps through `apps/mobile/src/upi.ts`. A handler check only establishes that an app can open the URI. Launch, cancellation and return do not prove a bank payment occurred. Recording bookkeeping and moving money are separate actions.
+
+## Keyboard visibility
+
+Use `TextField` and its variants for forms, or `KeyboardInput` for custom inputs. Put scrollable inputs inside `KeyboardScrollView`; dialogs use `DialogScrollBody` and people sheets supply their own scroller. For a virtualized list with editable content, return `KeyboardScrollView` from `renderScrollComponent`. The nearest container reveals the focused field on focus, keyboard and layout changes, and caps multiline inputs to the available height. Existing keyboard-avoiding ancestors own resizing; the scroller adds only remaining Android keyboard overlap. Web keeps the native browser components. Chat retains its separate composer viewport.
+
+`tests/native/KeyboardProbe.tsx` is an isolated synthetic native entry for screen, dialog, sheet, list, sign-in and chat keyboard checks. It writes measurements to `keyboard-probe.json` in the app's documents directory. Capture each reported `capture` stage, then create `keyboard-continue` there to advance. At the `tap: Message` stage, focus the actual chat composer through native UI automation. Production `index.ts` must never import the probe.
+
+## Remote MCP login
+
+`/mcp/device` is a standalone browser page. It uses the existing allauth email-code endpoints and explicit consent without loading the Expo app. The downloadable `/mcp/login.py` helper wraps `codex mcp login merosplit --no-browser`. It exchanges that CLI's authorization request for a short server code, polls approval, then sends the original callback to the waiting CLI. Codex retains ownership of token storage and refresh. This is an approval bridge, not an advertised RFC 8628 token grant.
+
+Device requests expire after ten minutes. Store only hashes of the device secret and user code. Bind approval to the browser session and displayed account. Deliver a PKCE authorization code once, under a database lock. Preserve state, exact redirect, resource and existing disconnect behavior. Keep secrets and callback URLs out of terminal output and HTTP logs. The public setup page has current remote installation commands.
+
+Run `apps/api/.venv/bin/python -m pytest apps/api/ledger/test_mcp_device.py apps/api/ledger/test_mcp_remote_login.py apps/api/ledger/test_mcp_oauth.py -q` against a disposable PostgreSQL database. For interactive QA, run the helper against a local test server and approve in a separate phone-sized browser. Confirm the phone never leaves the device/consent pages and the CLI reports saved login. Use synthetic accounts only.
+
+## Web sheets and typography
+
+`BottomSheet.web.tsx` uses the [shadcn Base UI Drawer composition](https://ui.shadcn.com/docs/components/base/drawer) with `@base-ui/react` 1.9.0, MIT licensed. The web sheet snaps between 65% and full available height, with swipe dismissal, a fixed header and scrollable content. Arrow keys on the resize handle provide the same resizing action. Base UI owns browser focus, gestures and keyboard-aware scrolling; the shared dialog registration still prevents application restarts during a sheet. Native sheets retain their existing presentation.
+
+HTML field labels and radio labels use the shared typography token, including its sans-serif fallback before custom fonts load. `tests/web/SheetGallery.tsx` provides a synthetic expense form for browser checks without a real account.
+
+## MCP rate limits
+
+Regular MCP traffic uses shared PostgreSQL token buckets, with capacity and refill rate separate:
+
+| Scope | Burst capacity | Tokens per second |
+| --- | ---: | ---: |
+| Ledger calls per authorization | 20 | 1 |
+| Ledger calls per account | 40 | 2 |
+| Ledger calls across the service | 200 | 10 |
+| Connections per account or authorization | 100 | 10 |
+| Connection ingress per network | 200 | 10 |
+| Connection ingress/discovery across the service, each | 1,000 | 100 |
+
+Each request consumes one token from every applicable bucket in one transaction. Stable row locks prevent concurrent workers from overspending. Millionths preserve fractional refill, idle credit stops at capacity, and rejected requests spend no ledger tokens. HTTP `Retry-After` and tool `retry_after_seconds` round the actual refill delay up to a whole second. Retry an unchanged write with its original IDs and payload.
+
+Login-abuse, registration and upload budgets remain separate fixed-window limits. Public OAuth discovery stays available. Test the refill and concurrency rules with `apps/api/.venv/bin/python -m pytest apps/api/ledger/test_mcp_rate_limits.py -q` against disposable PostgreSQL.
+
+Native and browser SQLite access share the serialized adapter in `apps/mobile/src/database.ts`. Keep queries inside a transaction on its supplied `tx`; awaiting a queued root-database call there would deadlock. Native storage retries temporary SQLite BUSY failures for individual statements and BEGIN/COMMIT only, over five bounded backoffs. Never retry an entire callback or SQL batch, since part of it may already have executed. Failed native initialization closes its connection and permits the next call to retry without clearing saved data.
+
+Native review requests use a device-local first-use date and counters, never bill contents. Eligibility starts after seven days, three sessions at least 30 minutes apart, and five distinct server-confirmed new expenses or one recorded settlement. Request only after returning to a quiet group screen, at least 30 seconds into the session and after a two-second pause. Keep a 90-day cooldown and at most two attempts in a rolling year, persisted before invoking the native API. A returned API call does not prove a dialog appeared or a review was submitted. The Me rating row opens a fixed store destination directly and also defers automatic requests. Build 32 safely skips automatic requests because ExpoStoreReview is absent; adding its native module requires a separately approved store build. Web does not request native reviews.

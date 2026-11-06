@@ -1,5 +1,6 @@
 """Committed chat notices. The existing worker owns all external delivery."""
 import secrets
+import unicodedata
 from datetime import timedelta
 from urllib.parse import urlsplit
 from uuid import uuid4
@@ -8,7 +9,7 @@ from allauth.core.internal.sessionkit import get_session_user
 from config.sessions import SessionStore
 from django.conf import settings
 from django.db import transaction
-from django.db.models import Exists, OuterRef, Q
+from django.db.models import Count, Exists, OuterRef, Q, Window
 from django.utils import timezone
 from ninja.errors import HttpError
 
@@ -18,6 +19,7 @@ from .bill_email_models import BillEmailPreference
 from .expense_notifications import verified_recipient
 from .models import BillChatBlock, BillChatDelivery, BillChatNotice, Group, NotificationPreference, PushDevice
 from .otp import EmailCodeLimited, consume_limits
+from .profiles import participant_display_name
 from .store_review import entry_for_email, groups_for_actor, review_ids
 
 
@@ -194,6 +196,42 @@ def _push_eligible(job):
     return bool(user and user.pk == notice.recipient_id)
 
 
+def _preview(value, limit, fallback):
+    # Remove control/bidi formatting, retain emoji joiners, and bound UTF-8 size.
+    clean = ' '.join(''.join(c for c in value if not unicodedata.category(c).startswith('C') or c in '\n\t\u200d').split())
+    return (clean[:limit - 1] + '…' if len(clean) > limit else clean) or fallback
+
+
+def chat_push_content(job):
+    bill = job.notice.message.expense
+    blocked = BillChatBlock.objects.filter(owner_id=job.recipient_id).filter(
+        Q(active=True) | Q(changed_at__gte=OuterRef('created_at')))
+    unread = notice_rows().filter(recipient_id=job.recipient_id, message__expense_id=bill.pk,
+        push_eligible=True, seen_at__isnull=True, cancelled_at__isnull=True, message__hidden_at__isnull=True).exclude(
+        Exists(blocked.filter(blocked_id=OuterRef('message__sender_id'))))
+    preference = NotificationPreference.objects.filter(user_id=job.recipient_id).first()
+    if preference and preference.updates_enabled_at:
+        unread = unread.filter(created_at__gte=preference.updates_enabled_at)
+    latest = list(unread.annotate(unread_count=Window(Count('pk'))).order_by('-created_at', '-message_id')[:2])
+    if not latest:
+        return None
+    count = latest[0].unread_count
+    sender_ids = {job.notice.message.sender_id, *(row.message.sender_id for row in latest)}
+    names = {p.user_id: _preview(participant_display_name(p), 40, 'Someone')
+             for p in bill.group.participants.filter(user_id__in=sender_ids).select_related('user')}
+    bill_name = _preview(bill.description, 70, 'Bill conversation')
+    sender = names.get(latest[0].message.sender_id, 'Someone')
+    title = f'{sender} · {bill_name}'
+    body = _preview(latest[0].message.text, 180, 'New message.')
+    if count > 1:
+        title = f'{bill_name} · {count} new messages'
+        body = '\n'.join(f"{names.get(row.message.sender_id, 'Someone')}: {_preview(row.message.text, 140, 'New message.')}"
+                         for row in reversed(latest))
+    return ({'title': title, 'body': body,
+             'conversation_id': f'chat/{job.recipient_id}/{bill.pk}'},
+            latest[0])
+
+
 def send_chat_notifications(*, limit=100):
     processed = 0
     for _ in range(limit):
@@ -251,9 +289,14 @@ def send_chat_notifications(*, limit=100):
                     continue
                 provider_id = job.provider_id
             else:
-                data = {'type': 'bill_chat', 'event_id': str(job.notice_id), 'recipient_user_id': str(job.recipient_id),
-                        'group_id': str(job.expense.group_id), 'expense_id': str(job.expense_id), 'message_id': str(job.notice.message_id)}
-                provider_id = push_provider.send_bill_notification(job.device, data, body='New messages in a bill conversation.')
+                prepared = chat_push_content(job)
+                if not prepared:
+                    current.update(state='cancelled', lease_id=None, lease_until=None, last_error='ineligible')
+                    continue
+                content, notice = prepared
+                data = {'type': 'bill_chat', 'event_id': str(notice.pk), 'recipient_user_id': str(job.recipient_id),
+                        'group_id': str(job.expense.group_id), 'expense_id': str(job.expense_id), 'message_id': str(notice.message_id)}
+                provider_id = push_provider.send_bill_notification(job.device, data, **content)
         except (email_delivery.EmailDeliveryUnavailable, push_provider.PushFailure) as error:
             invalid = isinstance(error, push_provider.PushFailure) and error.invalid_token
             if invalid:

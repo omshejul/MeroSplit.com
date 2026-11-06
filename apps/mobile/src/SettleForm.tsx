@@ -1,15 +1,20 @@
+import { useLoading } from './LoadingOverlay';
+import { NoticeBanner } from './UIStates';
+import { PersonSelectionList } from './PersonChoice';
+import { currencySymbol } from './currency';
+import { useToast } from './Toast';
+import DetailDialog from './DetailDialog';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useScreenRemovalLock } from './screenRemoval';
-import { AppState, Linking, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { AppState, Linking, Platform, StyleSheet, View } from 'react-native';
 import { Text } from 'react-native-paper';
 import { Alert } from './alerts';
 import { isPersonalPayment } from './personalBalances';
 import { addSettlement, formatMoney, integer, rupeesToPaise } from './accounting';
 import type { Group } from './types';
-import { Button, ErrorText, Icon, useUI } from './ui';
+import { Avatar, Button, ErrorText, Icon, useUI } from './ui';
 import type { Palette } from './ui';
-import { AmountField, RadioChoice } from './FormFields';
-import LoadingSpinner from './LoadingSpinner';
+import { AmountField } from './FormFields';
 import { PaymentAddress, PaymentHelpDialog, UPIAppChooser, WebPaymentQuote } from './PaymentPanels';
 import { copyText } from './clipboard';
 import { availableUPIApps, buildUPIUrl, openUPIPayment, validateUPIPayment } from './upi';
@@ -19,7 +24,7 @@ import { launchPaymentReturn, paymentReturnEvent, paymentReturnNeedsConfirmation
 import type { PaymentReturn, PaymentReturnEvent } from './paymentReturn';
 
 type Payment = { sender: string; recipient: string; amount: string };
-type Props = { group: Group; initial?: Payment; busy: boolean; onSave: (payment: Payment) => Promise<void>; onCancel: () => void;
+type Props = { onRemind?: (payment: Payment) => Promise<void>; group: Group; initial?: Payment; busy: boolean; onSave: (payment: Payment) => Promise<void>; onCancel: () => void;
   selfId: string; onReviewAttempt: (sender: string, recipient: string) => Promise<void>; onPrepareUPI: (payment: Payment) => Promise<UPILaunchQuote>; onCancelUPI: (attemptId: string) => Promise<void>;
   returnPayment: PaymentReturn | null; onArmReturn: (payment: Payment, quote: UPILaunchQuote) => Promise<PaymentReturn>;
   onReturnPaymentChange: (next: PaymentReturn | null) => Promise<void>; onResolveReturn: (record: PaymentReturn, paid: boolean) => Promise<void> };
@@ -32,29 +37,30 @@ function PaymentPersonChoices({ people, selected, label, direction, disabled, on
   const { ui } = useUI();
   return <>
     <Text style={ui.label}>{direction}</Text>
-    {people.map(person => <RadioChoice key={person.id} value={person.id} label={label(person.id)} accessibilityLabel={`${direction} ${label(person.id)}`}
-      selected={selected === person.id} disabled={disabled} onPress={() => onSelect(person.id)} />)}
+    <PersonSelectionList people={people} selected={selected} label={person => label(person.id)} disabled={disabled} onSelect={onSelect} />
   </>;
 }
 
-export default function SettleForm({ group, initial, busy, selfId, onSave, onReviewAttempt, onPrepareUPI, onCancelUPI, onCancel, returnPayment, onArmReturn, onReturnPaymentChange, onResolveReturn }: Props) {
+export default function SettleForm({ group, initial, busy, selfId, onSave, onRemind, onReviewAttempt, onPrepareUPI, onCancelUPI, onCancel, returnPayment, onArmReturn, onReturnPaymentChange, onResolveReturn }: Props) {
   const { palette: colors, ui } = useUI();
+  const notify = useToast();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const proposal = initial && isPersonalPayment(group, selfId, initial.sender, initial.recipient) ? initial : undefined;
   const [sender, setSender] = useState(proposal?.sender ?? selfId);
   const [recipient, setRecipient] = useState(proposal?.recipient ?? '');
   const [amount, setAmount] = useState(proposal ? rupees(proposal.amount) : ''), [error, setError] = useState(''), [saving, setSaving] = useState(false);
-  const [peopleOpen, setPeopleOpen] = useState(!proposal);
+  const [savingAction, setSavingAction] = useState<'record' | 'pay' | 'cancel' | 'remind' | null>(null);
   const [failureHelp, setFailureHelp] = useState(false);
-  const [notice, setNotice] = useState(''), [reviewing, setReviewing] = useState(false);
+  const [notice, setNotice] = useState('');
   const [chooser, setChooser] = useState<{ payment: Payment; target: { vpa: string; name: string }; apps: UPIApp[] } | null>(null);
   const [webQuote, setWebQuote] = useState<{ quote: UPILaunchQuote; url: string; target: { vpa: string; name: string } } | null>(null);
   const [returnRecord, setReturnRecord] = useState(returnPayment), [returnError, setReturnError] = useState(''), [returnReview, setReturnReview] = useState(false);
   const returnRef = useRef(returnPayment), returnWrites = useRef(Promise.resolve());
   const armedHere = useRef<string | null>(null);
   const returnChange = useRef(onReturnPaymentChange); returnChange.current = onReturnPaymentChange;
-  const lock = useRef(false), mounted = useRef(true), disabled = busy || saving || reviewing || !!chooser;
-  useScreenRemovalLock(saving || reviewing || !!chooser);
+  const lock = useRef(false), mounted = useRef(true), disabled = busy || saving || !!chooser;
+  useLoading(saving);
+  useScreenRemovalLock(saving || !!chooser);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   useEffect(() => {
     if (!returnPayment || returnPayment.attemptId !== returnRef.current?.attemptId) {
@@ -119,9 +125,8 @@ export default function SettleForm({ group, initial, busy, selfId, onSave, onRev
 
   useEffect(() => {
     if (!isPersonalPayment(group, selfId, sender, recipient)) return;
-    let current = true; setReviewing(true);
-    void onReviewAttempt(sender, recipient).catch(cause => { if (current) setError(cause instanceof Error ? cause.message : 'Could not review this payment.'); }).finally(() => { if (current) setReviewing(false); });
-    return () => { current = false; };
+    // Advisory refresh only. Save and UPI preparation revalidate on the action path.
+    void onReviewAttempt(sender, recipient).catch(() => {});
   }, [sender, recipient]);
   useEffect(() => {
     if (!webQuote) return;
@@ -138,13 +143,13 @@ export default function SettleForm({ group, initial, busy, selfId, onSave, onRev
   };
   async function save(payment: Payment) {
     if (lock.current || busy) return;
-    lock.current = true; setSaving(true);
+    lock.current = true; setSaving(true); setSavingAction('record');
     try {
       if (!isPersonalPayment(group, selfId, payment.sender, payment.recipient)) throw new Error('Choose a payment to or from you.');
       await onSave(payment);
     }
     catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not record the payment. Try again.'); }
-    finally { lock.current = false; setSaving(false); }
+    finally { lock.current = false; setSaving(false); setSavingAction(null); }
   }
   async function handoff(payment: Payment, target: { vpa: string; name: string }, app?: UPIApp) {
     const quote = await onPrepareUPI(payment);
@@ -152,7 +157,6 @@ export default function SettleForm({ group, initial, busy, selfId, onSave, onRev
     if (quote.amount !== payment.amount || quote.vpa !== target.vpa || quote.recipient !== target.name) throw new Error('The amount or recipient changed. Review the payment again.');
     const url = buildUPIUrl(quote);
     if (Platform.OS === 'web') {
-      setPeopleOpen(false);
       await armReturn(payment, quote); await transitionReturn({ type: 'opening' });
       if (mounted.current) setWebQuote({ quote, url, target });
       return;
@@ -185,7 +189,7 @@ export default function SettleForm({ group, initial, busy, selfId, onSave, onRev
   }
   async function pay(app?: UPIApp) {
     if (lock.current || busy || group.archived) return;
-    lock.current = true; setSaving(true); setError(''); setNotice('');
+    lock.current = true; setSaving(true); setSavingAction('pay'); setError(''); setNotice('');
     try {
       if (app && chooser) { const selected = chooser; setChooser(null); await handoff(selected.payment, selected.target, app); return; }
       const payment = { sender, recipient, amount: rupeesToPaise(amount) }, target = validateUPIPayment(group, selfId, payment);
@@ -196,17 +200,17 @@ export default function SettleForm({ group, initial, busy, selfId, onSave, onRev
       if (apps.length === 1) await handoff(payment, target, apps[0]);
       else setChooser({ payment, target, apps });
     } catch (cause) { if (mounted.current) setError(cause instanceof Error ? cause.message : 'Could not open UPI. Use the payment address in your UPI app.'); }
-    finally { lock.current = false; if (mounted.current) setSaving(false); }
+    finally { lock.current = false; if (mounted.current) { setSaving(false); setSavingAction(null); } }
   }
   async function cancelAttempt(id: string) {
     if (lock.current || busy) return;
-    lock.current = true; setSaving(true); setError('');
-    try { await onCancelUPI(id); if (mounted.current) { setWebQuote(null); setNotice('Unpaid attempt cancelled.'); } }
+    lock.current = true; setSaving(true); setSavingAction('cancel'); setError('');
+    try { await onCancelUPI(id); if (mounted.current) { setWebQuote(null); notify('Unpaid attempt cancelled.'); } }
     catch (cause) { if (mounted.current) setError(cause instanceof Error ? cause.message : 'Could not cancel this attempt.'); }
-    finally { lock.current = false; if (mounted.current) setSaving(false); }
+    finally { lock.current = false; if (mounted.current) { setSaving(false); setSavingAction(null); } }
   }
   async function copy(text: string) {
-    try { await copyText(text); setNotice('Copied.'); }
+    try { await copyText(text); notify('Copied.'); }
     catch { setError('Select the payment details below and copy them.'); }
   }
   function confirm() {
@@ -226,6 +230,14 @@ export default function SettleForm({ group, initial, busy, selfId, onSave, onRev
   const debt = group.transfers.find(value => value.sender === sender && value.recipient === recipient);
   const activeAttempt = group.payment_attempts?.find(value => value.sender === sender && value.recipient === recipient && ['prepared', 'reported'].includes(value.state));
   const canPay = sender === selfId && !!debt && !!profile && !group.archived && activeAttempt?.state !== 'reported';
+  const canRemind = recipient === selfId && !!debt && otherPerson?.user_id != null && !otherPerson.removed && !group.archived && !!onRemind;
+  async function remind() {
+    if (lock.current || disabled || !canRemind) return;
+    lock.current = true; setSaving(true); setSavingAction('remind'); setError('');
+    try { await onRemind!(debt!); }
+    catch (cause) { if (mounted.current) setError(cause instanceof Error ? cause.message : 'Could not send the reminder. Try again.'); }
+    finally { lock.current = false; if (mounted.current) { setSaving(false); setSavingAction(null); } }
+  }
   let amountLabel = '';
   try { amountLabel = formatMoney(rupeesToPaise(amount)); } catch { /* Validate on confirmation, without interrupting typing. */ }
   const pendingReturn = returnRecord && returnRecord.groupId === group.id && returnRecord.sender === selfId && (returnRecord.launch === 'opened' || returnRecord.launch === 'opening' && (Platform.OS !== 'web' || !webQuote && !saving) || paymentReturnNeedsConfirmation(returnRecord)) ? returnRecord : null;
@@ -233,9 +245,8 @@ export default function SettleForm({ group, initial, busy, selfId, onSave, onRev
     const needsAnswer = paymentReturnNeedsConfirmation(pendingReturn);
     return <View style={styles.form}>
       <Text style={ui.caption}>{group.name}</Text>
-      <Text style={[ui.section, styles.returnTitle]}>{needsAnswer ? `Did you pay ${pendingReturn.payeeName} ${formatMoney(pendingReturn.amount)}?` : `${formatMoney(pendingReturn.amount)} to ${pendingReturn.payeeName}`}</Text>
+      <Text style={[ui.section, styles.returnTitle]}>{needsAnswer ? `Did you pay ${pendingReturn.payeeName} ${formatMoney(pendingReturn.amount, 'INR')}?` : `${formatMoney(pendingReturn.amount, 'INR')} to ${pendingReturn.payeeName}`}</Text>
       <PaymentAddress name={pendingReturn.payeeName} vpa={pendingReturn.vpa} />
-      <LoadingSpinner visible={busy || saving || reviewing} />
       {!!returnError && <ErrorText>{returnError}</ErrorText>}
       {returnReview ? <Button title="Review balance" kind="primary" onPress={onCancel} disabled={disabled} /> : pendingReturn.decision !== null ?
         <Button title={saving ? 'Confirming update…' : 'Try again'} kind="primary" onPress={() => void resolveReturn(pendingReturn.decision === 'paid')} disabled={disabled} /> : needsAnswer ? <>
@@ -248,33 +259,34 @@ export default function SettleForm({ group, initial, busy, selfId, onSave, onRev
   }
   return <View style={styles.form}>
     <Text style={ui.caption}>{group.name}</Text>
-    {!webQuote && <View style={styles.field}><Text style={ui.rowTitle}>From {label(sender)}</Text><Text style={ui.rowTitle}>To {label(recipient)}</Text></View>}
-    <LoadingSpinner visible={busy || saving || reviewing} />
-    {group.archived && <Text style={ui.notice}>Reopen this group in settings before recording a payment.</Text>}
-    {!webQuote && <><AmountField label="Amount (₹)" value={amount}
-      onChangeText={value => { setAmount(value); setError(''); setWebQuote(null); }} editable={!disabled && !webQuote} placeholder="0" />
-    <View style={styles.people}>
-      <Pressable accessibilityRole="button" accessibilityState={{ expanded: peopleOpen, disabled: disabled || !!webQuote }} disabled={disabled || !!webQuote} onPress={() => setPeopleOpen(value => !value)} style={styles.summary}>
-        <Text style={ui.rowTitle}>Change people</Text><View style={{ transform: [{ rotate: peopleOpen ? '180deg' : '0deg' }] }}><Icon name="down" size={20} /></View>
-      </Pressable>
-      {peopleOpen && <View style={styles.reveal}>
+    {!webQuote && <View style={styles.paymentPeople}>
+      <View style={styles.paymentPerson}><Avatar size={72} name={label(sender)} photo={group.participants.find(person => person.id === sender)?.profile_photo} /><Text style={[ui.rowTitle, styles.personName]}>From {label(sender)}</Text></View>
+      <View style={{ height: 72, justifyContent: 'center' }}><Icon name="direction" size={32} color={colors.muted} /></View>
+      <View style={styles.paymentPerson}><Avatar size={72} name={label(recipient)} photo={group.participants.find(person => person.id === recipient)?.profile_photo} /><Text style={[ui.rowTitle, styles.personName]}>To {label(recipient)}</Text></View>
+    </View>}
+    {group.archived && <NoticeBanner>Reopen this group in settings before recording a payment.</NoticeBanner>}
+    {!webQuote && <><AmountField label={`Amount (${currencySymbol()})`} value={amount}
+      onChangeText={value => { setAmount(value); setError(''); setWebQuote(null); }} editable={!disabled && !webQuote} placeholder="0" style={styles.paymentAmount} containerStyle={{ width: '100%', maxWidth: 360, alignSelf: 'center' }} />
+    <DetailDialog busy={disabled} title="Change people" icon="people">
         <PaymentPersonChoices direction="From" people={group.participants.filter(person => !person.removed)} selected={sender} label={label} disabled={disabled}
           onSelect={id => { setSender(id); if (id !== selfId) setRecipient(selfId); else if (recipient === selfId) setRecipient(''); setError(''); setWebQuote(null); }} />
         <PaymentPersonChoices direction="To" people={group.participants.filter(person => person.id !== sender && !person.removed && (sender === selfId || person.id === selfId))} selected={recipient} label={label} disabled={disabled}
           onSelect={id => { setRecipient(id); setError(''); setWebQuote(null); }} />
-      </View>}
-    </View>
+    </DetailDialog>
     </>}
     {otherPerson?.payment_profile && !webQuote && <PaymentAddress name={label(otherPerson.id)} vpa={otherPerson.payment_profile.vpa} />}
     {sender === selfId && debt && !profile && <Text style={ui.caption}>Ask {label(recipient)} to {group.participants.find(person => person.id === recipient)?.user_id != null ? 'add a UPI address' : 'join and add a UPI address'}.</Text>}
-    {canPay && !webQuote && <><Text style={ui.caption}>Pay up to {formatMoney(debt!.amount)}.</Text><Button title={saving ? 'Preparing…' : amountLabel ? `Pay ${amountLabel} with UPI` : 'Pay with UPI'} kind="primary" icon="pay" disabled={disabled || !amountLabel} onPress={() => void pay()} /></>}
+    {canPay && !webQuote && <><Text style={ui.caption}>Pay up to {formatMoney(debt!.amount, 'INR')}.</Text><Button title={savingAction === 'pay' ? 'Preparing…' : amountLabel ? `Pay ${formatMoney(rupeesToPaise(amount), 'INR')} with UPI` : 'Pay with UPI'} kind="primary" icon="pay" disabled={disabled || !amountLabel} onPress={() => void pay()} /></>}
     {webQuote && <WebPaymentQuote quote={webQuote.quote} url={webQuote.url} disabled={disabled}
       onCopy={text => void copy(text)} onOpen={openWebPayment} onReview={() => void reviewWebPayment()} />}
     {activeAttempt?.state === 'reported' && sender === selfId && <Text style={ui.caption}>This payment is already reported. Check it before paying again.</Text>}
-    {activeAttempt?.state === 'prepared' && sender === selfId && <Button title="Cancel unpaid attempt" kind="text" disabled={disabled} onPress={() => Alert.alert('Cancel unpaid attempt?', 'Cancel this unpaid attempt?', [{ text: 'Keep', style: 'cancel' }, { text: 'Cancel attempt', onPress: () => void cancelAttempt(activeAttempt.id) }])} />}
+    {activeAttempt?.state === 'prepared' && sender === selfId && <Button title={savingAction === 'cancel' ? 'Cancelling…' : 'Cancel unpaid attempt'} kind="text" disabled={disabled} onPress={() => Alert.alert('Cancel unpaid attempt?', 'Cancel this unpaid attempt?', [{ text: 'Keep attempt', style: 'cancel' }, { text: 'Cancel attempt', onPress: () => void cancelAttempt(activeAttempt.id) }])} />}
     {!!notice && <Text accessibilityLiveRegion="polite" style={ui.caption}>{notice}</Text>}
     {!!error && <ErrorText live>{error}</ErrorText>}
-    {!webQuote && <Button title={amountLabel ? `Record ${amountLabel} already paid` : 'Record a payment already made'} accessibilityLabel={amountLabel ? `Record ${amountLabel} to ${label(recipient)}` : 'Record payment'} onPress={confirm} disabled={disabled || group.archived || !isPersonalPayment(group, selfId, sender, recipient)} kind={canPay ? 'secondary' : 'primary'} icon="check" />}
+    {!webQuote && <View style={{ gap: 10 }}><NoticeBanner>Recording a payment only updates your balance. No money will be moved.</NoticeBanner>
+      <Button title={savingAction === 'record' ? 'Recording…' : amountLabel ? `Record ${amountLabel} already paid` : 'Record a payment already made'} accessibilityLabel={amountLabel ? `Record ${amountLabel} to ${label(recipient)}` : 'Record payment'} onPress={confirm} disabled={disabled || group.archived || !isPersonalPayment(group, selfId, sender, recipient)} kind={canPay ? 'secondary' : 'primary'} icon="check" />
+    </View>}
+    {canRemind && !webQuote && <Button title={savingAction === 'remind' ? 'Sending…' : 'Remind'} kind="text" icon="notifications" accessibilityLabel={`Remind ${label(sender)} about ${formatMoney(debt!.amount)}`} disabled={disabled} onPress={() => void remind()} />}
     <UPIAppChooser apps={chooser?.apps ?? null} recipient={chooser?.target ?? null} disabled={busy || saving} onChoose={app => void pay(app)} onDismiss={() => { if (!busy && !saving) setChooser(null); }} />
   </View>;
 }
@@ -282,6 +294,10 @@ export default function SettleForm({ group, initial, busy, selfId, onSave, onRev
 const makeStyles = (colors: Palette) => StyleSheet.create({
   returnTitle: { fontSize: 24, lineHeight: 31 },
   form: { gap: 12 }, field: { gap: 7 },
+  paymentPeople: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'center', gap: 16, paddingVertical: 20 },
+  paymentPerson: { flex: 1, maxWidth: 160, minWidth: 0, alignItems: 'center', gap: 12 },
+  personName: { textAlign: 'center', flexShrink: 1 },
+  paymentAmount: { fontSize: 32, lineHeight: 42, textAlign: 'center', minHeight: 68 },
   people: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
   summary: { minHeight: 52, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 }, reveal: { gap: 12, paddingBottom: 12 },
 });

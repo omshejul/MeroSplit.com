@@ -7,9 +7,9 @@ from uuid import UUID
 from django.core import signing
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from django.db.models import Exists, F, OuterRef, Q, Value
+from django.db.models import BooleanField, Exists, F, OuterRef, Q, Value
 from django.db.models.fields.json import KeyTextTransform
-from django.db.models.fields.tuple_lookups import TupleLessThan
+from django.db.models.fields.tuple_lookups import TupleLessThan, TupleLessThanOrEqual
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 from ninja.errors import HttpError
@@ -75,7 +75,7 @@ def _page(actor, group, resource, limit=50, cursor=None, supplied=None):
             raise HttpError(422, "This cursor belongs to another history view")
         _check_version(group, payload.get("version"))
         after = payload.get("after")
-        if not isinstance(after, list) or len(after) != (1 if resource == "activity" else 2):
+        if not isinstance(after, list) or len(after) != (1 if resource == "activity" else 3 if resource == "bills" else 2):
             raise HttpError(422, "Invalid history position")
 
     if resource == "bills":
@@ -111,8 +111,9 @@ def _page(actor, group, resource, limit=50, cursor=None, supplied=None):
                     raise ValueError("Missing history position")
                 # Native row comparison reaches the composite index directly,
                 # rather than filtering all preceding rows through an OR.
-                query = query.filter(TupleLessThan((F(order), F("id")), tuple(after)))
-        rows = list(query.order_by(f"-{order}", *([] if resource == "activity" else ["-id"]))[:limit + 1])
+                fields = (F(order), F("created_at"), F("id")) if resource == "bills" else (F(order), F("id"))
+                query = query.filter(TupleLessThan(fields, tuple(after)))
+        rows = list(query.order_by(f"-{order}", *(["-created_at", "-id"] if resource == "bills" else [] if resource == "activity" else ["-id"]))[:limit + 1])
     except (ValidationError, ValueError, TypeError) as exc:
         raise HttpError(422, "Invalid history position") from exc
     more, rows = len(rows) > limit, rows[:limit]
@@ -137,7 +138,7 @@ def _page(actor, group, resource, limit=50, cursor=None, supplied=None):
     next_cursor = None
     if more:
         row = rows[-1]
-        position = [row["sequence"]] if resource == "activity" else [getattr(row, order).isoformat(), str(row.id)]
+        position = [row["sequence"]] if resource == "activity" else [getattr(row, order).isoformat(), *([row.created_at.isoformat()] if resource == "bills" else []), str(row.id)]
         next_cursor = signing.dumps({**context, "after": position}, salt=CURSOR_SALT)
     return {"read_mode": "page", "group_id": str(group.id), "version": group.version,
             "items": items, "next_cursor": next_cursor}
@@ -208,21 +209,25 @@ def transaction_page(actor, group, limit=50, cursor=None, q=""):
     q = q.strip()
     if len(q) > 200:
         raise HttpError(422, "Check the bill search")
-    context = {"actor": actor.pk, "group": str(group.id), "version": group.version, "resource": "transactions", "limit": limit, "q": q}
+    context = {"actor": actor.pk, "group": str(group.id), "version": group.version, "resource": "transactions", "limit": limit, "q": q, "ordering": 2}
     after = None
     if cursor:
         try:
             if len(cursor) > 4096:
                 raise ValueError()
             payload = signing.loads(cursor, salt=CURSOR_SALT, max_age=86400)
-            if not isinstance(payload, dict) or any(payload.get(key) != value for key, value in context.items() if key != "version"):
+            if not isinstance(payload, dict) or any(payload.get(key) != value for key, value in context.items() if key not in {"version", "ordering"}):
                 raise ValueError()
             _check_version(group, payload.get("version"))
+            if payload.get("ordering") != 2:
+                raise HttpError(409, "History order changed; refresh this group")
             after = payload["after"]
-            if not isinstance(after, list) or len(after) != 4 or type(after[0]) is not int or after[0] not in (0, 1) or type(after[2]) is not int or after[2] not in (0, 1):
+            if not isinstance(after, list) or len(after) != 5 or type(after[0]) is not int or after[0] not in (0, 1) or type(after[3]) is not int or after[3] not in (0, 1):
                 raise ValueError()
-            after = (after[0], date.fromisoformat(after[1]) if after[0] else None, after[2], UUID(after[3]))
-            if not after[0] and (payload["after"][1] is not None or after[2] != 1):
+            after = (after[0], date.fromisoformat(after[1]) if after[0] else None, datetime.fromisoformat(after[2]), after[3], UUID(after[4]))
+            if after[2].tzinfo is None:
+                raise ValueError()
+            if not after[0] and (payload["after"][1] is not None or after[3] != 1):
                 raise ValueError()
         except signing.SignatureExpired as exc:
             raise HttpError(409, "History page expired; refresh its summary") from exc
@@ -239,20 +244,21 @@ def transaction_page(actor, group, limit=50, cursor=None, q=""):
                 continue
             if known == after[0]:
                 if not known:
-                    query = query.filter(id__lt=after[3])
-                elif kind == after[2]:
-                    query = query.filter(TupleLessThan((F("date"), F("id")), (after[1], after[3])))
+                    query = query.filter(TupleLessThan((F("created_at"), F("id")), (after[2], after[4])))
+                elif kind == after[3]:
+                    query = query.filter(TupleLessThan((F("date"), F("created_at"), F("id")), (after[1], after[2], after[4])))
                 else:
-                    query = query.filter(**{"date__lte" if kind < after[2] else "date__lt": after[1]})
+                    compare = TupleLessThanOrEqual if kind < after[3] else TupleLessThan
+                    query = query.filter(compare((F("date"), F("created_at")), (after[1], after[2])))
         # Each branch contributes its best K candidates; the database applies one
         # global ordering/limit over their UNION, including all cross-kind ties.
-        branches.append(query.annotate(kind_order=Value(kind), known=Value(known)).values("id", "date", "kind_order", "known")
-                        .order_by(*(["-date"] if known else []), "-id")[:limit + 1])
+        branches.append(query.annotate(kind_order=Value(kind), known=Value(known)).values("id", "date", "created_at", "kind_order", "known")
+                        .order_by(*(["-date"] if known else []), "-created_at", "-id")[:limit + 1])
     if branches:
         # Django returns the original sliced queryset for UNION with no peers.
         # A lone branch already has the same ordering as the global result.
         keys = list(branches[0]) if len(branches) == 1 else list(
-            branches[0].union(*branches[1:], all=True).order_by("-known", "-date", "-kind_order", "-id")[:limit + 1])
+            branches[0].union(*branches[1:], all=True).order_by("-known", "-date", "-created_at", "-kind_order", "-id")[:limit + 1])
     else:
         keys = []
     more, keys = len(keys) > limit, keys[:limit]
@@ -263,19 +269,20 @@ def transaction_page(actor, group, limit=50, cursor=None, q=""):
     for key in keys:
         if key["kind_order"] == 0:
             bill = expense_dict(bills[key["id"]])
-            items.append({"kind": "bill", "date": bill["date"], "bill": {field: bill[field] for field in ("id", "version", "description", "total", "paid", "shares", "date", "category", "category_auto", "deleted", "added_by")}})
+            items.append({"kind": "bill", "date": bill["date"], "bill": {field: bill[field] for field in ("id", "version", "description", "total", "paid", "shares", "date", "time", "created_at", "category", "category_auto", "deleted", "added_by")}})
         else:
             payment = settlement_dict(payments[key["id"]])
             items.append({"kind": "payment", "date": payment["date"], "payment": payment})
     position = keys[-1] if more else None
     next_cursor = signing.dumps({**context, "after": [position["known"], position["date"].isoformat() if position["date"] else None,
-                                                    position["kind_order"], str(position["id"])]}, salt=CURSOR_SALT) if position else None
+                                                    position["created_at"].isoformat(), position["kind_order"], str(position["id"])]}, salt=CURSOR_SALT) if position else None
     return {"read_mode": "page", "group_id": str(group.id), "version": group.version, "items": items, "next_cursor": next_cursor}
 
 
 ACTIVITY_KINDS = ["expense_saved", "expense_deleted", "expense_restored", "expense_reversed", "manual_settlement", "payment_confirm",
                   "settlement_reversed", "participant_added", "participant_claim_approved", "participant_removed",
-                  "group_created", "group_archived", "group_unarchived"]
+                  "group_created", "group_archived", "group_unarchived", "group_renamed",
+                  "group_photo_changed", "group_photo_removed", "participant_nickname_changed"]
 
 
 def _activity_groups(actor):
@@ -293,6 +300,14 @@ def account_activity(actor, *, limit=50, cursor=None):
     revision = _activity_revision(actor)
     context = {"actor": actor.pk, "resource": "account_activity", "limit": limit}
     query = Change.objects.filter(group_id__in=_activity_groups(actor).values("id"), kind__in=ACTIVITY_KINDS)
+    # Keep icon choices in version history without making them human activity.
+    icon_only = Q(kind="expense_saved", data__version__gt=1) & (
+        ~Q(data__category=F("data___history__before__category"))
+        | ~Q(data__category_auto=F("data___history__before__category_auto")))
+    for field in ("description", "total", "paid", "shares", "split", "date", "notes", "deleted"):
+        icon_only &= Q(**{f"data__{field}": F(f"data___history__before__{field}")})
+    # Legacy events lack before metadata. Unknown comparisons are not proof of an icon-only edit.
+    query = query.exclude(Coalesce(icon_only, Value(False), output_field=BooleanField()))
     prior_payment_event = Change.objects.alias(payment_id=Coalesce(KeyTextTransform("settlement_id", "data"), KeyTextTransform("id", "data"))).filter(
         group_id=OuterRef("group_id"), kind__in=["manual_settlement", "payment_confirm"], payment_id=OuterRef("confirmed_payment_id"),
     ).filter(Q(kind="manual_settlement") | Q(id__lt=OuterRef("id")))
@@ -326,7 +341,7 @@ def account_activity(actor, *, limit=50, cursor=None):
     for row in rows:
         if row.actor_id:
             actors |= Q(group_id=row.group_id, user_id=row.actor_id)
-        value = row.data.get("settlement_id") if row.kind == "payment_confirm" else row.data.get("participant_id") if row.kind == "participant_claim_approved" else row.data.get("id")
+        value = row.data.get("settlement_id") if row.kind == "payment_confirm" else row.data.get("participant_id") if row.kind in ("participant_claim_approved", "participant_nickname_changed") else row.data.get("id")
         try:
             identifier = UUID(value) if isinstance(value, str) else None
         except ValueError:
@@ -369,13 +384,15 @@ def account_activity(actor, *, limit=50, cursor=None):
             item["payment"] = {"id": str(payment.id), "sender": person_view(sender), "recipient": person_view(recipient),
                                "amount": str(payment.amount), "reversed": payment.reversed}
         elif row.kind.startswith("participant_"):
-            person = people.get(row.data.get("participant_id") if row.kind == "participant_claim_approved" else row.data.get("id"))
+            person = people.get(row.data.get("participant_id") if row.kind in ("participant_claim_approved", "participant_nickname_changed") else row.data.get("id"))
             if not person or person.group_id != row.group_id:
                 continue
-            item["kind"] = {"participant_added": "member_added", "participant_claim_approved": "member_joined", "participant_removed": "member_removed"}[row.kind]
+            item["kind"] = {"participant_added": "member_added", "participant_claim_approved": "member_joined", "participant_removed": "member_removed", "participant_nickname_changed": "member_nickname_changed"}[row.kind]
             item["person"] = person_view(person)
         else:
             item["kind"] = row.kind
+        if row.kind in ("group_renamed", "participant_nickname_changed"):
+            item["name_change"] = {"before": row.data.get("before", ""), "after": row.data.get("after", "")}
         items.append(item)
     if _activity_revision(actor) != revision:
         raise HttpError(409, "Activity changed; refresh before loading more")
@@ -401,7 +418,11 @@ def expense_detail(actor, group_id, expense_id, *, version=None):
 def group_summary(actor, group_id, *, limit=50):
     _limit(limit)
     group = visible_group(actor, group_id, lock=True)
-    participants = list(group.participants.select_related("user").order_by("id"))
+    participants = list(group.participants.select_related("user").annotate(
+        has_pending_payments=Exists(group.attempts.filter(state__in=["prepared", "reported"])),
+    ).order_by("id"))
+    from .media import group_photo, profile_photos
+    photos = profile_photos(person.user_id for person in participants if not person.removed and person.user_id and person.user.is_active)
     group._attribution_names = {person.user_id: participant_display_name(person) for person in participants if person.user_id}
     opening = OpeningBalance.objects.filter(group=group).first()
     finance = finance_state(
@@ -409,6 +430,7 @@ def group_summary(actor, group_id, *, limit=50):
         group.expenses.filter(deleted=False).values_list("total", "paid", "shares").iterator(chunk_size=1000),
         group.settlements.filter(reversed=False).values_list("sender_id", "recipient_id", "amount").iterator(chunk_size=1000),
         opening.balances if opening and opening.accepted else None,
+        simplify_debts=group.simplify_debts, debt_checkpoint=group.debt_checkpoint,
     )
     profiles = {profile.user_id: {"vpa": profile.vpa, "version": profile.version, "bank_verified": False}
                 for profile in PaymentProfile.objects.filter(user_id__in=[person.user_id for person in participants if person.user_id and not person.removed])}
@@ -425,14 +447,16 @@ def group_summary(actor, group_id, *, limit=50):
                                                        participant__user__isnull=True, revoked=False, approved=False, expires_at__gt=timezone.now())
                    .select_related("claimant").order_by("participant_id", "-expires_at", "-id").distinct("participant_id")[:100]]
     return {
-        "read_mode": "summary", "attribution_version": 1, "id": str(group.id), "name": group.name, "version": group.version,
+        "read_mode": "summary", "attribution_version": 1, "id": str(group.id), "name": group.name, "group_photo": group_photo(group), "version": group.version,
         "hidden": next(person.hidden for person in participants if person.user_id == actor.pk and not person.removed),
-        "archived": group.archived, "is_direct": group.is_direct, "owner_id": group.owner_id,
-        "participants": [{"id": str(person.id), "name": participant_display_name(person), "recorded_name": person.name,
-                          "user_id": person.user_id, "removed": person.removed,
+        "archived": group.archived, "is_direct": group.is_direct, "simplify_debts": group.simplify_debts, "owner_id": group.owner_id,
+        "participants": [{"id": str(person.id), "name": participant_display_name(person), "recorded_name": person.name, "default_name": participant_display_name(person, use_override=False),
+                          "user_id": person.user_id, "removed": person.removed, "profile_photo": photos.get(person.user_id) if not person.removed else None,
                           "account_email": person.user.email if person.user_id and person.user.is_active and not person.removed else None,
                           "payment_profile": profiles.get(person.user_id), **({"email": person.contact_email} if group.owner_id == actor.pk else {})}
                          for person in participants],
+        "debt_checkpoint": group.debt_checkpoint,
+        "can_change_simplify": not (opening and not opening.accepted) and not participants[0].has_pending_payments,
         **finance, "expenses": pages["bills"]["items"], "activity": pages["activity"]["items"],
         "settlements": pages["settlements"]["items"], "payment_attempts": pages["attempts"]["items"], "invites": invites,
         "transactions": transactions["items"],

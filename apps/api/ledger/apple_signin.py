@@ -32,6 +32,8 @@ def apple_error(request, code="apple_unavailable", status=400):
     message = "Could not sign in with Apple. Try again or use email."
     if code == "apple_email_conflict":
         message = "Sign in with your email first, then connect Apple in Me."
+    elif code == "apple_already_connected":
+        message = "This Apple ID is connected to another MeroSplit account. To access that account, sign out, then choose “Continue with Apple” on the sign-in screen."
     elif code == "apple_account_changed":
         message = "Your signed-in account changed. Try again. Saved changes are safe."
     return APIResponse(request, status=status, errors=[{"code": code, "message": message}])
@@ -146,10 +148,11 @@ class AppleTokenView(APIView):
             if existing and (not existing.user.is_active or entry_for_email(existing.user.email)):
                 raise ValidationError("Invalid Apple account")
             if data["process"] == "connect" and existing and existing.user_id != request.user.pk:
-                return apple_error(request, "apple_email_conflict", 409)
+                return apple_error(request, "apple_already_connected", 409)
             if data["process"] == "login" and not existing and (not email
-                    or get_user_model().objects.filter(email__iexact=email).exists()
-                    or EmailAddress.objects.filter(email__iexact=email).exists()):
+                    or ((get_user_model().objects.filter(email__iexact=email).exists()
+                         or EmailAddress.objects.filter(email__iexact=email).exists())
+                        and EmailAddress.objects.filter(email__iexact=email, verified=True, user__is_active=True).count() != 1)):
                 return apple_error(request, "apple_email_conflict", 409)
             exchanged = apple_request("token", {"grant_type": "authorization_code", "code": data["authorization_code"]})
             if not isinstance(exchanged, dict) or not isinstance(exchanged.get("refresh_token"), str) or not 1 <= len(exchanged["refresh_token"]) <= 16384:
@@ -174,7 +177,7 @@ class AppleTokenView(APIView):
         except requests.RequestException:
             return apple_error(request, status=503)
         except IntegrityError:
-            return apple_error(request, "apple_email_conflict", 409)
+            return apple_error(request, status=409)
         except (ValidationError, OAuth2Error, jwt.PyJWTError, SignupClosedException, SocialAccount.DoesNotExist,
                 KeyError, TypeError, ValueError, InvalidToken):
             return apple_error(request)
@@ -184,6 +187,11 @@ class AppleTokenView(APIView):
 def after_account_deletion(actor, result):
     """Capture encrypted credentials before cascade; revoke only AFTER deletion commits."""
     accounts = list(SocialAccount.objects.filter(user=actor, provider="apple").values_list("pk", flat=True))
+    revoke_apple_accounts_after_commit(accounts, result)
+
+
+@sensitive_variables()
+def revoke_apple_accounts_after_commit(accounts, result):
     if not accounts:
         return
     encrypted = list(SocialToken.objects.filter(account_id__in=accounts).values_list("token_secret", flat=True))

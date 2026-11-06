@@ -1,9 +1,10 @@
 import { accountOwner, ApiError, request } from './api.ts';
 import type { Expense, Group, Session } from './types.ts';
+import { currencyCode } from './currency.ts';
 
 export type PushPermission = 'ask' | 'granted' | 'denied';
 export type PushDevice = { provider: 'expo'; token: string; platform: 'ios' | 'android' };
-export type PushPreferences = { installation_id: string; owner: string | null; opted_in: boolean; binding: PushDevice | null; pending_off?: boolean };
+export type PushPreferences = { installation_id: string; owner: string | null; opted_in: boolean; binding: PushDevice | null; pending_off?: boolean; pending_on?: boolean; revision?: number };
 export type PushTarget = { group: Group; expenseId: string | null; chat?: true };
 export type PushSave = (state: PushPreferences) => Promise<void>;
 export const emptyPushPreferences = (installation_id: string): PushPreferences => ({ installation_id, owner: null, opted_in: false, binding: null });
@@ -18,16 +19,21 @@ export async function consentToPush(session: Session, state: PushPreferences, sa
   await save(next); return next;
 }
 
+export function pushChoice(session: Session, state: PushPreferences, enabled: boolean): PushPreferences {
+  return { ...state, owner: accountOwner(session), opted_in: enabled, pending_on: enabled, pending_off: !enabled,
+    binding: state.owner === accountOwner(session) ? state.binding : null, revision: (state.revision ?? 0) + 1 };
+}
+
 export async function unregisterPushDevice(session: Session, state: PushPreferences, save: PushSave, send: typeof request = request): Promise<PushPreferences> {
   if (state.owner !== accountOwner(session)) { const next = emptyPushPreferences(state.installation_id); await save(next); return next; }
-  // Persist retry intent without presenting an unconfirmed OFF choice as saved.
-  await save({ ...state, pending_off: true });
+  // New clients persist OFF immediately; the binding remains only for retry.
+  await save({ ...state, ...(state.revision ? { opted_in: false } : {}), pending_off: true });
   try {
-    const result = await send<{ removed: boolean }>(session, `/me/push-devices/${state.installation_id}`, 'DELETE');
+    const result = await send<{ removed: boolean }>(session, `/me/push-devices/${state.installation_id}${state.revision ? `?preference_revision=${state.revision}` : ''}`, 'DELETE');
     if (result.removed !== true) throw new Error('Could not confirm notifications are off. Try again.');
   }
   catch (error) { if (!(error instanceof ApiError && error.status === 401)) throw error; }
-  const next = emptyPushPreferences(state.installation_id);
+  const next = state.revision ? { ...state, opted_in: false, binding: null, pending_off: false, pending_on: false } : emptyPushPreferences(state.installation_id);
   await save(next); return next;
 }
 
@@ -36,9 +42,9 @@ export async function refreshPushDevice(session: Session, state: PushPreferences
   if (state.pending_off || !state.opted_in || permission !== 'granted') return unregisterPushDevice(session, state, save, send);
   const device = await getDevice();
   if (!/^(?:Expo|Exponent)PushToken\[[^\]]+\]$/.test(device.token) || device.provider !== 'expo' || !['ios', 'android'].includes(device.platform)) throw new Error('Notifications are unavailable on this device.');
-  const result = await send<{ id: string; enabled: boolean }>(session, `/me/push-devices/${state.installation_id}`, 'PUT', { ...device, bill_chat: true });
+  const result = await send<{ id: string; enabled: boolean }>(session, `/me/push-devices/${state.installation_id}`, 'PUT', { ...device, bill_chat: true, ledger_updates: true, currency: currencyCode(), ...(state.revision ? { preference_revision: state.revision } : {}) });
   if (result.id !== state.installation_id || result.enabled !== true) throw new Error('Could not enable notifications. Try again when connected.');
-  const next = { ...state, binding: device }; await save(next); return next;
+  const next = { ...state, binding: device, ...(state.revision ? { pending_on: false } : {}) }; await save(next); return next;
 }
 
 const uuid = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
@@ -68,7 +74,9 @@ export function notificationForAccount(session: Session | null, data: unknown): 
   if (!session || !data || typeof data !== 'object' || Array.isArray(data)) return false;
   const value = data as Record<string, unknown>;
   if (value.recipient_user_id !== session.userId) return false;
-  if (value.type !== 'group_membership') return value.type === 'new_bill' || value.type === 'bill_chat';
+  if (value.type !== 'group_membership') return value.type === 'new_bill' || value.type === 'bill_chat'
+    || ['bill_updated', 'bill_deleted', 'payment_recorded', 'payment_reminder'].includes(String(value.type))
+      && typeof value.event_id === 'string' && uuid.test(value.event_id) && typeof value.group_id === 'string' && uuid.test(value.group_id);
   if (typeof value.recipient_user_id !== 'string' || !/^[1-9]\d*$/.test(value.recipient_user_id)
     || typeof value.group_id !== 'string' || !uuid.test(value.group_id) || typeof value.event_id !== 'string'
     || Object.keys(value).some(key => !['type', 'event_id', 'recipient_user_id', 'group_id'].includes(key))) return false;
@@ -77,12 +85,13 @@ export function notificationForAccount(session: Session | null, data: unknown): 
 }
 
 export async function notificationTarget(session: Session, data: unknown, send: typeof request = request): Promise<PushTarget | null> {
-  if (!notificationForAccount(session, data) || !uuid.test(data.group_id ?? '')
-    || data.type !== 'group_membership' && !uuid.test(data.expense_id ?? '')) return null;
+  if (!notificationForAccount(session, data) || !uuid.test(data.group_id ?? '')) return null;
+  const groupOnly = ['group_membership', 'bill_deleted', 'payment_recorded', 'payment_reminder'].includes(data.type);
+  if (!groupOnly && !uuid.test(data.expense_id ?? '')) return null;
   try {
     let group = await send<Group>(session, `/groups/${data.group_id}/summary`);
     if (group.id !== data.group_id) return null;
-    if (data.type === 'group_membership') return { group, expenseId: null };
+    if (groupOnly) return { group, expenseId: null };
     if (group.read_mode === 'summary' && !group.expenses.some(expense => expense.id === data.expense_id)) {
       try {
         const detail = await send<Expense & { group_id: string; group_version: number }>(session, `/groups/${group.id}/expenses/${data.expense_id}?version=${group.version}`);

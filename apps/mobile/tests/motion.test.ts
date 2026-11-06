@@ -1,13 +1,14 @@
+import { withSharedUI } from './componentHarness.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import ts from 'typescript';
 
 // Execute production subscription/hook code, replacing only React and OS APIs.
-function production(env: Record<string, unknown>) {
-  const code = ts.transpile(readFileSync(new URL('../src/motion.ts', import.meta.url), 'utf8'), { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS });
+function production(env: Record<string, unknown>, file = 'motionShared.ts') {
+  const code = ts.transpile(readFileSync(new URL(`../src/${file}`, import.meta.url), 'utf8'), { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS });
   const exports: Record<string, any> = {};
-  new Function('require', 'exports', code)((name: string) => name === 'react' ? env.React : env, exports);
+  new Function('require', 'exports', code)((name: string) => name === 'react' ? env.React : name === 'framer-motion' ? env.Framer : env, exports);
   return exports;
 }
 const tick = () => new Promise<void>(done => setImmediate(done));
@@ -101,25 +102,27 @@ test('the shared transition starts settled, retargets rapid input and never repl
 function component(file: string, name: string, env: Record<string, unknown>) {
   const source = ts.createSourceFile(file, readFileSync(new URL(`../src/${file}`, import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   let code = '';
-  function find(node: ts.Node) { if (ts.isFunctionDeclaration(node) && node.name?.text === name) code = node.getText(source).replace(/^export /, ''); ts.forEachChild(node, find); }
+  function find(node: ts.Node) { if (ts.isFunctionDeclaration(node) && node.name?.text === name) code = node.getText(source).replace(/^export (?:default )?/, ''); ts.forEachChild(node, find); }
   find(source); assert.ok(code);
-  return new Function('env', `with(env) { ${ts.transpile(code, { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React })}; return ${name}; }`)(env);
+  return new Function('env', `with(env) { ${ts.transpile(code, { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React })}; return ${name}; }`)(withSharedUI(env));
 }
 const React = { createElement: (type: unknown, props: any, ...children: unknown[]) => ({ type, props, children }) };
-test('Disclosure body and expanded semantics change immediately with restrained reveal and caret motion', () => {
-  const h = hooks(); const motion = { enabled: true }, targets: number[] = [];
-  const Disclosure = component('ui.tsx', 'Disclosure', { React, ...h.React, View: 'View', Pressable: 'Pressable', Text: 'Text', Icon: 'Icon', Animated: { View: 'AnimatedView' }, useUI: () => ({ ui: {}, motion }), useMotionValue: (target: number) => { targets.push(target); return { interpolate: () => 'rotation' }; } });
-  const child = { retainedIdentity: true }, render = () => h.render(() => Disclosure({ title: 'Details', children: child }));
-  let tree = render(); assert.equal(tree.children[1], false); assert.equal(tree.children[0].props.accessibilityState.expanded, false);
-  tree.children[0].props.onPress(); tree = render(); assert.equal(tree.children[1].children[0], child); assert.equal(tree.children[0].props.accessibilityState.expanded, true);
-  tree.children[0].props.onPress(); tree = render(); assert.equal(tree.children[1], false); assert.deepEqual(targets, [0, 1, 0]);
+test('Details open a dialog without expanding or shifting the surrounding row', () => {
+  const h = hooks();
+  const DetailDialog = component('DetailDialog.tsx', 'DetailDialog', { React: { ...React, Fragment: 'Fragment' }, ...h.React, View: 'View', SettingsRow: 'SettingsRow', KeyboardDialog: 'KeyboardDialog', Dialog: { Title: 'Title', Actions: 'Actions' }, DialogScrollBody: 'Body', Button: 'Button' });
+  const child = { retainedIdentity: true }, render = (busy = false) => h.render(() => DetailDialog({ title: 'Details', children: child, busy }));
+  let tree = render().flat(Infinity); assert.equal(tree[1].props.visible, false); assert.equal(tree[0].props.accessibilityState, undefined);
+  tree[0].props.onPress(); tree = render().flat(Infinity); assert.equal(tree[1].props.visible, true);
+  assert.equal(tree[1].children[1].children[0].children[0], child);
+  render(true).flat(Infinity)[1].props.onDismiss(); assert.equal(render(true).flat(Infinity)[1].props.visible, true);
+  render().flat(Infinity)[1].props.onDismiss(); assert.equal(render().flat(Infinity)[1].props.visible, false);
 });
-test('tab actions and selected/disabled semantics remain immediate and do not depend on animation completion', () => {
+test('tab actions and selected semantics remain immediate during loading and animation', () => {
   const calls: string[] = [];
-  const TabButton = component('AppNavigation.tsx', 'TabButton', { React, Platform: { OS: 'native' }, Pressable: 'Pressable', View: 'View', Text: 'Text', Icon: 'Icon', Animated: { View: 'AnimatedView' }, styles: {}, StyleSheet: { absoluteFill: {} }, radii: {}, useUI: () => ({ palette: {}, motion: { enabled: true } }), useMotionValue: () => 'in-flight' });
+  const TabButton = component('AppNavigation.tsx', 'TabButton', { React, Button: 'Button', Platform: { OS: 'native' }, Pressable: 'Pressable', View: 'View', Text: 'Text', Icon: 'Icon', Animated: { View: 'AnimatedView' }, styles: {}, StyleSheet: { absoluteFill: {} }, radii: {}, useUI: () => ({ palette: {}, motion: { enabled: true } }), useMotionValue: () => 'in-flight' });
   const tree = TabButton({ item: { value: 'Account', label: 'Me', icon: 'me' }, selected: true, busy: false, onSelect: (value: string) => calls.push(value) });
-  tree.props.onPress(); assert.deepEqual(calls, ['Account']); assert.deepEqual(tree.props.accessibilityState, { selected: true, disabled: false });
-  const busy = TabButton({ item: { value: 'Groups' }, selected: false, busy: true, onSelect() {} }); assert.equal(busy.props.disabled, true);
+  tree.props.onPress(); assert.deepEqual(calls, ['Account']); assert.deepEqual(tree.props.accessibilityState, { selected: true }); assert.ok(!tree.props.disabled);
+  const busy = TabButton({ item: { value: 'Groups' }, selected: false, busy: true, onSelect: (value: string) => calls.push(value) }); assert.ok(!busy.props.disabled); assert.deepEqual(busy.props.accessibilityState, { selected: false }); busy.props.onPress(); assert.deepEqual(calls, ['Account', 'Groups']);
 });
 test('shared press feedback releases, clears on disable/background, and works with reduced motion', () => {
   const h = hooks(); let active = true;
@@ -129,4 +132,19 @@ test('shared press feedback releases, clears on disable/background, and works wi
   value.onPressOut(); assert.equal(render().pressedStyle.opacity, 1);
   render().onPressIn(); render(true); assert.equal(render(true).pressedStyle.opacity, 1);
   render().onPressIn(); active = false; render(); active = true; assert.equal(render().pressedStyle.opacity, 1);
+});
+
+ test('web Framer transitions retarget current progress and settle immediately for reduced motion', () => {
+  const h = hooks(), animations: any[] = [];
+  class Value { current: number; constructor(value: number) { this.current = value; } setValue(value: number) { this.current = value; } }
+  const api = production({ React: h.React, Animated: { Value }, Framer: { animate(from: number, target: number, options: any) {
+    const animation = { from, target, options, stopped: false, stop() { this.stopped = true; } }; animations.push(animation); return animation;
+  } } }, 'motion.web.ts');
+  const render = (target: number, enabled = true) => h.render(() => api.useMotionValue(target, enabled)) as Value;
+  const value = render(0); assert.equal(animations.length, 0);
+  render(1); animations[0].options.onUpdate(0.4); assert.equal(value.current, 0.4);
+  render(0); assert.equal(animations[0].stopped, true); assert.equal(animations[1].from, 0.4);
+  render(0, false); assert.equal(value.current, 0); assert.equal(animations[1].stopped, true);
+  render(0, true); assert.equal(animations.length, 2);
+  render(1); h.unmount(); assert.equal(animations[2].stopped, true);
 });

@@ -14,8 +14,9 @@ from ninja.files import UploadedFile as RequestFile
 from ninja.security import django_auth
 from pydantic import Field, StrictInt, StrictStr
 
-from . import balance_statements, bill_chat, feedback, group_invites
+from . import balance_statements, bill_chat, feedback, group_invites, notification_channels
 from .accounting import AccountingError
+from .app_releases import STORE_RELEASES
 from .collaboration import (
     acknowledge_opening,
     add_participant,
@@ -48,10 +49,14 @@ from .history_reads import (
 from .media import (
     avatar_for,
     download_url,
+    group_photo,
     list_attachments,
+    metadata,
     pdf_thumbnail,
+    profile_photos,
     remove_attachment,
     remove_avatar,
+    remove_group_photo,
     upload_file,
 )
 from .models import Group
@@ -76,32 +81,42 @@ from .schemas import (
     FeedbackIn,
     GroupIn,
     GroupLeaveIn,
+    GroupNameIn,
+    GroupNicknameIn,
     Input,
     InviteIn,
     LinkedWriteResult,
     NotificationPreferencesIn,
+    NotificationChannelsIn,
     OpeningIn,
     ParticipantIn,
     ParticipantNameIn,
+    PaymentReminderIn,
     ProfileIn,
     PushDeviceIn,
     Revision,
     SeenNoticesIn,
     SettlementIn,
+    SignInPreferencesIn,
+    SimplifyIn,
     SplitwiseImportIn,
     SplitwiseImportResult,
     SplitwisePreviewIn,
     WriteResult,
 )
 from .services import (
+    change_simplify,
     create_group,
     record_settlement,
+    rename_group,
+    rename_group_member,
     reverse_expense,
     reverse_settlement,
     save_expense,
     snapshot,
     visible_group,
 )
+from .sign_in_methods import disconnect_provider, sign_in_methods, update_auto_link
 from .splitwise_import import import_splitwise, preview_splitwise
 from .store_review import groups_for_actor
 
@@ -111,6 +126,11 @@ api = NinjaAPI(title="MeroSplit", version="1.0", auth=[x_session_token_auth, dja
 @api.get("/health", auth=None)
 def health(request):
     return {"status": "ok"}
+
+
+@api.get("/app-releases", auth=None)
+def app_releases(request):
+    return JsonResponse(STORE_RELEASES, headers={"Cache-Control": "no-store"})
 
 
 @api.get("/ready", auth=None)
@@ -175,13 +195,27 @@ def duplicate_error(request, exc):
 
 @api.get("/groups")
 def groups(request):
-    return {
-        "groups": list(
-            groups_for_actor(Group.objects.filter(participants__user=request.auth, participants__removed=False), request.auth).annotate(hidden=F("participants__hidden")).values(
-                "id", "name", "version", "archived", "is_direct", "hidden"
-            )
-        )
-    }
+    from .models import Participant
+
+    rows = list(groups_for_actor(Group.objects.filter(participants__user=request.auth, participants__removed=False), request.auth)
+                .annotate(hidden=F("participants__hidden")).values("id", "name", "version", "archived", "is_direct", "hidden"))
+    if not rows:
+        return {"groups": []}
+    users = Participant.objects.filter(group_id__in=[row["id"] for row in rows], removed=False,
+                                       user__is_active=True).values_list("user_id", flat=True).distinct()
+    from .models import UploadedFile
+    photos = {file.icon_group_id: metadata(file) for file in UploadedFile.objects.filter(icon_group_id__in=[row["id"] for row in rows], state="active")}
+    for row in rows:
+        row["group_photo"] = photos.get(row["id"])
+    return {"groups": rows, "profile_photos": profile_photos(users)}
+
+
+
+@api.get("/me/ledger-heads")
+def ledger_heads(request):
+    rows = list(groups_for_actor(Group.objects.filter(participants__user=request.auth, participants__removed=False), request.auth)
+                .annotate(hidden=F("participants__hidden")).order_by("id").values("id", "version", "hidden"))
+    return JsonResponse({"groups": rows}, headers={"Cache-Control": "no-store"})
 
 
 @api.post("/groups", response=LinkedWriteResult)
@@ -225,7 +259,7 @@ def group_get(request, group_id: UUID):
 
 @api.post("/groups/{group_id}/expenses", response=WriteResult)
 def expense_create(request, group_id: UUID, body: ExpenseIn):
-    return save_expense(request.auth, group_id, body.model_dump(mode="json"), category_supplied="category" in body.model_fields_set)
+    return save_expense(request.auth, group_id, body.model_dump(mode="json", exclude={"time"} if "time" not in body.model_fields_set else set()), category_supplied="category" in body.model_fields_set)
 
 
 @api.get("/groups/{group_id}/summary")
@@ -254,7 +288,7 @@ def expense_versions(request, group_id: UUID, expense_id: UUID, before: int | No
 
 @api.put("/groups/{group_id}/expenses/{expense_id}", response=WriteResult)
 def expense_update(request, group_id: UUID, expense_id: UUID, body: ExpenseIn):
-    return save_expense(request.auth, group_id, body.model_dump(mode="json"), expense_id, category_supplied="category" in body.model_fields_set)
+    return save_expense(request.auth, group_id, body.model_dump(mode="json", exclude={"time"} if "time" not in body.model_fields_set else set()), expense_id, category_supplied="category" in body.model_fields_set)
 
 
 @api.post("/groups/{group_id}/expenses/{expense_id}/reverse", response=WriteResult)
@@ -286,6 +320,7 @@ def me(request):
         "email_verified": EmailAddress.objects.filter(user=request.auth, email__iexact=request.auth.email, verified=True).exists(),
         "payment_profile": profile_for(request.auth),
         "avatar": avatar_for(request.auth),
+        "profile_photo": profile_photos([request.auth.pk]).get(request.auth.pk),
     }
 
 
@@ -299,9 +334,34 @@ def notification_preferences(request):
     return notification_settings(request.auth)
 
 
+@api.get("/me/sign-in-methods")
+def account_sign_in_methods(request):
+    return sign_in_methods(request.auth)
+
+
+@api.put("/me/sign-in-methods/preferences")
+def account_sign_in_preferences(request, body: SignInPreferencesIn):
+    return update_auto_link(request.auth, body.auto_link)
+
+
+@api.delete("/me/sign-in-methods/{account_id}")
+def account_sign_in_disconnect(request, account_id: int):
+    return disconnect_provider(request.auth, account_id)
+
+
 @api.post('/me/feedback')
 def submit_feedback(request, body: FeedbackIn):
     return feedback.submit(request.auth, body.id, body.text)
+
+
+@api.get("/me/notifications/channels")
+def notification_channels_read(request):
+    return notification_channels.preferences(request.auth)
+
+
+@api.put("/me/notifications/channels")
+def notification_channels_update(request, body: NotificationChannelsIn):
+    return notification_channels.update(request.auth, **body.model_dump(exclude_none=True))
 
 
 @api.put("/me/notifications/preferences")
@@ -373,6 +433,12 @@ def _chat_json(data):
 @api.get('/groups/{group_id}/expenses/{expense_id}/chat')
 def bill_chat_get(request, group_id: UUID, expense_id: UUID, limit: int = 50, before: str | None = None, after: str | None = None, known: str = ''):
     return _chat_json(bill_chat.chat_page(request.auth, group_id, expense_id, limit=limit, before=before, after=after, known=known))
+
+
+@api.post('/groups/{group_id}/payment-reminders')
+def payment_reminder_send(request, group_id: UUID, body: PaymentReminderIn):
+    from .activity_notifications import send_payment_reminder
+    return send_payment_reminder(request.auth, group_id, body.model_dump(mode="json"))
 
 
 @api.get('/groups/{group_id}/expenses/{expense_id}/chat/status')
@@ -623,9 +689,9 @@ def push_device_register(request, installation_id: UUID, body: PushDeviceIn):
 
 
 @api.delete("/me/push-devices/{installation_id}")
-def push_device_remove(request, installation_id: UUID):
+def push_device_remove(request, installation_id: UUID, preference_revision: Annotated[int, Field(ge=1, le=9007199254740991)] | None = None):
     from .push import remove_device
-    return remove_device(request.auth, installation_id)
+    return remove_device(request.auth, installation_id, preference_revision)
 
 
 @api.get("/me/mcp/pending")
@@ -672,3 +738,34 @@ def expense_icons_get(request, ids: str):
     from .expense_categories import expense_icons
 
     return expense_icons(request.auth, ids)
+
+
+@api.post("/groups/{group_id}/simplify", response=WriteResult)
+def simplify_group(request, group_id: UUID, body: SimplifyIn):
+    return change_simplify(request.auth, group_id, body.model_dump(mode="json"))
+
+
+@api.post("/groups/{group_id}/name", response=WriteResult)
+def group_name(request, group_id: UUID, body: GroupNameIn):
+    return rename_group(request.auth, group_id, body.model_dump(mode="json"))
+
+
+@api.get("/groups/{group_id}/photo")
+def group_photo_get(request, group_id: UUID):
+    group = visible_group(request.auth, group_id)
+    return {"group_photo": group_photo(group), "version": group.version}
+
+
+@api.post("/groups/{group_id}/photo")
+def group_photo_upload(request, group_id: UUID, id: Form[UUID], file: File[RequestFile]):
+    return upload_file(request.auth, id, file, group_id=group_id)
+
+
+@api.delete("/groups/{group_id}/photo/{file_id}")
+def group_photo_remove(request, group_id: UUID, file_id: UUID):
+    return remove_group_photo(request.auth, group_id, file_id)
+
+
+@api.post("/groups/{group_id}/participants/{participant_id}/nickname", response=WriteResult)
+def group_member_nickname(request, group_id: UUID, participant_id: UUID, body: GroupNicknameIn):
+    return rename_group_member(request.auth, group_id, participant_id, body.model_dump(mode="json"))

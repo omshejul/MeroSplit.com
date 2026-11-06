@@ -10,6 +10,7 @@ from copy import deepcopy
 from pathlib import Path
 
 from jsonschema import Draft202012Validator
+from PIL import Image
 
 REPO = Path(__file__).resolve().parents[1]
 PACKAGE = REPO / "plugins" / "merosplit"
@@ -22,6 +23,7 @@ FILES = (
     "mcp.json",
     "plugin.json",
     "skills/merosplit/SKILL.md",
+    "assets/icon.png",
 )
 AUTH = {"type": "oauth", "client": {"mode": "dcr"}, "baseScopes": ["merosplit:mcp"]}
 
@@ -50,16 +52,32 @@ def validate(package=PACKAGE):
     documents = {name: json.loads((package / name).read_text()) for name in FILES if name.endswith(".json")}
     manifest, mcp = documents["plugin.json"], documents["mcp.json"]
     official_schema("plugin.schema.json").validate(manifest)
-    require(manifest["name"] == "merosplit" and manifest.get("version") == "0.1.0", "Unexpected package identity")
+    require(manifest["name"] == "merosplit" and manifest.get("version") == "0.1.1", "Unexpected package identity")
     require(set(manifest.get("extensions", {})) == {"com.openai"}, "Unexpected manifest extension")
     extension = manifest["extensions"]["com.openai"]
-    require(set(extension) == {"interface"}, "Only presentation metadata is permitted")
+    require(set(extension) == {"interface", "review", "publication"}, "Only presentation, review and publication metadata is permitted")
     interface = extension["interface"]
-    require(set(interface) == {"displayName", "shortDescription", "developerName", "category", "capabilities", "websiteURL", "privacyPolicyURL", "defaultPrompt"}, "Unexpected OpenAI presentation field")
+    require(set(interface) == {"displayName", "shortDescription", "longDescription", "developerName", "category", "capabilities", "websiteURL", "supportURL", "privacyPolicyURL", "termsOfServiceURL", "defaultPrompt", "logo", "composerIcon"}, "Unexpected OpenAI presentation field")
     require(all(isinstance(interface[key], str) and interface[key] for key in interface if key not in {"capabilities", "defaultPrompt"}), "Presentation text must be nonempty")
     require(interface["capabilities"] == ["Read", "Write"], "Unexpected capabilities")
     require(isinstance(interface["defaultPrompt"], list) and all(isinstance(item, str) and item for item in interface["defaultPrompt"]), "Invalid default prompts")
     require(interface["websiteURL"] == "https://merosplit.com" and interface["privacyPolicyURL"] == "https://merosplit.com/privacy", "Unexpected public URLs")
+    require(interface["supportURL"] == "https://merosplit.com/support" and interface["termsOfServiceURL"] == "https://merosplit.com/terms", "Unexpected support or terms URLs")
+    require(len(interface["displayName"]) <= 30 and len(interface["shortDescription"]) <= 30 and len(interface["longDescription"]) <= 4000, "Listing text exceeds submission limits")
+    require(1 <= len(interface["defaultPrompt"]) <= 3 and all(len(item) <= 128 for item in interface["defaultPrompt"]), "Starter prompt exceeds submission limits")
+    require(interface["logo"] == interface["composerIcon"] == "./assets/icon.png", "Use the packaged icon")
+    icon = package / "assets/icon.png"
+    with Image.open(icon) as image:
+        require(image.format == "PNG" and 48 <= image.width == image.height <= 4096 and icon.stat().st_size <= 5 * 1024 * 1024, "Invalid listing icon")
+    review = extension["review"]
+    require(set(review) == {"commerce", "test_cases"} and review["commerce"] is False, "Expected ledger-only review metadata")
+    cases = review["test_cases"]
+    require(set(cases) == {"positive", "negative"} and len(cases["positive"]) == 5 and len(cases["negative"]) == 3, "Review requires five positive and three negative cases")
+    for kind, entries in cases.items():
+        required = {"description", "prompt", "expected_behavior"} | ({"tools_triggered"} if kind == "positive" else set())
+        for case in entries:
+            require(set(case) == required and all(isinstance(value, str) and value.strip() for value in case.values()), "Incomplete review case")
+    require(set(extension["publication"]) == {"release_notes"} and bool(extension["publication"]["release_notes"].strip()), "Release notes are required")
     require(set(mcp.get("mcpServers", {})) == {"merosplit"}, "One remote MCP server is required")
     server = mcp["mcpServers"]["merosplit"]
     require(server == {"type": "streamable-http", "url": ENDPOINT, "extensions": {"com.openai": {"auth": AUTH}}}, "Expected documented DCR auth only; no headers, credentials or processes")
@@ -82,6 +100,7 @@ def validate(package=PACKAGE):
         "complete_mcp_schema": "rejected_documented_openai_extension" if whole_errors else "passed",
         "openai_fields": "project_contract_checked_against_documentation_not_official_extension_schema",
         "claude_adapter": "same_endpoint_and_shared_skill_checked; run claude plugin validate separately",
+        "public_review_remaining": ["verified publishing identity", "domain verification and live tool scan", "reviewer credentials", "host walkthrough recording"],
         "schema_sha256": {name: hashlib.sha256((SCHEMAS / name).read_bytes()).hexdigest() for name in ("plugin.schema.json", "mcp.schema.json")},
     }
 

@@ -1,3 +1,5 @@
+import { clearExpenseIcons } from './expenseIconCache.ts';
+import { clearNotificationChannels } from './channelPreferences.ts';
 import type { CachedGroup, Command, Group, LegacyRecovery, LegacySource } from './types';
 import type { ExpenseHistoryPage } from './expenseHistory';
 
@@ -11,8 +13,8 @@ export interface Database {
   withExclusiveTransactionAsync(task: (transaction: Database) => Promise<void>): Promise<void>;
 }
 
-// total_changes covers this connection; data_version covers native exclusive
-// transactions that commit through a separate SQLite connection.
+// total_changes covers this connection; data_version catches changes committed
+// through any other SQLite connection.
 export async function storageRevision(db: Database): Promise<string> {
   const [own, other] = await Promise.all([
     db.getFirstAsync<{ n: number }>('SELECT total_changes() AS n'),
@@ -108,12 +110,17 @@ export async function readVisibleGroup(db: Database, owner: string, id: string):
   return row ? { kind: row.kind, group: JSON.parse(row.snapshot) as Group } : null;
 }
 
+export async function groupCacheHeads(db: Database, owner: string): Promise<Map<string, { kind: string; version: number }>> {
+  const rows = await db.getAllAsync<{ id: string; kind: string; version: number }>(`SELECT id,kind,json_extract(snapshot,'$.version') AS version FROM (${visibleGroups})`, owner, owner);
+  return new Map(rows.map(row => [row.id, { kind: row.kind, version: row.version }]));
+}
+
 // Only call after the index and every listed snapshot were fetched successfully.
 // A failed refresh must not interpret a partial result as revoked access.
 export type MembershipReceipt = { id: string; version: number; disposition: 'left' | 'hidden' | 'restored' };
 export type AcceptedMembership = { commandId: string; receipt: MembershipReceipt };
 
-export async function reconcileGroupCache(db: Database, owner: string, authorized: Group[], acceptedMembership?: AcceptedMembership, current: () => boolean = () => true): Promise<string[]> {
+export async function reconcileGroupCache(db: Database, owner: string, authorized: Group[], acceptedMembership?: AcceptedMembership, current: () => boolean = () => true, before?: Awaited<ReturnType<typeof groupCacheHeads>>): Promise<string[]> {
   const visible = new Set(authorized.map(group => group.id)), unavailable: string[] = [];
   if (visible.size !== authorized.length) throw new Error('The group refresh was incomplete. Try again.');
   await db.withExclusiveTransactionAsync(async tx => {
@@ -139,6 +146,9 @@ export async function reconcileGroupCache(db: Database, owner: string, authorize
     for (const row of cached) {
       if (visible.has(row.id)) continue;
       const commands = queued.filter(command => command.group_id === row.id), group = JSON.parse(row.snapshot) as Group;
+      // A read started before this accepted change cannot revoke its cache.
+      const previous = before?.get(row.id);
+      if (before && (!previous || previous.kind !== row.kind || previous.version !== group.version)) continue;
       if (group.version === 0 && commands.some(command => command.method === 'POST' && command.path === '/groups' && command.body.id === row.id)) continue;
       await tx.runAsync('DELETE FROM expense_history WHERE owner=? AND group_id=?', owner, row.id);
       await tx.runAsync('DELETE FROM sync_state WHERE owner=?', owner);
@@ -277,6 +287,8 @@ export async function bindLegacyGroup(db: Database, owner: string, recovery: Leg
 }
 
 export async function wipeAccount(db: Database, owner: string): Promise<void> {
+  await clearExpenseIcons(db, owner);
+  await clearNotificationChannels(db, owner);
   await db.withExclusiveTransactionAsync(async tx => {
     await tx.runAsync('DELETE FROM outbox WHERE owner=?', owner);
     await tx.runAsync('DELETE FROM groups_cache WHERE owner=?', owner);
