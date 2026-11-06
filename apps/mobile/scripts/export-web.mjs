@@ -21,7 +21,7 @@ await copyFile(join(project, '../api/ledger/assets/apple-touch-icon.png'), join(
 async function files(folder) { const rows = await readdir(folder, { withFileTypes: true }); return (await Promise.all(rows.map(row => row.isDirectory() ? files(join(folder, row.name)) : join(folder, row.name)))).flat(); }
 const paths = await files(destination);
 if (process.env.EXPO_PUBLIC_SENTRY_DSN) {
-  const upload = spawnSync('sentry', ['sourcemap', 'upload', destination, '--no-rewrite'], {
+  const upload = spawnSync('sentry', ['sourcemap', 'upload', destination], {
     cwd: project, stdio: 'inherit', env: { ...process.env, SENTRY_ORG: 'om-shejul', SENTRY_PROJECT: 'merosplit-app' },
   });
   if (upload.status !== 0) process.exit(upload.status ?? 1);
