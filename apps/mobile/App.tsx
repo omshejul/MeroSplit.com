@@ -970,7 +970,7 @@ function AppContent() {
     else if (/\/expenses(?:\/[^/]+)?$/.test(value.path)) await enqueueBill(await getDatabase(), owner, value);
     else await enqueue(await getDatabase(), owner, value);
     onQueued?.();
-    await load(owner);
+    await load(owner).catch(() => { if (ownerRef.current === owner) setSyncProblem(true); });
     if (session && isOnline()) {
       setSyncing(true);
       try { await syncOutbox(await getDatabase(), session, 'summary'); return; }
@@ -1038,7 +1038,7 @@ function AppContent() {
     await queue(command('POST', `/groups/${groupId}/expenses/${value.id}/reverse`, { version: value.version }));
     if (navigation.ref.getRootState() === route) navigate('group');
   }
-  async function savePayment(value: Transfer) {
+  async function savePayment(value: Transfer, onQueued?: () => void) {
     await perform(async () => {
       if (!selected) throw new Error('Open a group first.');
       if (selected.group.archived) throw new Error('Reopen this group in settings before making changes.');
@@ -1049,8 +1049,7 @@ function AppContent() {
         try { attempt = (await request<{ items: NonNullable<Group['payment_attempts']> }>(session, `/groups/${groupId}/history/attempts?sender=${value.sender}&recipient=${value.recipient}&state=active`)).items[0]; }
         catch (error) { if (!storageIsDurable() || error instanceof ApiError && error.status < 500) throw error; }
       }
-      await queue(command('POST', `/groups/${groupId}/settlements`, { id: paymentId, ...value, date, ...(attempt ? { attempt_id: attempt.id } : {}) }));
-      navigation.complete('group');
+      await queue(command('POST', `/groups/${groupId}/settlements`, { id: paymentId, ...value, date, ...(attempt ? { attempt_id: attempt.id } : {}) }), undefined, undefined, () => { onQueued?.(); navigation.complete('group'); });
     });
   }
   async function reviewChange(value: Command) {

@@ -193,7 +193,7 @@ export default function ExpenseForm({ group, expense, selfId, busy, onSave, owne
   const lock = useRef(false), disabled = !ready || busy || saving || fileBusy || handedOff.current;
   useLoading(!ready && !error || saving || fileBusy);
   useScreenRemovalLock(saving || fileBusy);
-  const acceptedExpense = group.expenses.find(value => value.id === draft.id);
+  const acceptedExpense = group.expenses.find(value => value.id === draft.id) ?? (group.focused_expense?.id === draft.id ? group.focused_expense : undefined);
   const label = (id: string) => {
     const person = group.participants.find(value => value.id === id)!;
     const matching = group.participants.filter(value => value.name === person.name);

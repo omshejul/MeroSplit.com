@@ -179,8 +179,8 @@ export async function enqueue(db: Database, owner: string, command: Command): Pr
   await db.runAsync('INSERT INTO outbox(owner,command_id,group_id,method,path,body,state,error,base_version) VALUES(?,?,?,?,?,?,?,?,?)', owner, command.command_id, command.group_id, command.method, command.path, body, command.state, command.error, command.base_version ?? null);
 }
 
-export async function pendingCommands(db: Database, owner: string): Promise<Command[]> {
-  const rows = await db.getAllAsync<Omit<Command, 'body'> & { body: string }>('SELECT command_id,group_id,method,path,body,state,error,base_version,attempted FROM outbox WHERE owner=? ORDER BY ordinal', owner);
+export async function pendingCommands(db: Database, owner: string, limit = -1): Promise<Command[]> {
+  const rows = await db.getAllAsync<Omit<Command, 'body'> & { body: string }>('SELECT command_id,group_id,method,path,body,state,error,base_version,attempted FROM outbox WHERE owner=? ORDER BY ordinal LIMIT ?', owner, limit);
   return rows.map(({ base_version, attempted, ...row }) => ({ ...row, ...(attempted ? { attempted: true } : {}), body: JSON.parse(row.body) as Command['body'], ...(base_version == null ? {} : { base_version }) }));
 }
 

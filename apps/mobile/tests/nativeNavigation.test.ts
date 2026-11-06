@@ -262,7 +262,7 @@ test('actual payment Save commits before returning and waits for app and form lo
   const save = new Function('env', `with(env){ const useLoading = env.useLoading ?? (() => {}), LoadingOverlay = env.LoadingOverlay ?? 'LoadingOverlay';${ts.transpile(declaration!.getText(source), { target: ts.ScriptTarget.ES2022 })};return savePayment;}`)({
     selected: { group: { archived: false } }, selfId: 'self', pending: [], session: null, uuid: () => 'payment-id', groupId: 'g',
     command: (_method: string, path: string, body: any) => ({ path, body }),
-    queue: async (command: any) => { assert.equal(command.path, '/groups/g/settlements'); assert.equal(command.body.id, 'payment-id'); committed = true; },
+    queue: async (command: any, _replacing: unknown, _attachment: unknown, onQueued: () => void) => { assert.equal(command.path, '/groups/g/settlements'); assert.equal(command.body.id, 'payment-id'); committed = true; onQueued(); },
     navigation: { complete: (name: routes.Screen) => { assert.equal(committed, true); completion.complete(name); } },
     perform: async (work: () => Promise<void>) => { scene.blocked(true); scene.render(); try { await work(); } finally { scene.blocked(false); scene.render(); scene.flush(); } },
   });

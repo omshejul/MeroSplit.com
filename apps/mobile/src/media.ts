@@ -79,20 +79,48 @@ export async function enqueueExpenseWithMedia(db: Database, session: Session, co
   });
 }
 
-export async function removePendingMediaUpload(db: Database, session: Session, path: string, send: typeof request = request, cleanup = clearStagedMedia): Promise<void> {
-  const pending = await pendingMediaUpload(db, session, path);
+// Foreground retry/removal and background uploads share the same file boundary.
+const mediaJobs = new WeakMap<Database, Map<string, Promise<unknown>>>();
+async function serializeMedia<T>(db: Database, session: Session, path: string, work: () => Promise<T>): Promise<T> {
+  let jobs = mediaJobs.get(db);
+  if (!jobs) { jobs = new Map(); mediaJobs.set(db, jobs); }
+  const key = JSON.stringify([accountOwner(session), path]), previous = jobs.get(key);
+  const job = (previous ?? Promise.resolve()).catch(() => {}).then(work);
+  jobs.set(key, job);
+  try { return await job; } finally { if (jobs.get(key) === job) jobs.delete(key); }
+}
+
+export async function removePendingMediaUpload(db: Database, session: Session, path: string, send: typeof request = request, cleanup = clearStagedMedia, selected?: PendingMediaUpload): Promise<void> {
+  // Capture the selected identity before waiting: a successful upload clears
+  // its draft, but this explicit removal still needs to delete that file.
+  const pending = selected ?? await pendingMediaUpload(db, session, path);
   if (!pending) return;
-  // Resolve an uncertain POST before removing its local retry. If it arrived,
-  // the explicit remove action also removes that exact accepted attachment.
-  const accepted = (await send<MediaList>(session, path)).attachments.find(item => item.id === pending.id);
-  if (accepted) await send(session, `${path}/${encodeURIComponent(pending.id)}`, 'DELETE');
-  await db.runAsync('DELETE FROM drafts WHERE owner=? AND group_id=? AND body=?', accountOwner(session), uploadDraftKey(path), JSON.stringify(pending));
-  await cleanup(pending.file);
+  if (pending.path !== path) throw new Error('This saved file belongs to a different bill.');
+  await serializeMedia(db, session, path, async () => {
+    // Resolve an uncertain POST before removing its local retry. If it arrived,
+    // the explicit remove action also removes that exact accepted attachment.
+    const accepted = (await send<MediaList>(session, path)).attachments.find(item => item.id === pending.id);
+    if (accepted) await send(session, `${path}/${encodeURIComponent(pending.id)}`, 'DELETE');
+    await db.runAsync("DELETE FROM drafts WHERE owner=? AND group_id=? AND json_extract(body,'$.id')=?", accountOwner(session), uploadDraftKey(path), pending.id);
+    await cleanup(pending.file);
+  });
 }
 
 export async function retryMediaUpload(db: Database, session: Session, path: string, send: typeof request = request, post: typeof uploadMedia = uploadMedia, cleanup: (file: PickedMedia) => Promise<void> = clearStagedMedia, current: () => boolean = () => true): Promise<MediaMetadata> {
+  const selected = await pendingMediaUpload(db, session, path);
+  if (!selected || selected.path !== path) throw new Error('There is no saved upload for this bill.');
+  return serializeMedia(db, session, path, () => performMediaUpload(db, session, path, send, post, cleanup, current, selected));
+}
+async function performMediaUpload(db: Database, session: Session, path: string, send: typeof request, post: typeof uploadMedia, cleanup: (file: PickedMedia) => Promise<void>, current: () => boolean, selected: PendingMediaUpload): Promise<MediaMetadata> {
   const pending = await pendingMediaUpload(db, session, path);
-  if (!pending || pending.path !== path) throw new Error('There is no saved upload for this bill.');
+  if (!pending || pending.id !== selected.id) {
+    // An earlier worker may have completed this exact upload while we waited.
+    // Never upload it again after removal or adopt a newer file on this path.
+    const accepted = (await send<MediaList>(session, path)).attachments.find(item => item.id === selected.id);
+    if (accepted) return accepted;
+    throw new Error('There is no saved upload for this bill.');
+  }
+  if (pending.path !== path) throw new Error('There is no saved upload for this bill.');
   const clear = async () => {
     await db.runAsync('DELETE FROM drafts WHERE owner=? AND group_id=? AND body=?', accountOwner(session), uploadDraftKey(path), JSON.stringify(pending));
     await cleanup(pending.file);
