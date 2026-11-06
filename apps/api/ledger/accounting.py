@@ -11,12 +11,12 @@ class AccountingError(ValueError):
     pass
 
 
-def _integer(value: str, *, signed: bool = False, maximum: int | None = None) -> int:
+def _integer(value: str, *, signed: bool = False, maximum: int | None = None, max_length: int | None = 40) -> int:
     pattern = r"(?:0|-?[1-9][0-9]*)" if signed else r"(?:0|[1-9][0-9]*)"
-    if not isinstance(value, str) or len(value) > 40 or re.fullmatch(pattern, value) is None:
+    if not isinstance(value, str) or (max_length is not None and len(value) > max_length) or re.fullmatch(pattern, value) is None:
         raise AccountingError("Amounts must be canonical decimal integer strings.")
     amount = int(value)
-    if maximum is not None and amount > maximum:
+    if maximum is not None and abs(amount) > maximum:
         raise AccountingError(f"Amount exceeds {maximum} paise.")
     return amount
 
@@ -106,13 +106,15 @@ def validate_expense(
     )
 
 
-def propose_transfers(balances: Mapping[str, str]) -> list[dict[str, str]]:
+def propose_transfers(balances: Mapping[str, str], *, maximum: int | None = None, max_length: int | None = 40) -> list[dict[str, str]]:
     """Match the largest remaining debt/credit, with immutable-ID ties; no ledger writes."""
     if not isinstance(balances, Mapping):
         raise AccountingError("Balances must be an object.")
     if any(not isinstance(person, str) or not person for person in balances):
         raise AccountingError("Provide nonempty participant IDs.")
-    amounts = {person: _integer(value, signed=True) for person, value in balances.items()}
+    # Calculated balances can exceed input lengths, including historical openings.
+    amounts = {person: _integer(value, signed=True, maximum=maximum, max_length=max_length)
+               for person, value in balances.items()}
     if sum(amounts.values()) != 0:
         raise AccountingError("Group balances must sum to zero.")
     debtors = {person: -amount for person, amount in amounts.items() if amount < 0}
@@ -153,9 +155,9 @@ def direct_transfers(expense_rows, settlement_rows, opening_balances=None, check
     for _, paid, shares in expense_rows:
         nets = {person: str(int(paid.get(person, "0")) - int(shares.get(person, "0")))
                 for person in paid.keys() | shares.keys()}
-        rows.extend(propose_transfers(nets))
+        rows.extend(propose_transfers(nets, max_length=None))
     if opening_balances:
-        rows.extend(propose_transfers(opening_balances))
+        rows.extend(propose_transfers(opening_balances, max_length=None))
     rows.extend({"sender": str(recipient), "recipient": str(sender), "amount": str(amount)}
                 for sender, recipient, amount in settlement_rows)
     rows.extend({"sender": row["recipient"], "recipient": row["sender"], "amount": row["amount"]} for row in checkpoint)

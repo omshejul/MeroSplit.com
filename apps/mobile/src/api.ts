@@ -81,12 +81,23 @@ async function drainOutbox(db: Database, session: Session, mode: 'full' | 'summa
   const receipts: Record<string, unknown>[] = [];
   const pending = await pendingCommands(db, owner);
   reportSyncDiagnostic({ phase: 'started', userId: session.userId, pending_count: pending.length });
-  for (const command of pending) {
+  for (const queued of pending) {
     if (!current()) throw new Error('The signed-in account changed.');
-    if (command.state !== 'pending' && !(command.state === 'conflict' && isGroupSetting(command))) throw new Error('Review the earlier saved change to continue syncing your bills.');
+    const claim: { command?: Command } = {};
+    await db.withExclusiveTransactionAsync(async tx => {
+      const latest = (await pendingCommands(tx, owner, 1))[0];
+      // A removal or reviewed replacement changes the queue boundary. Let the
+      // next drainer start from it rather than bypassing an earlier change.
+      if (!latest || latest.command_id !== queued.command_id) return;
+      if (!current()) throw new Error('The signed-in account changed.');
+      if (latest.state !== 'pending' && !(latest.state === 'conflict' && isGroupSetting(latest))) throw new Error('Review the earlier saved change to continue syncing your bills.');
+      await tx.runAsync("UPDATE outbox SET attempted=1,state='pending',error=NULL WHERE owner=? AND command_id=?", owner, latest.command_id);
+      claim.command = latest;
+    });
+    if (!claim.command) break;
+    const command = claim.command;
     let writeAccepted = false;
     try {
-      await db.runAsync("UPDATE outbox SET attempted=1,state='pending',error=NULL WHERE owner=? AND command_id=?", owner, command.command_id);
       if (!current()) throw new Error('The signed-in account changed.');
       const receipt = await request<Record<string, unknown>>(session, command.path, command.method, command.body);
       writeAccepted = true;

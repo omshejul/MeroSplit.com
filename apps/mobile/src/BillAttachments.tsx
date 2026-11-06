@@ -142,7 +142,7 @@ export default function BillAttachments({ session, groupId, expenseId, revision,
           ? `File not uploaded. ${pending.rejection} Your file is saved on this device. Remove it to choose another file.`
           : 'Upload not confirmed. Your file is saved on this device. Retry when online.'}</NoticeBanner>}
         {!pending.rejection && <Button title="Retry upload" icon="refresh" disabled={disabled || readOnly} onPress={() => void run(finishUpload)} />}
-        <Button title="Remove file" icon="remove" kind="text" disabled={disabled || readOnly} onPress={() => void run(async () => { await removePendingMediaUpload(await getDatabase(), session, path); if (current()) setPending(null); await load(); await onChanged?.(); })} /></>}
+        <Button title="Remove file" icon="remove" kind="text" disabled={disabled || readOnly} onPress={() => void run(async () => { await removePendingMediaUpload(await getDatabase(), session, path, undefined, undefined, pending ?? undefined); if (current()) setPending(null); await load(); await onChanged?.(); })} /></>}
       {!loading && readOnly && <Text style={ui.caption}>Read-only while archived or waiting to sync.</Text>}
       {items.length >= 10 && <Text style={ui.caption}>This bill has the maximum of 10 attachments.</Text>}
       {!!error && error !== pending?.rejection && <ErrorState error={error} retryLabel="Refresh attachments" disabled={busy || working || loading} onRetry={!pending ? () => void refresh() : undefined} />}

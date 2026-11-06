@@ -24,7 +24,7 @@ import { launchPaymentReturn, paymentReturnEvent, paymentReturnNeedsConfirmation
 import type { PaymentReturn, PaymentReturnEvent } from './paymentReturn';
 
 type Payment = { sender: string; recipient: string; amount: string };
-type Props = { onRemind?: (payment: Payment) => Promise<void>; group: Group; initial?: Payment; busy: boolean; onSave: (payment: Payment) => Promise<void>; onCancel: () => void;
+type Props = { onRemind?: (payment: Payment) => Promise<void>; group: Group; initial?: Payment; busy: boolean; onSave: (payment: Payment, onQueued?: () => void) => Promise<void>; onCancel: () => void;
   selfId: string; onReviewAttempt: (sender: string, recipient: string) => Promise<void>; onPrepareUPI: (payment: Payment) => Promise<UPILaunchQuote>; onCancelUPI: (attemptId: string) => Promise<void>;
   returnPayment: PaymentReturn | null; onArmReturn: (payment: Payment, quote: UPILaunchQuote) => Promise<PaymentReturn>;
   onReturnPaymentChange: (next: PaymentReturn | null) => Promise<void>; onResolveReturn: (record: PaymentReturn, paid: boolean) => Promise<void> };
@@ -58,7 +58,7 @@ export default function SettleForm({ group, initial, busy, selfId, onSave, onRem
   const returnRef = useRef(returnPayment), returnWrites = useRef(Promise.resolve());
   const armedHere = useRef<string | null>(null);
   const returnChange = useRef(onReturnPaymentChange); returnChange.current = onReturnPaymentChange;
-  const lock = useRef(false), mounted = useRef(true), disabled = busy || saving || !!chooser;
+  const lock = useRef(false), mounted = useRef(true), handedOff = useRef(false), disabled = busy || saving || !!chooser || handedOff.current;
   useLoading(saving);
   useScreenRemovalLock(saving || !!chooser);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
@@ -142,13 +142,13 @@ export default function SettleForm({ group, initial, busy, selfId, onSave, onRem
     return `${person.name}${matching.length > 1 ? ` (${matching.findIndex(value => value.id === id) + 1})` : ''}`;
   };
   async function save(payment: Payment) {
-    if (lock.current || busy) return;
+    if (lock.current || busy || handedOff.current) return;
     lock.current = true; setSaving(true); setSavingAction('record');
     try {
       if (!isPersonalPayment(group, selfId, payment.sender, payment.recipient)) throw new Error('Choose a payment to or from you.');
-      await onSave(payment);
+      await onSave(payment, () => { handedOff.current = true; });
     }
-    catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not record the payment. Try again.'); }
+    catch (cause) { if (!handedOff.current) setError(cause instanceof Error ? cause.message : 'Could not record the payment. Try again.'); }
     finally { lock.current = false; setSaving(false); setSavingAction(null); }
   }
   async function handoff(payment: Payment, target: { vpa: string; name: string }, app?: UPIApp) {
