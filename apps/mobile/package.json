@@ -13,6 +13,7 @@
     "@react-native-community/datetimepicker": "9.2.1",
     "@react-navigation/native": "7.5.1",
     "@react-navigation/native-stack": "7.21.0",
+    "@sentry/react-native": "~8.28.0",
     "entities": "9.0.0",
     "expo": "~58.0.14",
     "expo-apple-authentication": "~58.0.2",
@@ -46,8 +47,7 @@
     "react-native-screens": "4.30.0",
     "react-native-svg": "15.16.0",
     "react-native-web": "^0.21.4",
-    "web-haptics": "0.0.6",
-    "@sentry/react-native": "^8.33.0"
+    "web-haptics": "0.0.6"
   },
   "devDependencies": {
     "@types/node": "^24.19.2",
