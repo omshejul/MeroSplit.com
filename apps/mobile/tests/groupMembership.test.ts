@@ -125,7 +125,7 @@ test('server rejection stays review-required; helper never silently manufactures
   try {
     await migrate(db);
     await assert.rejects(changeGroupMembership(db, session, 'g', 'leave', options), /Settle/);
-    await assert.rejects(changeGroupMembership(db, session, 'g', 'leave', { ...options, uuid: () => { throw new Error('No replacement'); } }), /Resolve/);
+    await assert.rejects(changeGroupMembership(db, session, 'g', 'leave', { ...options, uuid: () => { throw new Error('No replacement'); } }), /Review the earlier/);
     assert.equal(calls, 1); assert.equal((await pendingCommands(db, owner))[0].state, 'conflict');
   } finally { globalThis.fetch = original; raw.close(); }
 });

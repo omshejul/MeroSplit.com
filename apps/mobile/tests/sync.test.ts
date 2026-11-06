@@ -52,7 +52,7 @@ for (const conflict of [false, true]) test(`overlapping background and action dr
     for (let i = 0; i < 30; i++) await Promise.resolve();
     assert.deepEqual(posts, ['c'], 'no concurrent duplicate HTTP replay'); release();
     if (conflict) {
-      await assert.rejects(first, /Accepted revision/); await assert.rejects(later, /Resolve/);
+      await assert.rejects(first, /Accepted revision/); await assert.rejects(later, /Review the earlier/);
       const kept = await pendingCommands(db, owner);
       assert.deepEqual(kept.map(row => [row.command_id, row.state, !!row.attempted]), [['c', 'conflict', true], ['later', 'pending', false]]);
       assert.deepEqual(posts, ['c']);
@@ -93,7 +93,7 @@ test('Lost responses retry the same command, conflicts remain durable and accoun
     await assert.rejects(syncOutbox(db, session), /Accepted revision/);
     assert.equal((await pendingCommands(db, owner))[0].state, 'conflict');
     const before = writes.length;
-    await assert.rejects(syncOutbox(db, session), /Resolve/); assert.equal(writes.length, before);
+    await assert.rejects(syncOutbox(db, session), /Review the earlier/); assert.equal(writes.length, before);
     const replacement = { ...command, command_id: 'reviewed', body: { command_id: 'reviewed', version: 2 } };
     await replaceCommand(db, owner, 'conflict', replacement); conflict = false; denySnapshot = true;
     await assert.rejects(syncOutbox(db, session), /Snapshot unavailable/);
@@ -160,7 +160,7 @@ test('a conflicting bill edit survives restart unchanged and blocks later work u
     assert.deepEqual((await pendingCommands(db, 'other-account'))[0].body, edit.body);
     assert.deepEqual((await readGroup(db, owner, 'g'))?.group, group, 'a rejected edit cannot replace accepted cache');
     assert.deepEqual(calls, ['PUT /groups/g/expenses/bill']);
-    await assert.rejects(syncOutbox(db, session), /Resolve/);
+    await assert.rejects(syncOutbox(db, session), /Review the earlier/);
     assert.deepEqual(calls, ['PUT /groups/g/expenses/bill'], 'existing conflicts never silently replay or acknowledge');
     const replacement = { ...edit, command_id: 'reviewed-edit', body: { ...edit.body, command_id: 'reviewed-edit', version: 2 } };
     await replaceCommand(db, owner, edit.command_id, replacement); reviewed = true;
