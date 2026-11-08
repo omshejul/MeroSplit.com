@@ -81,6 +81,9 @@ import CreateGroupForm from './src/CreateGroupForm';
 import type { NewGroupValues } from './src/CreateGroupForm';
 import { SavedChanges, LegacyRecovery as LegacyRecords } from './src/AccountRecovery';
 import ProfileSettings from './src/ProfileSettings';
+import { AppIconPreview } from './src/AppIconSettings';
+import { shownAppIcon } from './src/appIcon';
+import { appIcons, type AppIcon } from './src/appIcons';
 import SignInMethods from './src/SignInMethods';
 import AppUpdates, { AppUpdatePrompt } from './src/AppUpdates';
 import useAppUpdates from './src/useAppUpdates';
@@ -121,11 +124,20 @@ function AppContent() {
   const { palette: colors, ui, motion, changeAppearance, changeColorFamily, changeCurrency } = useUI();
   const s = makeStyles(colors);
   const [session, setSession] = useState<Session | null>(null), [ready, setReady] = useState(false), [expired, setExpired] = useState(false);
+  const [launchIcon, setLaunchIcon] = useState<AppIcon | null>(null);
   useEffect(() => {
-    if (!ready || Platform.OS === 'web') return;
+    if (Platform.OS !== 'ios') return;
+    let live = true;
+    void shownAppIcon().then(id => {
+      if (live) setLaunchIcon(appIcons.find(icon => icon.id === id) ?? null);
+    }).catch(() => {});
+    return () => { live = false; };
+  }, []);
+  useEffect(() => {
+    if (Platform.OS === 'web' || (!ready && !(Platform.OS === 'ios' && launchIcon))) return;
     const frame = requestAnimationFrame(() => { void SplashScreen.hideAsync().catch(() => {}); });
     return () => cancelAnimationFrame(frame);
-  }, [ready]);
+  }, [ready, launchIcon]);
   const [storageError, setStorageError] = useState(''), [hasDrafts, setHasDrafts] = useState(false);
   const [verifiedEmptyOwner, setVerifiedEmptyOwner] = useState(''), [emptyChatScope, setEmptyChatScope] = useState('');
   const [online, setOnline] = useState(isOnline);
@@ -1566,7 +1578,11 @@ function AppContent() {
   }
   return <PhotoSession.Provider value={authHeld || expired ? null : session}><NavigationContainer ref={navigation.ref} linking={webLinking}><><AppFrame onTouchStart={engage}><View ref={protectedContent} style={{ flex: 1 }} pointerEvents={authHeld ? 'none' : 'auto'} accessibilityElementsHidden={authHeld} importantForAccessibility={authHeld ? 'no-hide-descendants' : 'auto'} aria-hidden={authHeld}>
     <AppStack scope={`${owner}|${navigationScope}`} initialScreen={initialScreen.current} render={renderScreen} blocked={authHeld} />
-  </View></AppFrame>
+  </View>
+    {!ready && launchIcon && <View pointerEvents="none" style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background }]}>
+      <AppIconPreview icon={launchIcon} size={112} />
+    </View>}
+  </AppFrame>
     <AppUpdatePrompt update={appUpdates} />
     {session && !authHeld && !expired && <UPISetupDialog key={`upi-setup|${owner}|${session.token}`} afterFirstSplit={upiAfterSplit} visible={upiSetup && !(appLink && 'groupInviteToken' in appLink) && !feedbackOpen && screen !== 'settle' && screen !== 'expense' && screen !== 'billChat' && screen !== 'expenseVersions'} busy={busy} needsName={!session.displayName?.trim()} onSaveName={value => saveName(value, true)} onSave={saveUPI} onSkip={() => setUpiSetup(false)} />}
     {session && !authHeld && !expired && <FeedbackDialog key={`feedback|${owner}|${session.token}`} visible={feedbackOpen} onClose={() => setFeedbackOpen(false)} onSubmit={async body => {
