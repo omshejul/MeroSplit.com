@@ -7,8 +7,8 @@ import { animateLayout } from './layoutTransition';
 import { currencySymbol } from './currency';
 import Form from './Form';
 import { ScreenDraftDiscard, useScreenRemovalLock } from './screenRemoval';
-import React, { useContext, useEffect, useRef, useState } from 'react';
-import { StyleSheet, View, type TextInput } from 'react-native';
+import React, { useContext, useEffect, useId, useRef, useState } from 'react';
+import { InputAccessoryView, Platform, StyleSheet, View, type TextInput } from 'react-native';
 import { Text } from 'react-native-paper';
 import * as Crypto from 'expo-crypto';
 import { adjustmentToPaise, formatMoney, integer, rupeesToPaise, validateExpense } from './accounting';
@@ -158,7 +158,8 @@ function SplitFields({ participants, draft, disabled, preserveRemoved, label, on
 }
 
 export default function ExpenseForm({ group, expense, selfId, busy, autoFocusAmount, onSave, owner, writes }: Props) {
-  const { ui } = useUI();
+  const { ui, palette } = useUI();
+  const amountAccessoryId = useId();
   const [draft, setDraft] = useState(() => startingDraft(group, expense, selfId)), [error, setError] = useState(''), [saving, setSaving] = useState(false);
   const [fileBusy, setFileBusy] = useState(false);
   const amountInput = useRef<React.ComponentRef<typeof TextInput>>(null), didFocusAmount = useRef(false);
@@ -198,6 +199,7 @@ export default function ExpenseForm({ group, expense, selfId, busy, autoFocusAmo
     amountInput.current.focus();
   }, [autoFocusAmount, disabled, group.archived]);
   const focusDescription = !expense && !group.archived ? () => descriptionInput.current?.focus() : undefined;
+  const showAmountAccessory = Platform.OS === 'ios' && !!focusDescription;
   useLoading(!ready && !error || saving || fileBusy);
   useScreenRemovalLock(saving || fileBusy);
   const acceptedExpense = group.expenses.find(value => value.id === draft.id) ?? (group.focused_expense?.id === draft.id ? group.focused_expense : undefined);
@@ -282,11 +284,18 @@ export default function ExpenseForm({ group, expense, selfId, busy, autoFocusAmo
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start', gap: 12 }}>
       <View style={{ flex: 1, minWidth: 180, gap: 12 }}>
         <AmountField ref={amountInput} autoCorrect={false} label={`Amount (${currencySymbol()})`} value={draft.amount} onChangeText={amount => change({ amount })} placeholder="0" editable={!disabled}
+          inputAccessoryViewID={showAmountAccessory ? amountAccessoryId : undefined}
           returnKeyType={focusDescription ? "next" : undefined} submitBehavior={focusDescription ? "submit" : undefined} onSubmitEditing={focusDescription}
           style={{ fontSize: 32, lineHeight: 40, minHeight: 80 }} />
       </View>
       {!expense && <View style={{ alignSelf: 'flex-end' }}><DraftAttachment value={draft.attachment} path={`/groups/${group.id}/expenses/${draft.id}/attachments`} disabled={disabled || !!group.archived} onChange={async attachment => { await change({ attachment }); }} onBusy={setFileBusy} onError={setError} /></View>}
     </View>
+    {showAmountAccessory && <InputAccessoryView nativeID={amountAccessoryId} backgroundColor={palette.background}>
+      <View style={{ alignItems: 'flex-end', paddingHorizontal: 16, paddingVertical: 8 }}>
+        <Button title="Next" icon="next" accessibilityLabel="Next: Description" kind="secondary" disabled={disabled}
+          style={{ minHeight: 44, borderRadius: 22, paddingHorizontal: 16 }} onPress={focusDescription} />
+      </View>
+    </InputAccessoryView>}
     <View style={styles.field}>
       <TextField ref={descriptionInput} autoCorrect={false} label="Description" value={draft.description} onChangeText={description => change({ description })} placeholder="What was it for?" maxLength={200} editable={!disabled} />
       {error === descriptionError && <ErrorText live>{error}</ErrorText>}

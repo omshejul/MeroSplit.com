@@ -34,12 +34,12 @@ function harness(file: string, name: string, extra: Record<string, any> = {}) {
   let cursor = 0, states: any[] = [], effects: (() => void)[] = [], cleanups: Record<number, () => void> = {};
   const deps: Record<number, any[]> = {};
   const draftDiscard = { current: null as null | (() => Promise<boolean>) };
-  const env: Record<string, any> = { Animated, motionDuration: { feedback: 180 }, balanceColor: (amount: string, palette: any) => BigInt(amount) > 0n ? palette.positive : BigInt(amount) < 0n ? palette.negative : palette.muted, channelSummary, categoryIcon, expenseCategory, changedBalance, useExpenseIcons: () => ({}), animateLayout() {}, PeopleSheet: 'PeopleSheet', currencySymbol, cachedRead: () => undefined, rememberRead() {}, invalidateRead() {}, getDatabase: async () => ({}), draftDiscard, ScreenDraftDiscard: {}, useContext: () => draftDiscard, expenseDraftStore: () => ({ read: () => ({ then: (done: (value: null) => void) => { done(null); return { catch() {} }; } }), write: async () => {} }), React, Dialog, PersonInviteDialog: 'PersonInviteDialog', useToast: () => () => {}, DetailDialog: 'DetailDialog', useScreenRemovalLock() {}, validUPIAddress, View: 'View', ScrollView: 'ScrollView', KeyboardDialog: 'KeyboardDialog', BottomSheet: 'BottomSheet', Pressable: 'Pressable', Text: 'Text', LoadingSpinner: 'LoadingSpinner', NotificationSwitch: 'NotificationSwitch', PushSettings: 'PushSettings', PushStatus: 'PushStatus', BalanceStatements: 'BalanceStatements', DialogScrollBody: 'DialogScrollBody', Form: 'Form', SectionHeading: 'SectionHeading', Button: 'Button', Icon: 'Icon', SettingsRow: 'SettingsRow', BillPeople: 'BillPeople', DraftAttachment: 'DraftAttachment', LocalAttachment: 'LocalAttachment', AmountField: 'AmountField', TextField: 'TextField', DateField: 'DateField', ErrorText: 'ErrorText', Checkbox: { Item: 'Checkbox' }, RadioChoice: 'RadioChoice', Crypto: { randomUUID: () => 'bill-id' }, StyleSheet: { create: (value: any) => value }, Keyboard: { dismiss() {} }, useWindowDimensions: () => ({ height: 667 }), useSafeAreaInsets: () => ({ top: 20, bottom: 0 }), Platform: { OS: 'native' }, requestAnimationFrame: (fn: () => void) => fn(), useUI: () => ({ ui: {} }), adjustmentToPaise, formatMoney, integer, rupeesToPaise, validateExpense, ...extra,
+  const env: Record<string, any> = { Animated, motionDuration: { feedback: 180 }, balanceColor: (amount: string, palette: any) => BigInt(amount) > 0n ? palette.positive : BigInt(amount) < 0n ? palette.negative : palette.muted, channelSummary, categoryIcon, expenseCategory, changedBalance, useExpenseIcons: () => ({}), animateLayout() {}, PeopleSheet: 'PeopleSheet', currencySymbol, cachedRead: () => undefined, rememberRead() {}, invalidateRead() {}, getDatabase: async () => ({}), draftDiscard, ScreenDraftDiscard: {}, useContext: () => draftDiscard, useId: () => 'test-field', expenseDraftStore: () => ({ read: () => ({ then: (done: (value: null) => void) => { done(null); return { catch() {} }; } }), write: async () => {} }), React, Dialog, PersonInviteDialog: 'PersonInviteDialog', useToast: () => () => {}, DetailDialog: 'DetailDialog', useScreenRemovalLock() {}, validUPIAddress, View: 'View', ScrollView: 'ScrollView', KeyboardDialog: 'KeyboardDialog', BottomSheet: 'BottomSheet', Pressable: 'Pressable', Text: 'Text', LoadingSpinner: 'LoadingSpinner', NotificationSwitch: 'NotificationSwitch', PushSettings: 'PushSettings', PushStatus: 'PushStatus', BalanceStatements: 'BalanceStatements', DialogScrollBody: 'DialogScrollBody', Form: 'Form', SectionHeading: 'SectionHeading', Button: 'Button', Icon: 'Icon', SettingsRow: 'SettingsRow', BillPeople: 'BillPeople', DraftAttachment: 'DraftAttachment', LocalAttachment: 'LocalAttachment', AmountField: 'AmountField', TextField: 'TextField', DateField: 'DateField', ErrorText: 'ErrorText', Checkbox: { Item: 'Checkbox' }, RadioChoice: 'RadioChoice', Crypto: { randomUUID: () => 'bill-id' }, StyleSheet: { create: (value: any) => value }, Keyboard: { dismiss() {} }, useWindowDimensions: () => ({ height: 667 }), useSafeAreaInsets: () => ({ top: 20, bottom: 0 }), Platform: { OS: 'native' }, requestAnimationFrame: (fn: () => void) => fn(), useUI: () => ({ ui: {} }), adjustmentToPaise, formatMoney, integer, rupeesToPaise, validateExpense, ...extra,
     useState: (initial: any) => { const id = cursor++; if (!(id in states)) states[id] = typeof initial === 'function' ? initial() : initial; return [states[id], (value: any) => { states[id] = typeof value === 'function' ? value(states[id]) : value; }]; },
     useRef: (initial: any) => { const id = cursor++; return states[id] ??= { current: initial }; },
     useEffect: (fn: () => any, values: any[]) => { const id = cursor++; if (!deps[id] || values.some((value, i) => value !== deps[id][i])) { effects.push(() => { cleanups[id]?.(); cleanups[id] = fn(); }); deps[id] = values; } },
   };
-  const readUI = env.useUI; env.useUI = () => ({ motion: { enabled: false }, ...readUI() });
+  const readUI = env.useUI; env.useUI = () => ({ motion: { enabled: false }, palette: {}, ...readUI() });
   const source = ts.createSourceFile(file, readFileSync(new URL(`../${file}`, import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   const body = source.statements.filter(node => !ts.isImportDeclaration(node) && !ts.isExportDeclaration(node)).map(node => node.getText(source).replace(/^export (?:default )?/, '')).join('\n');
   const code = ts.transpile(body, { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React });
@@ -88,7 +88,7 @@ test('combined export flushes saved work and never shares a stale account result
 const group = { id: 'g', name: 'Example', expenses: [], participants: [{ id: 'self', name: 'Example' }, { id: 'other', name: 'Jordan' }] };
 
 test('a new bill focuses Amount once after draft restore and Next focuses Description', () => {
-  const app = harness('src/ExpenseForm.tsx', 'ExpenseForm');
+  const app = harness('src/ExpenseForm.tsx', 'ExpenseForm', { Platform: { OS: 'ios' }, InputAccessoryView: 'InputAccessoryView', useId: () => 'amount-accessory' });
   const props = { group, selfId: 'self', busy: false, autoFocusAmount: true, onSave: async () => {} };
   const focus: string[] = [];
   const tree = app.render(props);
@@ -99,8 +99,12 @@ test('a new bill focuses Amount once after draft restore and Next focuses Descri
   app.commit();
   app.render({ ...props, busy: true }); app.render(props); app.commit();
   assert.deepEqual(focus, ['amount']);
+  const accessory = nodes(tree).find(node => node.type === 'InputAccessoryView')!;
+  assert.equal(amount.props.inputAccessoryViewID, accessory.props.nativeID);
+  assert.equal(amount.props.right, undefined);
+  find(accessory, 'title', 'Next').props.onPress();
   amount.props.onSubmitEditing();
-  assert.deepEqual(focus, ['amount', 'description']);
+  assert.deepEqual(focus, ['amount', 'description', 'description']);
 });
 
 test('form keeps one selected payer changeable when other people are eligible and retains values through dialog close', async () => {
