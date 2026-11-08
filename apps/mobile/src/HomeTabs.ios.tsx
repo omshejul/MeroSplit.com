@@ -33,13 +33,13 @@ export default function HomeTabs({ selected, busy, onSelect, render }: HomeTabsP
       if (!busy && (nativeEvent.actionOrigin === 'user' || nativeEvent.actionOrigin === 'implicit')) selectTab(nativeEvent.selectedScreenKey);
     }}
     onTabSelectionPrevented={({ nativeEvent }) => {
-      // Leave the old screen visible until React can render a first visit.
+      // Let React cancel any swipe slide before UIKit switches tabs.
       provenance.current = nativeEvent.provenance;
       if (!busy) selectTab(nativeEvent.preventedScreenKey);
     }}>
     {tabs.map(tab => <Tabs.Screen key={tab.value} screenKey={tab.value} title={tab.label}
       tabBarItemAccessibilityLabel={tab.label} tabBarItemTestID={`tab-${tab.value}`}
-      preventNativeSelection={busy || !visited.current.has(tab.value)}
+      preventNativeSelection
       specialEffects={{ repeatedTabSelection: { popToRoot: false, scrollToTop: false } }}
       style={{ backgroundColor: palette.background }}
       ios={{ overrideScrollViewContentInsetAdjustmentBehavior: false, icon: { type: 'sfSymbol', name: tab.symbol }, selectedIcon: { type: 'sfSymbol', name: tab.selectedSymbol } }}>
