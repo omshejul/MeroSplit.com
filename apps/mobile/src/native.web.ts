@@ -8,6 +8,7 @@ import type { Database } from './storage';
 import type { Session } from './types';
 import { cachedBrowserSession, readBrowserSession } from './browserAuth.ts';
 import { defaultColorFamily, isColorFamily, type ColorFamily } from './theme';
+import type { AppIconChoice } from './appIcons';
 
 const wasmURL = '/app/sqlite.wasm';
 let database: Promise<Database> | undefined;
@@ -55,6 +56,9 @@ export async function saveAppearance(value: AppearancePreference): Promise<void>
 const COLOR_FAMILY_KEY = 'merosplit.web.colorFamily';
 export async function savedColorFamily(): Promise<ColorFamily> { const value = readPreference(COLOR_FAMILY_KEY); return isColorFamily(value) ? value : defaultColorFamily; }
 export async function saveColorFamily(value: ColorFamily): Promise<void> { if (!isColorFamily(value)) throw new Error('Choose a color.'); writePreference(COLOR_FAMILY_KEY, value); }
+// Browsers have no app icon to change; the App icon row is not shown.
+export async function savedAppIcon(): Promise<AppIconChoice> { return 'match'; }
+export async function saveAppIcon(_value: AppIconChoice): Promise<void> {}
 export async function retireSyncPause(): Promise<void> { writePreference('splitdumb.syncPaused', null); }
 export async function shareJson(filename: string, data: unknown): Promise<void> { return shareText(`${filename}.json`, JSON.stringify(data, null, 2), 'application/json'); }
 export async function shareText(filename: string, data: string, mimeType: string): Promise<void> {
