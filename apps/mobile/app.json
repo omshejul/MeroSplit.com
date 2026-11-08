@@ -10,7 +10,8 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.omshejul.splitdumb",
-      "buildNumber": "33",
+      "version": "1.2.4",
+      "buildNumber": "34",
       "associatedDomains": [
         "applinks:merosplit.com",
         "applinks:merosplit.omshejul.com"
@@ -35,6 +36,7 @@
     "android": {
       "package": "com.omshejul.splitdumb",
       "versionCode": 33,
+      "blockedPermissions": ["android.permission.CAMERA"],
       "intentFilters": [
         {
           "action": "VIEW",
@@ -129,7 +131,7 @@
         "expo-image-picker",
         {
           "photosPermission": "Choose a profile photo or a bill image for MeroSplit.",
-          "cameraPermission": false,
+          "cameraPermission": "MeroSplit uses your camera so you can take a photo of a receipt or bill and attach it to an expense.",
           "microphonePermission": false
         }
       ],
