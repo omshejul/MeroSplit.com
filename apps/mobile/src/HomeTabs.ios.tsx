@@ -31,15 +31,20 @@ export default function HomeTabs({ selected, busy, onSelect, render }: HomeTabsP
     onTabSelected={({ nativeEvent }) => {
       provenance.current = nativeEvent.provenance;
       if (!busy && (nativeEvent.actionOrigin === 'user' || nativeEvent.actionOrigin === 'implicit')) selectTab(nativeEvent.selectedScreenKey);
+    }}
+    onTabSelectionPrevented={({ nativeEvent }) => {
+      // Leave the old screen visible until React can render a first visit.
+      provenance.current = nativeEvent.provenance;
+      if (!busy) selectTab(nativeEvent.preventedScreenKey);
     }}>
     {tabs.map(tab => <Tabs.Screen key={tab.value} screenKey={tab.value} title={tab.label}
       tabBarItemAccessibilityLabel={tab.label} tabBarItemTestID={`tab-${tab.value}`}
-      preventNativeSelection={busy}
+      preventNativeSelection={busy || !visited.current.has(tab.value)}
       specialEffects={{ repeatedTabSelection: { popToRoot: false, scrollToTop: false } }}
       style={{ backgroundColor: palette.background }}
       ios={{ overrideScrollViewContentInsetAdjustmentBehavior: false, icon: { type: 'sfSymbol', name: tab.symbol }, selectedIcon: { type: 'sfSymbol', name: tab.selectedSymbol } }}>
       <SafeAreaProvider>
-        {visited.current.has(tab.value) ? <Animated.View pointerEvents={selected === tab.value ? 'auto' : 'none'} aria-hidden={selected === tab.value ? undefined : true} accessibilityElementsHidden={selected !== tab.value} importantForAccessibility={selected === tab.value ? 'auto' : 'no-hide-descendants'} {...(selected === tab.value ? content : { style: { position: 'absolute' as const, top: 0, right: 0, bottom: 0, left: 0, opacity: 0 } })}>{render(tab.value)}</Animated.View> : null}
+        {visited.current.has(tab.value) ? <Animated.View pointerEvents={selected === tab.value ? 'auto' : 'none'} aria-hidden={selected === tab.value ? undefined : true} accessibilityElementsHidden={selected !== tab.value} importantForAccessibility={selected === tab.value ? 'auto' : 'no-hide-descendants'} {...(selected === tab.value ? content : { style: { flex: 1 } })}>{render(tab.value)}</Animated.View> : null}
       </SafeAreaProvider>
     </Tabs.Screen>)}
   </Tabs.Host>;

@@ -83,25 +83,33 @@ test('RTL swipes follow reading direction', () => {
   h.onPanResponderRelease(null, gesture); assert.deepEqual(app.selected, ['Friends']);
 });
 
-test('native tab changes keep routes authoritative and never mount four account surfaces', () => {
+test('native tabs wait for first render and keep visited content ready', () => {
   const React = { createElement: (type: unknown, props: any, ...children: any[]) => ({ type, props, children }) };
   const file = ts.createSourceFile('HomeTabs.ios.tsx', readFileSync(new URL('../src/HomeTabs.ios.tsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   const body = file.statements.filter(node => !ts.isImportDeclaration(node)).map(node => node.getText(file).replace(/^export (?:default )?/, '')).join('\n');
-  const refs = { current: 0 }, selected: string[] = [], rendered: string[] = [];
+  const refs = { current: 0 }, visited = { current: new Set<string>() }, selected: string[] = [], rendered: string[] = [];
   const render = new Function('env', `with(env){${ts.transpile(body, { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React })};return HomeTabs;}`)({
     React, SafeAreaProvider:'SafeAreaProvider', SafeAreaView:'SafeAreaView', Platform: { Version: '27' }, Tabs: { Host: 'NativeTabs', Screen: 'NativeTab' }, Animated: { View: 'AnimatedView' },
-    useRef: (initial:any) => initial instanceof Set ? {current:initial} : refs, useUI: () => ({ palette: { accent: 'accent', background: 'background' }, dark: true }), useHomeTabSwipe: (_selected: string, _busy: boolean, selectTab: Function) => ({ content: {}, selectTab }),
+    useRef: (initial:any) => initial instanceof Set ? visited : refs, useUI: () => ({ palette: { accent: 'accent', background: 'background' }, dark: true }), useHomeTabSwipe: (_selected: string, _busy: boolean, selectTab: Function) => ({ content: {}, selectTab }),
   });
   const props = { selected: 'Groups', busy: false, onSelect: (value: string) => selected.push(value), render: (value: string) => { rendered.push(value); return value; } };
   const tree = render(props); assert.equal(tree.type, 'NativeTabs'); assert.deepEqual(rendered, ['Groups']);
   for(const screen of tree.children[0]){const provider=screen.children[0];assert.equal(provider?.type,'SafeAreaProvider','native tab owns its safe-area context from first mount');assert.equal(provider.children[0]?.type,screen.props.screenKey==='Groups'?'AnimatedView':undefined,'viewport stays full height inside the local provider');assert.equal(screen.props.ios.overrideScrollViewContentInsetAdjustmentBehavior,false,'manual clearance must not be doubled by automatic insets');}
-  tree.props.onTabSelected({ nativeEvent: { provenance: 4, selectedScreenKey: 'Friends', actionOrigin: 'user' } });
+  assert.deepEqual(tree.children[0].map((screen: any) => screen.props.preventNativeSelection), [false, true, true, true]);
+  tree.props.onTabSelectionPrevented({ nativeEvent: { provenance: 4, selectedScreenKey: 'Groups', preventedScreenKey: 'Friends' } });
   assert.deepEqual(selected, ['Friends']); assert.equal(refs.current, 4);
   tree.props.onTabSelected({ nativeEvent: { provenance: 5, selectedScreenKey: 'Activity', actionOrigin: 'programmatic-js' } });
   assert.deepEqual(selected, ['Friends']);
+  const people = render({ ...props, selected: 'Friends' });
+  const [groups, friends] = people.children[0];
+  assert.equal(groups.props.preventNativeSelection, false);
+  assert.deepEqual(groups.children[0].children[0].props.style, { flex: 1 });
+  assert.equal(friends.props.preventNativeSelection, false);
+  people.props.onTabSelected({ nativeEvent: { provenance: 6, selectedScreenKey: 'Groups', actionOrigin: 'user' } });
+  assert.deepEqual(selected, ['Friends', 'Groups']);
   const busy = render({ ...props, busy: true }); assert.ok(busy.children[0].every((node: any) => node.props.preventNativeSelection));
-  busy.props.onTabSelected({ nativeEvent: { provenance: 6, selectedScreenKey: 'Account', actionOrigin: 'user' } });
-  assert.deepEqual(selected, ['Friends']);
+  busy.props.onTabSelectionPrevented({ nativeEvent: { provenance: 7, selectedScreenKey: 'Groups', preventedScreenKey: 'Account' } });
+  assert.deepEqual(selected, ['Friends', 'Groups']);
 });
 
 test('web uses its supported input focus API so text editing never changes tabs', () => {
@@ -128,13 +136,13 @@ test('real React Native responder claims a root swipe before x0 is initialized',
 });
 
 
-test('only a completed rightward swipe slides the next tab, respecting reduced motion', () => {
+test('swipes slide either way on release, while taps and reduced motion stay instant', () => {
   const app = swipeHarness();
   app.state.selected = 'Friends'; app.render();
   const h = app.handlers(), right = app.gesture({ dx: 120, vx: 0.7 });
   h.onStartShouldSetPanResponderCapture();
   h.onPanResponderMove(null, right);
-  assert.equal(app.layout().content.style.transform[0].translateX.current, 42);
+  assert.equal(app.layout().content.style.transform[0].translateX.current, 0);
   h.onPanResponderRelease(null, right);
   assert.deepEqual(app.selected, ['Groups']);
   app.state.selected = 'Groups'; app.render();
@@ -147,10 +155,11 @@ test('only a completed rightward swipe slides the next tab, respecting reduced m
   app.handlers().onStartShouldSetPanResponderCapture();
   app.handlers().onPanResponderRelease(null, app.gesture());
   app.state.selected = 'Friends'; app.render();
+  assert.deepEqual(app.slides, [-64, 64]);
   app.state.motion = false; app.render();
   app.handlers().onStartShouldSetPanResponderCapture();
   app.handlers().onPanResponderRelease(null, right);
   app.state.selected = 'Groups'; app.render();
   assert.deepEqual(app.selected, ['Groups', 'Account', 'Friends', 'Groups']);
-  assert.deepEqual(app.slides, [-64]);
+  assert.deepEqual(app.slides, [-64, 64]);
 });
