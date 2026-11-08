@@ -13,9 +13,8 @@ import { colorFamilies } from './theme';
 import { Button, ErrorText, SettingsRow, useUI } from './ui';
 
 export function AppIconPreview({ icon, size }: { icon: AppIcon; size: number }) {
-  const { palette } = useUI();
   return <Svg width={size} height={size} viewBox="0 0 100 100" accessible={false}>
-    <Rect x={0.5} y={0.5} width={99} height={99} rx={22.5} fill={icon.ground} stroke={palette.line} strokeWidth={icon.ground === '#FFFFFF' ? 1 : 0} />
+    <Rect x={0.5} y={0.5} width={99} height={99} rx={22.5} fill={icon.ground} stroke="#D8D8D8" strokeWidth={icon.ground === '#FFFFFF' ? 1 : 0} />
     <G transform={markTransform}><Path d={markPaths.left} fill={icon.left} /><Path d={markPaths.right} fill={icon.right} /></G>
   </Svg>;
 }
@@ -66,7 +65,7 @@ export default function AppIconSettings({ busy }: { busy: boolean }) {
     finally { closing.current = false; setSaving(false); }
   }
   return <>
-    <SettingsRow rowRef={row} icon="appIcon" label="App icon" value={choice === 'match' ? 'Match color' : appIconLabel(choice)} disabled={busy} onPress={() => { setError(''); setOpen(true); }} />
+    <SettingsRow divider rowRef={row} icon="appIcon" label="App icon" value={choice === 'match' ? 'Match color' : appIconLabel(choice)} disabled={busy} onPress={() => { setError(''); setOpen(true); }} />
     <KeyboardDialog visible={open} onDismiss={() => void finish()} dismissable={!saving} maxHeight={height}>
       <Dialog.Title aria-level={2}>App icon</Dialog.Title>
       <DialogScrollBody maxHeight={440} gap={0} paddingVertical={0}>
@@ -83,6 +82,7 @@ export default function AppIconSettings({ busy }: { busy: boolean }) {
               </Pressable>;
             })}
           </View>
+          <Text style={[ui.caption, { paddingHorizontal: 16 }]}>Previews show the default style. iOS applies your Home Screen appearance.</Text>
         </View>
         {!!error && <ErrorText live>{error}</ErrorText>}
       </DialogScrollBody>
