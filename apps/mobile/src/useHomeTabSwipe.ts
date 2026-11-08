@@ -59,6 +59,8 @@ export function useHomeTabSwipe(selected: string, busy: boolean, onSelect: (tab:
     content: { ...responder.panHandlers, style: { flex: 1, transform: [{ translateX }] } },
     selectTab: (tab: string) => {
       entry.current = null;
+      translateX.stopAnimation();
+      translateX.setValue(0);
       onSelect(tab);
     },
   };

@@ -19,7 +19,7 @@ function actualPanResponder() {
 
 function swipeHarness(real = false) {
   const state = { selected: 'Groups', busy: false, focused: false, rtl: false, os: 'ios', motion: true };
-  const selected: string[] = [], refs: any[] = [], slides: number[] = [];
+  const selected: string[] = [], refs: any[] = [], slides: number[] = [], offsetsOnSelect: number[] = [];
   let cursor = 0, handlers: any, nativeHandlers: any, layout: any;
   class Value {
     current = 0;
@@ -37,9 +37,9 @@ function swipeHarness(real = false) {
     TextInput: { State: { currentlyFocusedInput: () => { assert.equal(state.os, 'ios'); return state.focused ? {} : null; }, currentlyFocusedField: () => { assert.equal(state.os, 'web'); return state.focused ? {} : null; } } },
     PanResponder: { create: (value: unknown) => { handlers = value; if (!real) { const start = handlers.onStartShouldSetPanResponderCapture; handlers.onStartShouldSetPanResponderCapture = (event = { nativeEvent: { pageX: 200, touches: [{ pageX: 200 }] } }) => start(event); } const result = real ? actualPanResponder().create(value) : { panHandlers: value }; nativeHandlers = result.panHandlers; return result; } },
   });
-  const render = () => { cursor = 0; layout = useSwipe(state.selected, state.busy, (tab: string) => selected.push(tab)); };
+  const render = () => { cursor = 0; layout = useSwipe(state.selected, state.busy, (tab: string) => { selected.push(tab); offsetsOnSelect.push(layout.content.style.transform[0].translateX.current); }); };
   render();
-  return { state, selected, slides, render, layout: () => layout, handlers: () => handlers, nativeHandlers: () => nativeHandlers, gesture: (changes = {}) => ({ dx: -120, dy: 3, vx: -0.7, x0: 0, numberActiveTouches: 1, ...changes }) };
+  return { state, selected, slides, offsetsOnSelect, render, layout: () => layout, handlers: () => handlers, nativeHandlers: () => nativeHandlers, gesture: (changes = {}) => ({ dx: -120, dy: 3, vx: -0.7, x0: 0, numberActiveTouches: 1, ...changes }) };
 }
 
 test('home swipes move to adjacent tabs without wrapping; taps remain an equivalent action', () => {
@@ -83,7 +83,7 @@ test('RTL swipes follow reading direction', () => {
   h.onPanResponderRelease(null, gesture); assert.deepEqual(app.selected, ['Friends']);
 });
 
-test('native tabs wait for first render and keep visited content ready', () => {
+test('native tab taps go through React before switching, even for visited tabs', () => {
   const React = { createElement: (type: unknown, props: any, ...children: any[]) => ({ type, props, children }) };
   const file = ts.createSourceFile('HomeTabs.ios.tsx', readFileSync(new URL('../src/HomeTabs.ios.tsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   const body = file.statements.filter(node => !ts.isImportDeclaration(node)).map(node => node.getText(file).replace(/^export (?:default )?/, '')).join('\n');
@@ -95,17 +95,17 @@ test('native tabs wait for first render and keep visited content ready', () => {
   const props = { selected: 'Groups', busy: false, onSelect: (value: string) => selected.push(value), render: (value: string) => { rendered.push(value); return value; } };
   const tree = render(props); assert.equal(tree.type, 'NativeTabs'); assert.deepEqual(rendered, ['Groups']);
   for(const screen of tree.children[0]){const provider=screen.children[0];assert.equal(provider?.type,'SafeAreaProvider','native tab owns its safe-area context from first mount');assert.equal(provider.children[0]?.type,screen.props.screenKey==='Groups'?'AnimatedView':undefined,'viewport stays full height inside the local provider');assert.equal(screen.props.ios.overrideScrollViewContentInsetAdjustmentBehavior,false,'manual clearance must not be doubled by automatic insets');}
-  assert.deepEqual(tree.children[0].map((screen: any) => screen.props.preventNativeSelection), [false, true, true, true]);
+  assert.deepEqual(tree.children[0].map((screen: any) => screen.props.preventNativeSelection), [true, true, true, true]);
   tree.props.onTabSelectionPrevented({ nativeEvent: { provenance: 4, selectedScreenKey: 'Groups', preventedScreenKey: 'Friends' } });
   assert.deepEqual(selected, ['Friends']); assert.equal(refs.current, 4);
   tree.props.onTabSelected({ nativeEvent: { provenance: 5, selectedScreenKey: 'Activity', actionOrigin: 'programmatic-js' } });
   assert.deepEqual(selected, ['Friends']);
   const people = render({ ...props, selected: 'Friends' });
   const [groups, friends] = people.children[0];
-  assert.equal(groups.props.preventNativeSelection, false);
+  assert.equal(groups.props.preventNativeSelection, true);
   assert.deepEqual(groups.children[0].children[0].props.style, { flex: 1 });
-  assert.equal(friends.props.preventNativeSelection, false);
-  people.props.onTabSelected({ nativeEvent: { provenance: 6, selectedScreenKey: 'Groups', actionOrigin: 'user' } });
+  assert.equal(friends.props.preventNativeSelection, true);
+  people.props.onTabSelectionPrevented({ nativeEvent: { provenance: 6, selectedScreenKey: 'Friends', preventedScreenKey: 'Groups' } });
   assert.deepEqual(selected, ['Friends', 'Groups']);
   const busy = render({ ...props, busy: true }); assert.ok(busy.children[0].every((node: any) => node.props.preventNativeSelection));
   busy.props.onTabSelectionPrevented({ nativeEvent: { provenance: 7, selectedScreenKey: 'Groups', preventedScreenKey: 'Account' } });
@@ -149,6 +149,7 @@ test('swipes slide either way on release, while taps and reduced motion stay ins
   assert.deepEqual(app.slides, [-64]);
 
   app.layout().selectTab('Account');
+  assert.equal(app.offsetsOnSelect.at(-1), 0, 'tap clears the running slide before requesting the destination');
   app.state.selected = 'Account'; app.render();
   assert.equal(app.layout().content.style.transform[0].translateX.current, 0);
   app.state.selected = 'Groups'; app.render();
