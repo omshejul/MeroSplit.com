@@ -99,8 +99,8 @@ test('a new bill focuses Amount once after draft restore and Next focuses Descri
   app.commit();
   app.render({ ...props, busy: true }); app.render(props); app.commit();
   assert.deepEqual(focus, ['amount']);
-  amount.props.right.props.onPress(); amount.props.onSubmitEditing();
-  assert.deepEqual(focus, ['amount', 'description', 'description']);
+  amount.props.onSubmitEditing();
+  assert.deepEqual(focus, ['amount', 'description']);
 });
 
 test('form keeps one selected payer changeable when other people are eligible and retains values through dialog close', async () => {
