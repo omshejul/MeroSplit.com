@@ -20,7 +20,14 @@
     },
     "production": {
       "extends": "beta",
-      "channel": "merosplit-production"
+      "channel": "merosplit-production",
+      "ios": {
+        "env": { "SENTRY_ALLOW_FAILURE": "true" },
+        "buildArtifactPaths": [
+          "ios/build/**/*.dSYM.zip",
+          "ios/build/**/DerivedSources/main.jsbundle.map"
+        ]
+      }
     }
   },
   "submit": {
