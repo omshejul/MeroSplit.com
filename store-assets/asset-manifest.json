@@ -1,27 +1,27 @@
 {
   "apps/mobile/assets/icon.png": {
-    "sha256": "80547c4d384faf6d1896fa7f5344c33cb759b71bf1c8632071a6f75c6f5f85bc",
-    "bytes": 340458
+    "sha256": "c0b667264501aa120705047fdd4f5d01da5018a0d43901be55469556265fdc88",
+    "bytes": 44565
   },
   "apps/mobile/assets/android-icon-foreground.png": {
-    "sha256": "b6df4c961a7c518b5f6199370ad3f5722862e7027f12863c6907519034e708bd",
-    "bytes": 229298
+    "sha256": "e9cce563569ce891ebc33db50ef6ddd2ad17be88dc3b88122a5c0757c3e27222",
+    "bytes": 41360
   },
   "apps/mobile/assets/splash-icon.png": {
-    "sha256": "32c472a407fd10d2098f30054762667cecba19faccb11768eae7ccb6590ec76c",
-    "bytes": 400001
+    "sha256": "c57083abec6551c3b70e0737d7fa081c38efc46a86b99f59ff0aa7812a655d1d",
+    "bytes": 46308
   },
   "store-assets/app-store/icon-1024.png": {
-    "sha256": "80547c4d384faf6d1896fa7f5344c33cb759b71bf1c8632071a6f75c6f5f85bc",
-    "bytes": 340458
+    "sha256": "ce462acb1be844b627f2f31c770f70a679c35160f72c767bc3bf9b35945ac828",
+    "bytes": 21110
   },
   "store-assets/google-play/icon-512.png": {
-    "sha256": "a0e1d42afa0b7111af7912b4b5ba77683ae2a14f2531deecd1668d457c65eceb",
-    "bytes": 79119
+    "sha256": "73ed7c52673d128d5646e43422be0fc9bc392a42362f51e46d38ad3d61867886",
+    "bytes": 9396
   },
   "store-assets/google-play/feature-graphic-1024x500.png": {
-    "sha256": "07adc31fe810e80b4ded5d19eaca90dac029b11a41be29fc74369b857a5999db",
-    "bytes": 58861
+    "sha256": "8cfc2f171fa48d6f93ae1e27505ae7e966c5ff367c928af7af96e3820c56369d",
+    "bytes": 15843
   },
   "store-assets/google-play/screenshots/04-38-canonical-draft-restored.png": {
     "sha256": "660394742d04cc1057f95eec5f6639d41431d1671f53cc43a08fdda8347a59ca",
@@ -56,8 +56,8 @@
     ]
   },
   "approved_master": {
-    "path": "apps/mobile/assets/brand/03-linked-friends.png",
-    "sha256": "f6611e332da8a5e673fecc95c2a66db712818c6bda2bdd8c18da80e7f4311f59",
+    "path": "apps/mobile/assets/brand/merosplit-logo.svg",
+    "sha256": "82adf3af4260b064527ba724596f201687c2f71e5705ec97293604920643e57a",
     "same_as_selected_original": true
   }
 }

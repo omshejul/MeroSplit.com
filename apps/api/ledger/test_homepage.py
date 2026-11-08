@@ -90,11 +90,17 @@ def test_public_crawl_hints_list_canonical_pages_and_exclude_private_app_routes(
 
 def test_brand_assets_are_exact_existing_images_and_unknown_paths_are_not_served():
     browser = Client()
-    for public, native in [("merosplit-icon.png", "icon.png"), ("favicon.png", "favicon.png"), ("apple-touch-icon.png", None), ("merosplit-logo.svg", "brand/merosplit-logo.svg")]:
+    root = settings.BASE_DIR.parent.parent
+    expected_assets = {
+        "merosplit-icon.png": root / "store-assets/app-store/icon-1024.png",
+        "favicon.png": root / "apps/mobile/assets/favicon.png",
+        "apple-touch-icon.png": settings.BASE_DIR / "ledger/assets/apple-touch-icon.png",
+        "merosplit-logo.svg": root / "apps/mobile/assets/brand/merosplit-logo.svg",
+    }
+    for public, expected in expected_assets.items():
         response = browser.get(f"/assets/{public}")
         assert response.status_code == 200 and response["Content-Type"] == ("image/svg+xml" if public.endswith(".svg") else "image/png")
         assert response["X-Content-Type-Options"] == "nosniff"
-        expected = settings.BASE_DIR.parent / "mobile/assets" / native if native else settings.BASE_DIR / "ledger/assets" / public
         assert b"".join(response.streaming_content) == expected.read_bytes()
     assert public_asset(RequestFactory().get("/"), "../config/settings.py").status_code == 404
     assert browser.get("/assets/missing.js").status_code == 404

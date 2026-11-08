@@ -64,7 +64,7 @@ def test_resend_boundary_sends_both_parts_inline_logo_headers_and_final_sender(s
     assert payload["from"] == settings.DEFAULT_FROM_EMAIL and payload["reply_to"] == settings.EMAIL_REPLY_TO
     logo, = payload["attachments"]
     assert logo["content_id"] == "merosplit-logo" and logo["content_type"] == "image/png"
-    assert hashlib.sha256(base64.b64decode(logo["content"])).hexdigest() == "3c922faa7b6c6768dbe7d505c872ab9e12c7edd1457b3b4521900c0293f09493"
+    assert hashlib.sha256(base64.b64decode(logo["content"])).hexdigest() == "3eccba5481638900a6792dba1c1550c9edac8325e0352ed01d34e79dd83141ac"
 
 
 def test_provider_errors_never_expose_provider_body_key_or_recipient(settings, monkeypatch):
