@@ -52,6 +52,21 @@ def test_actual_values_newest_first_and_labels_are_historical(client, group):
     assert read(client, group, body).json() == page
 
 
+def test_selected_activity_edit_can_be_older_than_the_first_page_and_is_bill_scoped(client, group):
+    body = create(client, group)
+    edit(client, group, body, description='Selected edit')
+    selected = read(client, group, body).json()['items'][0]
+    edit(client, group, body, description='Newer edit')
+    baseline = read(client, group, body, '?limit=1').json()
+    focused = read(client, group, body, f"?limit=1&change_id={selected['id']}").json()
+    assert focused.pop('selected_edit') == selected
+    assert focused == baseline
+    assert selected['changes'] == [{'field': 'description', 'before': 'Test expense', 'after': 'Selected edit'}]
+    other = create(client, group)
+    edit(client, group, other, description='Other bill')
+    assert 'selected_edit' not in read(client, group, other, f"?change_id={selected['id']}").json()
+
+
 def test_noop_keeps_old_write_contract_but_is_not_a_history_edit(client, group):
     body = create(client, group)
     before = Expense.objects.get(pk=body['id']).version

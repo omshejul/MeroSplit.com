@@ -153,8 +153,10 @@ test('offline Activity opens downloaded bills, payments and chats without a netw
   const open = new Function('env', `with(env){${ts.transpile(declaration.getText(source), { target: ts.ScriptTarget.ES2022 })};return openActivityTarget;}`)(scope);
   await open({ kind: 'bill', groupId: 'g', expenseId: 'b' });
   await open({ kind: 'payment', groupId: 'g', settlementId: 'p' });
-  await open({ kind: 'bill', groupId: 'g', expenseId: 'b' }, true);
-  assert.deepEqual(navigations.map(value => value[0]), ['expenseDetail', 'paymentDetail', 'billChat']);
+  await open({ kind: 'bill', groupId: 'g', expenseId: 'b', activityEditId: '23' });
+  await open({ kind: 'bill', groupId: 'g', expenseId: 'b', activityEditId: '23' }, true);
+  assert.deepEqual(navigations.map(value => value[0]), ['expenseDetail', 'paymentDetail', 'expenseDetail', 'billChat']);
+  assert.deepEqual(navigations.map(value => value[1].activityEditId), [undefined, undefined, '23', undefined]);
   assert.ok(published.every(value => value === cached));
   for (const unavailable of [null, { ...visible, kind: 'unavailable' }]) {
     visible = unavailable;
@@ -164,5 +166,5 @@ test('offline Activity opens downloaded bills, payments and chats without a netw
   await assert.rejects(open({ kind: 'bill', groupId: 'g', expenseId: 'b' }), /download|connection/i, 'never substitute an older complete cache for newer records');
   visible = { kind: 'shared', group: cached }; current = false;
   await open({ kind: 'bill', groupId: 'g', expenseId: 'b' });
-  assert.equal(navigations.length, 3, 'stale offline reads cannot navigate');
+  assert.equal(navigations.length, 4, 'stale offline reads cannot navigate');
 });

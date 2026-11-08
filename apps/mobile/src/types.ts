@@ -11,7 +11,7 @@ export type Expense = {
 export type Settlement = { id: string; sender: string; recipient: string; amount: string; created_at?: string; provenance?: string; method?: string; recorded_by?: number; recorded_by_name?: string | null; reversal?: { actor_name?: string | null }; date?: string | null; attempt_id?: string | null; reversed?: boolean };
 export type BillRow = Pick<Expense, 'id' | 'version' | 'description' | 'total' | 'paid' | 'shares' | 'date' | 'time' | 'created_at' | 'category' | 'category_auto' | 'deleted'>;
 export type GroupTransaction = { kind: 'bill'; date: string | null; bill: BillRow } | { kind: 'payment'; date: string | null; payment: Settlement };
-export type ActivityTarget = { kind: 'bill'; groupId: string; expenseId: string } | { kind: 'payment'; groupId: string; settlementId: string } | { kind: 'group'; groupId: string };
+export type ActivityTarget = { kind: 'bill'; groupId: string; expenseId: string; activityEditId?: string } | { kind: 'payment'; groupId: string; settlementId: string } | { kind: 'group'; groupId: string };
 export type ActivityPerson = { id: string; name: string; is_self: boolean };
 export type ActivityItem = {
   id: string; kind: 'bill_added' | 'bill_edited' | 'bill_deleted' | 'bill_restored' | 'bill_reversed' | 'payment_recorded' | 'payment_reversed' | 'member_added' | 'member_joined' | 'member_removed' | 'group_created' | 'group_archived' | 'group_unarchived' | 'simplify_debts_changed' | 'group_renamed' | 'group_photo_changed' | 'group_photo_removed' | 'member_nickname_changed';

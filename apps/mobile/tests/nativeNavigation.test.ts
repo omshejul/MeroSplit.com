@@ -362,6 +362,18 @@ test('opening an Activity bill preserves the existing feed route for Back',()=>{
  assert.equal(h.state().routes.at(-1).key,feed.key);assert.equal(h.state().routes.at(-1).params.tab,'Activity');
 });
 
+test('Activity edits hand the exact edit to history once and keep the bill and feed for Back',()=>{
+ const h=navigationHarness();h.navigation().go('home',{tab:'Activity'});const feed=h.state().routes.at(-1);
+ h.navigation().go('expenseDetail',{groupId:'g',expenseId:'bill',activityEditId:'12'});
+ const bill=h.state().routes.at(-1);assert.equal(bill.params.activityEditId,'12');
+ h.navigation().complete('expenseVersions',{activityEditId:'12'});
+ assert.deepEqual(h.names(),['home','expenseDetail','expenseVersions']);
+ assert.equal(h.state().routes.at(-1).params.activityEditId,'12');
+ h.navigation().back(true);assert.equal(h.state().routes.at(-1).key,bill.key);
+ assert.equal(h.state().routes.at(-1).params.activityEditId,undefined);
+ h.navigation().back(true);assert.equal(h.state().routes.at(-1).key,feed.key);
+});
+
 test('changing home tabs updates the same route without replacing its mounted lists',()=>{
  const h=navigationHarness(),home=h.state().routes[0];h.navigation().go('home',{tab:'Activity'});assert.equal(h.state().routes.length,1);assert.equal(h.state().routes[0].key,home.key);h.navigation().go('home',{tab:'Groups'});assert.equal(h.state().routes[0].key,home.key);
 });

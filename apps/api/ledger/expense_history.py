@@ -61,7 +61,7 @@ def history_entry(row, earlier, actor_names=None):
 
 
 @transaction.atomic
-def expense_version_history(actor, group_id, expense_id, *, before=None, limit=50):
+def expense_version_history(actor, group_id, expense_id, *, before=None, limit=50, change_id=None):
     from .services import visible_group
 
     group = visible_group(actor, group_id, lock=True)
@@ -69,7 +69,8 @@ def expense_version_history(actor, group_id, expense_id, *, before=None, limit=5
         raise HttpError(404, "Expense not found")
     if not 1 <= limit <= 100 or before is not None and before < 1:
         raise HttpError(422, "Invalid history page")
-    query = group.changes.filter(kind__in=["expense_saved", "expense_reversed"], data__id=str(expense_id))
+    history = group.changes.filter(kind__in=["expense_saved", "expense_reversed"], data__id=str(expense_id))
+    query = history
     if before is not None:
         query = query.filter(sequence__lt=before)
     rows = list(query.order_by("-sequence")[:limit + 1])
@@ -81,6 +82,16 @@ def expense_version_history(actor, group_id, expense_id, *, before=None, limit=5
             items.append(entry)
         if "_history" not in row.data:
             gap = True
-    return {"group_id": str(group.id), "expense_id": str(expense_id), "items": items,
+    selected = {}
+    if before is None and change_id is not None and 0 < change_id <= 2**63 - 1:
+        entry = next((item for item in items if item["id"] == str(change_id)), None)
+        if entry is None:
+            row = history.filter(pk=change_id).first()
+            if row:
+                earlier = history.filter(sequence__lt=row.sequence).order_by("-sequence").first()
+                entry = history_entry(row, earlier, actor_names)
+        if entry and entry["kind"] == "edited":
+            selected["selected_edit"] = entry
+    return {**selected, "group_id": str(group.id), "expense_id": str(expense_id), "items": items,
             "next_before": rows[limit - 1].sequence if len(rows) > limit else None,
             "legacy_gap": gap or not rows, "version": group.version}
