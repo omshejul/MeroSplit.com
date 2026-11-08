@@ -66,7 +66,9 @@ test('committed Icon Composer bundles match the primary icon and the icon list e
   assert.deepEqual(Object.keys(expected).filter(file => file.endsWith('/icon.json')).map(file => file.split('.icon/')[0]), appIcons.slice(1).map(icon => nativeIconName(icon.id)));
   const cove = JSON.parse(expected['AppIconCove.icon/icon.json']), primary = JSON.parse(primaryJson);
   assert.deepEqual(cove.groups, primary.groups, 'alternates keep the primary layers, scale and glass');
-  assert.deepEqual(cove.fill, { 'automatic-gradient': 'srgb:0.00000,0.40784,0.47843,1.00000' });
+  assert.deepEqual(primary['fill-specializations'], [{ value: 'automatic' }, { appearance: 'dark', value: 'system-light' }]);
+  const coveFill = { 'automatic-gradient': 'srgb:0.00000,0.40784,0.47843,1.00000' };
+  assert.deepEqual(cove['fill-specializations'], [{ value: coveFill }, { appearance: 'dark', value: coveFill }]);
   assert.match(expected['AppIconCove.icon/Assets/merosplit-logo.svg'], /fill="#6ccfe0"[\s\S]*fill="#eaf4f5"/);
   assert.throws(() => buildAppIconBundles(primaryJson, primarySvg.replace('#ffb21e', '#000000')), /exactly one half/);
 });
