@@ -117,12 +117,12 @@ test('Details open a dialog without expanding or shifting the surrounding row', 
   render(true).flat(Infinity)[1].props.onDismiss(); assert.equal(render(true).flat(Infinity)[1].props.visible, true);
   render().flat(Infinity)[1].props.onDismiss(); assert.equal(render().flat(Infinity)[1].props.visible, false);
 });
-test('tab actions and selected semantics remain immediate during loading and animation', () => {
+test('tab actions, selected semantics and the highlight update immediately, including during loading', () => {
   const calls: string[] = [];
   const TabButton = component('AppNavigation.tsx', 'TabButton', { React, Button: 'Button', Platform: { OS: 'native' }, Pressable: 'Pressable', View: 'View', Text: 'Text', Icon: 'Icon', Animated: { View: 'AnimatedView' }, styles: {}, StyleSheet: { absoluteFill: {} }, radii: {}, useUI: () => ({ palette: {}, motion: { enabled: true } }), useMotionValue: () => 'in-flight' });
   const tree = TabButton({ item: { value: 'Account', label: 'Me', icon: 'me' }, selected: true, busy: false, onSelect: (value: string) => calls.push(value) });
-  tree.props.onPress(); assert.deepEqual(calls, ['Account']); assert.deepEqual(tree.props.accessibilityState, { selected: true }); assert.ok(!tree.props.disabled);
-  const busy = TabButton({ item: { value: 'Groups' }, selected: false, busy: true, onSelect: (value: string) => calls.push(value) }); assert.ok(!busy.props.disabled); assert.deepEqual(busy.props.accessibilityState, { selected: false }); busy.props.onPress(); assert.deepEqual(calls, ['Account', 'Groups']);
+  tree.props.onPress(); assert.deepEqual(calls, ['Account']); assert.deepEqual(tree.props.accessibilityState, { selected: true }); assert.ok(!tree.props.disabled); assert.equal(tree.children[0].type, 'View');
+  const busy = TabButton({ item: { value: 'Groups' }, selected: false, busy: true, onSelect: (value: string) => calls.push(value) }); assert.ok(!busy.props.disabled); assert.deepEqual(busy.props.accessibilityState, { selected: false }); assert.equal(busy.children[0], false); busy.props.onPress(); assert.deepEqual(calls, ['Account', 'Groups']);
 });
 test('shared press feedback releases, clears on disable/background, and works with reduced motion', () => {
   const h = hooks(); let active = true;

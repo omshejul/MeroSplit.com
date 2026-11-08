@@ -3,7 +3,7 @@ import { animate } from 'framer-motion';
 
 const controls = 'button, a[href], [role="button"], [role="tab"], [role="checkbox"], [role="radio"], [role="switch"], summary';
 
-// Delegation includes Paper controls, list rows, tabs and controls mounted in portals.
+// Delegation includes Paper controls, list rows and controls mounted in portals.
 export function useWebInteractions(enabled: boolean) {
   useEffect(() => {
     if (!enabled) return;
@@ -16,7 +16,7 @@ export function useWebInteractions(enabled: boolean) {
     };
     let pressed: HTMLElement | null = null;
     const find = (event: Event) => event.target instanceof Element ? event.target.closest<HTMLElement>(controls) : null;
-    const usable = (element: HTMLElement | null): element is HTMLElement => !!element && !element.matches(':disabled, [aria-disabled="true"]') && !element.closest('[inert], [aria-disabled="true"]');
+    const usable = (element: HTMLElement | null): element is HTMLElement => !!element && !element.matches(':disabled, [aria-disabled="true"]') && !element.closest('[inert], [aria-disabled="true"], [data-testid="home-tabs"]');
     function feedback(element: HTMLElement, scale: number, opacity: number) {
       const previous = running.get(element);
       previous?.animation.stop();

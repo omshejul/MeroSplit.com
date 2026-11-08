@@ -6,8 +6,8 @@ function harness(enabled = true) {
   const listeners = new Map<string, (event: any) => void>(), animations: any[] = [];
   let cleanup: (() => void) | undefined;
   class Element {
-    disabled = false; style = { transform: '', opacity: '' };
-    closest(selector: string) { return selector.startsWith('[inert]') ? null : this; }
+    disabled = false; homeTab = false; style = { transform: '', opacity: '' };
+    closest(selector: string) { return !selector.startsWith('[inert]') || this.homeTab && selector.includes('[data-testid="home-tabs"]') ? this : null; }
     matches(selector: string) { return selector.includes(':disabled') && this.disabled; }
     contains(target: unknown) { return target === this; }
   }
@@ -54,4 +54,13 @@ test('a quick click has a complete visible pulse even after pointer release', ()
   h.send('pointerdown', new h.PointerEvent(button)); h.send('pointerup'); h.send('click', new h.PointerEvent(button));
   assert.deepEqual(h.animations.at(-1).values, { scale: [1, 0.955, 1], opacity: [1, 0.78, 1] });
   h.cleanup();
+});
+
+test('home tabs skip web hover, press and click animations', () => {
+  const h = harness(), button = new h.Element(); button.homeTab = true;
+  h.send('pointerover', new h.PointerEvent(button));
+  h.send('pointerdown', new h.PointerEvent(button)); h.send('pointerup');
+  h.send('click', new h.PointerEvent(button));
+  h.send('keydown', new h.KeyboardEvent(button, 'Enter')); h.send('keyup');
+  assert.deepEqual(h.animations, []);
 });
