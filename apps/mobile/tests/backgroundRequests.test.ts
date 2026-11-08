@@ -194,7 +194,7 @@ test('the actual ProfileSettings callsite keeps a typed name draft editable duri
     useUI: () => ({ ui: {}, palette: {}, inputColors: {}, appearance: 'system', colorFamily: 'basic' }), useWindowDimensions: () => ({ height: 900 }), modes: [{ value: 'system', label: 'System' }], colorFamilies: [{ value: 'basic', label: 'Basic' }], isDarkOnly: () => false, validUPIAddress: () => true, Platform: { OS: 'ios' },
     View: 'View', ScrollView: 'ScrollView', Text: 'Text', TextInput: 'TextInput', SettingsRow: 'SettingsRow', KeyboardDialog: 'KeyboardDialog', DialogScrollBody: 'DialogScrollBody', Dialog: { Title: 'Title', Actions: 'Actions' }, Button: 'Button', ErrorText: 'ErrorText', CancelDialogActions: 'CancelDialogActions', Keyboard: { dismiss() {} },
   };
-  const render = production('ProfileSettings', env, source), view = () => { cursor = 0; return nodes(render(props)); };
+  const render = production('ProfileSettings', { ...env, AppIconSettings: 'AppIconSettings' }, source), view = () => { cursor = 0; return nodes(render(props)); };
   view().find(n => n.type === 'SettingsRow' && n.props.label === 'Name').props.onPress();
   let input = view().find(n => n.type === 'TextInput'); assert.equal(input.props.editable, true); input.props.onChangeText('My unfinished name');
   const engage = production('engage', { ...f.env, notices: { engage() {} } }); engage();

@@ -89,14 +89,15 @@ test('native and browser keep color separate from the saved System, Light or Dar
 });
 
 test('Appearance dialog offers four colors and three modes, applies each at once and stays open until Close appearance', async () => {
-  const calls: string[] = [], focus: string[] = [];
+  const calls: string[] = [], focus: string[] = [], synced: string[] = [];
   let states: any[] = [], cursor = 0;
   const env: Record<string, any> = { React, View: 'View', ScrollView: 'ScrollView', TextInput: 'TextInput', KeyboardDialog: 'KeyboardDialog', Dialog: { Title: 'Title', Content: 'Content', Actions: 'Actions' }, Text: 'Text', RadioChoice: 'RadioChoice', Button: 'Button', ErrorText: 'ErrorText', SettingsRow: 'SettingsRow', CancelDialogActions: 'CancelDialogActions', DialogScrollBody: 'DialogScrollBody',
+    syncAppIcon: async (family: string) => { synced.push(family); },
     colorFamilies, isDarkOnly, validUPIAddress, Platform: { OS: 'ios' }, Keyboard: { dismiss() {} }, requestAnimationFrame: (fn: () => void) => fn(), useWindowDimensions: () => ({ height: 400 }),
     useUI: () => ({ ui: {}, inputColors: {}, appearance: 'system', colorFamily: 'cove' }),
     useState: (initial: any) => { const id = cursor++; if (!(id in states)) states[id] = initial; return [states[id], (value: any) => { states[id] = typeof value === 'function' ? value(states[id]) : value; }]; },
     useRef: (initial: any) => { const id = cursor++; return states[id] ??= { current: initial }; }, useEffect: () => {} };
-  const ProfileSettings = new Function('env', `with(env){ const StaggerItem = 'StaggerItem';${source('src/ProfileSettings.tsx')};return ProfileSettings;}`)(withSharedUI(env));
+  const ProfileSettings = new Function('env', `with(env){ const StaggerItem = 'StaggerItem'; const AppIconSettings = 'AppIconSettings'; const syncAppIcon = env.syncAppIcon ?? (async () => {});${source('src/ProfileSettings.tsx')};return ProfileSettings;}`)(withSharedUI(env));
   const props = { name: 'Asha', vpa: '', busy: false, onSaveName: async () => {}, onSaveUPI: async () => {}, onAppearance: async (value: string) => { calls.push(`mode ${value}`); }, onColorFamily: async (value: string) => { calls.push(`color ${value}`); } };
   // ChoiceGroup is a component; expand it like React would.
   const expand = (tree: any): any => { for (const node of nodes(tree)) node.children = node.children.map((child: any) => typeof child?.type === 'function' ? child.type(child.props) : child); return tree; };
@@ -120,10 +121,12 @@ test('Appearance dialog offers four colors and three modes, applies each at once
   radios.find(node => node.props.label === 'Rose')!.props.onPress(); await tick();
   tree = render(); nodes(tree).filter(node => node.type === 'RadioChoice').find(node => node.props.label === 'Dark')!.props.onPress(); await tick();
   assert.deepEqual(calls, ['color rose', 'mode dark']);
+  assert.deepEqual(synced, [], 'trying colors does not change the icon');
   tree = render(); assert.equal(nodes(tree).find(node => node.type === 'KeyboardDialog')!.props.visible, true, 'choices do not close the dialog');
   assert.ok(!nodes(tree).some(node => node.type === 'CancelDialogActions'), 'nothing to cancel once applied');
   const done = nodes(tree).find(node => node.type === 'Button' && node.props.title === 'Close appearance')!; done.props.onPress();
   tree = render(); assert.equal(nodes(tree).find(node => node.type === 'KeyboardDialog')!.props.visible, false); assert.deepEqual(focus, ['row']);
+  assert.deepEqual(synced, ['cove'], 'closing Appearance syncs the icon once');
   env.useUI = () => ({ ui: {}, inputColors: {}, appearance: 'light', colorFamily: 'basic' });
   assert.equal(nodes(render()).find(node => node.type === 'SettingsRow' && node.props.label === 'Appearance')!.props.value, 'Light', 'Basic keeps the released row text');
 
@@ -154,7 +157,7 @@ test('web Appearance starts on the selected color, keeps Tab inside Color, Mode 
     useState: (initial: any) => { const id = cursor++; if (!(id in states)) states[id] = initial; return [states[id], (value: any) => { states[id] = typeof value === 'function' ? value(states[id]) : value; }]; },
     useRef: (initial: any) => { const id = cursor++; return states[id] ??= { current: initial }; },
     useEffect: (fn: () => any, values: any[]) => { const id = cursor++; if (!deps[id] || values.some((value, i) => value !== deps[id][i])) { deps[id] = values; effects.push(fn); } } };
-  const ProfileSettings = new Function('env', `with(env){ const StaggerItem = 'StaggerItem';${source('src/ProfileSettings.tsx')};return ProfileSettings;}`)(withSharedUI(env));
+  const ProfileSettings = new Function('env', `with(env){ const StaggerItem = 'StaggerItem'; const AppIconSettings = 'AppIconSettings'; const syncAppIcon = env.syncAppIcon ?? (async () => {});${source('src/ProfileSettings.tsx')};return ProfileSettings;}`)(withSharedUI(env));
   const cleanups: any[] = [];
   const render = () => { cursor = 0; const tree = ProfileSettings({ name: 'Asha', vpa: '', busy: false, onSaveName: async () => {}, onSaveUPI: async () => {}, onAppearance: async () => {}, onColorFamily: async () => {} }); return tree; };
   const commit = () => effects.splice(0).forEach(fn => cleanups.push(fn()));

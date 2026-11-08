@@ -1068,7 +1068,7 @@ test('background payment review failure is quiet and leaves manual recording ava
 
 test('Appearance keeps its divider when ProfileSettings continues into the Me list', () => {
   const app = harness('src/ProfileSettings.tsx', 'ProfileSettings', {
-    colorFamilies: [{ value: 'orchid', label: 'Orchid' }], isDarkOnly: () => false,
+    AppIconSettings: 'AppIconSettings', colorFamilies: [{ value: 'orchid', label: 'Orchid' }], isDarkOnly: () => false,
     useUI: () => ({ ui: {}, appearance: 'system', colorFamily: 'orchid', currency: 'INR' }),
   });
   const tree = app.render({ name: 'Asha', vpa: '', busy: false, onSaveName() {}, onSaveUPI() {}, onAppearance() {}, onColorFamily() {}, onCurrency() {} });

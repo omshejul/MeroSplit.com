@@ -62,7 +62,8 @@
     "typecheck": "tsc --noEmit",
     "test": "node --experimental-strip-types --test tests/*.test.ts",
     "test:server": "node --experimental-strip-types tests/server-smoke.ts",
-    "export:web": "node scripts/export-web.mjs"
+    "export:web": "node scripts/export-web.mjs",
+    "icons:generate": "node --experimental-strip-types scripts/generate-app-icons.ts"
   },
   "private": true,
   "type": "module"

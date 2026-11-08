@@ -10,6 +10,7 @@ import { serializedDatabase } from './database';
 import type { Database } from './storage';
 import type { Session } from './types';
 import { defaultColorFamily, isColorFamily, type ColorFamily } from './theme';
+import { isAppIconChoice, type AppIconChoice } from './appIcons';
 
 let database: Promise<Database> | undefined;
 export function storageIsDurable(): boolean { return true; }
@@ -55,6 +56,16 @@ export async function savedColorFamily(): Promise<ColorFamily> {
 export async function saveColorFamily(value: ColorFamily): Promise<void> {
   if (!isColorFamily(value)) throw new Error('Choose a color.');
   await SecureStore.setItemAsync(COLOR_FAMILY_KEY, value);
+}
+// Installs that never chose an icon follow their Appearance color.
+const APP_ICON_KEY = 'splitdumb.appIcon';
+export async function savedAppIcon(): Promise<AppIconChoice> {
+  const value = await SecureStore.getItemAsync(APP_ICON_KEY);
+  return isAppIconChoice(value) ? value : 'match';
+}
+export async function saveAppIcon(value: AppIconChoice): Promise<void> {
+  if (!isAppIconChoice(value)) throw new Error('Choose an app icon.');
+  await SecureStore.setItemAsync(APP_ICON_KEY, value);
 }
 
 // Older releases allowed pausing sync. All account changes now sync automatically.

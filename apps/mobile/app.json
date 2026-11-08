@@ -137,6 +137,7 @@
       ],
       "./plugins/with-monochrome.cjs",
       "./plugins/with-upi.cjs",
+      "./plugins/with-app-icons.cjs",
       [
         "expo-splash-screen",
         {
