@@ -32,10 +32,18 @@ export default function AppUpdates({ update }: { update: AppUpdateState }) {
 
 export function AppUpdatePrompt({ update }: { update: AppUpdateState }) {
   const { ui } = useUI();
-  return <KeyboardDialog visible={update.promptVisible} label="Restart to update" placement="bottom" onDismiss={update.later} dismissable={!update.applying} blocksAppRestart={false}>
-    <Dialog.Title icon="refresh">Restart to update</Dialog.Title>
-    <DialogScrollBody gap={8}><Text style={ui.body}>MeroSplit will reopen with the update.</Text><Text style={ui.caption}>You can also restart from Me.</Text>{!!update.error && <ErrorText live>{update.error}</ErrorText>}</DialogScrollBody>
-    <Dialog.Actions style={{ flexWrap: 'wrap' }}><Button title="Later" icon="history" kind="text" disabled={update.applying} onPress={update.later} />
-      <Button title={update.applying ? 'Restarting…' : 'Restart now'} icon="refresh" kind="primary" disabled={update.applying} onPress={update.restart} /></Dialog.Actions>
+  const store = update.storeAvailable;
+  const title = store ? 'Update available' : 'Restart to update';
+  const busy = update.applying || update.openingStore;
+  return <KeyboardDialog visible={update.promptVisible} label={title} placement={store ? 'center' : 'bottom'} onDismiss={update.later} dismissable={!busy} blocksAppRestart={false}>
+    <Dialog.Title icon="refresh">{title}</Dialog.Title>
+    <DialogScrollBody gap={8}>
+      <Text style={ui.body}>{store ? 'A newer version of MeroSplit is ready.' : 'MeroSplit will reopen with the update.'}</Text>
+      {!store && <Text style={ui.caption}>You can also restart from Me.</Text>}
+      {!!update.error && <ErrorText live>{update.error}</ErrorText>}
+    </DialogScrollBody>
+    <Dialog.Actions style={{ flexWrap: 'wrap' }}><Button title="Later" icon="history" kind="text" disabled={busy} onPress={update.later} />
+      {store ? <Button title={update.openingStore ? 'Opening store…' : `Open ${update.storeName}`} icon="external" kind="primary" disabled={busy} onPress={update.openStore} />
+        : <Button title={update.applying ? 'Restarting…' : 'Restart now'} icon="refresh" kind="primary" disabled={busy} onPress={update.restart} />}</Dialog.Actions>
   </KeyboardDialog>;
 }

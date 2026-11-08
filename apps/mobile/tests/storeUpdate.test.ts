@@ -9,9 +9,9 @@ async function withRelease(value: unknown, work: (calls: any[]) => Promise<void>
 }
 test('store checks compare installed build numbers, including newer, equal and ahead binaries', async () => {
  await withRelease({ ios: { build: '32' }, android: { build: '33' } }, async calls => {
-  assert.equal(await checkStoreUpdate('https://merosplit.com/', 'ios', '31'), true);
-  assert.equal(await checkStoreUpdate('https://merosplit.com', 'ios', '32'), false);
-  assert.equal(await checkStoreUpdate('https://merosplit.com', 'android', '34'), false);
+  assert.equal(await checkStoreUpdate('https://merosplit.com/', 'ios', '31'), '32');
+  assert.equal(await checkStoreUpdate('https://merosplit.com', 'ios', '32'), null);
+  assert.equal(await checkStoreUpdate('https://merosplit.com', 'android', '34'), null);
   assert.equal(calls[0][0], 'https://merosplit.com/api/v1/app-releases');
   assert.equal(calls[0][1].credentials, 'omit'); assert.equal(calls[0][1].cache, 'no-store');
   assert.equal(calls[0][1].headers, undefined);
