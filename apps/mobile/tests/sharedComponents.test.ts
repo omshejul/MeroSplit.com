@@ -14,7 +14,7 @@ function fixture(extra: Record<string, any> = {}) {
   const env = withSharedUI({ React: { Fragment: 'Fragment', createElement: (type: any, props: any, ...children: any[]) => ({ type, props: props ?? {}, children }) },
     StyleSheet: { hairlineWidth: 0.5 }, Platform: { OS: 'android', Version: 37 }, useUI: () => ({ ui: { row: {}, rowBody: {}, rowTitle: {}, amount: {}, body: {}, caption: {}, numeric: {}, notice: {}, warning: {}, input: {} }, palette: { line: '#ddd', soft: '#eee', accent: '#111', outline: '#888' }, dark: false }),
     Button: 'Button', View: 'View', Text: 'Text', Avatar: 'Avatar', AmountText: 'AmountText', Icon: 'Icon', RadioChoice: 'RadioChoice', Dialog: { Title: 'Title', Actions: 'Actions' }, KeyboardDialog: 'KeyboardDialog', LoadingSpinner: 'LoadingSpinner', Menu: 'Menu',
-    Alert: { alert: (...args: any[]) => events.push(args) }, useHomeTabSwipe: (...args: any[]) => ({ swipe: args }), Animated: { View: 'AnimatedView' }, AppTabs: 'AppTabs',
+    Alert: { alert: (...args: any[]) => events.push(args) }, useHomeTabSwipe: (selected: string, busy: boolean, selectTab: Function) => ({ content: { swipe: [selected, busy] }, selectTab }), Animated: { View: 'AnimatedView' }, AppTabs: 'AppTabs',
     require: (name: string) => { events.push(name); return name === 'react-native-screens/experimental' ? { SafeAreaView: 'NativeSafeAreaView' } : name; }, ...extra });
   return { env, events, render: (name: string, props: any = {}) => env[name](props), find: (tree: any, predicate: (node: Node) => boolean) => nodes(tree).find(predicate)! };
 }
