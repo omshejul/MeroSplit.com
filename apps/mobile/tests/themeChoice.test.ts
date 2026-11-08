@@ -103,7 +103,7 @@ test('Appearance dialog offers four colors and three modes, applies each at once
   const render = () => { cursor = 0; return expand(ProfileSettings(props)); };
   let tree = render();
   const row = nodes(tree).find(node => node.type === 'SettingsRow' && node.props.label === 'Appearance')!;
-  assert.equal(row.props.description, 'Cove · System'); row.props.rowRef.current = { focus: () => focus.push('row') }; row.props.onPress();
+  assert.equal(row.props.value, 'Cove · System'); assert.equal(row.props.wrapValue, true); row.props.rowRef.current = { focus: () => focus.push('row') }; row.props.onPress();
   tree = render();
   const dialog = nodes(tree).find(node => node.type === 'KeyboardDialog')!, body = nodes(tree).find(node => node.type === 'DialogScrollBody')!;
   assert.equal(dialog.props.maxHeight, 400, 'the card is bounded to the window, so the choices scroll on small or large-text screens');
@@ -125,12 +125,12 @@ test('Appearance dialog offers four colors and three modes, applies each at once
   const done = nodes(tree).find(node => node.type === 'Button' && node.props.title === 'Close appearance')!; done.props.onPress();
   tree = render(); assert.equal(nodes(tree).find(node => node.type === 'KeyboardDialog')!.props.visible, false); assert.deepEqual(focus, ['row']);
   env.useUI = () => ({ ui: {}, inputColors: {}, appearance: 'light', colorFamily: 'basic' });
-  assert.equal(nodes(render()).find(node => node.type === 'SettingsRow' && node.props.label === 'Appearance')!.props.description, 'Light', 'Basic keeps the released row text');
+  assert.equal(nodes(render()).find(node => node.type === 'SettingsRow' && node.props.label === 'Appearance')!.props.value, 'Light', 'Basic keeps the released row text');
 
   // Obsidian: honest dark-only look; the saved mode stays selected but cannot change.
   calls.length = 0; env.useUI = () => ({ ui: {}, inputColors: {}, appearance: 'light', colorFamily: 'obsidian' });
   tree = render(); const obsidianRow = nodes(tree).find(node => node.type === 'SettingsRow' && node.props.label === 'Appearance')!;
-  assert.equal(obsidianRow.props.description, 'Obsidian'); obsidianRow.props.onPress(); tree = render();
+  assert.equal(obsidianRow.props.value, 'Obsidian'); obsidianRow.props.onPress(); tree = render();
   const modeRadios = nodes(tree).filter(node => node.type === 'RadioChoice' && node.props.group === 'mode');
   assert.ok(modeRadios.every(node => node.props.disabled), 'Mode is unavailable while Obsidian is selected');
   assert.deepEqual(modeRadios.filter(node => node.props.selected).map(node => node.props.label), ['Light'], 'saved mode is retained for the other colors');
