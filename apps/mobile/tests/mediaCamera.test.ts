@@ -19,3 +19,22 @@ test('old native builds never request camera access; denial and cancellation ret
  const canceled=picker(true,true,true);assert.equal(await canceled.pick('camera'),null);assert.deepEqual(canceled.calls,['permission','camera']);
  const photos=picker();assert.equal(await photos.pick(true),null);assert.deepEqual(photos.calls,['photos']);
 });
+
+test('iOS builds through 33 do not expose the camera', () => {
+  const source = readFileSync(new URL('../src/cameraSupport.ts', import.meta.url), 'utf8');
+  const { outputText } = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS } });
+  const load = new Function('exports', 'require', outputText);
+  const canTakePhoto = (platform: string, nativeBuildVersion: string) => {
+    const exports = { canTakePhoto: () => false };
+    load(exports, (name: string) => name === 'expo'
+      ? { requireOptionalNativeModule: () => ({ nativeBuildVersion }) }
+      : { Platform: { OS: platform } });
+    return exports.canTakePhoto();
+  };
+
+  assert.equal(canTakePhoto('ios', '32'), false);
+  assert.equal(canTakePhoto('ios', '33'), false);
+  assert.equal(canTakePhoto('ios', '34'), true);
+  assert.equal(canTakePhoto('android', '33'), true);
+  assert.equal(canTakePhoto('web', ''), true);
+});
