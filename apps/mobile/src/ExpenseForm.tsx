@@ -283,7 +283,6 @@ export default function ExpenseForm({ group, expense, selfId, busy, autoFocusAmo
       <View style={{ flex: 1, minWidth: 180, gap: 12 }}>
         <AmountField ref={amountInput} autoCorrect={false} label={`Amount (${currencySymbol()})`} value={draft.amount} onChangeText={amount => change({ amount })} placeholder="0" editable={!disabled}
           returnKeyType={focusDescription ? "next" : undefined} submitBehavior={focusDescription ? "submit" : undefined} onSubmitEditing={focusDescription}
-          right={focusDescription ? <Button title="Next" accessibilityLabel="Next: Description" kind="text" disabled={disabled} onPress={focusDescription} /> : undefined}
           style={{ fontSize: 32, lineHeight: 40, minHeight: 80 }} />
       </View>
       {!expense && <View style={{ alignSelf: 'flex-end' }}><DraftAttachment value={draft.attachment} path={`/groups/${group.id}/expenses/${draft.id}/attachments`} disabled={disabled || !!group.archived} onChange={async attachment => { await change({ attachment }); }} onBusy={setFileBusy} onError={setError} /></View>}
