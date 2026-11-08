@@ -21,10 +21,10 @@ function form(db: any, options: any = {}) {
   const env:any={animateLayout() {}, currencySymbol,...accounting,...persistence, React:{createElement:(type:any,props:any,...children:any[])=>({type,props:props||{},children})},
     useState:(initial:any)=>{const id=cursor++;if(!(id in state))state[id]=typeof initial==='function'?initial():initial;return[state[id],(v:any)=>{state[id]=typeof v==='function'?v(state[id]):v}]},
     useRef:(initial:any)=>{const id=cursor++;return state[id]??={current:initial}},
-    useContext:()=>discard, ScreenDraftDiscard:{},
+    useContext:()=>discard, useId:()=> 'amount-accessory', Platform:{OS:'ios'}, InputAccessoryView:'InputAccessoryView', ScreenDraftDiscard:{},
     useEffect:(fn:()=>any, values:any[])=>{const id=cursor++;if(!deps[id]||values.some((v,i)=>v!==deps[id][i])){effects.push(()=>{cleanup[id]?.();cleanup[id]=fn()});deps[id]=values}},
     useWindowDimensions:()=>({fontScale:1}),StyleSheet:{create:(v:any)=>v},View:'View',Text:'Text',Form:'Form',AmountField:'AmountField',TextField:'TextField',DateField:'DateField',Button:'Button',ErrorText:'ErrorText',BillPeople:'BillPeople',DraftAttachment:'DraftAttachment',NotesField:'NotesField',Checkbox:{Item:'Checkbox'},RadioChoice:'RadioChoice',
-    useUI:()=>({ui:{}}),Crypto:{randomUUID:()=> 'draft-fixed-id'},useScreenRemovalLock:()=>{}, getDatabase:async()=>db,readDraft,saveDraft,
+    useUI:()=>({ui:{},palette:{}}),Crypto:{randomUUID:()=> 'draft-fixed-id'},useScreenRemovalLock:()=>{}, getDatabase:async()=>db,readDraft,saveDraft,
     clearStagedMedia:async(f:any)=>{media.push(f)},
   };
   const source=ts.createSourceFile('ExpenseForm.tsx',readFileSync(new URL('../src/ExpenseForm.tsx',import.meta.url),'utf8'),ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
