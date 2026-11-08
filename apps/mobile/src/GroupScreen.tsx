@@ -1,3 +1,4 @@
+import BillHistoryButton, { type BillHistoryCue } from './BillHistoryButton';
 import MarkdownNotes from './MarkdownNotes';
 import KeyboardScrollView from './KeyboardScrollView';
 import TextInput from './KeyboardInput';
@@ -325,7 +326,7 @@ export function PaymentDetail({ payment, group, selfId, busy, canReverse, onReve
   </View>;
 }
 
-export function ExpenseDetail({ categoryIcons = {}, noticeVisibility, expense, group, selfId, busy, canEdit, pending = false, onEdit, onReverse, onHistory, attachments, chat, onIconPress }: { onIconPress?: () => void; categoryIcons?: ExpenseIcons; noticeVisibility?: NoticeVisibility; header?: React.ReactNode; expense: Expense; group: Group; selfId: string; busy: boolean; canEdit: boolean; pending?: boolean; onEdit: () => void; onReverse: () => void; onHistory?: () => void; attachments?: React.ReactNode; chat?: React.ReactNode }) {
+export function ExpenseDetail({ categoryIcons = {}, noticeVisibility, expense, group, selfId, busy, canEdit, pending = false, onEdit, onReverse, onHistory, historyCue, attachments, chat, onIconPress }: { onIconPress?: () => void; categoryIcons?: ExpenseIcons; noticeVisibility?: NoticeVisibility; header?: React.ReactNode; expense: Expense; group: Group; selfId: string; busy: boolean; canEdit: boolean; pending?: boolean; onEdit: () => void; onReverse: () => void; onHistory?: () => void; historyCue?: BillHistoryCue; attachments?: React.ReactNode; chat?: React.ReactNode }) {
   const { palette: colors, ui } = useUI();
   const hasCategory = !!expense.category && !['general', 'other'].includes(expense.category);
   const change = expenseBalanceChange(expense, selfId);
@@ -351,7 +352,7 @@ export function ExpenseDetail({ categoryIcons = {}, noticeVisibility, expense, g
     {!!expense.notes && <View style={s.section}>
       <MarkdownNotes source={expense.notes} />
     </View>}
-    {onHistory && <Button title="Version history" icon="history" kind="outlined" disabled={busy || pending} onPress={onHistory} />}
+    {onHistory && <BillHistoryButton disabled={busy || pending} onPress={onHistory} cue={historyCue} />}
     {!expense.deleted && <Button title="Reverse record" kind="outlined" style={{ borderColor: colors.error }} labelStyle={{ color: colors.error }} disabled={busy || !canEdit || pending} onPress={onReverse} />}
     {!canEdit && <Text style={ui.caption}>{group.archived ? 'Reopen this group in settings before changing a bill.' : 'Send or discard saved changes before changing this bill.'}</Text>}
   </View>;

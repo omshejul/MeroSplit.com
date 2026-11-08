@@ -51,7 +51,11 @@ export function useAppNavigation() {
       ref.dispatch({ ...StackActions.pop(1), appNavigation: true } as AppAction);
       return;
     }
-    const target = destination(current.routes[current.index] as AppRoute, name, params);
+    const from = current.routes[current.index] as AppRoute;
+    if (from.name === 'expenseDetail' && from.params?.activityEditId && name !== 'expenseDetail') {
+      ref.dispatch({ type: 'SET_PARAMS', source: from.key, payload: { params: { activityEditId: undefined } } });
+    }
+    const target = destination(from, name, params);
     if (name === 'home' && current.routes[current.index].name === 'home') {
       ref.dispatch({ type: 'SET_PARAMS', payload: { params: target.params }, source: current.routes[current.index].key, appNavigation: true } as AppAction);
       return;

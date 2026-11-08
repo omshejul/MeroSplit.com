@@ -47,7 +47,8 @@ test('bill and member events use readable actions without fabricating money or c
   const row = activityPresentation(bill);
   assert.equal(row.title, 'You edited Very long lunch name');
   assert.equal(row.amount, undefined);
-  assert.deepEqual(row.target, { kind: 'bill', groupId: 'group', expenseId: 'bill' });
+  assert.deepEqual(row.target, { kind: 'bill', groupId: 'group', expenseId: 'bill', activityEditId: bill.id });
+  assert.deepEqual(activityPresentation({ ...bill, kind: 'bill_added' }).target, { kind: 'bill', groupId: 'group', expenseId: 'bill' });
   const added: ActivityItem = { ...event('member_added'), payment: undefined, person: person('Noor') };
   assert.equal(activityPresentation(added).title, 'You added Noor');
   assert.deepEqual(activityPresentation(added).target, { kind: 'group', groupId: 'group' });

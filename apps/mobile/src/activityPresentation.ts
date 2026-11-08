@@ -13,7 +13,7 @@ export function paymentPresentation(payment: Settlement, selfId: string, name: (
 export function activityPresentation(item: ActivityItem) {
   const actor = item.actor?.is_self ? 'You' : item.actor?.name || 'Someone';
   const person = item.person?.is_self ? 'You' : item.person?.name || 'A person';
-  const target: ActivityTarget = item.bill ? { kind: 'bill', groupId: item.group.id, expenseId: item.bill.id }
+  const target: ActivityTarget = item.bill ? { kind: 'bill', groupId: item.group.id, expenseId: item.bill.id, ...(item.kind === 'bill_edited' ? { activityEditId: item.id } : {}) }
     : item.payment ? { kind: 'payment', groupId: item.group.id, settlementId: item.payment.id }
       : { kind: 'group', groupId: item.group.id };
   let title: string;

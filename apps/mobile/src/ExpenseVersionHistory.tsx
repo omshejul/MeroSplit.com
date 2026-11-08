@@ -43,13 +43,15 @@ export function VersionHistoryRow({ version, change, now }: Row & { now?: number
   </View>;
 }
 
-export default function ExpenseVersionHistory({ session, groupId, expenseId, groupVersion, title, active, online, onInvalidated }: {
-  session: Session; groupId: string; expenseId: string; groupVersion: number; title: string; active: boolean; online: boolean; onInvalidated: () => void;
+export default function ExpenseVersionHistory({ session, groupId, expenseId, groupVersion, activityEditId, title, active, online, onInvalidated }: {
+  session: Session; groupId: string; expenseId: string; groupVersion: number; activityEditId?: string; title: string; active: boolean; online: boolean; onInvalidated: () => void;
 }) {
   const { ui } = useUI(), path = `/groups/${groupId}/expenses/${expenseId}/versions`, owner = accountOwner(session);
-  const scope = `${owner}|${session.token}|${path}|${groupVersion}`;
+  const editId = typeof activityEditId === 'string' && /^\d{1,19}$/.test(activityEditId) ? activityEditId : undefined;
+  const scope = `${owner}|${session.token}|${path}|${groupVersion}|${editId ?? ''}`;
   const current = useRef(scope); current.current = scope;
   const [page, setPage] = useState<(ExpenseHistoryPage & { scope: string }) | null>(null);
+  const [selectedEdit, setSelectedEdit] = useState<{ scope: string; version: ExpenseVersion } | null>(null);
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
     if (!active) return;
@@ -77,19 +79,21 @@ export default function ExpenseVersionHistory({ session, groupId, expenseId, gro
       if (!valid()) return false;
       if (!before) { setPage(cached ? { ...cached, scope } : null); setCacheScope(scope); }
       if (!connected.current) { if (!cached) setError('This version history has not downloaded. Reconnect to finish.'); return false; }
-      const result = await request(session, path + (before ? `?before=${before}&limit=20` : '?limit=20'), 'GET', undefined, 'json', read.signal) as ExpenseHistoryPage;
+      const query = before ? `?before=${before}&limit=20` : `?limit=20${editId ? `&change_id=${editId}` : ''}`;
+      const { selected_edit: selected, ...result } = await request(session, path + query, 'GET', undefined, 'json', read.signal) as ExpenseHistoryPage & { selected_edit?: ExpenseVersion };
       fetched = true;
       if (!valid()) return false;
       if (result.version !== groupVersion) throw new ApiError(409, 'History changed. Refresh to see the latest.');
       const saved = await saveExpenseHistory(db, owner, groupId, expenseId, result, before, valid);
       if (!valid()) return false;
       setPage({ ...saved, scope });
+      if (!before) setSelectedEdit(selected?.id === editId && selected?.kind === 'edited' ? { scope, version: selected } : null);
       return result.items.length > 0;
     } catch (cause) {
       if (!valid()) return false;
       const denied = cause instanceof ApiError && [401, 403, 404, 409].includes(cause.status);
       if (denied || fetched) {
-        setPage(null); onInvalidated();
+        setPage(null); setSelectedEdit(null); onInvalidated();
         await forgetExpenseHistory(await getDatabase(), owner, groupId, expenseId);
         if (!valid()) return false;
       }
@@ -107,19 +111,23 @@ export default function ExpenseVersionHistory({ session, groupId, expenseId, gro
   }, [scope, active, online, retry]);
   const paging = useScrollPagination({ scope, cursor: shown?.next_before, enabled: active && online, load: signal => load(shown?.next_before ?? undefined, signal).then(Boolean) });
   if (!active) return null;
-  const rows: Row[] = shown?.items.flatMap(version => version.kind === 'created' ? [{ version }] : version.changes.map(change => ({ version, change }))) ?? [];
+  const selected = shown && editId ? shown.items.find(item => item.id === editId && item.kind === 'edited') ?? (selectedEdit?.scope === scope ? selectedEdit.version : undefined) : undefined;
+  const rows: Row[] = shown?.items.filter(item => item.id !== selected?.id).flatMap(version => version.kind === 'created' ? [{ version }] : version.changes.map(change => ({ version, change }))) ?? [];
   return <FlatList ref={list} contentInsetAdjustmentBehavior="automatic" scrollEventThrottle={100} onEndReachedThreshold={0.3} data={rows} keyExtractor={({ version, change }) => `${version.id}:${change?.field || 'created'}`}
     renderItem={({ item }) => <VersionHistoryRow {...item} now={now} />} contentContainerStyle={[pageContentStyle, { gap: 0 }]}
-    ListHeaderComponent={<View style={styles.subtitle}><Text style={ui.body}>{title}</Text>{shown && !online && <Text style={ui.caption}>Downloaded version history. Connect to check for newer changes.</Text>}{shown && !!error && <ErrorState error={error} disabled={busy} onRetry={online && !paging.failed ? () => setRetry(value => value + 1) : undefined} />}</View>}
+    ListHeaderComponent={<View style={styles.subtitle}><Text style={ui.body}>{title}</Text>{shown && !online && <Text style={ui.caption}>Downloaded version history. Connect to check for newer changes.</Text>}{shown && !!error && <ErrorState error={error} disabled={busy} onRetry={online && !paging.failed ? () => setRetry(value => value + 1) : undefined} />}
+      {selected && <View style={styles.selected}><Text accessibilityRole="header" aria-level={2} style={ui.section}>Selected edit</Text>{selected.changes.map(change => <VersionHistoryRow key={change.field} version={selected} change={change} now={now} />)}</View>}
+      {editId && shown && !selected && !busy && !error && <Text style={ui.caption}>Details for this edit aren’t available.</Text>}
+    </View>}
     ListEmptyComponent={error ? <ErrorState error={error} onRetry={online ? () => setRetry(value => value + 1) : undefined} style={styles.status} />
-      : !shown ? (cacheScope === scope ? <LoadingSpinner visible /> : undefined) : <EmptyState message={shown.next_before ? 'No recorded changes on this page.' : 'No version history was recorded.'} />}
+      : !shown ? (cacheScope === scope ? <LoadingSpinner visible /> : undefined) : selected ? undefined : <EmptyState message={shown.next_before ? 'No recorded changes on this page.' : 'No version history was recorded.'} />}
     ListFooterComponent={<><PaginationFooter paging={paging} error="Could not load earlier changes." loadingLabel="Loading…" style={styles.status}>
       {shown?.legacy_gap && rows.length > 0 && <Text style={ui.caption}>Some earlier details weren’t recorded.</Text>}
       {shown?.next_before != null && !online && <Text style={ui.caption}>Earlier changes have not downloaded. Reconnect to finish.</Text>}
     </PaginationFooter><ScrollBottomInset /></>} />;
 }
 const styles = StyleSheet.create({
-  subtitle: { paddingBottom: 18 },
+  subtitle: { paddingBottom: 18, gap: 6 }, selected: { marginTop: 8 },
   row: { paddingVertical: 16, gap: 10, borderBottomWidth: StyleSheet.hairlineWidth },
   heading: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'baseline', gap: 8 }, sentence: { flexGrow: 1, flexShrink: 1 },
   values: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start', columnGap: 10, rowGap: 6 },

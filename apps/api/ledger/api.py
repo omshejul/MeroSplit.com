@@ -282,8 +282,8 @@ def expense_get(request, group_id: UUID, expense_id: UUID, version: int | None =
 
 
 @api.get("/groups/{group_id}/expenses/{expense_id}/versions")
-def expense_versions(request, group_id: UUID, expense_id: UUID, before: int | None = None, limit: int = 50):
-    return expense_version_history(request.auth, group_id, expense_id, before=before, limit=limit)
+def expense_versions(request, group_id: UUID, expense_id: UUID, before: int | None = None, limit: int = 50, change_id: int | None = None):
+    return expense_version_history(request.auth, group_id, expense_id, before=before, limit=limit, change_id=change_id)
 
 
 @api.put("/groups/{group_id}/expenses/{expense_id}", response=WriteResult)
