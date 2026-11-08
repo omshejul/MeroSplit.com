@@ -32,7 +32,7 @@ export type ExpenseFormDraft = {
   attachment?: PendingMediaUpload; participantIds: string[]; splitValues: Record<string, string>;
 };
 type Props = {
-  group: Group; expense?: Expense; selfId: string; busy: boolean;
+  group: Group; expense?: Expense; selfId: string; busy: boolean; autoFocusAmount?: boolean;
   owner: string; writes: { current: Promise<void> };
   onSave: (expense: Expense, attachment?: PendingMediaUpload, onQueued?: () => void) => Promise<void>;
 };
@@ -157,10 +157,11 @@ function SplitFields({ participants, draft, disabled, preserveRemoved, label, on
   </RowGroup>;
 }
 
-export default function ExpenseForm({ group, expense, selfId, busy, onSave, owner, writes }: Props) {
+export default function ExpenseForm({ group, expense, selfId, busy, autoFocusAmount, onSave, owner, writes }: Props) {
   const { ui } = useUI();
   const [draft, setDraft] = useState(() => startingDraft(group, expense, selfId)), [error, setError] = useState(''), [saving, setSaving] = useState(false);
   const [fileBusy, setFileBusy] = useState(false);
+  const amountInput = useRef<React.ComponentRef<typeof TextInput>>(null), didFocusAmount = useRef(false);
   const draftRef = useRef(draft), descriptionInput = useRef<React.ComponentRef<typeof TextInput>>(null);
   const handedOff = useRef(false), mounted = useRef(true), discard = useContext(ScreenDraftDiscard);
   const pendingSave = useRef<Promise<void> | null>(null);
@@ -191,6 +192,12 @@ export default function ExpenseForm({ group, expense, selfId, busy, onSave, owne
     return () => { mounted.current = false; if (discard.current === remove) { discard.current = null; discard.hasDraft = undefined; } };
   }, [store, discard]);
   const lock = useRef(false), disabled = !ready || busy || saving || fileBusy || handedOff.current;
+  useEffect(() => {
+    if (!autoFocusAmount || disabled || group.archived || didFocusAmount.current || !amountInput.current) return;
+    didFocusAmount.current = true;
+    amountInput.current.focus();
+  }, [autoFocusAmount, disabled, group.archived]);
+  const focusDescription = !expense && !group.archived ? () => descriptionInput.current?.focus() : undefined;
   useLoading(!ready && !error || saving || fileBusy);
   useScreenRemovalLock(saving || fileBusy);
   const acceptedExpense = group.expenses.find(value => value.id === draft.id) ?? (group.focused_expense?.id === draft.id ? group.focused_expense : undefined);
@@ -274,7 +281,10 @@ export default function ExpenseForm({ group, expense, selfId, busy, onSave, owne
     {expense && expense.version !== draft.expenseVersion && <NoticeBanner>A newer edit exists. Review it before saving this older draft.</NoticeBanner>}
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start', gap: 12 }}>
       <View style={{ flex: 1, minWidth: 180, gap: 12 }}>
-        <AmountField autoCorrect={false} label={`Amount (${currencySymbol()})`} value={draft.amount} onChangeText={amount => change({ amount })} placeholder="0" editable={!disabled} style={{ fontSize: 32, lineHeight: 40, minHeight: 80 }} />
+        <AmountField ref={amountInput} autoCorrect={false} label={`Amount (${currencySymbol()})`} value={draft.amount} onChangeText={amount => change({ amount })} placeholder="0" editable={!disabled}
+          returnKeyType={focusDescription ? "next" : undefined} submitBehavior={focusDescription ? "submit" : undefined} onSubmitEditing={focusDescription}
+          right={focusDescription ? <Button title="Next" accessibilityLabel="Next: Description" kind="text" disabled={disabled} onPress={focusDescription} /> : undefined}
+          style={{ fontSize: 32, lineHeight: 40, minHeight: 80 }} />
       </View>
       {!expense && <View style={{ alignSelf: 'flex-end' }}><DraftAttachment value={draft.attachment} path={`/groups/${group.id}/expenses/${draft.id}/attachments`} disabled={disabled || !!group.archived} onChange={async attachment => { await change({ attachment }); }} onBusy={setFileBusy} onError={setError} /></View>}
     </View>
