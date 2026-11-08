@@ -1,6 +1,5 @@
 import FallbackTabLayout from './FallbackTabLayout';
 import React from 'react';
-import { Animated, View } from 'react-native';
 
 export type HomeTabsProps = {
   selected: string;

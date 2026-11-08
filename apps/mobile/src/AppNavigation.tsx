@@ -4,12 +4,11 @@ import FloatingActionContainer from './FloatingActionContainer';
 import BottomSafeArea from './BottomSafeArea';
 import AddActionButton from './AddActionButton';
 import React from 'react';
-import { Animated, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { Text } from 'react-native-paper';
 import { Button, Icon, IconAction, radii, useUI } from './ui';
-import { useMotionValue } from './motion';
 import TabBarSurface from './TabBarSurface';
 
 export function AppFrame({ children, onTouchStart }: { children: React.ReactNode; onTouchStart?: () => void }) {
@@ -44,10 +43,9 @@ export function ScreenHeader({ title, busy, onBack, onFeedback, brand = false, c
 
 const tabs = [{ value: 'Groups', label: 'Groups', icon: 'groups' }, { value: 'Friends', label: 'People', icon: 'people' }, { value: 'Activity', label: 'Activity', icon: 'history' }, { value: 'Account', label: 'Me', icon: 'me' }] as const;
 function TabButton({ item, selected, busy, onSelect }: { item: typeof tabs[number]; selected: boolean; busy: boolean; onSelect: (value: string) => void }) {
-  const { palette, motion } = useUI();
-  const opacity = useMotionValue(selected ? 1 : 0, motion.enabled);
+  const { palette } = useUI();
   return <Button kind="plain" accessibilityRole={Platform.OS === 'web' ? 'button' : 'tab'} aria-current={Platform.OS === 'web' && selected ? 'page' : undefined} accessibilityState={Platform.OS === 'web' ? undefined : { selected }} onPress={() => onSelect(item.value)} style={styles.tab}>
-    <Animated.View pointerEvents="none" accessible={false} style={[StyleSheet.absoluteFill, { borderRadius: radii.navigation, backgroundColor: palette.soft, opacity }]} />
+    {selected && <View pointerEvents="none" accessible={false} style={[StyleSheet.absoluteFill, { borderRadius: radii.navigation, backgroundColor: palette.soft }]} />}
     <View style={styles.tabContent}>
       <Icon name={item.icon} color={selected ? palette.accent : palette.muted} />
       <Text style={[styles.tabText, { color: selected ? palette.accent : palette.muted }]}>{item.label}</Text>
@@ -55,7 +53,7 @@ function TabButton({ item, selected, busy, onSelect }: { item: typeof tabs[numbe
   </Button>;
 }
 export function AppTabs({ selected, busy, onSelect }: { selected: string; busy: boolean; onSelect: (value: string) => void }) {
-  return <BottomSafeArea role="navigation" accessibilityLabel="Main navigation" style={pageWidthStyle}><TabBarSurface style={styles.tabs}>
+  return <BottomSafeArea testID="home-tabs" role="navigation" accessibilityLabel="Main navigation" style={pageWidthStyle}><TabBarSurface style={styles.tabs}>
     {tabs.map(item => <TabButton key={item.value} item={item} selected={selected === item.value} busy={busy} onSelect={onSelect} />)}
   </TabBarSurface></BottomSafeArea>;
 }

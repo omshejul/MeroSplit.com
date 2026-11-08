@@ -1,6 +1,6 @@
 import FallbackTabLayout from './FallbackTabLayout';
 import React, { useRef } from 'react';
-import { Animated, Platform } from 'react-native';
+import { Platform, View } from 'react-native';
 import { Tabs } from 'react-native-screens';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
@@ -39,7 +39,7 @@ export default function HomeTabs({ selected, busy, onSelect, render }: HomeTabsP
       style={{ backgroundColor: palette.background }}
       ios={{ overrideScrollViewContentInsetAdjustmentBehavior: false, icon: { type: 'sfSymbol', name: tab.symbol }, selectedIcon: { type: 'sfSymbol', name: tab.selectedSymbol } }}>
       <SafeAreaProvider>
-        {visited.current.has(tab.value) ? <Animated.View pointerEvents={selected === tab.value ? 'auto' : 'none'} aria-hidden={selected === tab.value ? undefined : true} accessibilityElementsHidden={selected !== tab.value} importantForAccessibility={selected === tab.value ? 'auto' : 'no-hide-descendants'} {...(selected === tab.value ? swipe : { style: { position: 'absolute' as const, top: 0, right: 0, bottom: 0, left: 0, opacity: 0 } })}>{render(tab.value)}</Animated.View> : null}
+        {visited.current.has(tab.value) ? <View pointerEvents={selected === tab.value ? 'auto' : 'none'} aria-hidden={selected === tab.value ? undefined : true} accessibilityElementsHidden={selected !== tab.value} importantForAccessibility={selected === tab.value ? 'auto' : 'no-hide-descendants'} {...(selected === tab.value ? swipe : { style: { position: 'absolute' as const, top: 0, right: 0, bottom: 0, left: 0, opacity: 0 } })}>{render(tab.value)}</View> : null}
       </SafeAreaProvider>
     </Tabs.Screen>)}
   </Tabs.Host>;

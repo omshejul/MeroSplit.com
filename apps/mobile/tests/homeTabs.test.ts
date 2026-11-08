@@ -17,23 +17,22 @@ function actualPanResponder() {
   return load('PanResponder').default;
 }
 
-function swipeHarness(real = false, effects = false) {
-  const state = { selected: 'Groups', busy: false, motion: true, focused: false, rtl: false, os: 'ios' };
-  const selected: string[] = [], positions: number[] = [], refs: any[] = []; let cursor = 0, handlers: any, nativeHandlers: any, pendingEffect: any, cleanup: any, effectDeps: any[] | undefined;
-  const animated = { stopAnimation() {}, setValue(value: number) { positions.push(value); } };
+function swipeHarness(real = false) {
+  const state = { selected: 'Groups', busy: false, focused: false, rtl: false, os: 'ios' };
+  const selected: string[] = [], refs: any[] = [];
+  let cursor = 0, handlers: any, nativeHandlers: any, layout: any;
   const file = ts.createSourceFile('swipe.ts', readFileSync(new URL('../src/useHomeTabSwipe.ts', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true);
   const body = file.statements.filter(node => !ts.isImportDeclaration(node)).map(node => node.getText(file).replace(/^export /, '')).join('\n');
   const useSwipe = new Function('env', `with(env){${ts.transpile(body, { target: ts.ScriptTarget.ES2022 })};return useHomeTabSwipe;}`)({
-    useRef: (initial: unknown) => refs[cursor++] ??= { current: initial }, useState: () => [animated], useLayoutEffect(effect: any, deps: any[]) { if (effects && (!effectDeps || deps.some((value, index) => value !== effectDeps![index]))) { effectDeps = [...deps]; pendingEffect = effect; } },
-    useMemo: (fn: () => unknown) => fn(), useWindowDimensions: () => ({ width: 390 }), useUI: () => ({ motion: { enabled: state.motion } }),
-    Animated: { Value: class {}, timing: (_value: any, options: any) => ({ start() { animated.setValue(options.toValue); } }) },
+    useRef: (initial: unknown) => refs[cursor++] ??= { current: initial }, useLayoutEffect: (effect: () => void) => effect(),
+    useMemo: (fn: () => unknown) => fn(), useWindowDimensions: () => ({ width: 390 }),
     Platform: { get OS() { return state.os; } }, I18nManager: { get isRTL() { return state.rtl; } },
     TextInput: { State: { currentlyFocusedInput: () => { assert.equal(state.os, 'ios'); return state.focused ? {} : null; }, currentlyFocusedField: () => { assert.equal(state.os, 'web'); return state.focused ? {} : null; } } },
     PanResponder: { create: (value: unknown) => { handlers = value; if (!real) { const start = handlers.onStartShouldSetPanResponderCapture; handlers.onStartShouldSetPanResponderCapture = (event = { nativeEvent: { pageX: 200, touches: [{ pageX: 200 }] } }) => start(event); } const result = real ? actualPanResponder().create(value) : { panHandlers: value }; nativeHandlers = result.panHandlers; return result; } },
   });
-  const render = () => { cursor = 0; useSwipe(state.selected, state.busy, (tab: string) => selected.push(tab)); if (pendingEffect) { cleanup?.(); cleanup = pendingEffect(); pendingEffect = null; } };
+  const render = () => { cursor = 0; layout = useSwipe(state.selected, state.busy, (tab: string) => selected.push(tab)); };
   render();
-  return { state, selected, positions, render, handlers: () => handlers, nativeHandlers: () => nativeHandlers, gesture: (changes = {}) => ({ dx: -120, dy: 3, vx: -0.7, x0: 0, numberActiveTouches: 1, ...changes }) };
+  return { state, selected, render, layout: () => layout, handlers: () => handlers, nativeHandlers: () => nativeHandlers, gesture: (changes = {}) => ({ dx: -120, dy: 3, vx: -0.7, x0: 0, numberActiveTouches: 1, ...changes }) };
 }
 
 test('home swipes move to adjacent tabs without wrapping; taps remain an equivalent action', () => {
@@ -60,22 +59,20 @@ test('vertical/diagonal scrolling, editing, multiple fingers and native edge-bac
   assert.equal(app.handlers().onMoveShouldSetPanResponderCapture(null, app.gesture()), false);
 });
 
-test('short/cancelled swipes stay put; a route change or busy work cancels the navigation', () => {
+test('short swipes stay put; a route change or busy work cancels the navigation', () => {
   const app = swipeHarness(), h = app.handlers(); h.onStartShouldSetPanResponderCapture();
   h.onPanResponderRelease(null, app.gesture({ dx: -25, vx: 0 }));
-  h.onPanResponderMove(null, app.gesture()); h.onPanResponderTerminate();
-  assert.equal(app.positions.at(-1), 0); assert.deepEqual(app.selected, []);
+  assert.deepEqual(app.selected, []);
   app.state.selected = 'Activity'; app.render();
   app.handlers().onPanResponderRelease(null, app.gesture()); assert.deepEqual(app.selected, []);
   app.handlers().onStartShouldSetPanResponderCapture(); app.state.busy = true; app.render();
   app.handlers().onPanResponderRelease(null, app.gesture()); assert.deepEqual(app.selected, []);
 });
 
-test('reduced motion keeps navigation without moving content; RTL follows reading direction', () => {
-  const app = swipeHarness(); app.state.motion = false; app.state.rtl = true; app.render();
+test('RTL swipes follow reading direction', () => {
+  const app = swipeHarness(); app.state.rtl = true; app.render();
   const h = app.handlers(), gesture = app.gesture({ dx: 120, vx: 0.8 }); h.onStartShouldSetPanResponderCapture();
   assert.equal(h.onMoveShouldSetPanResponderCapture(null, gesture), true);
-  h.onPanResponderMove(null, gesture); assert.deepEqual(app.positions, []);
   h.onPanResponderRelease(null, gesture); assert.deepEqual(app.selected, ['Friends']);
 });
 
@@ -85,12 +82,12 @@ test('native tab changes keep routes authoritative and never mount four account 
   const body = file.statements.filter(node => !ts.isImportDeclaration(node)).map(node => node.getText(file).replace(/^export (?:default )?/, '')).join('\n');
   const refs = { current: 0 }, selected: string[] = [], rendered: string[] = [];
   const render = new Function('env', `with(env){${ts.transpile(body, { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React })};return HomeTabs;}`)({
-    React, SafeAreaProvider:'SafeAreaProvider', SafeAreaView:'SafeAreaView', Platform: { Version: '27' }, Tabs: { Host: 'NativeTabs', Screen: 'NativeTab' }, Animated: { View: 'AnimatedView' },
+    React, SafeAreaProvider:'SafeAreaProvider', SafeAreaView:'SafeAreaView', Platform: { Version: '27' }, Tabs: { Host: 'NativeTabs', Screen: 'NativeTab' }, View: 'View',
     useRef: (initial:any) => initial instanceof Set ? {current:initial} : refs, useUI: () => ({ palette: { accent: 'accent', background: 'background' }, dark: true }), useHomeTabSwipe: () => ({}),
   });
   const props = { selected: 'Groups', busy: false, onSelect: (value: string) => selected.push(value), render: (value: string) => { rendered.push(value); return value; } };
   const tree = render(props); assert.equal(tree.type, 'NativeTabs'); assert.deepEqual(rendered, ['Groups']);
-  for(const screen of tree.children[0]){const provider=screen.children[0];assert.equal(provider?.type,'SafeAreaProvider','native tab owns its safe-area context from first mount');assert.equal(provider.children[0]?.type,screen.props.screenKey==='Groups'?'AnimatedView':undefined,'viewport stays full height inside the local provider');assert.equal(screen.props.ios.overrideScrollViewContentInsetAdjustmentBehavior,false,'manual clearance must not be doubled by automatic insets');}
+  for(const screen of tree.children[0]){const provider=screen.children[0];assert.equal(provider?.type,'SafeAreaProvider','native tab owns its safe-area context from first mount');assert.equal(provider.children[0]?.type,screen.props.screenKey==='Groups'?'View':undefined,'viewport stays full height inside the local provider');assert.equal(screen.props.ios.overrideScrollViewContentInsetAdjustmentBehavior,false,'manual clearance must not be doubled by automatic insets');}
   tree.props.onTabSelected({ nativeEvent: { provenance: 4, selectedScreenKey: 'Friends', actionOrigin: 'user' } });
   assert.deepEqual(selected, ['Friends']); assert.equal(refs.current, 4);
   tree.props.onTabSelected({ nativeEvent: { provenance: 5, selectedScreenKey: 'Activity', actionOrigin: 'programmatic-js' } });
@@ -124,14 +121,16 @@ test('real React Native responder claims a root swipe before x0 is initialized',
 });
 
 
-test('nav selections use the same directional entry animation as swipes, including jumps and rapid taps', () => {
-  const app = swipeHarness(false, true); assert.deepEqual(app.positions, [0]); app.positions.length = 0;
-  app.state.selected = 'Account'; app.render(); assert.deepEqual(app.positions, [64, 0]);
-  app.positions.length = 0; app.state.selected = 'Friends'; app.render(); assert.deepEqual(app.positions, [-64, 0]);
-  app.positions.length = 0; app.render(); assert.deepEqual(app.positions, [], 'reselecting the active tab does not replay entry');
-});
-
-test('tab tap animation respects RTL and reduced motion', () => {
-  const app = swipeHarness(false, true); app.positions.length = 0; app.state.rtl = true; app.state.selected = 'Friends'; app.render(); assert.deepEqual(app.positions, [-64, 0]);
-  app.positions.length = 0; app.state.motion = false; app.state.selected = 'Groups'; app.render(); assert.deepEqual(app.positions, [0]);
+test('swipes and direct tab changes leave the content at its normal position', () => {
+  const app = swipeHarness(), h = app.handlers();
+  h.onStartShouldSetPanResponderCapture();
+  h.onPanResponderMove(null, app.gesture());
+  assert.deepEqual(app.layout().style, { flex: 1 });
+  h.onPanResponderRelease(null, app.gesture());
+  assert.deepEqual(app.selected, ['Friends']);
+  for (const selected of ['Friends', 'Account', 'Groups']) {
+    app.state.selected = selected;
+    app.render();
+    assert.deepEqual(app.layout().style, { flex: 1 });
+  }
 });
