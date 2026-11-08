@@ -87,6 +87,22 @@ test('combined export flushes saved work and never shares a stale account result
 
 const group = { id: 'g', name: 'Example', expenses: [], participants: [{ id: 'self', name: 'Example' }, { id: 'other', name: 'Jordan' }] };
 
+test('a new bill focuses Amount once after draft restore and Next focuses Description', () => {
+  const app = harness('src/ExpenseForm.tsx', 'ExpenseForm');
+  const props = { group, selfId: 'self', busy: false, autoFocusAmount: true, onSave: async () => {} };
+  const focus: string[] = [];
+  const tree = app.render(props);
+  const amount = nodes(tree).find(node => node.type === 'AmountField')!;
+  const description = find(tree, 'label', 'Description');
+  amount.props.ref.current = { focus: () => focus.push('amount') };
+  description.props.ref.current = { focus: () => focus.push('description') };
+  app.commit();
+  app.render({ ...props, busy: true }); app.render(props); app.commit();
+  assert.deepEqual(focus, ['amount']);
+  amount.props.right.props.onPress(); amount.props.onSubmitEditing();
+  assert.deepEqual(focus, ['amount', 'description', 'description']);
+});
+
 test('form keeps one selected payer changeable when other people are eligible and retains values through dialog close', async () => {
   const app = harness('src/ExpenseForm.tsx', 'ExpenseForm'), drafts: any[] = [], saves: any[] = [];
   const props = { group, selfId: 'self', busy: false, onSave: async (value: any) => saves.push(value), onDraftChange: (value: any) => drafts.push(value) };
