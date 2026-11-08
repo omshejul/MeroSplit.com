@@ -1,7 +1,17 @@
 {
-  "fill": {
-    "automatic-gradient": "srgb:1.00000,0.69804,0.11765,1.00000"
-  },
+  "fill-specializations": [
+    {
+      "value": {
+        "automatic-gradient": "srgb:1.00000,0.69804,0.11765,1.00000"
+      }
+    },
+    {
+      "appearance": "dark",
+      "value": {
+        "automatic-gradient": "srgb:1.00000,0.69804,0.11765,1.00000"
+      }
+    }
+  ],
   "groups": [
     {
       "layers": [

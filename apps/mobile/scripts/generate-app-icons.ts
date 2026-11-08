@@ -1,7 +1,7 @@
 // Builds the alternate iOS app icons from the primary Icon Composer bundle.
 // Each alternate keeps the primary's layers, scale and glass settings, swaps
 // the two half colors in its SVG, and fills the tile with an automatic
-// gradient of its ground color. Run: pnpm icons:generate
+// gradient of its ground color in both light and dark. Run: pnpm icons:generate
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -28,7 +28,10 @@ export function buildAppIconBundles(primaryJson: string, primarySvg: string): Re
   for (const icon of appIcons) {
     const name = nativeIconName(icon.id);
     if (!name) continue;
-    files[`${name}.icon/icon.json`] = `${JSON.stringify({ ...primary, fill: { 'automatic-gradient': srgb(icon.ground) } }, null, 2)}\n`;
+    const fill = { 'automatic-gradient': srgb(icon.ground) };
+    files[`${name}.icon/icon.json`] = `${JSON.stringify({
+      ...primary, 'fill-specializations': [{ value: fill }, { appearance: 'dark', value: fill }],
+    }, null, 2)}\n`;
     files[`${name}.icon/Assets/${imageName}`] = primarySvg
       .replace(`fill="${BRAND_FILLS.left}"`, `fill="${icon.left.toLowerCase()}"`)
       .replace(`fill="${BRAND_FILLS.right}"`, `fill="${icon.right.toLowerCase()}"`);
