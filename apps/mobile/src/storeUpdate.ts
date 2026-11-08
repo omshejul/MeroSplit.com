@@ -4,7 +4,7 @@ export const appStores = {
   android: { name: 'Google Play', native: 'market://details?id=com.omshejul.splitdumb', web: 'https://play.google.com/store/apps/details?id=com.omshejul.splitdumb' },
 } as const;
 
-export async function checkStoreUpdate(baseUrl: string, platform: string, installed: unknown): Promise<boolean> {
+export async function checkStoreUpdate(baseUrl: string, platform: string, installed: unknown): Promise<string | null> {
   if ((platform !== 'ios' && platform !== 'android') || typeof installed !== 'string' || !/^[1-9]\d{0,9}$/.test(installed)) throw new Error('Installed build unavailable.');
   const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 5000);
   try {
@@ -12,6 +12,6 @@ export async function checkStoreUpdate(baseUrl: string, platform: string, instal
     if (!response.ok) throw new Error('Release check failed.');
     const releases = await response.json(), build: unknown = releases?.[platform]?.build;
     if (typeof build !== 'string' || !/^[1-9]\d{0,9}$/.test(build)) throw new Error('Release build unavailable.');
-    return BigInt(build) > BigInt(installed);
+    return BigInt(build) > BigInt(installed) ? build : null;
   } finally { clearTimeout(timer); }
 }

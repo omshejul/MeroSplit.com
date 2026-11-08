@@ -6,5 +6,5 @@ def test_store_releases_are_public_and_never_cached():
     assert response.status_code == 200
     assert response['Cache-Control'] == 'no-store'
     releases = response.json()
-    assert releases == {'ios': {'version': '1.2.2', 'build': '32'}, 'android': {'version': '1.2.2', 'build': '32'}}
+    assert releases == {'ios': {'version': '1.2.3', 'build': '33'}, 'android': {'version': '1.2.3', 'build': '33'}}
     assert not any('url' in release for release in releases.values())
