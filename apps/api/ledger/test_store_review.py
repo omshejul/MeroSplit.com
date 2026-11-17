@@ -44,14 +44,15 @@ def synthetic_credentials():
     return [(pin, make_password(pin)) for pin in pins]
 
 
-@pytest.fixture
-def reviewers(settings, synthetic_credentials):
-    users = [get_user_model().objects.create_user(username=uid(), email=f"{store}-review@example.invalid") for store in ("apple", "google")]
+@pytest.fixture(params=["apple", "openai"])
+def reviewers(request, settings, synthetic_credentials):
+    stores = (request.param, "google")
+    users = [get_user_model().objects.create_user(username=uid(), email=f"{store}-review@example.invalid") for store in stores]
     for user in users:
         EmailAddress.objects.create(user=user, email=user.email, primary=True, verified=False)
     settings.STORE_REVIEW_AUTH = [
         {"store": store, "user_id": user.pk, "email": user.email, "pin_hash": credential[1]}
-        for store, user, credential in zip(("apple", "google"), users, synthetic_credentials)
+        for store, user, credential in zip(stores, users, synthetic_credentials)
     ]
     return users, [value[0] for value in synthetic_credentials]
 

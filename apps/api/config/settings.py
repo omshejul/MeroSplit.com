@@ -120,12 +120,12 @@ if EMAIL_CLIENT_IP_SOURCE == "railway_public" and not EMAIL_RAILWAY_PUBLIC_HOSTS
     raise RuntimeError("Railway email rate limits require explicit EMAIL_RAILWAY_PUBLIC_HOSTS")
 try:
     STORE_REVIEW_AUTH = json.loads(os.environ.get("STORE_REVIEW_AUTH_JSON", "[]"))
-    if not isinstance(STORE_REVIEW_AUTH, list) or len(STORE_REVIEW_AUTH) > 2:
+    if not isinstance(STORE_REVIEW_AUTH, list) or len(STORE_REVIEW_AUTH) > 3:
         raise ValueError()
     for entry in STORE_REVIEW_AUTH:
         if (
             not isinstance(entry, dict) or set(entry) != {"store", "user_id", "email", "pin_hash"}
-            or entry["store"] not in {"apple", "google"} or type(entry["user_id"]) is not int or entry["user_id"] <= 0
+            or entry["store"] not in {"apple", "google", "openai"} or type(entry["user_id"]) is not int or entry["user_id"] <= 0
             or not isinstance(entry["email"], str) or "@" not in entry["email"]
             or entry["email"] != entry["email"].strip().lower() or len(entry["email"]) > 254
             or not isinstance(entry["pin_hash"], str)
