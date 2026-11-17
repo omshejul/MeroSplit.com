@@ -1,10 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View } from 'react-native';
+import { View, useWindowDimensions } from 'react-native';
 import { Text } from 'react-native-paper';
 import type { Group } from './types';
 import { Button, ErrorText, SectionHeading, SettingsRow, useUI } from './ui';
 import KeyboardDialog from './KeyboardDialog';
-import { CancelDialogActions, Dialog, DialogScrollBody } from './DialogParts';
+import { Dialog, DialogScrollBody } from './DialogParts';
 import PersonChoice from './PersonChoice';
 import { SplitFields, startingDraft } from './ExpenseForm';
 import { defaultExpenseChoices, readExpenseDefaults, saveExpenseDefaults } from './expenseDefaults';
@@ -13,7 +13,7 @@ import { getDatabase } from './native';
 import { useToast } from './Toast';
 
 function DefaultsEditor({ group, selfId, owner, onClose }: { group: Group; selfId: string; owner: string; onClose: () => void }) {
-  const { ui } = useUI(), toast = useToast();
+  const { ui } = useUI(), toast = useToast(), { fontScale } = useWindowDimensions();
   const [choices, setChoices] = useState<ExpenseDefaults | null>(null), [error, setError] = useState(''), [saving, setSaving] = useState(false);
   const [template] = useState(() => startingDraft(group, undefined, selfId));
   const lock = useRef(false), mounted = useRef(true);
@@ -58,9 +58,10 @@ function DefaultsEditor({ group, selfId, owner, onClose }: { group: Group; selfI
       </> : !error ? <Text style={ui.caption}>Loading defaults…</Text> : <Button title="Try again" onPress={() => void load()} />}
       {!!error && <ErrorText live>{error}</ErrorText>}
     </DialogScrollBody>
-    <CancelDialogActions disabled={saving} onCancel={onClose}>
+    <Dialog.Actions style={fontScale > 1.3 ? { flexDirection: 'column', alignItems: 'stretch' } : undefined}>
+      <Button title="Cancel" kind="text" icon="close" disabled={saving} onPress={onClose} />
       <Button title={saving ? 'Saving…' : 'Save defaults'} kind="primary" disabled={saving || !choices} onPress={() => void save()} />
-    </CancelDialogActions>
+    </Dialog.Actions>
   </KeyboardDialog>;
 }
 export default function ExpenseDefaultsSettings({ group, selfId, owner, busy }: { group: Group; selfId: string; owner: string; busy: boolean }) {
