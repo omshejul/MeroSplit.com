@@ -1,4 +1,5 @@
 import { readDraft, saveDraft } from './storage.ts';
+import { readExpenseDefaults } from './expenseDefaults.ts';
 import type { Database } from './storage.ts';
 import type { ExpenseFormDraft } from './ExpenseForm';
 
@@ -6,6 +7,10 @@ export function expenseDraftStore(owner: string, groupId: string, expenseId: str
   const key = expenseId ? `expense-edit:${groupId}:${expenseId}` : groupId;
   let revision = 0;
   return {
+    async readDefaults() {
+      await writes.current;
+      return readExpenseDefaults(await database(), owner, groupId);
+    },
     async read(): Promise<ExpenseFormDraft | null> {
       const current = revision;
       await writes.current;
@@ -17,6 +22,7 @@ export function expenseDraftStore(owner: string, groupId: string, expenseId: str
           saved.time != null && (typeof saved.time !== 'string' || !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(saved.time)) ||
           !['equal', 'exact', 'percent', 'shares', 'adjustment'].includes(saved.mode) ||
           saved.multiplePayers !== undefined && typeof saved.multiplePayers !== 'boolean' ||
+          saved.equalDefaultPayers !== undefined && typeof saved.equalDefaultPayers !== 'boolean' ||
           ![saved.payerIds, saved.participantIds].every(ids => Array.isArray(ids) && ids.every(id => typeof id === 'string')) ||
           ![saved.payerAmounts, saved.splitValues].every(values => values && typeof values === 'object' && !Array.isArray(values) && Object.values(values).every(value => typeof value === 'string')) ||
           saved.attachment && (saved.attachment.path !== `/groups/${groupId}/expenses/${saved.id}/attachments` || typeof saved.attachment.file?.uri !== 'string')) {

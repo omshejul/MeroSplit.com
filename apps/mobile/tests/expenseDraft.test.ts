@@ -9,6 +9,7 @@ import ts from 'typescript';
 import { sqliteAdapter } from './sqlite.ts';
 import { migrate, readDraft, saveDraft } from '../src/storage.ts';
 import * as accounting from '../src/accounting.ts';
+import * as defaults from '../src/expenseDefaults.ts';
 
 const group: any = { id:'group-one', name:'Trip', version:1, participants:[{id:'self',name:'You'},{id:'other',name:'Other'}],expenses:[],settlements:[],balances:{},transfers:[],activity:[] };
 const tick = () => new Promise<void>(resolve => setImmediate(resolve));
@@ -18,7 +19,7 @@ function form(db: any, options: any = {}) {
   let cursor=0; const state:any[]=[], deps:any[][]=[], cleanup:any[]=[], effects:(()=>void)[]=[];
   const writes={current:Promise.resolve()}, discard={current:null as null|(()=>Promise<boolean>),hasDraft:undefined as boolean|undefined};
   const media:any[]=[], saves:any[]=[];
-  const env:any={animateLayout() {}, currencySymbol,...accounting,...persistence, React:{createElement:(type:any,props:any,...children:any[])=>({type,props:props||{},children})},
+  const env:any={animateLayout() {}, currencySymbol,...accounting,...persistence,...defaults, React:{createElement:(type:any,props:any,...children:any[])=>({type,props:props||{},children})},
     useState:(initial:any)=>{const id=cursor++;if(!(id in state))state[id]=typeof initial==='function'?initial():initial;return[state[id],(v:any)=>{state[id]=typeof v==='function'?v(state[id]):v}]},
     useRef:(initial:any)=>{const id=cursor++;return state[id]??={current:initial}},
     useContext:()=>discard, useId:()=> 'amount-accessory', Platform:{OS:'ios'}, InputAccessoryView:'InputAccessoryView', ScreenDraftDiscard:{},
@@ -195,4 +196,28 @@ test('adjustment draft restores signed inputs and saves canonical paise with exa
  const app=form(db);const tree=await app.settle();button(tree,'Save bill').props.onPress();await tick();await app.writes.current;
  assert.equal(app.saves.length,1);assert.deepEqual(app.saves[0][0].split,{mode:'adjustment',values:{self:'100',other:'-200'}});
  assert.equal(await readDraft(db,'account-a',group.id),null);app.unmount();raw.close();
+});
+
+test('ledger defaults prefill only fresh bills, retaining drafts and existing expense values', async () => {
+ const {raw,db}=await memory();
+ const preset={payerIds:['other'],participantIds:['self','other'],allParticipants:true,mode:'percent' as const,splitValues:{self:'25',other:'75'}};
+ await defaults.saveExpenseDefaults(db,'account-a',group.id,preset);
+ const fresh=form(db);let tree=await fresh.settle();
+ const people=(title:string)=>{const walk=(node:any):any=>node?.props?.title===title?node:Array.isArray(node)?node.map(walk).find(Boolean):(node?.children??[]).map(walk).find(Boolean);return walk(tree)};
+ assert.equal(people('Who paid?').props.summary,'Other');assert.equal(people('Split between').children[0].props.draft.mode,'percent');assert.equal(fresh.discard.hasDraft,false);
+ field(tree,'TextField','Description').props.onChangeText('Keep my draft');await fresh.writes.current;fresh.unmount();
+ await defaults.saveExpenseDefaults(db,'account-a',group.id,{...preset,payerIds:['self'],mode:'equal',splitValues:{}});
+ const restored=form(db);tree=await restored.settle();assert.equal(people('Who paid?').props.summary,'Other');assert.equal(field(tree,'TextField','Description').props.value,'Keep my draft');restored.unmount();
+ const expense={id:'accepted',version:2,description:'Dinner',total:'10000',date:'2026-11-01',notes:'',paid:{other:'10000'},split:{mode:'shares',values:{self:'1',other:'3'}}};
+ const edit=form(db,{expense});tree=await edit.settle();assert.equal(people('Who paid?').props.summary,'Other');assert.equal(people('Split between').children[0].props.draft.mode,'shares');edit.unmount();raw.close();
+});
+
+test('multiple default payers follow total changes until paid amounts are edited, including cold restore',async()=>{
+ const {raw,db}=await memory();await defaults.saveExpenseDefaults(db,'account-a',group.id,{payerIds:['self','other'],participantIds:['self','other'],allParticipants:true,mode:'equal',splitValues:{}});
+ const app=form(db);let tree=await app.settle();field(tree,'AmountField','Amount (₹)').props.onChangeText('10.01');await app.writes.current;
+ let saved=await readDraft<any>(db,'account-a',group.id);assert.deepEqual(saved.payerAmounts,{other:'5.01',self:'5.00'});assert.equal(saved.equalDefaultPayers,true);app.unmount();
+ const cold=form(db);tree=await cold.settle();field(tree,'AmountField','Amount (₹)').props.onChangeText('20');tree=cold.render();
+ const payer=(()=>{const walk=(n:any):any=>n?.props?.title==='Who paid?'?n:Array.isArray(n)?n.map(walk).find(Boolean):(n?.children??[]).map(walk).find(Boolean);return walk(tree)})();
+ payer.children[0](()=>{}).props.onChange({payerAmounts:{self:'12',other:'8'}});tree=cold.render();field(tree,'AmountField','Amount (₹)').props.onChangeText('30');await cold.writes.current;
+ saved=await readDraft<any>(db,'account-a',group.id);assert.deepEqual(saved.payerAmounts,{self:'12',other:'8'});assert.equal(saved.equalDefaultPayers,false);cold.unmount();raw.close();
 });

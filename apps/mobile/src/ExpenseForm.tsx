@@ -23,12 +23,14 @@ import { clearStagedMedia } from './media';
 import BillPeople from './BillPeople';
 import SplitPersonRow from './SplitPersonRow';
 import { expenseDraftStore } from './expenseDraft';
+import { defaultExpenseChoices, defaultPayerAmounts } from './expenseDefaults';
+import type { ExpenseDefaults } from './expenseDefaults';
 import { getDatabase } from './native';
 
 export type ExpenseFormDraft = {
   schemaVersion: 1; groupId: string; expenseId: string | null; id: string; expenseVersion: number;
   description: string; amount: string; date: string; time?: string | null; notes: string;
-  payerIds: string[]; payerAmounts: Record<string, string>; multiplePayers?: boolean; mode: Split['mode'];
+  payerIds: string[]; payerAmounts: Record<string, string>; multiplePayers?: boolean; equalDefaultPayers?: boolean; mode: Split['mode'];
   attachment?: PendingMediaUpload; participantIds: string[]; splitValues: Record<string, string>;
 };
 type Props = {
@@ -50,17 +52,17 @@ function payerDifference(draft: ExpenseFormDraft): bigint | null {
   } catch { return null; }
 }
 
-function startingDraft(group: Group, expense: Expense | undefined, selfId: string): ExpenseFormDraft {
+export function startingDraft(group: Group, expense: Expense | undefined, selfId: string, defaults?: ExpenseDefaults | null): ExpenseFormDraft {
   const ids = group.participants.map(person => person.id);
-  const activeIds = group.participants.filter(person => !person.removed).map(person => person.id);
-  const payer = activeIds.includes(selfId) ? selfId : activeIds[0];
+  const choices = defaultExpenseChoices(group, selfId, defaults);
   return {
     schemaVersion: 1, groupId: group.id, expenseId: expense?.id ?? null, id: expense?.id ?? Crypto.randomUUID(), expenseVersion: expense?.version ?? 0,
     description: expense?.description ?? '', amount: expense ? rupees(expense.total) : '', date: expense?.date ?? today(), time: expense ? expense.time : null, notes: expense?.notes ?? '',
-    payerIds: expense ? ids.filter(id => integer(expense.paid[id] ?? '0') > 0n) : payer ? [payer] : [],
+    payerIds: expense ? ids.filter(id => integer(expense.paid[id] ?? '0') > 0n) : choices.payerIds,
     payerAmounts: expense ? Object.fromEntries(ids.map(id => [id, rupees(expense.paid[id] ?? '0')])) : {},
-    mode: expense?.split.mode ?? 'equal', participantIds: expense ? Object.keys(expense.split.values) : activeIds,
-    splitValues: expense ? Object.fromEntries(Object.entries(expense.split.values).map(([id, value]) => [id, expense.split.mode === 'exact' || expense.split.mode === 'adjustment' ? rupees(value) : value])) : {},
+    ...(!expense && choices.payerIds.length > 1 ? { multiplePayers: true, equalDefaultPayers: true } : {}),
+    mode: expense?.split.mode ?? choices.mode, participantIds: expense ? Object.keys(expense.split.values) : choices.participantIds,
+    splitValues: expense ? Object.fromEntries(Object.entries(expense.split.values).map(([id, value]) => [id, expense.split.mode === 'exact' || expense.split.mode === 'adjustment' ? rupees(value) : value])) : choices.splitValues,
   };
 }
 
@@ -123,7 +125,7 @@ function PayerFields({ participants, draft, disabled, preserveRemoved, label, on
   </RowGroup>;
 }
 
-function SplitFields({ participants, draft, disabled, preserveRemoved, label, onChange, status }: ExpenseSelectionProps) {
+export function SplitFields({ participants, draft, disabled, preserveRemoved, label, onChange, status, wrapMethods = false }: ExpenseSelectionProps & { wrapMethods?: boolean }) {
   const { ui, palette } = useUI();
   let shares: Record<string, string> = {}, previewError = '';
   try {
@@ -132,10 +134,10 @@ function SplitFields({ participants, draft, disabled, preserveRemoved, label, on
     shares = validateExpense(total, { [draft.participantIds[0]]: total }, { mode: draft.mode, values }, participants.map(person => person.id)).shares;
   } catch (error) { if (draft.mode === 'adjustment' && draft.amount && draft.participantIds.length) previewError = error instanceof Error ? error.message : 'Review the adjustments.'; }
   return <RowGroup style={styles.reveal}>
-    <View accessibilityRole="radiogroup" accessibilityLabel="Split method" style={[styles.methods, { borderColor: palette.line }]}>
+    <View accessibilityRole="radiogroup" accessibilityLabel="Split method" style={[styles.methods, wrapMethods && { flexWrap: 'wrap' }, { borderColor: palette.line }]}>
       {Object.entries(splitModes).map(([mode, title]) => <Button key={mode} title={title} kind="plain" accessibilityRole="radio" accessibilityState={{ checked: draft.mode === mode, disabled }} disabled={disabled}
         onPress={() => { if (draft.mode !== mode) { onChange({ mode: mode as Split['mode'], splitValues: Object.fromEntries(draft.participantIds.map(id => [id, mode === 'shares' ? '1' : ''])) }); } }}
-        style={[styles.method, { backgroundColor: draft.mode === mode ? palette.soft : 'transparent' }]}>
+        style={[styles.method, wrapMethods && { flexBasis: 100 }, { backgroundColor: draft.mode === mode ? palette.soft : 'transparent' }]}>
         {mode === 'exact' ? <Text accessible={false} style={[ui.body, { color: draft.mode === mode ? palette.accent : palette.text, fontSize: 23, lineHeight: 28 }]}>{currencySymbol()}</Text>
           : <Icon name={mode === 'equal' ? 'equal' : mode === 'percent' ? 'percent' : mode === 'adjustment' ? 'adjustment' : 'shares'} size={23} color={draft.mode === mode ? palette.accent : palette.text} />}
         <Text style={[ui.caption, { color: draft.mode === mode ? palette.accent : palette.text, textAlign: 'center' }]}>{mode === 'equal' ? 'Equally' : mode === 'exact' ? 'Amounts' : mode === 'percent' ? 'Percent' : mode === 'adjustment' ? 'Adjust' : 'Shares'}</Text>
@@ -172,12 +174,16 @@ export default function ExpenseForm({ group, expense, selfId, busy, autoFocusAmo
   const store = storage.current;
   useEffect(() => {
     mounted.current = true;
-    void store.read().then(saved => {
+    const restored = (initial: ExpenseFormDraft | null, saved: boolean) => {
       if (!mounted.current) return;
-      if (saved) { draftRef.current = saved; setDraft(saved); }
-      discard.hasDraft = !!saved || discard.hasDraft === true;
+      if (initial) { draftRef.current = initial; setDraft(initial); }
+      discard.hasDraft = saved || discard.hasDraft === true;
       setReady(true);
-    }).catch(() => { if (mounted.current) setError('Could not restore this saved bill. Your draft is still on this device.'); });
+    };
+    void store.read().then(saved => {
+      if (saved || expense) { restored(saved, !!saved); return; }
+      return store.readDefaults().then(defaults => restored(startingDraft(group, undefined, selfId, defaults), false));
+    }).catch(() => { if (mounted.current) setError('Could not restore this saved bill or its defaults. Your draft is still on this device.'); });
     const remove = async () => {
       if (handedOff.current) return true;
       if (lock.current) return false;
@@ -210,6 +216,8 @@ export default function ExpenseForm({ group, expense, selfId, busy, autoFocusAmo
   };
   function change(patch: Partial<ExpenseFormDraft>) {
     discard.hasDraft = true;
+    if (patch.amount !== undefined && draftRef.current.equalDefaultPayers) patch = { ...patch, payerAmounts: defaultPayerAmounts(patch.amount, draftRef.current.payerIds) };
+    else if (patch.payerAmounts !== undefined || patch.payerIds !== undefined) patch = { ...patch, equalDefaultPayers: false };
     const next = { ...draftRef.current, ...patch };
     draftRef.current = next; setDraft(next); setError('');
     const pending = store.write(next);
