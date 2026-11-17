@@ -51,6 +51,7 @@ urlpatterns = [
     path("oauth/device/poll", mcp_oauth_views.device_poll),
     path("bill-email/opt-out/<uuid:notice_id>", stop_bill_emails),
     path(".well-known/oauth-authorization-server", mcp_oauth_views.metadata),
+    path(".well-known/openai-apps-challenge", TemplateView.as_view(template_name="ledger/openai-apps-challenge.txt", content_type="text/plain; charset=utf-8")),
     path(".well-known/oauth-protected-resource", mcp_oauth_views.resource_metadata),
     path(".well-known/oauth-protected-resource/mcp", mcp_oauth_views.resource_metadata),
     path("oauth/register", mcp_oauth_views.register),
