@@ -9,13 +9,13 @@ const baseUrl = 'https://merosplit.test';
 const old: Session = { baseUrl, userId: '1', email: 'old@example.invalid', token: 'synthetic-old' };
 const fresh: Session = { baseUrl, userId: '2', email: 'new@example.invalid', token: 'synthetic-new' };
 const source = ts.createSourceFile('App.tsx', readFileSync(new URL('../App.tsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
-const names = ['finishSignIn', 'endPushSession', 'changeScope'], declarations: string[] = [];
+const names = ['finishSignIn', 'finishGoogleSignIn', 'endPushSession', 'changeScope'], declarations: string[] = [];
 function collect(node: ts.Node) {
   if (ts.isFunctionDeclaration(node) && names.includes(node.name?.text ?? '')) declarations.push(node.getText(source));
   ts.forEachChild(node, collect);
 }
 collect(source);
-assert.equal(declarations.length, names.length, 'run all three actual App functions, including current changeScope');
+assert.equal(declarations.length, names.length, 'run the actual sign-in functions, including current changeScope');
 const compiled = ts.transpile(declarations.join('\n'), { target: ts.ScriptTarget.ES2022 });
 const tick = () => new Promise<void>(done => setImmediate(done));
 
@@ -42,8 +42,9 @@ function harness(active: Session | null = old, target = fresh) {
   env.initialScreen = { current: 'login' };
   env.setNavigationScope = (update: (scope: number) => number) => { view.scope = update(Number(view.scope ?? 0)); view.screen = env.initialScreen.current; view.tab = view.screen === 'signInMethods' ? 'Account' : 'Groups'; };
   Object.defineProperty(env, 'session', { get: () => state.session });
-  const run = new Function('env', `with (env) { ${compiled}; return finishSignIn; }`)(env) as () => Promise<void>;
-  return { env, state, view, events, target, run };
+  env.target = target;
+  const methods = new Function('env', `with (env) { ${compiled}; return { run: finishSignIn, runGoogle: () => finishGoogleSignIn('login', async () => target) }; }`)(env);
+  return { env, state, view, events, target, run: methods.run as () => Promise<void>, runGoogle: methods.runGoogle as () => Promise<void> };
 }
 
 function network(target = fresh, logout: number | Error | Promise<Response> = 410) {
@@ -67,6 +68,20 @@ test('actual native endSession treats an invalid410 session as already ended', a
   const n = network();
   try { await endSession(old); assert.deepEqual(n.calls.map(c => [c.method, c.token]), [['DELETE', old.token]]); }
   finally { n.restore(); }
+});
+
+test('Google reauthentication adopts a fresh scope with Groups as the initial screen', async () => {
+  for (const target of [old, { ...old, token: 'synthetic-renewed' }]) {
+    const h = harness(old, target), n = network(target, 410);
+    try {
+      await h.runGoogle();
+      assert.deepEqual(h.state.session, target);
+      assert.equal(h.view.scope, 1);
+      assert.equal(h.view.screen, 'home');
+      assert.equal(h.view.tab, 'Groups');
+      assert.ok(n.calls.every(call => call.token === old.token), 'cleanup only revokes the old token');
+    } finally { n.restore(); }
+  }
 });
 
 test('actual App OTP persists, cleans up only old token, and adopts current account scope', async t => {
