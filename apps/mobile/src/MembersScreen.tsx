@@ -1,6 +1,7 @@
 import { useLoading } from './LoadingOverlay';
 import RowGroup from './RowGroup';
 import GroupIdentity from './GroupIdentity';
+import ExpenseDefaultsSettings from './ExpenseDefaultsSettings';
 import EditableName from './EditableName';
 import { NoticeBanner } from './UIStates';
 import { CloseDialogActions } from './DialogParts';
@@ -32,6 +33,7 @@ import { Button, Icon, IconAction, SettingsRow, useUI } from './ui';
 
 type Props = {
   group: Group;
+  owner?: string;
   session?: Session | null;
   onPhotoChanged?: () => void | Promise<void>;
   selfId: string;
@@ -131,7 +133,7 @@ export default function MembersScreen(props: Props) {
   return <MemberSettings key={`${props.group.id}|${props.selfId}`} {...props} />;
 }
 
-function MemberSettings({ group, session, onPhotoChanged, selfId, busy, addPersonRequest = 0, onAction, onMembership }: Props) {
+function MemberSettings({ group, owner, session, onPhotoChanged, selfId, busy, addPersonRequest = 0, onAction, onMembership }: Props) {
   const notify = useToast();
   const { ui } = useUI();
   const [showPrevious, setShowPrevious] = useState(false);
@@ -416,6 +418,7 @@ function MemberSettings({ group, session, onPhotoChanged, selfId, busy, addPerso
       <FeedbackNote section="opening" feedback={feedback} />
     </DetailDialog>}
 
+    {!!owner && <ExpenseDefaultsSettings group={group} selfId={selfId} owner={owner} busy={disabled || !self || !!self.removed} />}
       {organizer && <>
         <Button icon="archive" title={group.archived ? 'Reopen group' : 'Archive group'} kind="text" disabled={disabled} onPress={() => confirm(
           group.archived ? 'Reopen this group?' : 'Archive this group?', group.archived ? 'Members can add expenses again.' : 'Existing records stay available. Reopen the group to add expenses again.',
