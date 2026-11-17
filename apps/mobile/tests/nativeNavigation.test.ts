@@ -39,6 +39,29 @@ function navigationHarness() {
     reset: (route: routes.AppRoute) => ref.dispatch(CommonActions.reset({ index: 0, routes: [route] })) };
 }
 
+test('successful reauthentication replaces the login stack with Groups in the same account', () => {
+  const render = (scope: string) => module().AppStack({ render() {}, blocked: false, initialScreen: 'home', scope });
+  const before = render('same-account|1'), after = render('same-account|2');
+  const config = (tree: any) => {
+    const screens = nodes(tree).filter(node => node.type === 'Screen');
+    return { routeNames: screens.map(node => node.props.name), routeParamList: Object.fromEntries(screens.map(node => [node.props.name, node.props.initialParams])), routeGetIdList: {} };
+  };
+  const router = StackRouter({}), oldConfig = config(before), nextConfig = config(after);
+  let state = router.getInitialState(oldConfig);
+  state = router.getStateForAction(state, StackActions.push('login'), oldConfig)!;
+  assert.deepEqual(state.routes.map((route: routes.AppRoute) => route.name), ['home', 'login']);
+  // A remounted navigator reuses its parent's state but loses the previous
+  // navigationKey. A mounted navigator can observe the account scope changing.
+  if (before.props.key !== after.props.key) state = router.getRehydratedState(state, nextConfig);
+  else {
+    const changed = nodes(before).find(node => node.type === 'Group').props.navigationKey !== nodes(after).find(node => node.type === 'Group').props.navigationKey;
+    state = router.getStateForRouteNamesChange(state, { ...nextConfig, routeKeyChanges: changed ? nextConfig.routeNames : [] });
+  }
+  assert.equal(state.routes[state.index].name, 'home', 'successful login must leave the login page without pressing Back');
+  assert.deepEqual(state.routes.map((route: routes.AppRoute) => route.name), ['home'], 'Back must not reveal a stale sign-in page');
+  assert.equal(state.routes[0].params?.tab, 'Groups');
+});
+
 test('native push/pop retains Groups -> group -> bill -> history/chat and Settings returns once', () => {
   const h = navigationHarness();
   h.navigation().go('group', { groupId: 'g' }); const groupKey = h.state().routes.at(-1).key;
