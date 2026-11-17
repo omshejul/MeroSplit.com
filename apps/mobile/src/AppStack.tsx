@@ -142,7 +142,7 @@ function RouteScene({ route, navigation }: NativeStackScreenProps<Routes, Screen
 export default function AppStack({ render, blocked, initialScreen, scope }: { render: RenderScreen; blocked: boolean; initialScreen: Screen; scope: string }) {
   const { palette, motion } = useUI();
   const sheetOptions = { presentation: Platform.OS === 'web' ? 'transparentModal' as const : 'formSheet' as const, sheetAllowedDetents: [0.65, 0.9], sheetGrabberVisible: true, sheetCornerRadius: 24, contentStyle: { backgroundColor: Platform.OS === 'web' ? 'transparent' : palette.surface } };
-  return <NativeSheetProvider key={scope}><SceneContext.Provider value={{ render, blocked }}><Stack.Navigator screenOptions={{
+  return <NativeSheetProvider><SceneContext.Provider value={{ render, blocked }}><Stack.Navigator screenOptions={{
     headerShown: false, contentStyle: { backgroundColor: palette.background }, animation: motion.enabled ? 'default' : 'none', gestureEnabled: !blocked,
   }}><Stack.Group navigationKey={scope}>{[initialScreen, ...screenNames.filter(name => name !== initialScreen && name !== 'sheet')].map(name => <Stack.Screen key={name} name={name} initialParams={{ tab: initialScreen === 'signInMethods' ? 'Account' : 'Groups' }} component={RouteScene} options={name === 'expenseIcon' ? sheetOptions : undefined} />)}<Stack.Screen name="sheet" component={SheetScene} options={sheetOptions} /></Stack.Group></Stack.Navigator></SceneContext.Provider></NativeSheetProvider>;
 }
