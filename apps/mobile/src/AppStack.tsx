@@ -56,6 +56,10 @@ export function useAppNavigation() {
       ref.dispatch({ type: 'SET_PARAMS', source: from.key, payload: { params: { activityEditId: undefined } } });
     }
     const target = destination(from, name, params);
+    if (name === 'group' && target.params?.revealRecord) {
+      ref.dispatch({ ...StackActions.push(name, target.params), appNavigation: true } as AppAction);
+      return;
+    }
     if (name === 'home' && current.routes[current.index].name === 'home') {
       ref.dispatch({ type: 'SET_PARAMS', payload: { params: target.params }, source: current.routes[current.index].key, appNavigation: true } as AppAction);
       return;

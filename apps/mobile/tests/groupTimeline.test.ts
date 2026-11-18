@@ -22,3 +22,10 @@ test('new pending payments stay visible before accepted records on the same day 
   const first = cachedTimeline(group)[0];
   assert.equal(first.kind === 'payment' && first.payment.provenance, 'pending_manual');
 });
+
+test('date added interleaves backdated bills and undated payments by their original creation time', () => {
+  const group = { expenses: [bill('recent-date', '2026-11-17', '2026-11-17T12:00:00Z'), bill('taxi', '2026-11-04', '2026-11-18T13:00:00Z')],
+    settlements: [payment('cash', null, '2026-11-18T12:00:00Z')] } as Group;
+  assert.deepEqual(cachedTimeline(group, '', true).map(row => row.kind === 'bill' ? row.bill.id : row.payment.id), ['taxi', 'cash', 'recent-date']);
+  assert.deepEqual(identities(group), ['bill:recent-date', 'bill:taxi', 'payment:cash']);
+});

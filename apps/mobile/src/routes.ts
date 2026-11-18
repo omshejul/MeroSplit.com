@@ -1,5 +1,5 @@
 export type Screen = 'savedChanges' | 'signInMethods' | 'home' | 'create' | 'group' | 'expense' | 'expenseDetail' | 'expenseIcon' | 'expenseVersions' | 'billChat' | 'settle' | 'members' | 'login' | 'review' | 'paymentDetail' | 'import' | 'sheet';
-export type RouteParams = { tab?: string; groupId?: string | null; expenseId?: string | null; settlementId?: string | null; sheetId?: string; ownerKey?: string; activityEditId?: string };
+export type RouteParams = { tab?: string; groupId?: string | null; expenseId?: string | null; settlementId?: string | null; revealRecord?: string; sheetId?: string; ownerKey?: string; activityEditId?: string };
 export type AppRoute = { key?: string; name: Screen; params?: RouteParams };
 export type Routes = { [Name in Screen]: RouteParams | undefined };
 export const screenNames: Screen[] = ['home', 'login', 'group', 'create', 'expense', 'expenseDetail', 'expenseIcon', 'expenseVersions', 'billChat', 'settle', 'members', 'review', 'paymentDetail', 'savedChanges', 'signInMethods', 'import', 'sheet'];
@@ -15,6 +15,7 @@ export function destination(current: AppRoute, name: Screen, params: RouteParams
   const previous = current.params ?? {};
   return { name, params: { tab: params.tab ?? previous.tab ?? 'Groups', ...(grouped.includes(name) ? {
     groupId: params.groupId ?? previous.groupId,
+    ...(name === 'group' && params.revealRecord ? { revealRecord: params.revealRecord } : {}),
     ...(['expense', 'expenseDetail', 'expenseIcon', 'expenseVersions', 'billChat'].includes(name) ? { expenseId: params.expenseId === undefined ? previous.expenseId : params.expenseId } : {}),
     ...(['expenseDetail', 'expenseVersions'].includes(name) && params.activityEditId ? { activityEditId: params.activityEditId } : {}),
     ...(name === 'paymentDetail' ? { settlementId: params.settlementId ?? previous.settlementId } : {}),
