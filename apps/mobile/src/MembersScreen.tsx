@@ -101,7 +101,7 @@ function AddPersonDialog({ visible, disabled, working, archived, name, email, on
   return <KeyboardDialog visible={visible} onDismiss={() => { if (!disabled) onClose(); }}>
     <Dialog.Title aria-level={2}>Add person</Dialog.Title>
     <DialogScrollBody maxHeight={280} gap={8}>
-      <PersonDetailsFields name={{ label: 'Name', value: name, onChangeText: onName, editable: !disabled, autoFocus: true, maxLength: 120 }} email={{ label: 'Email (optional)', value: email, onChangeText: onEmail, editable: !disabled, maxLength: 254 }} />
+      <PersonDetailsFields name={{ label: 'Name', value: name, onChangeText: onName, editable: !disabled, maxLength: 120 }} email={{ label: 'Email (optional)', value: email, onChangeText: onEmail, editable: !disabled, maxLength: 254 }} />
       <Button title={feedback?.section === 'group-link' && !feedback.error ? 'Copied' : 'Copy link'} icon={feedback?.section === 'group-link' && !feedback.error ? 'check' : 'copy'} kind="text" disabled={disabled || archived} onPress={onLink} />
       <FeedbackNote section="add-person" feedback={feedback} />
     </DialogScrollBody>

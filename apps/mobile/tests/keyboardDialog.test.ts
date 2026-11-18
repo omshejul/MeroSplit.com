@@ -184,7 +184,7 @@ test('Add person preserves drafts and action guards across hidden/open renders w
     assert.equal(scroll.props.keyboardShouldPersistTaps, 'handled');
     assert.equal(elements(scroll).includes(actions), false, 'actions must remain outside the scrolling input body');
     const field = elements(tree).find(node => node.type === 'EmailField' && node.props.label === 'Email (optional)')!;
-    assert.equal(elements(tree).find(node => node.type === 'TextField' && node.props.label === 'Name')!.props.autoFocus, true);
+    assert.ok(!one(tree, 'TextField').props.autoFocus, 'opening Add person must wait for the user to focus a field');
     assert.equal(field.props.value, base.email); assert.equal(field.props.onChangeText, onEmail); field.props.onChangeText('edited@example.invalid');
     const buttons = elements(actions).filter(node => node.type === 'Button');
     assert.equal(buttons[0].props.onPress, onClose); assert.equal(buttons[1].props.onPress, onSave);
