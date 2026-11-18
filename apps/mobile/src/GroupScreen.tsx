@@ -41,7 +41,7 @@ import { SectionHeading, AmountText, balanceColor, Button, Icon, radii, useUI } 
 
 type Transfer = { sender: string; recipient: string; amount: string };
 type Props = {
-  revealRecord?: string; session?: Session | null; iconsActive?: boolean; bottomClearance?: number;
+  revealRecord?: string; revealRequest?: string; session?: Session | null; iconsActive?: boolean; bottomClearance?: number;
   categoryIcons?: ExpenseIcons; noticeVisibility?: NoticeVisibility; header?: React.ReactNode;
   revision?: number; liveRevision?: number; onUpdatesAvailable?: (available: boolean) => void; previewError?: string;
   group: Group; accepted: Group; pending: Command[]; busy: boolean; selfId: string;
@@ -187,19 +187,21 @@ function BillSearch({ value, onChange, onSearch, onClose, showSubmit, autoFocus 
   </View>;
 }
 
-export default function GroupScreen({ revealRecord, session = null, bottomClearance = 120, categoryIcons, header, noticeVisibility, group: incoming, accepted: incomingAccepted, previewError: incomingPreviewError = '', revision = 0, liveRevision = 0, onUpdatesAvailable, pending, busy, selfId, pagingScope = incoming.id, active = true, iconsActive = active, online = true, onRefresh, refreshing = false, onVisibleBills, onPrefetchBill, onPrefetchPayment, onLoadBalanceGroup, onHistoryPage, onExpense, onPayment, onSettle }: Props) {
+export default function GroupScreen({ revealRecord, revealRequest, session = null, bottomClearance = 120, categoryIcons, header, noticeVisibility, group: incoming, accepted: incomingAccepted, previewError: incomingPreviewError = '', revision = 0, liveRevision = 0, onUpdatesAvailable, pending, busy, selfId, pagingScope = incoming.id, active = true, iconsActive = active, online = true, onRefresh, refreshing = false, onVisibleBills, onPrefetchBill, onPrefetchPayment, onLoadBalanceGroup, onHistoryPage, onExpense, onPayment, onSettle }: Props) {
   const { ui, motion, palette: colors } = useUI();
   // Explicit reads and safe live refreshes adopt the accepted page and preview together.
   // Unrelated background cache work still leaves the current reading window alone.
   const [shown, setShown] = useState({ group: incoming, accepted: incomingAccepted, previewError: incomingPreviewError });
   const [byAdded, setByAdded] = useState(false), [sortMenu, setSortMenu] = useState(false);
   const [snapshot, setSnapshot] = useState<Group | null>(null), [readError, setReadError] = useState(''), [retry, setRetry] = useState(0);
-  const [locating, setLocating] = useState(!!revealRecord);
+  const revealId = revealRequest ?? revealRecord;
+  const [cancelledReveal, setCancelledReveal] = useState<string | undefined>(undefined);
+  const locating = !!revealRecord && cancelledReveal !== revealId;
   const summary = shown.group;
   const complete = snapshot?.version === summary.version && snapshot?.id === summary.id ? snapshot : null;
   const partial = !summary.transactions || !!summary.history?.transactions?.next_cursor || !!summary.history?.transactions?.cursor;
   const needSnapshot = summary.read_mode === 'summary' && ((byAdded && partial) || !!(locating && revealRecord && (
-    summary.history?.transactions?.query || !summary.transactions?.some(row => (row.kind === 'bill' ? 'bill:' + row.bill.id : 'payment:' + row.payment.id) === revealRecord))));
+    (summary.history?.transactions?.query || summary.history?.bills?.query) || !summary.transactions?.some(row => (row.kind === 'bill' ? 'bill:' + row.bill.id : 'payment:' + row.payment.id) === revealRecord))));
   const loadSource = useRef(onLoadBalanceGroup); loadSource.current = onLoadBalanceGroup;
   useEffect(() => {
     setReadError('');
@@ -260,6 +262,12 @@ export default function GroupScreen({ revealRecord, session = null, bottomCleara
   const searchRequest = useRef<AbortController | null>(null), [loadingSearch, setLoadingSearch] = useState(false);
   useLoading(loadingSearch);
   useEffect(() => () => searchRequest.current?.abort(), []);
+  useEffect(() => {
+    if (!revealId) return;
+    searchRequest.current?.abort();
+    setSearch('');
+    setSearching(false);
+  }, [revealId]);
   async function runSearch(query: string) {
     searchRequest.current?.abort();
     const controller = new AbortController(); searchRequest.current = controller; setLoadingSearch(true);
@@ -287,7 +295,7 @@ export default function GroupScreen({ revealRecord, session = null, bottomCleara
   const anchorRef = useRef(anchor); anchorRef.current = anchor;
   const transactionKey = (row: GroupTransaction) => row.kind === 'bill' ? `bill:${row.bill.id}` : `payment:${row.payment.id}`;
   const targetIndex = locating && revealRecord ? rows.findIndex(row => transactionKey(row) === revealRecord) : -1;
-  const reveal = useTransactionReveal(list, locating ? revealRecord : undefined, targetIndex, active && !!viewport && (!needSnapshot || !!complete), motion.enabled);
+  const reveal = useTransactionReveal(list, locating ? revealRecord : undefined, targetIndex, active && !!viewport && (!needSnapshot || !!complete), motion.enabled, revealId);
   const revealRef = useRef(reveal); revealRef.current = reveal;
   const entries = useRef(new Map<string, ListEntry>()), entered = useRef(new Set<string>()), entryScope = useRef(''), [entryRevision, setEntryRevision] = useState(0);
   const scope = `${group.id}|${historyWindow?.query || ''}`;
@@ -322,7 +330,7 @@ export default function GroupScreen({ revealRecord, session = null, bottomCleara
   return <Animated.View ref={frame} role="region" accessibilityLabel={group.name} style={{ flex: 1, opacity }}>
     <FlatList renderScrollComponent={props => <KeyboardScrollView {...props} refreshControl={props.refreshControl ?? (onRefresh ? <RefreshControl refreshing={refreshing ?? false} onRefresh={onRefresh} /> : undefined)} />} ref={list} contentInsetAdjustmentBehavior="automatic" data={rows} extraData={entryRevision} nestedScrollEnabled scrollEventThrottle={100} onEndReachedThreshold={0.3}
       onLayout={event => { frame.current?.measureInWindow((x, y, width, height) => setViewport({ x, y, width, height })); }}
-      onScrollToIndexFailed={reveal.failed} onScrollBeginDrag={() => { reveal.cancel(); setLocating(false); anchor.dragging(); }} onScroll={event => { reveal.scrolled(); anchor.scrolled(event.nativeEvent.contentOffset.y); setScrollEpoch(value => value + 1); }}
+      onScrollToIndexFailed={reveal.failed} onScrollBeginDrag={() => { reveal.cancel(); setCancelledReveal(revealId); anchor.dragging(); }} onScroll={event => { reveal.scrolled(); anchor.scrolled(event.nativeEvent.contentOffset.y); setScrollEpoch(value => value + 1); }}
       keyboardShouldPersistTaps="handled" onViewableItemsChanged={viewable.current} onRefresh={onRefresh} refreshing={refreshing}
       keyExtractor={row => row.kind === 'bill' ? `bill:${row.bill.id}` : `payment:${row.payment.id}`}
       contentContainerStyle={[pageContentStyle, { gap: 0, paddingBottom: bottomClearance }]} renderItem={({ item: row }) => {
@@ -357,7 +365,7 @@ export default function GroupScreen({ revealRecord, session = null, bottomCleara
       <SectionHeading style={[ui.caption, s.logCaption, s.flex]}>Bills and payments</SectionHeading>
       <Menu visible={sortMenu} onDismiss={() => setSortMenu(false)} anchor={<Button kind="text" small compact icon="sort" title={sortTitle} iconOnly={compactSort} accessibilityLabel={`Sort bills and payments by ${sortTitle.toLowerCase()}`} labelStyle={{ color: colors.accent }} style={s.sortAction} onPress={() => setSortMenu(true)} />}>
         {[false, true].map(added => <Button kind="menu" accessibilityRole="radio" accessibilityState={{ checked: byAdded === added }} key={String(added)} title={added ? 'Date added' : 'Bill date'} icon={byAdded === added ? 'tick' : undefined} onPress={() => {
-          setSortMenu(false); reveal.cancel(); setLocating(false); setByAdded(added);
+          setSortMenu(false); reveal.cancel(); setCancelledReveal(revealId); setByAdded(added);
         }} />)}
       </Menu>
       {searchable && !showSearch && <Button kind="text" iconOnly={headingWidth / fontScale < 425} style={s.sortAction} title="Search" icon="search" compact small accessibilityLabel="Search bills" onPress={() => setSearching(true)} />}

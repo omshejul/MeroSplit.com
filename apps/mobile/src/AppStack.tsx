@@ -56,9 +56,17 @@ export function useAppNavigation() {
       ref.dispatch({ type: 'SET_PARAMS', source: from.key, payload: { params: { activityEditId: undefined } } });
     }
     const target = destination(from, name, params);
-    if (name === 'group' && target.params?.revealRecord) {
-      ref.dispatch({ ...StackActions.push(name, target.params), appNavigation: true } as AppAction);
-      return;
+    if (target.params?.revealRecord) {
+      target.params.revealRequest = from.key;
+      const index = current.routes.findIndex(value => sameRoute(value as AppRoute, target));
+      if (index >= 0) {
+        const group = current.routes[index];
+        // Keep the mounted group and remove the detail screens above it.
+        ref.dispatch({ type: 'RESET', payload: { index, routes: [
+          ...current.routes.slice(0, index), { ...group, params: target.params },
+        ] }, appNavigation: true } as AppAction);
+        return;
+      }
     }
     if (name === 'home' && current.routes[current.index].name === 'home') {
       ref.dispatch({ type: 'SET_PARAMS', payload: { params: target.params }, source: current.routes[current.index].key, appNavigation: true } as AppAction);
