@@ -1,5 +1,5 @@
 export type Screen = 'savedChanges' | 'signInMethods' | 'home' | 'create' | 'group' | 'expense' | 'expenseDetail' | 'expenseIcon' | 'expenseVersions' | 'billChat' | 'settle' | 'members' | 'login' | 'review' | 'paymentDetail' | 'import' | 'sheet';
-export type RouteParams = { tab?: string; groupId?: string | null; expenseId?: string | null; settlementId?: string | null; revealRecord?: string; sheetId?: string; ownerKey?: string; activityEditId?: string };
+export type RouteParams = { tab?: string; groupId?: string | null; expenseId?: string | null; settlementId?: string | null; revealRecord?: string; revealRequest?: string; sheetId?: string; ownerKey?: string; activityEditId?: string };
 export type AppRoute = { key?: string; name: Screen; params?: RouteParams };
 export type Routes = { [Name in Screen]: RouteParams | undefined };
 export const screenNames: Screen[] = ['home', 'login', 'group', 'create', 'expense', 'expenseDetail', 'expenseIcon', 'expenseVersions', 'billChat', 'settle', 'members', 'review', 'paymentDetail', 'savedChanges', 'signInMethods', 'import', 'sheet'];

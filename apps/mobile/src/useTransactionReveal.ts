@@ -4,21 +4,21 @@ import type { GroupTransaction } from './types';
 
 // FlatList can only center a measured cell. For a distant record, approach its
 // estimated position first, then center the actual cell once it is mounted.
-export function useTransactionReveal(list: React.RefObject<FlatList<GroupTransaction> | null>, key: string | undefined, index: number, ready: boolean, animated: boolean) {
+export function useTransactionReveal(list: React.RefObject<FlatList<GroupTransaction> | null>, key: string | undefined, index: number, ready: boolean, animated: boolean, request = key) {
   const [highlight, setHighlight] = useState('');
   const failed = useRef<(average: number) => void>(() => {});
   const stop = useRef(() => {});
   const settled = useRef(() => {});
   const visible = useRef<string[]>([]);
-  const completed = useRef('');
+  const completed = useRef<string | undefined>(undefined);
   useEffect(() => {
-    if (!key || index < 0 || !ready || completed.current === key) return;
+    if (!key || index < 0 || !ready || completed.current === request) return;
     let scrolling = false;
     let timer: ReturnType<typeof setTimeout>;
     const cancel = () => {
       clearTimeout(timer);
       scrolling = false;
-      completed.current = key;
+      completed.current = request;
     };
     const finish = () => {
       if (!scrolling || !visible.current.includes(key)) return;
@@ -49,6 +49,6 @@ export function useTransactionReveal(list: React.RefObject<FlatList<GroupTransac
       stop.current = settled.current = failed.current = () => {};
       setHighlight('');
     };
-  }, [list, key, index, ready, animated]);
+  }, [list, key, index, ready, animated, request]);
   return { highlight, visible, scrolled: () => settled.current(), cancel: () => stop.current(), failed: (info: { averageItemLength: number }) => failed.current(info.averageItemLength) };
 }

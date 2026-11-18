@@ -400,3 +400,30 @@ test('Activity edits hand the exact edit to history once and keep the bill and f
 test('changing home tabs updates the same route without replacing its mounted lists',()=>{
  const h=navigationHarness(),home=h.state().routes[0];h.navigation().go('home',{tab:'Activity'});assert.equal(h.state().routes.length,1);assert.equal(h.state().routes[0].key,home.key);h.navigation().go('home',{tab:'Groups'});assert.equal(h.state().routes[0].key,home.key);
 });
+
+for (const tab of ['Groups', 'Activity']) {
+  test(`Show in group reuses the group on repeated jumps and Back returns to ${tab}`, () => {
+    const h = navigationHarness();
+    h.navigation().go('home', { tab });
+    const homeKey = h.state().routes[0].key;
+    if (tab === 'Groups') h.navigation().go('group', { groupId: 'g' });
+    let groupKey = tab === 'Groups' ? h.navigation().route.key : undefined;
+    const revealRequests = new Set<string>();
+    for (const [screen, record] of [['expenseDetail', 'bill:b'], ['paymentDetail', 'payment:p'], ['expenseDetail', 'bill:b'], ['expenseDetail', 'bill:b']] as const) {
+      h.navigation().go(screen, { groupId: 'g', ...(screen === 'expenseDetail' ? { expenseId: 'b' } : { settlementId: 'p' }) });
+      h.navigation().go('group', { groupId: 'g', revealRecord: record });
+      assert.deepEqual(h.names(), ['home', 'group']);
+      const group = h.navigation().route;
+      groupKey ??= group.key;
+      assert.equal(group.key, groupKey);
+      assert.equal(group.params.revealRecord, record);
+      assert.ok(group.params.revealRequest);
+      revealRequests.add(group.params.revealRequest);
+    }
+    assert.equal(revealRequests.size, 4);
+    h.navigation().back(true);
+    assert.deepEqual(h.names(), ['home']);
+    assert.equal(h.navigation().route.key, homeKey);
+    assert.equal(h.navigation().route.params.tab, tab);
+  });
+}
