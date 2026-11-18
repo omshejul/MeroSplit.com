@@ -6,7 +6,7 @@ import ts from 'typescript';
 const tick = async () => { for (let i = 0; i < 20; i++) await Promise.resolve(); };
 function fixture(load: (signal: AbortSignal) => Promise<boolean | null>, web = false) {
   let now = Date.now();
-  let index = 0, props = { scope: 'account|group|query', cursor: 'next' as string | null, enabled: true, load }, effects: (() => void)[] = [];
+  let index = 0, props = { scope: 'account|group|query', cursor: 'next' as string | null, enabled: true, automatic: false, load }, effects: (() => void)[] = [];
   const state: any[] = [], deps: any[][] = [], cleanup: (() => void)[] = [], listeners = new Map<string, () => void>();
   const env = { Date: { now: () => now }, Platform: { OS: web ? 'web' : 'ios' },
     useRef: (value: any) => state[index++] ??= { current: value },
@@ -71,4 +71,21 @@ test('empty pages and busy readers never automatically drain the next cursor', a
   paging = app.render(); assert.equal(paging.failed, false); paging.loadMore(); await tick(); assert.equal(calls, 2);
   paging = app.render({ cursor: 'next-page' }); await app.commit(); assert.equal(calls, 2);
   assert.equal(paging.canLoadMore, true); app.unmount();
+});
+
+test('automatic history fetches one viewport early and waits for a manual retry after failure', async () => {
+  let calls = 0;
+  let fail!: (error: Error) => void;
+  const app = fixture(() => { calls++; return new Promise((_resolve, reject) => { fail = reject; }); });
+  const paging = app.render({ automatic: true });
+  await app.commit();
+  const scroll = (y: number) => paging.events.onScroll({ nativeEvent: { contentOffset: { y }, contentSize: { height: 2000 }, layoutMeasurement: { height: 500 } } });
+  scroll(900); assert.equal(calls, 0);
+  scroll(1000); assert.equal(calls, 1);
+  scroll(1100); assert.equal(calls, 1);
+  fail(new Error('Offline')); await tick();
+  scroll(1200); assert.equal(calls, 1);
+  assert.equal(app.render().failed, true);
+  app.render().retry(); assert.equal(calls, 2);
+  app.unmount();
 });
