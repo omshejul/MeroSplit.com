@@ -1,5 +1,4 @@
 import { reportSyncDiagnostic, traceDiagnosticRequest } from './syncDiagnostics.ts';
-import { isGroupSetting } from './groupSettingReview.ts';
 import { notifyReviewAction } from './reviewPolicy.ts';
 import { readPrefetch, readScope } from './prefetch.ts';
 import { recordConnection } from './connectivity.ts';
@@ -90,7 +89,7 @@ async function drainOutbox(db: Database, session: Session, mode: 'full' | 'summa
       // next drainer start from it rather than bypassing an earlier change.
       if (!latest || latest.command_id !== queued.command_id) return;
       if (!current()) throw new Error('The signed-in account changed.');
-      if (latest.state !== 'pending' && !(latest.state === 'conflict' && isGroupSetting(latest))) throw new Error('Review the earlier saved change to continue syncing your bills.');
+      if (latest.state !== 'pending') throw new Error('Review the earlier saved change to continue syncing your bills.');
       await tx.runAsync("UPDATE outbox SET attempted=1,state='pending',error=NULL WHERE owner=? AND command_id=?", owner, latest.command_id);
       claim.command = latest;
     });
