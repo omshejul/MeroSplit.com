@@ -64,11 +64,11 @@ function LegacyPayments({ group, selfId, accepted, busy, onPayment, onPrefetchPa
 }) {
   const ref = useRef<React.ComponentRef<typeof ScrollView>>(null), payments = personalSettlements(group, selfId);
   const paging = useScrollPagination({ scope: scope + '|payments', cursor: group.history?.settlements?.next_cursor,
-    enabled: enabled && !busy, load: signal => onPage?.('settlements', 'next', undefined, signal, accepted) ?? Promise.resolve(false) });
-  return <ScrollView ref={ref} nestedScrollEnabled scrollEventThrottle={100} style={{ maxHeight: 320 }}>
+    automatic: true, enabled: enabled && !busy, load: signal => onPage?.('settlements', 'next', undefined, signal, accepted) ?? Promise.resolve(false) });
+  return <ScrollView ref={ref} {...paging.events} nestedScrollEnabled scrollEventThrottle={100} style={{ maxHeight: 320 }}>
     {payments.map(payment => <PaymentRow key={payment.id} payment={payment} accepted={accepted} group={group} selfId={selfId} busy={busy} onPayment={onPayment} onPrefetchPayment={onPrefetchPayment} />)}
     {!payments.length && <Text>{group.history?.settlements?.next_cursor ? 'No payments on this page.' : 'No payments recorded.'}</Text>}
-    <PaginationFooter paging={paging} />
+    <PaginationFooter automatic paging={paging} />
   </ScrollView>;
 }
 
@@ -316,7 +316,7 @@ export default function GroupScreen({ revealRecord, revealRequest, session = nul
     visible.current?.(shown.filter(row => row.item.kind === 'bill').map(row => row.item.kind === 'bill' ? row.item.bill.id : ''));
   });
   const paging = useScrollPagination({ scope: `${pagingScope}|${group.version}|${historyResource}|${historyWindow?.query || ''}`,
-    cursor: historyWindow?.next_cursor, enabled: active && online && !busy,
+    cursor: historyWindow?.next_cursor, enabled: active && online && !busy && !loadingSearch && (!needSnapshot || !!complete),
     load: signal => onHistoryPage?.(historyResource, 'next', undefined, signal, accepted) ?? Promise.resolve(false) });
   function addedDate(row: GroupTransaction) {
     if (!byAdded) return;
@@ -328,7 +328,8 @@ export default function GroupScreen({ revealRecord, revealRequest, session = nul
   }
   const visibility = noticeVisibility ? { ...noticeVisibility, viewport, scrollEpoch } : undefined;
   return <Animated.View ref={frame} role="region" accessibilityLabel={group.name} style={{ flex: 1, opacity }}>
-    <FlatList renderScrollComponent={props => <KeyboardScrollView {...props} refreshControl={props.refreshControl ?? (onRefresh ? <RefreshControl refreshing={refreshing ?? false} onRefresh={onRefresh} /> : undefined)} />} ref={list} contentInsetAdjustmentBehavior="automatic" data={rows} extraData={entryRevision} nestedScrollEnabled scrollEventThrottle={100} onEndReachedThreshold={0.3}
+    <FlatList renderScrollComponent={props => <KeyboardScrollView {...props} refreshControl={props.refreshControl ?? (onRefresh ? <RefreshControl refreshing={refreshing ?? false} onRefresh={onRefresh} /> : undefined)} />} ref={list} contentInsetAdjustmentBehavior="automatic" data={rows} extraData={entryRevision} nestedScrollEnabled scrollEventThrottle={100}
+      onEndReached={paging.loadAhead} onEndReachedThreshold={1}
       onLayout={event => { frame.current?.measureInWindow((x, y, width, height) => setViewport({ x, y, width, height })); }}
       onScrollToIndexFailed={reveal.failed} onScrollBeginDrag={() => { reveal.cancel(); setCancelledReveal(revealId); anchor.dragging(); }} onScroll={event => { reveal.scrolled(); anchor.scrolled(event.nativeEvent.contentOffset.y); setScrollEpoch(value => value + 1); }}
       keyboardShouldPersistTaps="handled" onViewableItemsChanged={viewable.current} onRefresh={onRefresh} refreshing={refreshing}
@@ -376,7 +377,7 @@ export default function GroupScreen({ revealRecord, revealRequest, session = nul
 </View>}
       ListEmptyComponent={needSnapshot && !complete ? undefined : <EmptyState style={s.empty} illustration={<Icon name="bill" size={32} />} message={historyWindow?.next_cursor ? 'No matching records on this page.' : historyWindow?.query || search.trim() ? 'No matching bills' : 'No bills or payments yet'} />}
       ListFooterComponent={<>
-        <PaginationFooter paging={paging} />
+        <PaginationFooter automatic paging={paging} />
         {group.read_mode === 'summary' && group.transactions === undefined && (!!payments.length || !!group.history?.settlements?.next_cursor) && <DetailDialog icon="payment" title="Payment records">
           <LegacyPayments group={group} accepted={accepted} selfId={selfId} busy={busy} onPayment={onPayment} onPrefetchPayment={onPrefetchPayment} onPage={onHistoryPage} scope={pagingScope} enabled={active && online} />
         </DetailDialog>}
