@@ -168,7 +168,7 @@ function BillSearch({ value, onChange, onSearch, onClose, showSubmit, autoFocus 
   return <View style={s.search}>
     <View style={[ui.input, s.searchField, { borderColor: focused ? colors.accent : 'transparent' }]}>
       {showSubmit ? <Button icon="search" iconOnly kind="text" accessibilityLabel="Run bill search" onPress={onSearch} style={s.searchAction} /> : <Icon name="search" size={20} color={colors.muted} />}
-      <TextInput {...inputColors} autoFocus={autoFocus} accessibilityLabel="Search bills" placeholder="Search bills" placeholderTextColor={colors.muted} value={value} onChangeText={onChange} onSubmitEditing={onSearch} onFocus={() => setFocused(true)} onBlur={() => setFocused(false)} returnKeyType="search" autoCapitalize="none" autoCorrect={false} style={[ui.input, s.searchInput, Platform.OS === 'web' && { outlineWidth: 0 }]} />
+      <TextInput {...inputColors} autoFocus={autoFocus} accessibilityLabel="Search bills" placeholder="Search bills" placeholderTextColor={colors.muted} value={value} onChangeText={onChange} onSubmitEditing={onSearch} onFocus={() => setFocused(true)} onBlur={() => setFocused(false)} returnKeyType="search" autoCapitalize="none" autoCorrect={false} style={[ui.input, s.searchInput, Platform.OS === 'web' && { outlineStyle: 'solid', outlineWidth: 0, outlineColor: 'transparent' }]} />
     </View>
     <Button icon="close" iconOnly kind="text" accessibilityLabel="Close search" onPress={onClose} style={s.searchAction} />
   </View>;
