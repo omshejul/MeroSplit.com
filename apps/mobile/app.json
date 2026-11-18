@@ -35,7 +35,7 @@
     "android": {
       "package": "com.omshejul.splitdumb",
       "version": "1.2.3",
-      "versionCode": 33,
+      "versionCode": 34,
       "blockedPermissions": ["android.permission.CAMERA"],
       "intentFilters": [
         {
