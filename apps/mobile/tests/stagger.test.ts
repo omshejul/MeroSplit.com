@@ -13,7 +13,7 @@ function harness(os: string) {
     },
   };
   class Value { value: number; constructor(value: number) { this.value = value; } setValue(value: number) { this.value = value; } interpolate(config: any) { return { value: this.value, ...config }; } }
-  const modules: any = { react: React, './ui': { useUI: () => ({ motion: { enabled } }) }, 'react-native': { Platform: { OS: os }, Easing: { out: (v: any) => v, cubic: 'cubic' }, Animated: { Value, View: 'Animated.View', timing: (value: Value, options: any) => { const animation = { value, options, stopped: false, start() {}, stop() { this.stopped = true; } }; animations.push(animation); return animation; } } } };
+  const modules: any = { react: React, './motion': { useMotionValue: (target: number) => target }, './ui': { useUI: () => ({ motion: { enabled } }) }, 'react-native': { Platform: { OS: os }, Easing: { out: (v: any) => v, cubic: 'cubic' }, Animated: { Value, View: 'Animated.View', timing: (value: Value, options: any) => { const animation = { value, options, stopped: false, start() {}, stop() { this.stopped = true; } }; animations.push(animation); return animation; } } } };
   const exports: any = {};
   const code = ts.transpile(readFileSync(new URL('../src/StaggerItem.tsx', import.meta.url), 'utf8'), { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.React });
   new Function('require', 'exports', code)((name: string) => modules[name], exports);
