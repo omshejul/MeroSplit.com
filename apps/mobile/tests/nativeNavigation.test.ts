@@ -411,7 +411,9 @@ for (const tab of ['Groups', 'Activity']) {
     const revealRequests = new Set<string>();
     for (const [screen, record] of [['expenseDetail', 'bill:b'], ['paymentDetail', 'payment:p'], ['expenseDetail', 'bill:b'], ['expenseDetail', 'bill:b']] as const) {
       h.navigation().go(screen, { groupId: 'g', ...(screen === 'expenseDetail' ? { expenseId: 'b' } : { settlementId: 'p' }) });
+      const navigatorKey = h.state().key;
       h.navigation().go('group', { groupId: 'g', revealRecord: record });
+      if (groupKey) assert.equal(h.state().key, navigatorKey, 'web linking needs the existing navigator identity to pop history');
       assert.deepEqual(h.names(), ['home', 'group']);
       const group = h.navigation().route;
       groupKey ??= group.key;
