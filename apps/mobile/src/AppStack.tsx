@@ -62,7 +62,7 @@ export function useAppNavigation() {
       if (index >= 0) {
         const group = current.routes[index];
         // Keep the mounted group and remove the detail screens above it.
-        ref.dispatch({ type: 'RESET', payload: { index, routes: [
+        ref.dispatch({ type: 'RESET', payload: { ...current, index, routes: [
           ...current.routes.slice(0, index), { ...group, params: target.params },
         ] }, appNavigation: true } as AppAction);
         return;
