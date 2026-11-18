@@ -19,7 +19,7 @@ function production(name: string, overrides: Record<string, any> = {}) {
   const helpers = source.statements.filter(node => ts.isVariableStatement(node) && node.declarationList.declarations.some(d => ['billImpact', 'participantName', 'displayDate', 's'].includes(d.name.getText(source)))).map(node => node.getText(source)).join('\n');
   const node = source.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === name); assert.ok(node);
   const code = ts.transpile(`${helpers}\n${node.getText(source).replace(/^export (?:default )?/, '')}\nreturn ${name};`, { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React });
-  return new Function('env', `with(env) { const StaggerItem = 'StaggerItem'; ${code} }`)(withSharedUI({ React, Animated, Keyboard: { dismiss() {} }, TextInput: 'TextInput', Platform: { OS: 'web' }, useLayoutEffect: () => {}, useEffect: () => {}, categoryIcon, categoryMeaning, expenseCategory, TransactionIcon: 'TransactionIcon', BillIconButton: 'BillIconButton', BillHistoryButton: 'BillHistoryButton', PagingFooter: 'PagingFooter', LegacyPayments: 'LegacyPayments', FlatList: 'FlatList', ScrollView: 'ScrollView', pageContentStyle: {}, LoadingSpinner: 'LoadingSpinner', useScrollPagination: (options: any) => ({ events: {}, loading: false, failed: false, canLoadMore: !!options.cursor, loadMore() {}, retry() {} }), useTransactionReveal: () => ({ visible: { current: [] }, cancel() {}, scrolled() {} }), orderTimeline, expenseBalanceChange, formatMoney, paymentPresentation, cachedTimeline, personalSettlements, personalTransfers, BalanceExplanation: 'BalanceExplanation', balanceKey: () => '', useRef: (initial: unknown) => ({ current: initial }), useState: (initial: unknown) => [typeof initial === 'function' ? initial() : initial, () => {}], Avatar: 'Avatar', AmountText: 'AmountText', Text: 'Text', SectionHeading: 'SectionHeading', View: 'View', Pressable: 'Pressable', Icon: 'Icon', Button: 'Button', RecordSummary: 'RecordSummary', ParticipantAmountRow: 'ParticipantAmountRow', LogRow: 'LogRow', LogDate: 'LogDate', BillEffect: 'BillEffect', VisibleExpense: 'VisibleExpense', HistoryPages: 'HistoryPages', BillSearch: 'BillSearch', PaymentRow: 'PaymentRow', BillTimelineRow: 'BillTimelineRow', DetailDialog: 'DetailDialog', BillPeople: 'BillPeople', RecordAttribution: 'RecordAttribution', PersonalTransferRow: 'PersonalTransferRow', PendingChangeRow: 'PendingChangeRow', StyleSheet: { create: (styles: unknown) => styles }, radii: { surface: 16 }, balanceColor: (amount: string) => BigInt(amount) < 0n ? 'negative' : 'positive', useUI: () => ({ motion: { enabled: false }, ui: { numeric: { fontSize: 32, fontWeight: '600' }, caption: { fontSize: 14 }, row: { minHeight: 52, paddingVertical: 6 } }, palette: { muted: 'muted', line: '#334455', surface: 'surface', text: 'text' } }), ...overrides }));
+  return new Function('env', `with(env) { const StaggerItem = 'StaggerItem'; ${code} }`)(withSharedUI({ React, Animated, useTheme: () => ({ colors: { elevation: { level4: '#F3EEF7' } } }), Keyboard: { dismiss() {} }, TextInput: 'TextInput', Platform: { OS: 'web' }, useLayoutEffect: () => {}, useEffect: () => {}, categoryIcon, categoryMeaning, expenseCategory, TransactionIcon: 'TransactionIcon', BillIconButton: 'BillIconButton', BillHistoryButton: 'BillHistoryButton', PagingFooter: 'PagingFooter', LegacyPayments: 'LegacyPayments', FlatList: 'FlatList', ScrollView: 'ScrollView', pageContentStyle: {}, LoadingSpinner: 'LoadingSpinner', useScrollPagination: (options: any) => ({ events: {}, loading: false, failed: false, canLoadMore: !!options.cursor, loadMore() {}, retry() {} }), useTransactionReveal: () => ({ visible: { current: [] }, cancel() {}, scrolled() {} }), orderTimeline, expenseBalanceChange, formatMoney, paymentPresentation, cachedTimeline, personalSettlements, personalTransfers, BalanceExplanation: 'BalanceExplanation', balanceKey: () => '', useRef: (initial: unknown) => ({ current: initial }), useState: (initial: unknown) => [typeof initial === 'function' ? initial() : initial, () => {}], Avatar: 'Avatar', AmountText: 'AmountText', Text: 'Text', SectionHeading: 'SectionHeading', View: 'View', Pressable: 'Pressable', Icon: 'Icon', Button: 'Button', RecordSummary: 'RecordSummary', ParticipantAmountRow: 'ParticipantAmountRow', LogRow: 'LogRow', LogDate: 'LogDate', BillEffect: 'BillEffect', VisibleExpense: 'VisibleExpense', HistoryPages: 'HistoryPages', BillSearch: 'BillSearch', PaymentRow: 'PaymentRow', BillTimelineRow: 'BillTimelineRow', DetailDialog: 'DetailDialog', BillPeople: 'BillPeople', RecordAttribution: 'RecordAttribution', PersonalTransferRow: 'PersonalTransferRow', PendingChangeRow: 'PendingChangeRow', StyleSheet: { create: (styles: unknown) => styles }, radii: { surface: 16 }, balanceColor: (amount: string) => BigInt(amount) < 0n ? 'negative' : 'positive', useUI: () => ({ motion: { enabled: false }, ui: { numeric: { fontSize: 32, fontWeight: '600' }, caption: { fontSize: 14 }, row: { minHeight: 52, paddingVertical: 6 } }, palette: { muted: 'muted', line: '#334455', surface: 'surface', text: 'text' } }), ...overrides }));
 }
 function elements(tree: unknown): Element[] {
   if (Array.isArray(tree)) return tree.flatMap(elements);
@@ -688,4 +688,29 @@ test('a bill for one person omits the shared split method caption', () => {
  const props={expense,group:{...group,expenses:[expense]},selfId:'self',busy:false,canEdit:true,onEdit(){},onReverse(){}};
  assert.ok(!text(render(props)).includes('Shared equally'));
  assert.ok(text(render({...props,expense:{...expense,shares:{self:'500',other:'500'},split:{mode:'equal',values:{self:'1',other:'1'}}}})).includes('Shared equally'));
+});
+
+test('the settled reveal styles only its bill or payment without changing row dimensions', () => {
+  const bill = billRow();
+  const payment = { id: 'payment', sender: 'self', recipient: 'other', amount: '500', date: bill.date };
+  const value = { ...group, expenses: [bill], settlements: [payment], transfers: [] };
+  const renderLogRow = production('LogRow');
+  for (const [target, rowType] of [['bill:bill', 'BillTimelineRow'], ['payment:payment', 'PaymentRow']] as const) {
+    const render = production('GroupScreen', { useTransactionReveal: () => ({ highlight: target, visible: { current: [] } }) });
+    const tree = elements(render({ group: value, accepted: value, pending: [], selfId: 'self', busy: false }));
+    const rows = tree.filter(node => node.type === 'BillTimelineRow' || node.type === 'PaymentRow');
+    assert.equal(rows.length, 2);
+    for (const row of rows) {
+      const highlighted = row.type === rowType;
+      assert.equal(row.props.highlighted, highlighted);
+      const log = elements(production(String(row.type))(row.props)).find(node => node.type === 'LogRow')!;
+      const style = (highlighted: boolean) => Object.assign({}, ...renderLogRow({ ...log.props, highlighted }).props.style({ pressed: false }).flat(Infinity).filter(Boolean));
+      const normal = style(false), shown = style(highlighted);
+      assert.equal(shown.minHeight, normal.minHeight);
+      assert.equal(shown.paddingHorizontal, normal.paddingHorizontal);
+      assert.equal(shown.borderRadius, highlighted ? 0 : normal.borderRadius);
+      assert.equal(Boolean(shown.boxShadow), highlighted);
+      if (highlighted) assert.equal(shown.backgroundColor, '#F3EEF7');
+    }
+  }
 });

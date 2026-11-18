@@ -1,11 +1,13 @@
 import React, { useLayoutEffect, useRef } from 'react';
 import { Animated, Easing, Platform } from 'react-native';
+import { useMotionValue } from './motion';
 import { useUI } from './ui';
 
 // Owned by the transaction list, so recycling a row cannot replay its entrance.
 export type ListEntry = { delay: number; played: boolean };
-export default function StaggerItem({ entry, children }: { entry?: ListEntry; children: React.ReactNode }) {
+export default function StaggerItem({ entry, children, lifted = false }: { entry?: ListEntry; lifted?: boolean; children: React.ReactNode }) {
   const { motion } = useUI();
+  const lift = useMotionValue(lifted && motion.enabled ? -2 : 0, motion.enabled);
   const progress = useRef(new Animated.Value(1)).current, played = useRef(false);
   useLayoutEffect(() => {
     if (!entry || played.current) return;
@@ -18,5 +20,5 @@ export default function StaggerItem({ entry, children }: { entry?: ListEntry; ch
     animation.start();
     return () => { animation.stop(); progress.setValue(1); };
   }, [entry, motion.enabled, progress]);
-  return <Animated.View testID="stagger-item" style={{ opacity: progress.interpolate({ inputRange: [0, 1], outputRange: [0.35, 1] }), transform: [{ translateY: progress.interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) }] }}>{children}</Animated.View>;
+  return <Animated.View testID="stagger-item" style={{ opacity: progress.interpolate({ inputRange: [0, 1], outputRange: [0.35, 1] }), transform: [{ translateY: progress.interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) }, { translateY: lift }] }}>{children}</Animated.View>;
 }

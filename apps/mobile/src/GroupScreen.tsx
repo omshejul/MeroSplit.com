@@ -27,7 +27,7 @@ import { useListAnchor } from './useListAnchor';
 import { useScrollPagination } from './useScrollPagination';
 import { pageContentStyle } from './AppNavigation';
 import { expenseBalanceChange, formatMoney } from './accounting';
-import { Menu, Text } from 'react-native-paper';
+import { Menu, Text, useTheme } from 'react-native-paper';
 import { useTransactionReveal } from './useTransactionReveal';
 import { previewPending } from './ledger';
 import { personalSettlements, personalTransfers } from './personalBalances';
@@ -102,20 +102,33 @@ function LogDate({ date }: { date?: string | null }) {
 }
 
 // One compact log row for bills and payments: date, what happened, and (for bills) your balance effect.
-function LogRow({ leading, date, label, busy, onPress, onPrefetch, trailing, children, payment = false }: { leading?: React.ReactNode; date?: string | null; label: string; busy: boolean; onPress: () => void; onPrefetch?: () => void; trailing?: React.ReactNode; children: React.ReactNode; payment?: boolean }) {
+function LogRow({ leading, date, label, busy, onPress, onPrefetch, trailing, children, payment = false, highlighted = false }: { highlighted?: boolean; leading?: React.ReactNode; date?: string | null; label: string; busy: boolean; onPress: () => void; onPrefetch?: () => void; trailing?: React.ReactNode; children: React.ReactNode; payment?: boolean }) {
   const { ui, palette } = useUI();
-  return <ListRow accessibilityRole="button" accessibilityLabel={label} disabled={busy} style={({ pressed }) => [ui.row, s.edgeRow, { borderBottomColor: `${palette.line}80` }, payment && { backgroundColor: palette.soft }, pressed && s.pressed]} onPress={onPress} onHoverIn={onPrefetch} onFocus={onPrefetch} leading={<><LogDate date={date} />{leading}</>} trailing={trailing}>
+  const { colors } = useTheme();
+  return <ListRow accessibilityRole="button" accessibilityLabel={label} disabled={busy} style={({ pressed }) => [
+    ui.row, s.edgeRow, { borderBottomColor: `${palette.line}80` }, payment && { backgroundColor: palette.soft },
+    highlighted && {
+      backgroundColor: colors.elevation.level4,
+      borderRadius: 0,
+      borderBottomColor: 'transparent',
+      boxShadow: [
+        { inset: true, offsetX: 0, offsetY: 0, spreadDistance: 1, color: `${palette.accent}80` },
+        { offsetX: 0, offsetY: 3, blurRadius: 8, color: '#0000002B' },
+      ],
+    },
+    pressed && s.pressed,
+  ]} onPress={onPress} onHoverIn={onPrefetch} onFocus={onPrefetch} leading={<><LogDate date={date} />{leading}</>} trailing={trailing}>
     {children}
   </ListRow>;
 }
 
-function PaymentRow({ addedDate, payment, accepted, group, selfId, busy, onPayment, onPrefetchPayment }: Pick<Props, 'accepted' | 'group' | 'selfId' | 'busy' | 'onPayment' | 'onPrefetchPayment'> & { payment: Settlement; addedDate?: string }) {
+function PaymentRow({ highlighted, addedDate, payment, accepted, group, selfId, busy, onPayment, onPrefetchPayment }: Pick<Props, 'accepted' | 'group' | 'selfId' | 'busy' | 'onPayment' | 'onPrefetchPayment'> & { payment: Settlement; addedDate?: string; highlighted?: boolean }) {
   const { palette: colors, ui } = useUI();
   const isAccepted = accepted.settlements.some(record => record.id === payment.id) || accepted.transactions?.some(record => record.kind === 'payment' && record.payment.id === payment.id);
   if (!isAccepted && payment.provenance !== 'pending_manual') return null;
   const presentation = paymentPresentation(payment, selfId, id => participantName(group.participants, selfId, id));
   const status = isAccepted ? presentation.status : 'Pending sync';
-  return <LogRow payment leading={<TransactionIcon name={payment.reversed ? 'refresh' : 'payment'} />} date={payment.date} busy={busy} onPress={() => onPayment(payment)} onPrefetch={() => onPrefetchPayment?.(payment)} label={`Payment, ${presentation.title}, ${formatMoney(payment.amount)}${status ? `, ${status}` : ''}, ${displayDate(payment.date)}`}>
+  return <LogRow payment highlighted={highlighted} leading={<TransactionIcon name={payment.reversed ? 'refresh' : 'payment'} />} date={payment.date} busy={busy} onPress={() => onPayment(payment)} onPrefetch={() => onPrefetchPayment?.(payment)} label={`Payment, ${presentation.title}, ${formatMoney(payment.amount)}${status ? `, ${status}` : ''}, ${displayDate(payment.date)}`}>
     <View style={s.paymentLine}>
       <Text style={[ui.rowSub, s.logCaption, s.paymentSentence, { color: colors.text }]}>{presentation.title} <Text style={{ color: presentation.cashflow === '0' ? colors.text : balanceColor(presentation.cashflow, colors) }}>{formatMoney(payment.amount)}</Text>{!!status && <Text style={[ui.rowSub, s.logCaption]}> · {status}</Text>}{addedDate && ` · Added ${addedDate}`}</Text>
     </View>
@@ -133,7 +146,7 @@ function BillEffect({ change, involved, reversed, stacked = false }: { change: s
   </View>;
 }
 
-function BillTimelineRow({ addedDate, expense, group, selfId, busy, onExpense, onPrefetchBill, noticeVisibility, categoryIcons = {} }: Pick<Props, 'group' | 'selfId' | 'busy' | 'onExpense' | 'noticeVisibility' | 'categoryIcons' | 'onPrefetchBill'> & { expense: BillRow; addedDate?: string }) {
+function BillTimelineRow({ highlighted, addedDate, expense, group, selfId, busy, onExpense, onPrefetchBill, noticeVisibility, categoryIcons = {} }: Pick<Props, 'group' | 'selfId' | 'busy' | 'onExpense' | 'noticeVisibility' | 'categoryIcons' | 'onPrefetchBill'> & { expense: BillRow; addedDate?: string; highlighted?: boolean }) {
   const { ui } = useUI();
   const { width, fontScale } = useWindowDimensions(), stacked = width / fontScale < 320;
   const category = expense.deleted ? null : expenseCategory({ ...expense, groupId: group.id, title: expense.description }, categoryIcons);
@@ -144,7 +157,7 @@ function BillTimelineRow({ addedDate, expense, group, selfId, busy, onExpense, o
   const who = paidBy.length === 1 ? name(paidBy[0][0]) : paidBy.length === 2 ? `${name(paidBy[0][0])} and ${name(paidBy[1][0])}` : `${paidBy.length} people`;
   const payers = paidBy.map(([id, amount]) => `${name(id)} paid ${formatMoney(amount)}`).join(', ');
   return <VisibleExpense groupId={group.id} expense={expense} visibility={noticeVisibility}>
-    <LogRow leading={<TransactionIcon name={expense.deleted ? 'refresh' : categoryIcon(category)} />} date={expense.date} busy={busy} onPress={() => onExpense(expense)} onPrefetch={() => onPrefetchBill?.(expense)} trailing={stacked ? undefined : <BillEffect change={change} involved={involved} reversed={!!expense.deleted} />}
+    <LogRow highlighted={highlighted} leading={<TransactionIcon name={expense.deleted ? 'refresh' : categoryIcon(category)} />} date={expense.date} busy={busy} onPress={() => onExpense(expense)} onPrefetch={() => onPrefetchBill?.(expense)} trailing={stacked ? undefined : <BillEffect change={change} involved={involved} reversed={!!expense.deleted} />}
       label={`Bill, ${expense.description}, ${meaning ? meaning + ', ' : ''}total ${formatMoney(expense.total)}, ${expense.deleted ? 'reversed, no balance impact' : billImpact(change)}, ${payers || 'no payer recorded'}, Your share ${formatMoney(expense.shares[selfId] ?? '0')}, ${displayDate(expense.date)}`}>
       <Text numberOfLines={2} ellipsizeMode="tail" style={[ui.rowTitle, s.logTitle]}>{expense.description}</Text>
       <Text style={[ui.rowSub, s.logCaption]}>{paidBy.length ? `${who} paid ${formatMoney(expense.total)}` : `Total ${formatMoney(expense.total)}`}{addedDate && ` · Added ${addedDate}`}</Text>
@@ -312,9 +325,16 @@ export default function GroupScreen({ revealRecord, session = null, bottomCleara
       onScrollToIndexFailed={reveal.failed} onScrollBeginDrag={() => { reveal.cancel(); setLocating(false); anchor.dragging(); }} onScroll={event => { reveal.scrolled(); anchor.scrolled(event.nativeEvent.contentOffset.y); setScrollEpoch(value => value + 1); }}
       keyboardShouldPersistTaps="handled" onViewableItemsChanged={viewable.current} onRefresh={onRefresh} refreshing={refreshing}
       keyExtractor={row => row.kind === 'bill' ? `bill:${row.bill.id}` : `payment:${row.payment.id}`}
-      contentContainerStyle={[pageContentStyle, { gap: 0, paddingBottom: bottomClearance }]} renderItem={({ item: row }) => <View style={reveal.highlight === transactionKey(row) ? { backgroundColor: colors.soft, borderRadius: 6 } : undefined} ref={anchor.rowRef(transactionKey(row))} collapsable={false}><StaggerItem entry={entered.current.has(transactionKey(row)) ? entries.current.get(transactionKey(row)) : undefined}>{row.kind === 'payment'
-        ? <PaymentRow addedDate={addedDate(row)} payment={row.payment} accepted={accepted} group={group} selfId={selfId} busy={busy} onPayment={onPayment} onPrefetchPayment={onPrefetchPayment} />
-        : <BillTimelineRow addedDate={addedDate(row)} categoryIcons={categoryIcons} expense={row.bill} group={group} selfId={selfId} busy={busy} onExpense={onExpense} onPrefetchBill={onPrefetchBill} noticeVisibility={group === accepted ? visibility : undefined} />}</StaggerItem></View>}
+      contentContainerStyle={[pageContentStyle, { gap: 0, paddingBottom: bottomClearance }]} renderItem={({ item: row }) => {
+        const key = transactionKey(row), highlighted = reveal.highlight === key;
+        return <View style={highlighted && s.highlightedCell} ref={anchor.rowRef(key)} collapsable={false}>
+          <StaggerItem lifted={highlighted} entry={entered.current.has(key) ? entries.current.get(key) : undefined}>
+            {row.kind === 'payment'
+              ? <PaymentRow highlighted={highlighted} addedDate={addedDate(row)} payment={row.payment} accepted={accepted} group={group} selfId={selfId} busy={busy} onPayment={onPayment} onPrefetchPayment={onPrefetchPayment} />
+              : <BillTimelineRow highlighted={highlighted} addedDate={addedDate(row)} categoryIcons={categoryIcons} expense={row.bill} group={group} selfId={selfId} busy={busy} onExpense={onExpense} onPrefetchBill={onPrefetchBill} noticeVisibility={group === accepted ? visibility : undefined} />}
+          </StaggerItem>
+        </View>;
+      }}
       ListHeaderComponent={<View style={s.content}>{header}
     {!!previewError && <Text>{previewError}</Text>}
     {group !== accepted && <Text style={ui.caption}>Balances show a pending preview.</Text>}
@@ -409,6 +429,7 @@ export function ExpenseDetail({ onShowInGroup, categoryIcons = {}, noticeVisibil
   </View>;
 }
 const s = StyleSheet.create({
+  highlightedCell: { zIndex: 1 },
   sortAction: { minWidth: 44, minHeight: 44, paddingHorizontal: 5 },
   balances: { gap: 16 },
   balanceSection: { gap: 8 },
