@@ -50,8 +50,7 @@ function production(file: string, extra: Record<string, any> = {}) {
 
 function prepareJoin(app: ReturnType<typeof production>, props: any, title: string | null = null, name = 'Friend') {
   if (title) button(app.render('GroupJoinDialog', props), title).props.onPress();
-  component(app.render('GroupJoinDialog', props), 'TextField').props.onChangeText(name);
-  button(app.render('GroupJoinDialog', props), 'Review join').props.onPress();
+  if (title !== 'This is me') component(app.render('GroupJoinDialog', props), 'TextField').props.onChangeText(name);
   return app.render('GroupJoinDialog', props);
 }
 
@@ -247,8 +246,8 @@ test('group invite preview never joins automatically; explicit duplicate presses
   const app=production('GroupJoinDialog.tsx',{request:async(_s:any,path:string,_m:string,body:any)=>{calls.push({path,body});if(path.endsWith('preview'))return{name:'Trip',already_member:false,version:2,people:[]};return new Promise(r=>{finish=r;});}});
   const props={session:{token:'account-A',email:'a@example.invalid'},token:'synthetic-capability',onJoined:async(id:string)=>{joined.push(id);},onCancel(){}};
   const render=()=>app.render('GroupJoinDialog',props);render();await app.commit();let tree=render();
-  assert.equal(calls.length,1);assert.ok(component(tree,'TextField'));assert.equal(button(tree,'Join as new'),undefined,'an empty person list goes directly to entering a name');
-  prepareJoin(app, props); tree=render();button(tree,'Join as Friend').props.onPress();button(tree,'Join as Friend').props.onPress();await tick();assert.equal(calls.length,2);
+  assert.equal(calls.length,1);assert.ok(component(tree,'TextField'));assert.equal(button(tree,'Add myself to the group'),undefined,'an empty person list goes directly to entering a name');
+  prepareJoin(app, props); tree=render();button(tree,'Join group').props.onPress();button(tree,'Join group').props.onPress();await tick();assert.equal(calls.length,2);
   finish({id:'group'});await tick();assert.deepEqual(joined,['group']);app.unmount();
 });
 
@@ -256,7 +255,7 @@ test('group join completion after account-scope unmount cannot open another acco
   let finish!:(v:any)=>void;let joined=0;
   const app=production('GroupJoinDialog.tsx',{request:async(_s:any,p:string)=>p.endsWith('preview')?{name:'Trip',already_member:false,version:2,people:[]}:new Promise(r=>{finish=r;})});
   const props={session:{token:'account-A',email:'a@example.invalid'},token:'synthetic',onJoined:async()=>{joined++;},onCancel(){}};
-  app.render('GroupJoinDialog',props);await app.commit();prepareJoin(app, props);button(app.render('GroupJoinDialog',props),'Join as Friend').props.onPress();await tick();app.unmount();finish({id:'group'});await tick();assert.equal(joined,0);
+  app.render('GroupJoinDialog',props);await app.commit();prepareJoin(app, props);button(app.render('GroupJoinDialog',props),'Join group').props.onPress();await tick();app.unmount();finish({id:'group'});await tick();assert.equal(joined,0);
 });
 
 test('uncertain group link receipt is not shareable and retries the same command', async () => {
@@ -289,7 +288,7 @@ test('group link and join command IDs are lazy and retained through uncertain re
   const joinProps = { session: { token: 'account-a', email: 'a@example.invalid' }, token: 'synthetic', onJoined: async () => {}, onCancel() {} };
   dialog.render('GroupJoinDialog', joinProps); await dialog.commit(); dialog.render('GroupJoinDialog', joinProps); assert.equal(ids, 1);
   prepareJoin(dialog, joinProps);
-  for (let i = 0; i < 2; i++) { button(dialog.render('GroupJoinDialog', joinProps), i === 0 ? 'Join as Friend' : 'Try again').props.onPress(); await tick(); }
+  for (let i = 0; i < 2; i++) { button(dialog.render('GroupJoinDialog', joinProps), i === 0 ? 'Join group' : 'Try again').props.onPress(); await tick(); }
   assert.equal(ids, 2); assert.deepEqual(joins.map(v => v.command_id), ['lazy-2', 'lazy-2']); dialog.unmount();
 });
 
@@ -458,18 +457,23 @@ test('deferred clipboard data never resolves for a rejected receipt or changed o
 });
 
 
-test('existing-person choice and name edit wait for explicit final confirmation, then submit the stable ID', async () => {
+test('existing-person choice waits for explicit identity confirmation, then submit the stable ID', async () => {
   const calls:any[]=[];let done=0;
   const app=production('GroupJoinDialog.tsx',{request:async(_s:any,path:string,_m:string,body:any)=>{
     calls.push({path,body});return path.endsWith('preview')?{name:'Trip',already_member:false,version:9,people:[{id:'old-person',name:'John'}]}:{id:'group'};
   }});
   const props={session:{token:'A',email:'a@example.invalid'},token:'capability',onJoined:async()=>{done++;},onCancel(){}};
   app.render('GroupJoinDialog',props);await app.commit();
-  const tree=prepareJoin(app,props,'This is me','John Doe');
-  assert.equal(calls.length,1,'selection and edit do not join');
-  assert.ok(nodes(tree).some(n=>n.children.includes("John's existing bills and payments will be linked to you in this group.")));
-  button(tree,'Join as John Doe').props.onPress();await tick();
-  assert.equal(calls.length,2);assert.deepEqual(calls[1].body,{token:'capability',command_id:'id-1',display_name:'John Doe',participant_id:'old-person',preview_version:9});
+  const picker = app.render('GroupJoinDialog', props);
+  assert.ok(button(picker, 'Add myself to the group'));
+  assert.equal(button(component(picker, 'ScrollView'), 'Add myself to the group'), undefined, 'the add action stays outside the scrolling list');
+  let tree=prepareJoin(app,props,'This is me');
+  button(tree, 'Go back').props.onPress();
+  tree=prepareJoin(app,props,'This is me');
+  assert.equal(calls.length,1,'selection does not join');
+  assert.ok(nodes(tree).some(n=>n.children.includes("Bills and payments under this name will be linked to your account.")));
+  button(tree,'Yes, I’m John').props.onPress();await tick();
+  assert.equal(calls.length,2);assert.deepEqual(calls[1].body,{token:'capability',command_id:'id-1',participant_id:'old-person',preview_version:9});
   assert.equal(done,1);app.unmount();
 });
 
@@ -480,10 +484,10 @@ test('a stale selected person requires refreshed choices and never silently join
     writes.push(body);throw new ApiError(409,'This person changed. Refresh and choose again.');
   }});
   const props={session:{token:'A',email:'a@example.invalid'},token:'capability',onJoined:async()=>assert.fail('not joined'),onCancel(){}};
-  app.render('GroupJoinDialog',props);await app.commit();button(prepareJoin(app,props,'This is me','John'),'Join as John').props.onPress();await tick();
+  app.render('GroupJoinDialog',props);await app.commit();button(prepareJoin(app,props,'This is me','John'),'Yes, I’m John').props.onPress();await tick();
   let tree=app.render('GroupJoinDialog',props);assert.equal(writes.length,1);assert.equal(writes[0].participant_id,'old-person');
   button(tree,'Refresh invitation').props.onPress();tree=app.render('GroupJoinDialog',props);await app.commit();tree=app.render('GroupJoinDialog',props);
-  assert.equal(button(tree,'This is me'),undefined);assert.ok(component(tree,'TextField'));assert.equal(button(tree,'Review join').props.disabled,true,'refresh requires a new name and confirmation');assert.equal(writes.length,1);app.unmount();
+  assert.equal(button(tree,'This is me'),undefined);assert.ok(component(tree,'TextField'));assert.equal(button(tree,'Join group').props.disabled,true,'refresh requires a new name');assert.equal(writes.length,1);app.unmount();
 });
 
 test('full-screen join keeps its header inside a modal-local safe area through confirmation, 409 and Refresh', async () => {
@@ -497,10 +501,8 @@ test('full-screen join keeps its header inside a modal-local safe area through c
   await app.commit();
   states.push(['loaded', app.render('GroupJoinDialog', props)]);
   button(states.at(-1)![1], 'This is me').props.onPress();
-  states.push(['name', app.render('GroupJoinDialog', props)]);
-  button(states.at(-1)![1], 'Review join').props.onPress();
   states.push(['confirmation', app.render('GroupJoinDialog', props)]);
-  button(states.at(-1)![1], 'Join as John').props.onPress(); await tick();
+  button(states.at(-1)![1], 'Yes, I’m John').props.onPress(); await tick();
   states.push(['rejected409', app.render('GroupJoinDialog', props)]);
   button(states.at(-1)![1], 'Refresh invitation').props.onPress();
   app.render('GroupJoinDialog', props); await app.commit();
@@ -518,7 +520,7 @@ test('full-screen join keeps its header inside a modal-local safe area through c
     assert.ok(component(frame, 'ScreenHeader'), `${state}: header stays inside the inset frame`);
     assert.ok(component(frame, 'DialogFocus')); assert.ok(component(frame, 'ScrollView'));
   }
-  assert.equal(previews, 2); assert.ok(component(states.at(-1)![1], 'TextField')); assert.ok(button(states.at(-1)![1], 'Review join'));
+  assert.equal(previews, 2); assert.ok(component(states.at(-1)![1], 'TextField')); assert.ok(button(states.at(-1)![1], 'Join group'));
   app.unmount();
 });
 
@@ -765,9 +767,8 @@ test('empty group invite starts with the account name and allows editing without
   const app = production('GroupJoinDialog.tsx', { request: async (_session: any, path: string, _method: string, body: any) => { calls.push({ path, body }); return { name: 'Trip', already_member: false, version: 2, people: [] }; } });
   const props = { session: { token: 'A', email: 'a@example.invalid', displayName: 'Alex' }, token: 'capability', onJoined: async () => assert.fail('not joined'), onCancel() { cancelled++; } };
   app.render('GroupJoinDialog', props); await app.commit(); let tree = app.render('GroupJoinDialog', props);
-  assert.equal(component(tree, 'TextField').props.value, 'Alex'); button(tree, 'Review join').props.onPress(); tree = app.render('GroupJoinDialog', props);
-  assert.ok(button(tree, 'Join as Alex')); assert.equal(calls.length, 1, 'review does not join');
-  button(tree, 'Edit name').props.onPress(); tree = app.render('GroupJoinDialog', props); assert.equal(component(tree, 'TextField').props.value, 'Alex');
+  assert.equal(component(tree, 'TextField').props.value, 'Alex');
+  assert.ok(button(tree, 'Join group')); assert.equal(calls.length, 1, 'showing the name does not join');
   component(tree, 'ScreenHeader').props.onBack(); assert.equal(cancelled, 1); assert.equal(calls.length, 1); app.unmount();
 });
 
