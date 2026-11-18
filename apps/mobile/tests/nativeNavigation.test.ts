@@ -173,7 +173,7 @@ test('App renders each retained route using its own group and record; account ad
     notices: { notices: [], acknowledgeVisible() {} }, authHeld: false, foreground: true, expired: false, alertOpen: false, viewport: null, scrollEpoch: 0, owner: 'account', online: true, groupVersions: { current: '' } };
   assert.equal(compute(env).selected.group.id, 'behind'); assert.equal(compute(env).noticeVisibility.enabled, false);
   assert.equal(compute({ ...env, route: { name: 'expenseDetail', params: { groupId: 'behind', expenseId: 'b' } } }).expense.id, 'b');
-  assert.match(appText, /<AppStack scope=\{`\$\{owner\}\|\$\{navigationScope\}`\}/);
+  assert.equal(compute({ ...env, expired: true }).screen, 'login');
   assert.match(source.getText(), /<Stack.Group navigationKey=\{scope\}/);
   assert.match(appText, /setNavigationScope\(scope => scope \+ 1\)/);
   assert.doesNotMatch(appText, /setScreen|setGroupId|setExpenseId|MotionScreen|subscribeAppLinks|writeAppLink/);
@@ -429,3 +429,34 @@ for (const tab of ['Groups', 'Activity']) {
     assert.equal(h.navigation().route.params.tab, tab);
   });
 }
+
+test('an expired session opens sign-in and clears authenticated Back routes', () => {
+  const app = ts.createSourceFile('App.tsx', readFileSync(new URL('../App.tsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  let stack: ts.JsxSelfClosingElement | undefined;
+  function visit(node: ts.Node) {
+    if (ts.isJsxSelfClosingElement(node) && node.tagName.getText(app) === 'AppStack') stack = node;
+    ts.forEachChild(node, visit);
+  }
+  visit(app);
+  assert.ok(stack);
+  const props = Object.fromEntries(stack.attributes.properties.filter(ts.isJsxAttribute).map(attribute => [attribute.name.getText(app), attribute.initializer?.getText(app).slice(1, -1)]));
+  const stackProps = new Function('expired', 'owner', 'navigationScope', 'initialScreen', `return {scope: ${props.scope}, initialScreen: ${props.initialScreen}};`);
+  const render = (expired: boolean, scope: number) => module().AppStack({ render() {}, blocked: false, ...stackProps(expired, 'same-account', scope, { current: 'home' }) });
+  const config = (tree: any) => {
+    const screens = nodes(tree).filter(node => node.type === 'Screen');
+    return { routeNames: screens.map(node => node.props.name), routeParamList: {}, routeGetIdList: {} };
+  };
+  const router = StackRouter({}), before = render(false, 1), expired = render(true, 1), signedIn = render(false, 2);
+  const firstConfig = config(before);
+  let state = router.getInitialState(firstConfig);
+  state = router.getStateForAction(state, StackActions.push('group', { groupId: 'test' }), firstConfig)!;
+  const scope = (tree: any) => nodes(tree).find(node => node.type === 'Group').props.navigationKey;
+  assert.notEqual(scope(before), scope(expired));
+  assert.notEqual(scope(expired), scope(signedIn));
+  const expiredConfig = config(expired);
+  state = router.getStateForRouteNamesChange(state, { ...expiredConfig, routeKeyChanges: expiredConfig.routeNames });
+  assert.deepEqual(state.routes.map((route: routes.AppRoute) => route.name), ['login']);
+  const signedInConfig = config(signedIn);
+  state = router.getStateForRouteNamesChange(state, { ...signedInConfig, routeKeyChanges: signedInConfig.routeNames });
+  assert.deepEqual(state.routes.map((route: routes.AppRoute) => route.name), ['home']);
+});
