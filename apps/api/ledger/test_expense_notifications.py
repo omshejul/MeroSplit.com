@@ -697,7 +697,7 @@ def test_summary_drops_stale_details_before_first_attempt(client, group, recipie
     enable(recipient)
     first = add_bill(client, group)
     Expense.objects.filter(pk=first["id"]).update(description="Private old title")
-    second = add_bill(client, group)
+    second = add_bill(client, group, total="18000")
     Expense.objects.filter(pk=second["id"]).update(description="Still unread")
     clock[0] += timedelta(minutes=10)
     identifier = notifications.create_due_digest()
@@ -715,7 +715,9 @@ def test_summary_drops_stale_details_before_first_attempt(client, group, recipie
     message = providers["email"][0]
     assert "Private old title" not in message["text"] and "Private old title" not in message["payload"]["html"]
     assert "Still unread" in message["text"]
-    assert message["subject"] == ("2 unread bills in MeroSplit" if change == "edited" else "1 unread bill in MeroSplit")
+    assert message["subject"] == ("2 unread bills in MeroSplit" if change == "edited" else "Still unread · your share is ₹60")
+    preview = "See who paid and your share of each bill." if change == "edited" else "A paid ₹180 in Functional test."
+    assert f">{preview}</div>" in message["payload"]["html"]
     if change == "edited":
         assert "Current title" in message["text"] and "Your share: ₹100" in message["text"]
     assert ExpenseDigest.objects.get(pk=identifier).state == "accepted"

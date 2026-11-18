@@ -233,10 +233,18 @@ def _digest_message(rows, user_id):
                       "share": money(bill.shares.get(str(person.id), "0")),
                       "paid": money(bill.paid.get(str(person.id), "0")) if len(payers) > 1 and int(bill.paid.get(str(person.id), "0")) else ""})
     heading = f"{len(rows)} unread bill{'s' if len(rows) != 1 else ''}"
+    subject = f"{heading} in MeroSplit"
+    preview_text = "See who paid and your share of each bill."
+    if len(rows) == 1 and bills:
+        single = bills[0]
+        subject = f"{single['title']} · your share is {single['share']}"
+        group_suffix = f" in {single['group']}" if single['group'] else ""
+        preview_text = f"{single['paid_by']} paid {single['total']}{group_suffix}."
     text, html = email_delivery.render_message("expense_digest", {
+        "preview_text": preview_text,
         "heading": heading, "bills": bills, "remaining": max(0, len(rows) - len(bills)), "app_url": LINK_PLACEHOLDER,
     })
-    return {"subject": f"{heading} in MeroSplit", "text": text, "html": html, "_expense_summary": _summary_versions(rows),
+    return {"subject": subject, "text": text, "html": html, "_expense_summary": _summary_versions(rows),
             "_review_notice_ids": [str(row.id) for row in displayed]}
 
 
