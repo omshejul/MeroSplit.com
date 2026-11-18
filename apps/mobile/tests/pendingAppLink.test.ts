@@ -40,11 +40,11 @@ function appHarness() {
   const state={appLink:readAppLink(),screen:'home',groupId:null as string|null,expenseId:null as string|null,checkingCookie:false,saves:0,claims:0,fetches:0,notice:''};
   let pending=Promise.resolve<unknown>(undefined),fetch=async()=>({id:groupId,version:1,is_direct:false,expenses:[]});
   let claimStarted!: () => void; const claiming = new Promise<void>(resolve => { claimStarted = resolve; });
-  const route={key:'link-entry'}, db={withExclusiveTransactionAsync:async(work:(transaction:unknown)=>Promise<void>)=>work(db)};
+  const route={key:'link-entry',name:'home',params:{} as Record<string,string>}, db={withExclusiveTransactionAsync:async(work:(transaction:unknown)=>Promise<void>)=>work(db)};
   const env: Record<string,any>={startLoading:()=>()=>{},setPushOpportunity() {},scopeGeneration:{current:0},browseCurrent:{current:'entry'},opening:{current:null},openRequests:{current:new Map()},submissions:{current:new Set()},lock:{current:false},
     navigation:{ref:{getRootState:()=>route,getCurrentRoute:()=>route}},setBusyRoutes(){},setReading(){},setExpired(){},publishIfChanged:async()=>{},ready:true,session,expired:false,busy:false,activeSessionRef,authHeldRef,cookieCheck,Platform:{OS:'web'},ApiError,
     draftWrites:{current:Promise.resolve()},open:(fn:()=>Promise<unknown>)=>{pending=fn();void pending.catch(()=>{});},fetchGroup:()=>{state.fetches++;return fetch();},
-    withBill:async(_s: unknown,group: unknown)=>group,getDatabase:async()=>db,accountOwner:()=>session.userId,saveGroup:async()=>{state.saves++;},readVisibleGroup:async()=>null,
+    withBill:async(_s: unknown,group: unknown)=>group,withPayment:async(_s: unknown,group: unknown)=>group,getDatabase:async()=>db,accountOwner:()=>session.userId,saveGroup:async()=>{state.saves++;},readVisibleGroup:async()=>null,
     request:async()=>{state.claims++;claimStarted();return {id:groupId};},uuid:()=>'synthetic-command',
     navigate:(screen:string,params:any={})=>{state.screen=screen;state.groupId=params.groupId??null;state.expenseId=params.expenseId??null;},
     setAppLink:(next:AppLink|null|((current:AppLink|null)=>AppLink|null))=>{state.appLink=typeof next==='function'?next(state.appLink):next;},
@@ -53,7 +53,7 @@ function appHarness() {
   env.showReadGroup = appFunction('showReadGroup', {setGroups: () => {}, setLedgerRevision: () => {}});
   for(const name of ['setSubmission','perform','background','browse','saveReadGroup']) env[name]=appFunction(name,env);
   const view=()=>({...env,...state,authHeld:state.checkingCookie});
-  return {state,activeSessionRef,claiming,open:()=>{actual(openLink,view())();return pending;},
+  return {state,route,activeSessionRef,claiming,open:()=>{actual(openLink,view())();return pending;},
     check:()=>actual(queueCheck,env)(),resume:()=>{activeSessionRef.current=session;authHeldRef.current=false;cookieCheck.current=false;state.checkingCookie=false;},
     fail:(error:Error)=>{fetch=async()=>{throw error;};}};
 }
@@ -112,4 +112,23 @@ test('a session hold before any invitation POST preserves the unused destination
   const pending=app.open();app.check();await pending;
   assert.equal(app.state.claims,0);assert.equal(app.state.appLink,target);
   app.resume();await app.open();assert.equal(app.state.claims,1);assert.equal(app.state.appLink,null);
+}));
+
+test('loading a browser route keeps the existing tab and route params', async () => browserScenario(async app => {
+  app.route.name = 'group';
+  app.route.params = { groupId, tab: 'Activity', revealRecord: 'bill:older' };
+  app.state.screen = 'group';
+  await app.open();
+  assert.equal(app.state.groupId, null, 'route loading must not navigate or replace route params');
+  assert.equal(app.state.saves, 1);
+}));
+
+test('an uncached payment URL hydrates the requested payment without changing screens', async () => browserScenario(async app => {
+  app.route.name = 'paymentDetail';
+  app.route.params = { groupId, settlementId: 'older', tab: 'Activity' };
+  app.state.screen = 'paymentDetail';
+  app.state.appLink = { groupId, settlementId: 'older', routeKey: app.route.key } as AppLink;
+  await app.open();
+  assert.equal(app.state.screen, 'paymentDetail');
+  assert.equal(app.state.saves, 1);
 }));

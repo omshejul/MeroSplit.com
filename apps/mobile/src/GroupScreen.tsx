@@ -105,7 +105,7 @@ function LogDate({ date }: { date?: string | null }) {
 function LogRow({ leading, date, label, busy, onPress, onPrefetch, trailing, children, payment = false, highlighted = false }: { highlighted?: boolean; leading?: React.ReactNode; date?: string | null; label: string; busy: boolean; onPress: () => void; onPrefetch?: () => void; trailing?: React.ReactNode; children: React.ReactNode; payment?: boolean }) {
   const { ui, palette } = useUI();
   const { colors } = useTheme();
-  return <ListRow accessibilityRole="button" accessibilityLabel={label} disabled={busy} style={({ pressed }) => [
+  return <ListRow testID="transaction-row" accessibilityRole="button" accessibilityLabel={label} disabled={busy} style={({ pressed }) => [
     ui.row, s.edgeRow, { borderBottomColor: `${palette.line}80` }, payment && { backgroundColor: palette.soft },
     highlighted && {
       backgroundColor: colors.elevation.level4,

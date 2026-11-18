@@ -51,14 +51,15 @@ export function useWebInteractions(enabled: boolean) {
     function release() {
       if (pressed) { feedback(pressed, 1, 1); pressed = null; }
     }
+    const hasHoverMotion = (element: HTMLElement) => !element.matches('[data-testid="transaction-row"]');
     function hover(event: PointerEvent) {
       if (event.pointerType !== 'mouse' || pressed) return;
       const element = find(event);
-      if (usable(element) && !(event.relatedTarget instanceof Node && element.contains(event.relatedTarget))) feedback(element, 1.015, 0.9);
+      if (usable(element) && hasHoverMotion(element) && !(event.relatedTarget instanceof Node && element.contains(event.relatedTarget))) feedback(element, 1.015, 0.9);
     }
     function leave(event: PointerEvent) {
       const element = find(event);
-      if (element && element !== pressed && !(event.relatedTarget instanceof Node && element.contains(event.relatedTarget))) feedback(element, 1, 1);
+      if (element && hasHoverMotion(element) && element !== pressed && !(event.relatedTarget instanceof Node && element.contains(event.relatedTarget))) feedback(element, 1, 1);
     }
     document.addEventListener('click', pulse, true);
     document.addEventListener('change', pulse, true);

@@ -1,3 +1,4 @@
+import LoadingSpinner from './src/LoadingSpinner';
 import ReviewRequest, { RateMeroSplit } from './src/ReviewRequest';
 import { groupSettingReview, resolveGroupSetting } from './src/groupSettingReview';
 import { useSentryUser } from './src/sentry';
@@ -173,7 +174,7 @@ function AppContent() {
   const notice = feedback.text;
   const setNotice = (text: string, tone: typeof feedback.tone = 'info') => setFeedback({ text, tone });
   const [email, setEmail] = useState(''), [code, setCode] = useState(''), [challenge, setChallenge] = useState<EmailCodeChallenge | null>(null), [retryAt, setRetryAt] = useState(0), [clock, setClock] = useState(Date.now());
-  const [appLink, setAppLink] = useState<AppLink | null>(readAppLink);
+  const [appLink, setAppLink] = useState<(AppLink & { routeKey?: string; settlementId?: string }) | null>(readAppLink);
   const [missingGroupInvite, setMissingGroupInvite] = useState(() => Platform.OS === 'web' && /^\/app\/invite\/join\/?$/.test(window.location.pathname) && !appLink);
   const resolvedRoute = useRef('');
   const initialEmailLink = useRef(Platform.OS === 'web' ? captureEmailLink() : null), emailProof = useRef(initialEmailLink.current);
@@ -825,6 +826,12 @@ function AppContent() {
     if (!ready || !session || authHeld || authHeldRef.current || activeSessionRef.current?.token !== session.token || expired || busy || !appLink) return;
     if ('groupInviteToken' in appLink) return;
     const active = session, target = appLink;
+    const route = navigation.ref.getCurrentRoute();
+    if (!route) return;
+    if (target.routeKey && target.routeKey !== route.key) { setAppLink(null); return; }
+    const linkedScreen = target.expenseId ? target.chat ? 'billChat' : target.versions ? 'expenseVersions' : 'expenseDetail' : 'group';
+    const restoreRoute = !!target.routeKey || ('groupId' in target && !!target.groupId && route?.name === linkedScreen
+      && route.params?.groupId === target.groupId && (route.params?.expenseId ?? undefined) === target.expenseId);
     open(() => browse(`link:${JSON.stringify(target)}`, async current => {
       await draftWrites.current;
       if (!current()) return;
@@ -840,10 +847,11 @@ function AppContent() {
           group = cached.group;
         }
         group = await withBill(active, group, target.expenseId);
+        if (target.settlementId) group = await withPayment(active, group, target.settlementId);
         if (!current() || !await saveReadGroup(active, group, current) || !current()) return;
         showReadGroup(group);
         const bill = target.expenseId && (group.expenses.find(value => value.id === target.expenseId) ?? (group.focused_expense?.id === target.expenseId ? group.focused_expense : undefined));
-        navigate(bill ? target.chat ? 'billChat' : target.versions ? 'expenseVersions' : 'expenseDetail' : 'group', { groupId: group.id, expenseId: bill ? bill.id : null, tab: group.is_direct ? 'Friends' : 'Groups' });
+        if (!restoreRoute) navigate(bill ? linkedScreen : 'group', { groupId: group.id, expenseId: bill ? bill.id : null, tab: group.is_direct ? 'Friends' : 'Groups' });
         if ('inviteToken' in target) setPushOpportunity({ owner: accountOwner(active), token: active.token, groupId: group.id });
       } catch (error) {
         if (!current()) return;
@@ -855,7 +863,7 @@ function AppContent() {
         if (!interrupted) setAppLink(current => current === target ? null : current);
       }
     }));
-  }, [ready, session?.token, authHeld, expired, busy, appLink]);
+  }, [ready, session?.token, authHeld, expired, busy, appLink, navigation.route.key]);
   // Browser history is owned by the navigator. Resolve uncached entries through
   // the same authenticated link loader used by native links and notifications.
   useEffect(() => {
@@ -864,7 +872,7 @@ function AppContent() {
     if (resolvedRoute.current === scope) return;
     if (!selected || expenseId && !expense || settlementId && !settlement) {
       resolvedRoute.current = scope;
-      if (screen === 'group' || ['expenseDetail', 'expenseIcon', 'expenseVersions', 'billChat'].includes(screen)) setAppLink({ groupId, ...(expenseId ? { expenseId, ...(screen === 'billChat' ? { chat: true as const } : screen === 'expenseVersions' ? { versions: true as const } : {}) } : {}) });
+      setAppLink({ groupId, routeKey: navigation.route.key, expenseId: expenseId ?? undefined, settlementId: settlementId ?? undefined });
     }
   }, [ready, session?.token, authHeld, expired, busy, navigation.route.key, screen, groupId, expenseId, !!selected, !!expense, appLink]);
   useEffect(() => {
@@ -1531,7 +1539,7 @@ function AppContent() {
         !expense.deleted && (selected.group.expenses.some(value => value.id === expense.id) || selected.group.focused_expense?.id === expense.id) && <BillAttachments key={`${owner}|${groupId}|${expense.id}`} session={session} groupId={selected.group.id} expenseId={expense.id} billTitle={expense.description} revision={selected.group.version} readOnly={selected.group.archived || !!pending.length} busy={busy}
           onBusyChange={value => setSubmission(value, `${route.key}|attachments`)} onChanged={async () => { if (!session) return; const scope = accountOwner(session); const updated = await fetchGroup(session, selected.group.id); if (await saveReadGroup(session, updated, () => ownerRef.current === scope, false)) await load(scope); }} />} />
       </>}
-      {screen === 'expense' && selected && <ExpenseForm key={`${owner}|${groupId}|${expenseId ?? 'new'}`} group={preview ?? selected.group} expense={reviewInput ?? expense} selfId={selfId} busy={busy} autoFocusAmount={focused && !expenseId && !reviewInput} owner={owner} writes={draftWrites} onSave={(value, attachment, onQueued) => saveExpense(value, attachment, () => { onQueued?.(); billQueued(); })} />}
+      {screen === 'expense' && selected && (!expenseId || expense || reviewInput) && <ExpenseForm key={`${owner}|${groupId}|${expenseId ?? 'new'}`} group={preview ?? selected.group} expense={reviewInput ?? expense} selfId={selfId} busy={busy} autoFocusAmount={focused && !expenseId && !reviewInput} owner={owner} writes={draftWrites} onSave={(value, attachment, onQueued) => saveExpense(value, attachment, () => { onQueued?.(); billQueued(); })} />}
       {screen === 'review' && selected && reviewCommand && <SavedChangeScreen command={reviewCommand} group={selected.group} busy={busy} onApplySetting={() => void resolveSavedSetting(true)} onDiscard={() => groupSettingReview(reviewCommand, selected.group) ? confirm('Keep the current setting?', 'Only this unsent setting change will be removed. Your saved bills will stay and continue syncing.', () => resolveSavedSetting(false), 'Keep current setting') : confirm('Discard this unsent change?', 'Accepted records remain. Your saved change will be removed from this phone.', async () => { await discardCommand(await getDatabase(), owner, reviewCommand.command_id); setReviewCommand(null); navigate('group'); }, 'Discard change')} onEditSaved={value => { setReviewInput(value); navigate('expense', { expenseId: reviewCommand.method === 'PUT' ? value.id : null }); }} />}
       {screen === 'settle' && selected && preview && <SettleForm key={`${owner}|${groupId}`} group={preview} initial={transfer} busy={busy} selfId={selfId} onRemind={online && !pending.length ? remindPayment : undefined} onReviewAttempt={reviewPaymentAttempt} onPrepareUPI={prepareUPI} onCancelUPI={async id => { await groupAction(`/payment-attempts/${id}/cancel`, {}); await clearPaymentReturn(await getDatabase(), owner, id); await load(); }} returnPayment={returnPayment} onArmReturn={armPaymentReturn} onReturnPaymentChange={persistPaymentReturn} onResolveReturn={finishPaymentReturn} onSave={savePayment} onCancel={() => { setReturnAttemptId(null); back(); }} />}
       {screen === 'paymentDetail' && selected && settlement && <PaymentDetail onShowInGroup={() => navigate('group', { groupId, revealRecord: `payment:${settlement.id}` })} payment={settlement} group={preview ?? selected.group} selfId={selfId} busy={busy} canReverse={!pending.length && !selected.group.archived} onReverse={() => confirm('Reverse payment record?', 'This removes the payment from the group’s balances.', () => reversePayment(settlement), 'Reverse payment')} />}
@@ -1576,6 +1584,11 @@ function AppContent() {
 
     </>;
   }
+  // Mount web linking after session restoration establishes the first account
+  // navigation key. Changing that key on startup discards the URL-derived stack.
+  if (Platform.OS === 'web' && !ready) return <AppFrame><View style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center' }]}>
+    <LoadingSpinner visible label="Loading" />
+  </View></AppFrame>;
   return <PhotoSession.Provider value={authHeld || expired ? null : session}><NavigationContainer ref={navigation.ref} linking={webLinking}><><AppFrame onTouchStart={engage}><View ref={protectedContent} style={{ flex: 1 }} pointerEvents={authHeld ? 'none' : 'auto'} accessibilityElementsHidden={authHeld} importantForAccessibility={authHeld ? 'no-hide-descendants' : 'auto'} aria-hidden={authHeld}>
     <AppStack scope={`${owner}|${navigationScope}`} initialScreen={initialScreen.current} render={renderScreen} blocked={authHeld} />
   </View>

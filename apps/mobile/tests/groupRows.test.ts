@@ -103,7 +103,7 @@ test('responsive bill rows retain one exact balance effect, spoken facts and det
 
 test('log row keeps a 44px+ button target with a date column and the full spoken label', () => {
   const tree = production('LogRow')({ date: '2026-10-18', label: 'Bill, Lunch', busy: false, onPress() {}, trailing: 'Effect', children: 'Body' });
-  assert.equal(tree.type, 'Button'); assert.equal(tree.props.accessibilityRole, 'button'); assert.equal(tree.props.accessibilityLabel, 'Bill, Lunch');
+  assert.equal(tree.type, 'Button'); assert.equal(tree.props.testID, 'transaction-row'); assert.equal(tree.props.accessibilityRole, 'button'); assert.equal(tree.props.accessibilityLabel, 'Bill, Lunch');
   const styles = Object.assign({}, ...tree.props.style({ pressed: false }).filter(Boolean));
   assert.ok(styles.minHeight >= 44);
   assert.deepEqual(tree.children.flat().filter((node: any) => node != null).map((node: any) => node?.type ?? node), ['LogDate', 'View', 'Effect']);
