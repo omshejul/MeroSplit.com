@@ -812,7 +812,7 @@ test('personal shared-link invitations have no approval step, including old pend
   assert.equal(button(joined, 'Approve request'), undefined);
 });
 
-test('automatic and manual checks prompt for a newer store build before a downloaded OTA', async () => {
+test('background checks prompt and the manual button opens a newer store build before a downloaded OTA', async () => {
  for (const os of ['ios','android']) {
   const calls:any[] = [], opened:string[] = [];
   let newer = '33';
@@ -832,14 +832,24 @@ test('automatic and manual checks prompt for a newer store build before a downlo
   app.render().later();
   app.render().check();await tick();
   const update=app.render(), store=os==='ios'?'App Store':'Google Play';
-  assert.equal(update.label,`Update in ${store}`);assert.equal(update.promptVisible,true);
-  assert.deepEqual(opened,[]);
-  button(app.prompt(),`Open ${store}`).props.onPress();
-  button(app.prompt(),`Open ${store}`).props.onPress();
-  await tick();assert.deepEqual(opened,[os==='ios'?'itms-apps://itunes.apple.com/app/id6823916128':'market://details?id=com.omshejul.splitdumb']);
+  assert.equal(update.label,`Update in ${store}`);
+  assert.deepEqual(opened,[os==='ios'?'itms-apps://itunes.apple.com/app/id6823916128':'market://details?id=com.omshejul.splitdumb']);
   assert.equal(app.render().promptVisible,false);
   assert.equal(button(app.tree(),update.label).props.icon,'external');app.unmount();
  }
+});
+
+test('the first manual check opens the store when it discovers a newer build', async () => {
+  for (const platform of ['ios', 'android']) {
+    const opened: string[] = [];
+    const app = updatesApp(undefined, { Platform: { OS: platform }, checkStoreUpdate: async () => '33', Linking: { async openURL(url: string) { opened.push(url); } } });
+    const state = app.render();
+    assert.equal(state.storeAvailable, false);
+    state.check(); await tick();
+    assert.deepEqual(opened, [platform === 'ios' ? 'itms-apps://itunes.apple.com/app/id6823916128' : 'market://details?id=com.omshejul.splitdumb']);
+    assert.equal(app.render().promptVisible, false);
+    app.unmount();
+  }
 });
 
 test('the store action falls back to HTTPS and keeps failed handoffs retryable inside the dialog', async () => {

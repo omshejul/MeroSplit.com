@@ -66,7 +66,10 @@ export default function useAppUpdates(options: Options) {
         setStoreBuild(available);
       }
       if (available || hasPending || !checkOta) {
-        if (manual && available) setDismissedStore(null);
+        if (manual && available) {
+          setDismissedStore(null);
+          await launchStore(available);
+        }
         if (manual && !available && hasPending) setDismissed(null);
         setPhase('idle');
         return;
@@ -103,27 +106,37 @@ export default function useAppUpdates(options: Options) {
       flight.current = false;
     }
   }
-  async function openStore() {
+  // Both the manual check and the prompt use the same store handoff.
+  async function launchStore(build: string) {
     const state = current.current;
-    if (!live.current || !state.storeBuild || !state.enabled || !state.foreground || !state.safe || state.busy || flight.current) return;
-    flight.current = true; setError(''); setPhase('opening-store');
+    if (!live.current || !state.enabled || !state.foreground || !state.safe || state.busy || hasOpenDialogs()) return;
+    setError(''); setPhase('opening-store');
     try {
       try { await Linking.openURL(store.native); }
-      catch { if (live.current && current.current.enabled && current.current.foreground) await Linking.openURL(store.web); }
-      if (live.current) setDismissedStore(state.storeBuild);
+      catch {
+        if (!live.current || !current.current.enabled || !current.current.foreground) return;
+        await Linking.openURL(store.web);
+      }
+      if (live.current) setDismissedStore(build);
     } catch {
       if (live.current) setError("Couldn't open the store. Try again.");
     } finally {
       if (live.current) setPhase('idle');
-      flight.current = false;
     }
+  }
+  async function openStore() {
+    const build = current.current.storeBuild;
+    if (!build || flight.current) return;
+    flight.current = true; setDismissedStore(null);
+    try { await launchStore(build); }
+    finally { flight.current = false; }
   }
 
   const promptReady = supported && options.enabled && options.foreground && options.safe && !options.busy && !dialogsOpen && !checking && !downloading;
   return { native, supported, working, storeAvailable, storeName: store.name, openingStore, applying, label, error, none: phase === 'none',
     disabled: options.busy || !options.enabled || working,
     promptVisible: !!(promptReady && (storeBuild ? dismissedStore !== storeBuild : pending && dismissed !== pending)),
-    check: () => void check(true), engage: () => void check(), restart: () => void restart(), openStore: () => void openStore(),
+    check: () => void (current.current.storeBuild ? openStore() : check(true)), engage: () => void check(), restart: () => void restart(), openStore: () => void openStore(),
     later: () => { if (!flight.current) { if (storeBuild) setDismissedStore(storeBuild); else setDismissed(pending); setError(''); } },
   };
 }
