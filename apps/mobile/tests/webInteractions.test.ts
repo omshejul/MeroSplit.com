@@ -6,9 +6,9 @@ function harness(enabled = true) {
   const listeners = new Map<string, (event: any) => void>(), animations: any[] = [];
   let cleanup: (() => void) | undefined;
   class Element {
-    disabled = false; homeTab = false; style = { transform: '', opacity: '' };
+    disabled = false; homeTab = false; transactionRow = false; style = { transform: '', opacity: '' };
     closest(selector: string) { return !selector.startsWith('[inert]') || this.homeTab && selector.includes('[data-testid="home-tabs"]') ? this : null; }
-    matches(selector: string) { return selector.includes(':disabled') && this.disabled; }
+    matches(selector: string) { return selector.includes(':disabled') && this.disabled || selector === '[data-testid="transaction-row"]' && this.transactionRow; }
     contains(target: unknown) { return target === this; }
   }
   class PointerEvent { isPrimary = true; button = 0; pointerType = 'mouse'; target: Element; relatedTarget: unknown; constructor(target: Element, relatedTarget: unknown = null) { this.target = target; this.relatedTarget = relatedTarget; } }
@@ -62,5 +62,16 @@ test('home tabs skip web hover, press and click animations', () => {
   h.send('pointerdown', new h.PointerEvent(button)); h.send('pointerup');
   h.send('click', new h.PointerEvent(button));
   h.send('keydown', new h.KeyboardEvent(button, 'Enter')); h.send('keyup');
-  assert.deepEqual(h.animations, []);
+  assert.equal(h.animations.length, 0);
+});
+
+test('a transaction entering or leaving the cursor during list scroll has no hover motion', () => {
+  const h = harness(), row = new h.Element();
+  row.transactionRow = true;
+  h.send('pointerover', new h.PointerEvent(row));
+  h.send('pointerout', new h.PointerEvent(row));
+  assert.equal(h.animations.length, 0);
+  h.send('click', new h.PointerEvent(row));
+  assert.deepEqual(h.animations.at(-1).values, { scale: [1, 0.955, 1], opacity: [1, 0.78, 1] });
+  h.cleanup();
 });
