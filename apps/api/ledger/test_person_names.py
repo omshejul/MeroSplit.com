@@ -58,10 +58,10 @@ def test_registered_removed_archived_and_wrong_group_people_are_not_editable(cli
     assert rename(client, group).status_code in [404, 409]
 
 
-def test_only_organizer_can_rename_a_guest(client, group):
+def test_any_active_member_can_rename_a_guest(client, group):
     _, people, _ = group
     user = get_user_model().objects.create_user(username=uid())
     person = Participant.objects.get(pk=people[2])
     person.user = user
     person.save(update_fields=["user"])
-    assert rename(authenticated_client(user), group).status_code == 403
+    assert rename(authenticated_client(user), group).status_code == 200

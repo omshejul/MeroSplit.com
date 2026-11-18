@@ -177,7 +177,7 @@ def record_external_payment(actor, group_id, payload):
 
 
 def reverse_external_payment(actor, group_id, payment_id, payload):
-    """Reverse bookkeeping under the existing participant/organizer rules, never a bank refund."""
+    """Reverse bookkeeping as an active group member, never a bank refund."""
     body = Command.model_validate(payload)
     return services.reverse_settlement(actor, _uuid(group_id), _uuid(payment_id), body.model_dump(mode="json"))
 

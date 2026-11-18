@@ -102,7 +102,8 @@ def test_group_email_claim_uses_existing_person_and_preserves_money_and_privacy(
     assert len(after["participants"]) == 3 and Participant.objects.get(pk=people[1]).user_id == recipient.actor.pk
     for key in ("balances", "totals", "expenses", "settlements"):
         assert after[key] == before[key]
-    assert all("email" not in person for person in after["participants"]) and after["invites"] == []
+    assert all("email" not in person for person in after["participants"] if person["user_id"])
+    assert after["invites"] == []
 
 
 def test_saving_group_contact_revokes_manual_pending_claim_and_requires_explicit_email(client, group, mailbox):
@@ -150,15 +151,15 @@ def test_email_pending_approval_requires_exact_verified_claimant(client, group, 
     assert Participant.objects.get(pk=people[1]).user_id is None
 
 
-@pytest.mark.parametrize("invalid", ["outsider", "member", "archived", "removed"])
+@pytest.mark.parametrize("invalid", ["outsider", "removed member", "archived", "removed"])
 def test_group_contact_and_email_invite_preserve_permissions(client, group, mailbox, invalid):
     group_id, people, _ = group
     actor = client
-    if invalid in ("outsider", "member"):
+    if invalid in ("outsider", "removed member"):
         actor = verified_person()
-        if invalid == "member":
-            Participant.objects.filter(pk=people[2]).update(user=actor.actor)
-        expected = 404 if invalid == "outsider" else 403
+        if invalid == "removed member":
+            Participant.objects.filter(pk=people[2]).update(user=actor.actor, removed=True)
+        expected = 404
     elif invalid == "archived":
         Group.objects.filter(pk=group_id).update(archived=True)
         expected = 409
@@ -326,3 +327,14 @@ def test_invite_is_committed_before_provider_and_two_workers_do_not_duplicate_em
         statuses = list(pool.map(execute, range(2)))
     assert all(status in (200, 429) for status in statuses)
     assert len(delivered) == 1 and Invite.objects.count() == Group.objects.count() == 1
+
+
+def test_active_member_can_update_guest_contact_and_send_invite(client, group, mailbox):
+    group_id, people, _ = group
+    actor = verified_person("member@example.invalid")
+    Participant.objects.filter(pk=people[2]).update(user=actor.actor)
+    path = f"/groups/{group_id}/participants/{people[1]}"
+    assert send(actor, "post", path + "/contact", {"command_id": uid(), "email": "guest@example.invalid"}).status_code == 200
+    assert send(actor, "post", path + "/email-invite", {"command_id": uid()}).status_code == 200
+    assert len(mailbox) == 1
+    assert send(actor, "get", f"/groups/{group_id}/summary").json()["invites"][0]["intended_email"] == "guest@example.invalid"

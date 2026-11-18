@@ -40,6 +40,7 @@ from .expense_notifications import (
 )
 from .history_reads import (
     account_activity,
+    actionable_invites,
     expense_detail,
     group_summary,
     history_page,
@@ -248,12 +249,11 @@ def group_get(request, group_id: UUID):
                     for p in group.participants.select_related("user")}
         for person in state["participants"]:
             person["account_email"] = accounts[person["id"]]
-        if group.owner_id == request.auth.pk:
-            emails = dict(group.participants.values_list("id", "contact_email"))
-            for person in state["participants"]:
-                person["email"] = emails[UUID(person["id"])]
-        if group.owner_id != request.auth.pk:
-            state["invites"] = []
+        emails = {str(id): email for id, email in group.participants.filter(user__isnull=True, removed=False).values_list("id", "contact_email")}
+        for person in state["participants"]:
+            if person["id"] in emails:
+                person["email"] = emails[person["id"]]
+        state["invites"] = actionable_invites(group)
         return state
 
 

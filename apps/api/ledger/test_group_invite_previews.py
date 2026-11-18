@@ -68,15 +68,13 @@ def test_crawler_preview_exposes_only_group_title_and_never_joins(client, group)
     assert [list(model.objects.values()) for model in [GroupInviteLink, Participant, Change, CommandReceipt, Invite, MembershipDelivery]] == before
 
 
-@pytest.mark.parametrize('invalid', ['archived', 'is_direct', 'owner_changed', 'owner_removed', 'owner_inactive', 'revoked', 'deleted'])
+@pytest.mark.parametrize('invalid', ['archived', 'is_direct', 'owner_removed', 'owner_inactive', 'revoked', 'deleted'])
 def test_page_and_image_use_same_current_capability_authorization(client, group, invalid):
     gid, *_ = group
     code = link(client, gid)
     row = Group.objects.get(pk=gid)
     if invalid in ['archived', 'is_direct']:
         Group.objects.filter(pk=gid).update(**{invalid: True})
-    elif invalid == 'owner_changed':
-        Group.objects.filter(pk=gid).update(owner=account().actor)
     elif invalid == 'owner_removed':
         Participant.objects.filter(group_id=gid, user=client.actor).update(removed=True)
     elif invalid == 'owner_inactive':

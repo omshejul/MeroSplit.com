@@ -394,7 +394,6 @@ export function PaymentDetail({ onShowInGroup, payment, group, selfId, busy, can
   const { palette: colors, ui } = useUI();
   const name = (id: string) => participantName(group.participants, selfId, id);
   const row = paymentPresentation(payment, selfId, name);
-  const involved = payment.sender === selfId || payment.recipient === selfId;
   return <View role="region" accessibilityLabel={group.name} style={s.content}>
     <RecordSummary title={row.title} amount={payment.amount} amountColor={row.cashflow === '0' ? colors.text : balanceColor(row.cashflow, colors)}>
       <Text style={ui.caption}>{group.name} · {displayDate(payment.date)}{row.status ? ` · ${row.status}` : ''}{onShowInGroup && <> · <Text accessibilityRole="link" onPress={onShowInGroup} style={{ color: colors.accent, textDecorationLine: 'underline' }}>Show in group</Text></>}</Text>
@@ -402,7 +401,7 @@ export function PaymentDetail({ onShowInGroup, payment, group, selfId, busy, can
       {payment.reversed && <RecordAttribution action="Reversed" name={payment.reversal?.actor_name} />}
     </RecordSummary>
     {payment.reversed ? <NoticeBanner>This payment record was reversed.</NoticeBanner>
-      : <>{involved && <View style={s.section}><Button title="Reverse record" kind="outlined" style={{ borderColor: colors.error }} labelStyle={{ color: colors.error }} disabled={busy || !canReverse || group.archived || [payment.sender, payment.recipient].some(id => group.participants.find(person => person.id === id)?.removed)} onPress={onReverse} /></View>}</>}
+      : <View style={s.section}><Button title="Reverse record" kind="outlined" style={{ borderColor: colors.error }} labelStyle={{ color: colors.error }} disabled={busy || !canReverse || group.archived || [payment.sender, payment.recipient].some(id => group.participants.find(person => person.id === id)?.removed)} onPress={onReverse} /></View>}
   </View>;
 }
 

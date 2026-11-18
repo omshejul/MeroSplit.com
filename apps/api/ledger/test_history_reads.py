@@ -94,8 +94,9 @@ def test_summary_finance_is_complete_while_history_and_actionable_state_are_boun
     member = get_user_model().objects.create_user(username=uid(), email="member@example.invalid")
     Participant.objects.filter(pk=ids[1]).update(user=member)
     member_summary = group_summary(member, group_id)
-    assert member_summary["invites"] == []
-    assert all("email" not in person for person in member_summary["participants"])
+    assert member_summary["invites"] == summary["invites"]
+    assert next(person for person in member_summary["participants"] if person["id"] == ids[2])["email"] == "synthetic@example.invalid"
+    assert all("email" not in person for person in member_summary["participants"] if person["user_id"])
 
 
 def test_keyset_pages_have_no_duplicates_or_omissions_with_ties_and_keep_deleted_records(client, group):

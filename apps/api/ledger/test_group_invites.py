@@ -82,7 +82,7 @@ def test_inviter_and_closed_group_rules(client, group):
     token = link(client, gid)
     member = account()
     assert join(member, token).status_code == 200
-    assert send(member, "post", f"/groups/{gid}/invite-link", {"command_id": uid()}).status_code == 403
+    assert link(member, gid) == token
     assert send(account(), "post", f"/groups/{gid}/invite-link", {"command_id": uid()}).status_code == 404
     for field in ["archived", "is_direct"]:
         Group.objects.filter(pk=gid).update(**{field: True})
@@ -90,6 +90,9 @@ def test_inviter_and_closed_group_rules(client, group):
         assert send(client, "post", f"/groups/{gid}/invite-link", {"command_id": uid()}).status_code in [403, 409]
         Group.objects.filter(pk=gid).update(**{field: False})
     Group.objects.filter(pk=gid).update(owner=member.actor)
+    assert link(member, gid) == token
+    assert join(account(), token).status_code == 200
+    Group.objects.get(pk=gid).participants.filter(user=client.actor).update(removed=True)
     assert join(account(), token).status_code == 404
     new = link(member, gid)
     assert new != token

@@ -65,8 +65,8 @@ function FeedbackNote({ section, feedback }: { section: string; feedback: Feedba
     : null;
 }
 
-function MemberRow({ group, person, selfId, organizer, disabled, onInvite, onAction, canEditNickname }: {
-  group: Group; person: Participant; selfId: string; organizer: boolean; disabled: boolean;
+function MemberRow({ group, person, selfId, canManage, disabled, onInvite, onAction, canEditNickname }: {
+  group: Group; person: Participant; selfId: string; canManage: boolean; disabled: boolean;
   onInvite: () => void; canEditNickname: boolean; onAction: Props["onAction"];
 }) {
   const { ui } = useUI();
@@ -76,7 +76,7 @@ function MemberRow({ group, person, selfId, organizer, disabled, onInvite, onAct
   // Match EditableName inset while keeping its full tap area inside the header.
   const titleInset = Math.max(0, 44 - 23 * fontScale);
   const title = `${person.name}${self && person.name.toLowerCase() !== 'you' ? ' (you)' : ''}`;
-  return <PersonRow name={person.name} title={title} photo={person.profile_photo} titleContent={<View style={{ flexDirection: 'row', alignItems: 'flex-end', flexWrap: 'wrap', columnGap: 8, zIndex: 1, paddingBottom: titleInset, marginBottom: -titleInset }}>{!group.is_direct ? <EditableName name={person.name} displayName={title} title="Group nickname" label={`Edit nickname for ${person.name}`} path={`/participants/${person.id}/nickname`} version={group.version} busy={disabled} editable={canEditNickname && !person.removed} onAction={onAction} allowEmpty /> : <Text style={ui.rowTitle}>{title}</Text>}{isOwner && <Text style={[ui.rowSub, { fontSize: ui.rowTitle.fontSize, lineHeight: ui.rowTitle.lineHeight }]}>Organizer</Text>}</View>} trailing={organizer && !self && (joined ? <IconAction name="more" label={`Manage ${person.name}`} disabled={disabled} onPress={onInvite} />
+  return <PersonRow name={person.name} title={title} photo={person.profile_photo} titleContent={<View style={{ flexDirection: 'row', alignItems: 'flex-end', flexWrap: 'wrap', columnGap: 8, zIndex: 1, paddingBottom: titleInset, marginBottom: -titleInset }}>{!group.is_direct ? <EditableName name={person.name} displayName={title} title="Group nickname" label={`Edit nickname for ${person.name}`} path={`/participants/${person.id}/nickname`} version={group.version} busy={disabled} editable={canEditNickname && !person.removed} onAction={onAction} allowEmpty /> : <Text style={ui.rowTitle}>{title}</Text>}{isOwner && <Text style={[ui.rowSub, { fontSize: ui.rowTitle.fontSize, lineHeight: ui.rowTitle.lineHeight }]}>Organizer</Text>}</View>} trailing={canManage && !self && !isOwner && (joined ? <IconAction name="more" label={`Manage ${person.name}`} disabled={disabled} onPress={onInvite} />
       : <Button title="Invite" icon="mail" compact accessibilityLabel={`Invite ${person.name}`} disabled={disabled || !!group.archived} onPress={onInvite} />)}>
       {!!person.account_email && joined && !person.removed && <Text accessibilityLabel={person.account_email} style={ui.rowSub}>{person.account_email}</Text>}
       {!joined && !isOwner && <Text style={ui.rowSub}>Not joined</Text>}
@@ -164,8 +164,8 @@ function MemberSettings({ group, owner, session, onPhotoChanged, selfId, busy, a
   const [inviteCooldowns, setInviteCooldowns] = useState<Record<string, number>>({});
   const inFlight = useRef(false);
   const self = group.participants.find(person => person.id === selfId);
-  const organizer = !self?.removed && self?.user_id != null && self.user_id === group.owner_id;
-  const directPerson = organizer && group.is_direct && group.participants.length === 2
+  const canManage = !self?.removed && self?.user_id != null;
+  const directPerson = canManage && group.is_direct && group.participants.length === 2
     ? group.participants.find(person => person.id !== selfId && !person.removed && person.user_id == null) : undefined;
   const savedEmail = directPerson?.email ?? '', email = contactEmail ?? savedEmail;
   const emailChanged = email.trim().toLowerCase() !== savedEmail.trim().toLowerCase();
@@ -174,11 +174,11 @@ function MemberSettings({ group, owner, session, onPhotoChanged, selfId, busy, a
   useEffect(() => {
     if (lastAddRequest.current === addPersonRequest) return;
     lastAddRequest.current = addPersonRequest;
-    if (organizer && !group.is_direct && !group.archived && !disabled) {
+    if (canManage && !group.is_direct && !group.archived && !disabled) {
       if (Platform.OS === 'web') addTrigger.current = document.querySelector<HTMLElement>('[aria-label="Add person"]') ?? document.activeElement as HTMLElement | null;
       setAddingPerson(true); setFeedback(null);
     }
-  }, [addPersonRequest, organizer, group.is_direct, group.archived, disabled]);
+  }, [addPersonRequest, canManage, group.is_direct, group.archived, disabled]);
   useEffect(() => {
     if (!Object.values(inviteCooldowns).some(value => value > 0)) return;
     const timer = setTimeout(() => setInviteCooldowns(current => Object.fromEntries(Object.entries(current).map(([id, value]) => [id, Math.max(0, value - 1)]))), 1000);
@@ -212,7 +212,7 @@ function MemberSettings({ group, owner, session, onPhotoChanged, selfId, busy, a
   async function deliverEmailInvite(person: Participant) {
     if (!mounted.current) return;
     const current = latestGroup.current, live = current.participants.find(value => value.id === person.id), actor = current.participants.find(value => value.id === selfId);
-    if (current.id !== group.id || current.archived || actor?.removed || actor?.user_id == null || actor.user_id !== current.owner_id || !live || live.removed || live.user_id != null
+    if (current.id !== group.id || current.archived || actor?.removed || actor?.user_id == null || !live || live.removed || live.user_id != null
       || live.email && live.email.trim().toLowerCase() !== person.email?.trim().toLowerCase()) throw new Error('The group or contact changed. Check it before sending.');
     const saved = person.email!;
     const request = emailInvitationRequest(person.id, saved, emailRequests[person.id], currentEmailInvite(latestGroup.current, person.id, saved), Crypto.randomUUID);
@@ -230,7 +230,7 @@ function MemberSettings({ group, owner, session, onPhotoChanged, selfId, busy, a
   function sendEmailInvite(person: Participant) {
     const saved = person.email ?? '';
     if (disabled || inviteCooldowns[person.id]) return;
-    if (!organizer || person.removed || person.user_id != null || !saved || group.archived || (person.id === directPerson?.id && emailChanged)) {
+    if (!canManage || person.removed || person.user_id != null || !saved || group.archived || (person.id === directPerson?.id && emailChanged)) {
       setFeedback({ section: `email-invite:${person.id}`, text: 'The group or contact changed. Close and check it before sending.', error: true });
       return;
     }
@@ -250,20 +250,20 @@ function MemberSettings({ group, owner, session, onPhotoChanged, selfId, busy, a
   }
 
   function editPersonEmail(person: Participant) {
-    if (disabled || !organizer || group.is_direct || group.archived || person.removed || person.user_id != null || person.id === selfId || person.email) return;
+    if (disabled || !canManage || group.is_direct || group.archived || person.removed || person.user_id != null || person.id === selfId || person.email) return;
     if (Platform.OS === 'web') emailTrigger.current = document.activeElement as HTMLElement | null;
     setEmailPersonId(person.id); setPersonEmail(''); setFeedback(null);
   }
 
   function editName(person: Participant) {
-    if (disabled || !organizer || group.archived || person.removed || person.user_id != null || person.id === selfId) return;
+    if (disabled || !canManage || group.archived || person.removed || person.user_id != null || person.id === selfId) return;
     if (Platform.OS === 'web') nameTrigger.current = document.activeElement as HTMLElement | null;
     setNamePersonId(person.id); setPersonName(person.name); setFeedback(null);
   }
 
   function saveName() {
     const current = latestGroup.current, person = current.participants.find(value => value.id === namePersonId), actor = current.participants.find(value => value.id === selfId);
-    if (current.id !== group.id || actor?.removed || actor?.user_id == null || actor.user_id !== current.owner_id || current.archived || !person || person.removed || person.user_id != null || person.id === selfId) return;
+    if (current.id !== group.id || actor?.removed || actor?.user_id == null || current.archived || !person || person.removed || person.user_id != null || person.id === selfId) return;
     void perform('person-name', async () => {
       const name = personName.trim();
       if (!name || name.length > 120) throw new Error('Enter a name up to 120 characters.');
@@ -278,7 +278,7 @@ function MemberSettings({ group, owner, session, onPhotoChanged, selfId, busy, a
 
   function savePersonEmail() {
     const current = latestGroup.current, person = current.participants.find(value => value.id === emailPersonId);
-    if (!organizer || current.is_direct || current.archived || !person || person.removed || person.user_id != null || person.id === selfId) return;
+    if (!canManage || current.is_direct || current.archived || !person || person.removed || person.user_id != null || person.id === selfId) return;
     void perform(`email-invite:${person.id}`, async () => {
       const email = personEmail.trim().toLowerCase();
       if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error('Enter a valid email.');
@@ -289,13 +289,13 @@ function MemberSettings({ group, owner, session, onPhotoChanged, selfId, busy, a
       await saveContact(current.id, person.id, { command_id: request.id, email }, latestAction.current);
       pendingContact.current = null;
       const live = latestGroup.current, target = live.participants.find(value => value.id === person.id), actor = live.participants.find(value => value.id === selfId);
-      if (!mounted.current || live.id !== current.id || live.archived || actor?.removed || actor?.user_id !== live.owner_id || !target || target.removed || target.user_id != null || target.email && target.email.trim().toLowerCase() !== email) return;
+      if (!mounted.current || live.id !== current.id || live.archived || actor?.removed || actor?.user_id == null || !target || target.removed || target.user_id != null || target.email && target.email.trim().toLowerCase() !== email) return;
       closePersonEmail(); setInvitePerson({ ...target, email });
     });
   }
 
   function savePerson() {
-    if (!organizer || group.is_direct || group.archived) return;
+    if (!canManage || group.is_direct || group.archived) return;
     void perform('add-person', async () => {
       const request = personRequest(newName, newEmail, pendingPerson.current, Crypto.randomUUID);
       pendingPerson.current = request;
@@ -307,13 +307,13 @@ function MemberSettings({ group, owner, session, onPhotoChanged, selfId, busy, a
   }
 
   async function createGroupLink() {
-    if (!organizer || group.is_direct || group.archived) return;
+    if (!canManage || group.is_direct || group.archived) return;
     closeAddPerson();
     await perform('group-link', async () => {
       groupLinkCommand.current ??= Crypto.randomUUID();
       const url = onAction('/invite-link', { command_id: groupLinkCommand.current }).then(result => {
         const url = confirmedGroupInvite(group.id, result);
-        if (!mounted.current || latestGroup.current.id !== group.id || latestGroup.current.owner_id !== self?.user_id || latestGroup.current.archived) throw new Error('This invite link is unavailable.');
+        if (!mounted.current || latestGroup.current.id !== group.id || !latestGroup.current.participants.some(person => person.id === selfId && person.user_id != null && !person.removed) || latestGroup.current.archived) throw new Error('This invite link is unavailable.');
         return url;
       });
       // Preserve API/validation errors when the browser rejects the clipboard write.
@@ -324,21 +324,21 @@ function MemberSettings({ group, owner, session, onPhotoChanged, selfId, busy, a
   const managedPerson = group.participants.find(person => person.id === managedPersonId && !person.removed);
   const managedInvites = (group.invites ?? []).filter(invite => !invite.revoked && invite.participant_id === managedPersonId);
   function removeManagedPerson() {
-    if (!managedPerson || disabled || !organizer || group.archived || managedPerson.id === selfId || managedPerson.user_id === group.owner_id || BigInt(group.balances[managedPerson.id] ?? '0') !== 0n) return;
+    if (!managedPerson || disabled || !canManage || group.archived || managedPerson.id === selfId || managedPerson.user_id === group.owner_id || BigInt(group.balances[managedPerson.id] ?? '0') !== 0n) return;
     const person = managedPerson;
     confirm(`Remove ${person.name}?`, `${person.user_id != null ? 'They will lose access to this group. ' : ''}Existing bills and payment history remain.`,
       () => void perform('members', async () => { await onAction(`/participants/${person.id}/remove`, {}); setManagedPersonId(null); }, 'Person removed.'), 'Remove person');
   }
   async function sharePersonInvite() {
     const person = managedPerson;
-    if (!person || disabled || !organizer || group.archived || person.user_id != null) return;
+    if (!person || disabled || !canManage || group.archived || person.user_id != null) return;
     await perform('invites', async () => {
       let link = inviteLink?.participantId === person.id ? inviteLink : null;
       if (!link) {
         const result = await onAction('/invites', { participant_id: person.id });
         if (typeof result.url !== 'string' || !/^https?:\/\//.test(result.url)) throw new Error('The link is not available yet. Sync and try again.');
         const current = latestGroup.current, target = current.participants.find(value => value.id === person.id), actor = current.participants.find(value => value.id === selfId);
-        if (!mounted.current || current.id !== group.id || current.archived || actor?.user_id !== current.owner_id || actor?.removed || !target || target.removed || target.user_id != null) return;
+        if (!mounted.current || current.id !== group.id || current.archived || actor?.user_id == null || actor?.removed || !target || target.removed || target.user_id != null) return;
         link = { participantId: person.id, name: person.name, url: result.url }; setInviteLink(link);
       }
       await Share.share({ message: `Join ${group.name} as ${link.name}: ${publicAppUrl(link.url)}` });
@@ -351,20 +351,20 @@ function MemberSettings({ group, owner, session, onPhotoChanged, selfId, busy, a
 
   return <View style={s.content}>
     {!group.is_direct && <GroupIdentity group={group} session={session ?? null} busy={disabled} editable={!!self && !self.removed && self.user_id != null && !group.archived} onAction={onAction} onPhotoChanged={onPhotoChanged} />}
-    {organizer && !group.is_direct && <View style={s.section}>
+    {canManage && !group.is_direct && <View style={s.section}>
       <Button title={feedback?.section === 'group-link' && !feedback.error ? 'Copied' : 'Copy group link'} icon={feedback?.section === 'group-link' && !feedback.error ? 'check' : 'copy'} disabled={disabled || !!group.archived} onPress={() => void createGroupLink()} />
       <FeedbackNote section="group-link" feedback={feedback} />
     </View>}
     <RowGroup>
-      {group.participants.filter(person => !person.removed).map(person => <MemberRow key={person.id} group={group} person={person} selfId={selfId} organizer={organizer} disabled={disabled} canEditNickname={!!self && !self.removed && self.user_id != null && !group.archived} onAction={onAction} onInvite={() => setManagedPersonId(person.id)} />)}
+      {group.participants.filter(person => !person.removed).map(person => <MemberRow key={person.id} group={group} person={person} selfId={selfId} canManage={canManage} disabled={disabled} canEditNickname={!!self && !self.removed && self.user_id != null && !group.archived} onAction={onAction} onInvite={() => setManagedPersonId(person.id)} />)}
     </RowGroup>
     {previousMembers.length > 0 && <SettingsRow icon="people" label="Previous members" value={String(previousMembers.length)} onPress={() => setShowPrevious(true)} />}
     {showPrevious && previousMembers.length > 0 && <PreviousMembersDialog people={previousMembers} onClose={() => setShowPrevious(false)} />}
     <PersonInviteDialog person={managedPerson} invites={managedInvites} busy={disabled}
-      canInvite={organizer && !group.archived && managedPerson?.user_id == null}
+      canInvite={canManage && !group.archived && managedPerson?.user_id == null}
       canEditContact={!!directPerson && directPerson.id === managedPersonId}
-      canRename={organizer && !group.archived && managedPerson?.user_id == null}
-      canRemove={organizer && managedPerson?.id !== selfId && managedPerson?.user_id !== group.owner_id}
+      canRename={canManage && !group.archived && managedPerson?.user_id == null}
+      canRemove={canManage && managedPerson?.id !== selfId && managedPerson?.user_id !== group.owner_id}
       removeReason={managedPerson && BigInt(group.balances[managedPerson.id] ?? '0') !== 0n ? 'Settle their balance before removing them.' : group.archived ? 'Reopen this group to make changes.' : undefined}
       error={feedback?.error && ['invites', 'members', `email-invite:${managedPersonId}`].includes(feedback.section) ? feedback.text : undefined}
       onClose={() => setManagedPersonId(null)} onEmail={() => {
@@ -387,8 +387,8 @@ function MemberSettings({ group, owner, session, onPhotoChanged, selfId, busy, a
       <Text style={ui.caption}>{emailChanged ? 'Save before sending an invitation.' : savedEmail ? 'Only this email can accept the invitation.' : 'Add an email to invite them later.'}</Text>
       {!!group.archived && <Text style={ui.caption}>Reopen this group to change the email or send an invitation.</Text>}
     </DialogScrollBody><CloseDialogActions title="Close contact" disabled={disabled} onClose={() => setContactOpen(false)} /></KeyboardDialog>}
-    <EditNameDialog person={namePerson} name={personName} disabled={disabled} working={working} unavailable={!organizer || !!group.archived || !!namePerson?.removed || namePerson?.user_id != null} onName={setPersonName} onClose={closeName} onSave={saveName} feedback={feedback} />
-    <PersonEmailDialog person={emailPerson} email={personEmail} disabled={disabled} working={working} unavailable={!organizer || !!group.archived || !!emailPerson?.removed || emailPerson?.user_id != null} onEmail={setPersonEmail} onClose={closePersonEmail} onSave={savePersonEmail} feedback={feedback} />
+    <EditNameDialog person={namePerson} name={personName} disabled={disabled} working={working} unavailable={!canManage || !!group.archived || !!namePerson?.removed || namePerson?.user_id != null} onName={setPersonName} onClose={closeName} onSave={saveName} feedback={feedback} />
+    <PersonEmailDialog person={emailPerson} email={personEmail} disabled={disabled} working={working} unavailable={!canManage || !!group.archived || !!emailPerson?.removed || emailPerson?.user_id != null} onEmail={setPersonEmail} onClose={closePersonEmail} onSave={savePersonEmail} feedback={feedback} />
     <AddPersonDialog visible={addingPerson} disabled={disabled} working={working} archived={!!group.archived} name={newName} email={newEmail}
       onName={setNewName} onEmail={setNewEmail} onClose={closeAddPerson} onSave={savePerson} onLink={() => void createGroupLink()} feedback={feedback} />
     <SendInviteDialog visible={!!invitePerson} email={invitePerson?.email ?? ''} busy={disabled}
@@ -419,7 +419,7 @@ function MemberSettings({ group, owner, session, onPhotoChanged, selfId, busy, a
     </DetailDialog>}
 
     {!!owner && <ExpenseDefaultsSettings group={group} selfId={selfId} owner={owner} busy={disabled || !self || !!self.removed} />}
-      {organizer && <>
+      {canManage && <>
         <Button icon="archive" title={group.archived ? 'Reopen group' : 'Archive group'} kind="text" disabled={disabled} onPress={() => confirm(
           group.archived ? 'Reopen this group?' : 'Archive this group?', group.archived ? 'Members can add expenses again.' : 'Existing records stay available. Reopen the group to add expenses again.',
           () => void perform('archive', async () => { await onAction('/archive', { archived: !group.archived }); }, group.archived ? 'Group reopened.' : 'Group archived.'), group.archived ? 'Reopen group' : 'Archive group')} />

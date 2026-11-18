@@ -20,8 +20,6 @@ from .store_review import require_no_review_email
 
 def _person(actor, group_id, participant_id):
     group = visible_group(actor, group_id, lock=True)
-    if group.owner_id != actor.pk:
-        raise HttpError(403, "Only the organizer can edit this person")
     writable(group)
     person = group.participants.filter(id=participant_id, user__isnull=True, removed=False).first()
     if not person:
@@ -95,8 +93,6 @@ def send_person_invite(actor, group_id, participant_id, payload, origin, network
     from .membership import limit_links, linked_result, lock_link_users
     with transaction.atomic():
         group = visible_group(actor, group_id)
-        if group.owner_id != actor.pk:
-            raise HttpError(403, "Only the organizer can invite this person")
         previous, fingerprint = previous_result(actor, payload["command_id"], f"email_invite:{participant_id}", payload)
         if previous and previous.get('linked_participant_ids'):
             return previous
@@ -105,8 +101,6 @@ def send_person_invite(actor, group_id, participant_id, payload, origin, network
             raise HttpError(409, "Choose an unclaimed person in this ledger")
         matches = lock_link_users(actor, [initial.contact_email])
         group = visible_group(actor, group_id, lock=True)
-        if group.owner_id != actor.pk:
-            raise HttpError(403, "Only the organizer can invite this person")
         previous, fingerprint = previous_result(actor, payload["command_id"], f"email_invite:{participant_id}", payload)
         if previous and previous.get('linked_participant_ids'):
             return previous

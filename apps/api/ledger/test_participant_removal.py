@@ -38,7 +38,7 @@ def test_removal_permissions_balance_and_command_replay(client, group):
     member, outsider = account(), account()
     link(client, member, group_id, ids[1])
     assert remove(outsider, group_id, ids[1]).status_code == 404
-    assert remove(member, group_id, ids[2]).status_code == 403
+    assert remove(member, group_id, ids[0]).status_code == 409
     assert remove(client, group_id, ids[0]).status_code == 409
     bill = expense(ids, payer=0, beneficiaries=[1], total="12345")
     assert send(client, "post", f"/groups/{group_id}/expenses", bill).status_code == 200
@@ -54,6 +54,7 @@ def test_removal_permissions_balance_and_command_replay(client, group):
     assert remove(client, group_id, ids[1], command).status_code == 200
     assert remove(client, group_id, ids[1]).status_code == 409
     assert Group.objects.get(pk=group_id).changes.filter(kind="participant_removed").count() == 1
+    assert remove(member, group_id, ids[2]).status_code == 404
 
 
 def test_removal_preserves_history_revokes_access_invites_and_queued_push(client, group, settings, monkeypatch):
@@ -262,3 +263,12 @@ def test_waiting_member_write_rechecks_access_after_removal(client, group):
             assert remove(client, group_id, ids[1]).status_code == 200
         assert future.result(timeout=5) == 404
     assert not Expense.objects.filter(group_id=group_id).exists()
+
+
+def test_member_can_remove_a_settled_guest_but_not_the_organizer(client, group):
+    group_id, ids, _ = group
+    member = account()
+    link(client, member, group_id, ids[1])
+    assert remove(member, group_id, ids[0]).status_code == 409
+    assert remove(member, group_id, ids[2]).status_code == 200
+    assert Participant.objects.get(pk=ids[2]).removed

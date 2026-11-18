@@ -106,7 +106,7 @@ def test_add_links_without_rewriting_old_bills_and_rejects_duplicate_identity(cl
     assert all(after['balances'][key] == value for key, value in before['balances'].items())
     duplicate = {**payload, 'id': uid(), 'command_id': uid()}
     assert send(client, 'post', f'/groups/{group[0]}/participants', duplicate).status_code == 409
-    assert send(recipient, 'post', f'/groups/{group[0]}/participants', duplicate).status_code == 403
+    assert send(recipient, 'post', f'/groups/{group[0]}/participants', duplicate).status_code == 409
     assert send(client, 'post', f'/groups/{group[0]}/participants/{payload["id"]}/remove', {'command_id': uid()}).status_code == 200
     assert send(client, 'post', f'/groups/{group[0]}/participants', duplicate).status_code == 409
 

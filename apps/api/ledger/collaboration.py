@@ -45,8 +45,6 @@ def valid_invite(token, *, lock=False):
 @transaction.atomic
 def create_invite(actor, group_id, payload):
     group = visible_group(actor, group_id, lock=True)
-    if group.owner_id != actor.pk:
-        raise HttpError(403, "Only the organizer creates participant invitations")
     previous, fingerprint = previous_result(actor, payload["command_id"], f"invite:{group_id}", payload)
     if previous:
         return previous
@@ -140,7 +138,7 @@ def claim_invite(actor, token, payload):
     invite = valid_invite(token, lock=True)
     require_group_scope(actor, group)
     if not invite.intended_email and invite.participant.contact_email:
-        raise HttpError(409, "Ask the organizer to send an email invitation for this person")
+        raise HttpError(409, "Ask a group member to send an email invitation for this person")
     if invite.intended_email:
         from .email_invites import claim_email_invite
         return claim_email_invite(actor, invite, payload)
@@ -154,7 +152,7 @@ def claim_invite(actor, token, payload):
     if invite.participant.user_id or Participant.objects.filter(group=group, user=actor).exists():
         raise HttpError(409, "Participant or account is already linked in this group")
     if invite.claimant_id and invite.claimant_id != actor.pk:
-        raise HttpError(409, "Another claim is pending; ask the organizer to revoke and reissue")
+        raise HttpError(409, "Another claim is pending; ask a group member to revoke and reissue")
     writable(group)
     invite.participant.user = actor
     invite.participant.save(update_fields=["user"])
@@ -175,12 +173,11 @@ def claim_invite(actor, token, payload):
 @transaction.atomic
 def review_invite(actor, group_id, invite_id, payload, approve):
     if approve:
-        claimant_id = Invite.objects.filter(id=invite_id, participant__group_id=group_id, participant__group__owner_id=actor.pk).values_list("claimant_id", flat=True).first()
+        visible_group(actor, group_id)
+        claimant_id = Invite.objects.filter(id=invite_id, participant__group_id=group_id).values_list("claimant_id", flat=True).first()
         if claimant_id:
             get_user_model().objects.select_for_update(no_key=True).filter(pk=claimant_id).exists()
     group = visible_group(actor, group_id, lock=True)
-    if group.owner_id != actor.pk:
-        raise HttpError(403, "Only the organizer can review participant claims")
     previous, fingerprint = previous_result(
         actor, payload["command_id"], f"review_invite:{group_id}:{invite_id}:{approve}", payload
     )
@@ -240,8 +237,6 @@ def review_invite(actor, group_id, invite_id, payload, approve):
 @transaction.atomic
 def create_opening(actor, group_id, payload):
     group = visible_group(actor, group_id, lock=True)
-    if actor.pk != group.owner_id:
-        raise HttpError(403, "Only the organizer proposes opening balances")
     previous, fingerprint = previous_result(actor, payload["command_id"], f"opening:{group_id}", payload)
     if previous:
         return previous
@@ -315,8 +310,6 @@ def acknowledge_opening(actor, group_id, opening_id, payload):
 @transaction.atomic
 def archive_group(actor, group_id, payload):
     group = visible_group(actor, group_id, lock=True)
-    if group.owner_id != actor.pk:
-        raise HttpError(403, "Only the organizer archives a group")
     previous, fingerprint = previous_result(actor, payload["command_id"], f"archive:{group_id}", payload)
     if previous:
         return previous
@@ -347,8 +340,6 @@ def archive_group(actor, group_id, payload):
 def add_participant(actor, group_id, payload):
     from .membership import limit_links, linked_result, lock_link_users
     group = visible_group(actor, group_id)
-    if group.owner_id != actor.pk:
-        raise HttpError(403, "Only the organizer can add participants")
     if not payload.get("email"):
         payload = {key: value for key, value in payload.items() if key != "email"}
     previous, fingerprint = previous_result(
@@ -359,8 +350,6 @@ def add_participant(actor, group_id, payload):
     email = clean_contact_email(payload.get("email", ""))
     matches = lock_link_users(actor, [email])
     group = visible_group(actor, group_id, lock=True)
-    if group.owner_id != actor.pk:
-        raise HttpError(403, "Only the organizer can add participants")
     previous, fingerprint = previous_result(actor, payload["command_id"], f"add_participant:{group_id}", payload)
     if previous:
         return previous
@@ -395,8 +384,6 @@ def add_participant(actor, group_id, payload):
 @transaction.atomic
 def remove_participant(actor, group_id, participant_id, payload):
     group = visible_group(actor, group_id, lock=True)
-    if group.owner_id != actor.pk:
-        raise HttpError(403, "Only the organizer can remove participants")
     previous, fingerprint = previous_result(
         actor, payload["command_id"], f"remove_participant:{group_id}:{participant_id}", payload,
     )
