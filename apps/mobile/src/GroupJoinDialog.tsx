@@ -39,7 +39,7 @@ export default function GroupJoinDialog({ session, token, onJoined, onCancel }: 
       }, err => {
         if (controller.signal.aborted) return;
         setUnavailable(err instanceof ApiError && (err.status === 403 || err.status === 404));
-        setError(err instanceof ApiError && err.status === 404 ? 'This invitation is no longer available. Ask the organizer for a new link.' : err.message);
+        setError(err instanceof ApiError && err.status === 404 ? 'This invitation is no longer available. Ask a group member for a new link.' : err.message);
       });
     return () => { live.current = false; controller.abort(); };
   }, [session.token, token, retry]);
@@ -61,7 +61,7 @@ export default function GroupJoinDialog({ session, token, onJoined, onCancel }: 
         setError(err instanceof Error ? err.message : 'Could not join. Try again.');
         if (err instanceof ApiError && (err.status === 403 || err.status === 404)) {
           setUnavailable(true);
-          if (err.status === 404) setError('This invitation is no longer available. Ask the organizer for a new link.');
+          if (err.status === 404) setError('This invitation is no longer available. Ask a group member for a new link.');
         }
         const rejected = err instanceof ApiError && err.status >= 400 && err.status < 500 && err.status !== 429;
         if (rejected) { attempt.current = null; setUncertain(false); setPreview(null); setStep('choose'); }

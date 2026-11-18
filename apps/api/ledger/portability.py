@@ -38,8 +38,8 @@ def accepted_export(actor, group_id):
                                    'text': row.text, 'created_at': row.created_at.isoformat()}
                                   for row in BillChatMessage.objects.filter(expense__group=group, hidden_at__isnull=True)
                                   .exclude(sender_id__in=BillChatBlock.objects.filter(owner=actor, active=True).values('blocked_id')).order_by('id')]
-        if group.owner_id != actor.pk:
-            state["invites"] = []
+        # Invite administration metadata belongs in group settings, not a portable ledger.
+        state["invites"] = []
         return {
             "schema_version": 1,
             "currency": "INR",

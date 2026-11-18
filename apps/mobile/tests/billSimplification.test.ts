@@ -502,7 +502,8 @@ test('Person dialog keeps invite permissions and nonzero removal guard with the 
   const panel = memberPanel(async () => ({})); panel.row(panel.app.render(panel.props)).props.onInvite();
   const dialog = nodes(panel.app.render(panel.props)).find(node => node.type === 'PersonInviteDialog')!;
   assert.equal(dialog.props.canInvite, true); assert.match(dialog.props.removeReason, /Settle their balance/);
-  for (const patch of [{ archived: true }, { owner_id: 2 }]) {
+  assert.equal(nodes(panel.app.render({ ...panel.props, group: { ...inviteGroup, owner_id: 2 } })).find(node => node.type === 'PersonInviteDialog')!.props.canInvite, true);
+  for (const patch of [{ archived: true }, { participants: [{ ...inviteGroup.participants[0], removed: true }, inviteGroup.participants[1]] }]) {
     const tree = panel.app.render({ ...panel.props, group: { ...inviteGroup, ...patch } });
     assert.equal(nodes(tree).find(node => node.type === 'PersonInviteDialog')!.props.canInvite, false);
   }

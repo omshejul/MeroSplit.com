@@ -189,14 +189,14 @@ def test_active_member_bill_reversal_keeps_existing_permission_without_creator_r
     assert response.status_code == 200
 
 
-def test_payment_reversal_rejects_uninvolved_member_without_touching_original(client, group):
+def test_payment_reversal_allows_uninvolved_active_member(client, group):
     payment = add_payment(client, group)
     member = get_user_model().objects.create_user(username=uid(), email=f"{uid()}@example.invalid")
     Participant.objects.filter(pk=group[1][2]).update(user=member)
     response = send(authenticated_client(member), "post", f"/groups/{group[0]}/settlements/{payment['id']}/reverse", {"command_id": uid()})
-    assert response.status_code == 403
-    assert not Settlement.objects.get(pk=payment["id"]).reversed
-    assert not Change.objects.filter(kind="settlement_reversed").exists()
+    assert response.status_code == 200
+    assert Settlement.objects.get(pk=payment["id"]).reversed
+    assert Change.objects.filter(kind="settlement_reversed").exists()
 
 
 @pytest.mark.parametrize("kind", ["bill", "payment"])

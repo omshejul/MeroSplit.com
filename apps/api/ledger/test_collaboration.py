@@ -9,7 +9,7 @@ from django.contrib.auth import get_user_model
 from django.test import Client
 from django.utils import timezone
 
-from .models import Group, PaymentAttempt
+from .models import Group, Invite, PaymentAttempt
 from .test_api import authenticated_client, expense, send, uid
 from .test_api import client as client
 from .test_api import group as group
@@ -93,48 +93,25 @@ def test_shared_link_joins_directly_and_keeps_guest_scope_and_revocation(client,
     assert send(member, "post", f"/invites/{token}/claim", claim).status_code == 200
     assert send(stranger, "post", f"/invites/{token}/claim", {"command_id": uid()}).status_code == 409
     assert send(member, "get", f"/groups/{group_id}").status_code == 200
-    owner_invite = next(row for row in state(client, group_id)["invites"] if row["id"] == invitation)
-    assert owner_invite["claimant_email"] == member.actor.email
-    assert owner_invite["claimant_id"] == member.actor.pk
-    assert owner_invite["approved"]
+    approved_invite = Invite.objects.get(pk=invitation)
+    assert approved_invite.claimant_id == member.actor.pk and approved_invite.approved
     assert not send(Client(), "get", f"/invites/{token}").json()["claim_pending"]
     version = state(member, group_id)["version"]
     assert send(member, "post", f"/invites/{token}/claim", {"command_id": uid()}).json()["version"] == version
-    assert (
-        send(
-            member, "post", f"/groups/{group_id}/invites/{invitation}/approve", {"command_id": uid()}
-        ).status_code
-        == 403
-    )
     approval = {"command_id": uid()}
     assert (
-        send(client, "post", f"/groups/{group_id}/invites/{invitation}/approve", approval).status_code == 200
+        send(member, "post", f"/groups/{group_id}/invites/{invitation}/approve", approval).status_code == 200
     )
     assert (
-        send(client, "post", f"/groups/{group_id}/invites/{invitation}/approve", approval).status_code == 200
+        send(member, "post", f"/groups/{group_id}/invites/{invitation}/approve", approval).status_code == 200
     )
     member_state = state(member, group_id)
     assert member_state["version"] == version, "legacy approval does not duplicate membership"
     assert next(p for p in member_state["participants"] if p["id"] == ids[1])["user_id"] == member.actor.pk
     assert member_state["invites"] == []
-    assert (
-        send(
-            member, "post", f"/groups/{group_id}/invites", {"command_id": uid(), "participant_id": ids[2]}
-        ).status_code
-        == 403
-    )
-    assert (
-        send(
-            member, "post", f"/groups/{group_id}/invites/{invitation}/revoke", {"command_id": uid()}
-        ).status_code
-        == 403
-    )
-    assert (
-        send(
-            client, "post", f"/groups/{group_id}/invites/{invitation}/revoke", {"command_id": uid()}
-        ).status_code
-        == 200
-    )
+    issued, _ = invite(member, group_id, ids[2])
+    assert {row["id"] for row in state(client, group_id)["invites"]} == {issued}
+    assert send(member, "post", f"/groups/{group_id}/invites/{invitation}/revoke", {"command_id": uid()}).status_code == 200
     assert send(Client(), "get", f"/invites/{token}").status_code == 404
     assert send(stranger, "post", f"/invites/{token}/claim", {"command_id": uid()}).status_code == 404
     assert send(member, "get", f"/groups/{group_id}").status_code == 200
@@ -152,8 +129,8 @@ def test_opening_vector_posts_only_after_every_nonzero_person_acknowledges(clien
         "source": "Agreed prior group balances",
         "cutoff": "2026-10-16",
     }
-    assert send(borrower, "post", f"/groups/{group_id}/opening-balances", body).status_code == 403
-    assert send(client, "post", f"/groups/{group_id}/opening-balances", body).status_code == 200
+    assert send(outsider, "post", f"/groups/{group_id}/opening-balances", body).status_code == 404
+    assert send(borrower, "post", f"/groups/{group_id}/opening-balances", body).status_code == 200
     before = state(client, group_id)
     assert before["opening_balance"]["accepted"] is False
     assert set(before["balances"].values()) == {"0"}
@@ -457,3 +434,22 @@ def test_browser_session_claim_requires_csrf_while_native_token_does_not(client,
     native.defaults["HTTP_X_SESSION_TOKEN"] = client.defaults["HTTP_X_SESSION_TOKEN"]
     response = send(native, "put", "/me/payment-profile", {"vpa": "native@upi"})
     assert response.status_code == 200, response.content
+
+
+def test_member_can_add_people_archive_reopen_and_reverse_a_payment_between_other_people(client, group):
+    group_id, ids, _ = group
+    member, outsider = account(), account()
+    link(client, member, group_id, ids[2])
+    person = {"command_id": uid(), "id": uid(), "name": "New guest"}
+    assert send(member, "post", f"/groups/{group_id}/participants", person).status_code == 200
+    payment = {"command_id": uid(), "id": uid(), "sender": ids[0], "recipient": ids[1], "amount": "500"}
+    assert send(client, "post", f"/groups/{group_id}/settlements", payment).status_code == 200
+    reverse = f"/groups/{group_id}/settlements/{payment['id']}/reverse"
+    archive = f"/groups/{group_id}/archive"
+    assert send(outsider, "post", reverse, {"command_id": uid()}).status_code == 404
+    assert send(outsider, "post", archive, {"command_id": uid(), "archived": True}).status_code == 404
+    assert send(member, "post", archive, {"command_id": uid(), "archived": True}).status_code == 200
+    assert send(member, "post", reverse, {"command_id": uid()}).status_code == 409
+    assert send(member, "post", archive, {"command_id": uid(), "archived": False}).status_code == 200
+    assert send(member, "post", reverse, {"command_id": uid()}).status_code == 200
+    assert state(member, group_id)["settlements"][0]["reversed"]

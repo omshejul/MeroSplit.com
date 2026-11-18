@@ -179,12 +179,12 @@ test('Member rows have one Invite action regardless of delivery state, with a se
   let opens = 0;
   for (const state of ['sent', 'failed', 'sending']) {
     group.invites = [{ id: 'invite', participant_id: person.id, intended_email: person.email, send_state: state, approved: false, revoked: false, claimant_id: null, claimant_email: null }];
-    const tree = app.render('MemberRow', { group, person, selfId: 'self', organizer: true, disabled: false, onInvite: () => opens++ });
+    const tree = app.render('MemberRow', { group, person, selfId: 'self', canManage: true, disabled: false, onInvite: () => opens++ });
     button(tree, 'Invite').props.onPress(); assert.equal(button(tree, 'Send'), undefined);
   }
   assert.equal(opens, 3);
   group.invites = [{ id: 'claim', participant_id: person.id, approved: false, revoked: false, claimant_id: 2, claimant_email: 'noor@example.invalid' }];
-  assert.equal(button(app.render('MemberRow', { group, person, selfId: 'self', organizer: true, disabled: true }), 'Invite').props.disabled, true);
+  assert.equal(button(app.render('MemberRow', { group, person, selfId: 'self', canManage: true, disabled: true }), 'Invite').props.disabled, true);
 });
 
 
@@ -430,8 +430,8 @@ test('clipboard helpers preserve synchronous UPI copies and native behavior, and
   assert.equal(writes, 1, 'denial must not trigger a second clipboard attempt');
 });
 
-test('deferred clipboard data never resolves for a rejected receipt or changed owner/group', async () => {
-  for (const condition of ['api', 'receipt', 'owner', 'group', 'archived', 'unmount']) {
+test('deferred clipboard data never resolves for a rejected receipt or removed membership or changed group', async () => {
+  for (const condition of ['api', 'receipt', 'removed', 'group', 'archived', 'unmount']) {
     let resolve!: (value: any) => void, reject!: (error: Error) => void;
     const response = new Promise<any>((ok, fail) => { resolve = ok; reject = fail; });
     const copied: string[] = []; let writes = 0;
@@ -444,7 +444,7 @@ test('deferred clipboard data never resolves for a rejected receipt or changed o
     const props = { group, selfId: 'self', busy: false, onMembership() {}, onAction: () => response };
     button(app.render('MemberSettings', props), 'Copy group link').props.onPress();
     assert.equal(writes, 1, 'clipboard initialization precedes response validation');
-    if (condition === 'owner') app.render('MemberSettings', { ...props, group: { ...group, owner_id: 2 } });
+    if (condition === 'removed') app.render('MemberSettings', { ...props, group: { ...group, participants: [{ ...group.participants[0], removed: true }] } });
     if (condition === 'group') app.render('MemberSettings', { ...props, group: { ...group, id: 'other' } });
     if (condition === 'archived') app.render('MemberSettings', { ...props, group: { ...group, archived: true } });
     if (condition === 'unmount') { await app.commit(); app.unmount(); }

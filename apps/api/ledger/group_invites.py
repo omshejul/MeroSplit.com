@@ -21,6 +21,10 @@ def link_token(link):
     return signing.Signer(salt="merosplit.group-join.v1").sign(str(link.id))
 
 
+def active_link_creator(link, group):
+    return group.participants.filter(user_id=link.created_by_id, removed=False, user__is_active=True).exists()
+
+
 def resolve_link(token, *, lock=False):
     if re.fullmatch(r"[A-Za-z0-9_-]{32}", token):
         link = GroupInviteLink.objects.filter(public_code=token).first()
@@ -38,8 +42,8 @@ def resolve_link(token, *, lock=False):
     if lock:
         query = query.select_for_update()
     group = query.first()
-    # An old organizer's link must not survive their departure or an ownership change.
-    if not group or group.archived or group.is_direct or group.owner_id != link.created_by_id or not group.participants.filter(user_id=link.created_by_id, removed=False, user__is_active=True).exists():
+    # A member's link stops working when that member leaves or is removed.
+    if not group or group.archived or group.is_direct or not active_link_creator(link, group):
         raise HttpError(404, "This invite link is unavailable")
     return link, group
 
@@ -56,17 +60,17 @@ def ensure_public_code(link):
 def create_link(actor, group_id, payload):
     group = visible_group(actor, group_id, lock=True)
     writable(group)
-    if group.owner_id != actor.pk or group.is_direct:
-        raise HttpError(403, "Only the organizer can share a group invite link")
+    if group.is_direct:
+        raise HttpError(403, "Group invite links are available for shared groups")
     previous, fingerprint = previous_result(actor, payload["command_id"], f"group_link:{group.id}", payload)
     if previous:
-        link = GroupInviteLink.objects.filter(group=group, created_by=actor).first()
-        if not link or previous.get("invite_link_id") != str(link.id):
+        link = GroupInviteLink.objects.filter(group=group).first()
+        if not link or previous.get("invite_link_id") != str(link.id) or not active_link_creator(link, group):
             raise HttpError(409, "The invitation changed; create a new link")
         return previous, ensure_public_code(link)
     link, created = GroupInviteLink.objects.get_or_create(group=group, defaults={"created_by": actor})
-    if link.created_by_id != actor.pk:
-        # A successor gets a new capability; the departed organizer's URL stays invalid.
+    if not created and not active_link_creator(link, group):
+        # Never reactivate a URL issued by a former member.
         link.delete()
         link = GroupInviteLink.objects.create(group=group, created_by=actor)
         created = True
@@ -92,7 +96,7 @@ def preview_link(actor, token):
     require_group_scope(actor, group)
     person = group.participants.filter(user=actor).first()
     if person and person.removed:
-        raise HttpError(403, "Ask the organizer to add you again")
+        raise HttpError(403, "Ask a group member to add you again")
     choices = list(claimable_people(group).order_by("id")) if not person else []
     # Only authenticated capability holders see eligible labels, never emails or money.
     return {"name": group.name, "already_member": bool(person), "version": group.version,
@@ -109,7 +113,7 @@ def join_link(actor, payload):
     require_group_scope(actor, group)
     person = group.participants.filter(user=actor).first()
     if person and person.removed:
-        raise HttpError(403, "Ask the organizer to add you again")
+        raise HttpError(403, "Ask a group member to add you again")
     # Absent new defaults must retain the original legacy command fingerprint.
     payload = {key: value for key, value in payload.items() if key not in {"participant_id", "preview_version", "display_name"} or value is not None and value != ""}
     previous, fingerprint = previous_result(actor, payload["command_id"], f"group_join:{group.id}", payload)

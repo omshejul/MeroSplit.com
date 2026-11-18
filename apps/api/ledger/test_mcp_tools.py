@@ -411,14 +411,14 @@ def test_manual_payment_preserves_existing_pending_attempt_conflict(ledger, stat
     assert Settlement.objects.count() == 1
 
 
-def test_reversal_permissions_and_same_command_replay_are_existing_rules(ledger):
+def test_active_member_can_reverse_payment_and_replay_same_command(ledger):
     actor, _, outsider, group, _, _, guest, _, payment = ledger
+    payload = {"command_id": str(uuid4())}
+    fails(404, lambda: reverse_external_payment(outsider, group.id, payment.id, payload))
     guest.user = outsider
     guest.save(update_fields=["user"])
-    payload = {"command_id": str(uuid4())}
-    fails(403, lambda: reverse_external_payment(outsider, group.id, payment.id, payload))
-    result = reverse_external_payment(actor, group.id, payment.id, payload)
-    assert reverse_external_payment(actor, group.id, payment.id, payload) == result
+    result = reverse_external_payment(outsider, group.id, payment.id, payload)
+    assert reverse_external_payment(outsider, group.id, payment.id, payload) == result
     payment.refresh_from_db()
     assert payment.reversed
     assert CommandReceipt.objects.count() == 1

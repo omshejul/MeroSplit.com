@@ -414,6 +414,17 @@ def expense_detail(actor, group_id, expense_id, *, version=None):
     return result
 
 
+def actionable_invites(group):
+    return [{"id": str(invite.id), "participant_id": str(invite.participant_id),
+                "claimant_id": invite.claimant_id, "claimant_email": invite.claimant.email if invite.claimant else None,
+                "approved": invite.approved, "revoked": False, "expires_at": invite.expires_at.isoformat(),
+                "intended_email": invite.intended_email, "send_state": invite.send_state,
+                "sent_at": invite.sent_at.isoformat() if invite.sent_at else None}
+               for invite in Invite.objects.filter(participant__group=group, participant__removed=False,
+                                                   participant__user__isnull=True, revoked=False, approved=False, expires_at__gt=timezone.now())
+               .select_related("claimant").order_by("participant_id", "-expires_at", "-id").distinct("participant_id")[:100]]
+
+
 @transaction.atomic
 def group_summary(actor, group_id, *, limit=50):
     _limit(limit)
@@ -436,16 +447,6 @@ def group_summary(actor, group_id, *, limit=50):
                 for profile in PaymentProfile.objects.filter(user_id__in=[person.user_id for person in participants if person.user_id and not person.removed])}
     pages = {resource: _page(actor, group, resource, limit) for resource in ("bills", "activity", "settlements", "attempts")}
     transactions = transaction_page(actor, group, limit)
-    invites = []
-    if group.owner_id == actor.pk:
-        invites = [{"id": str(invite.id), "participant_id": str(invite.participant_id),
-                    "claimant_id": invite.claimant_id, "claimant_email": invite.claimant.email if invite.claimant else None,
-                    "approved": invite.approved, "revoked": False, "expires_at": invite.expires_at.isoformat(),
-                    "intended_email": invite.intended_email, "send_state": invite.send_state,
-                    "sent_at": invite.sent_at.isoformat() if invite.sent_at else None}
-                   for invite in Invite.objects.filter(participant__group=group, participant__removed=False,
-                                                       participant__user__isnull=True, revoked=False, approved=False, expires_at__gt=timezone.now())
-                   .select_related("claimant").order_by("participant_id", "-expires_at", "-id").distinct("participant_id")[:100]]
     return {
         "read_mode": "summary", "attribution_version": 1, "id": str(group.id), "name": group.name, "group_photo": group_photo(group), "version": group.version,
         "hidden": next(person.hidden for person in participants if person.user_id == actor.pk and not person.removed),
@@ -453,12 +454,12 @@ def group_summary(actor, group_id, *, limit=50):
         "participants": [{"id": str(person.id), "name": participant_display_name(person), "recorded_name": person.name, "default_name": participant_display_name(person, use_override=False),
                           "user_id": person.user_id, "removed": person.removed, "profile_photo": photos.get(person.user_id) if not person.removed else None,
                           "account_email": person.user.email if person.user_id and person.user.is_active and not person.removed else None,
-                          "payment_profile": profiles.get(person.user_id), **({"email": person.contact_email} if group.owner_id == actor.pk else {})}
+                          "payment_profile": profiles.get(person.user_id), **({"email": person.contact_email} if not person.user_id and not person.removed else {})}
                          for person in participants],
         "debt_checkpoint": group.debt_checkpoint,
         "can_change_simplify": not (opening and not opening.accepted) and not participants[0].has_pending_payments,
         **finance, "expenses": pages["bills"]["items"], "activity": pages["activity"]["items"],
-        "settlements": pages["settlements"]["items"], "payment_attempts": pages["attempts"]["items"], "invites": invites,
+        "settlements": pages["settlements"]["items"], "payment_attempts": pages["attempts"]["items"], "invites": actionable_invites(group),
         "transactions": transactions["items"],
         "history": {**{resource: {"next_cursor": page["next_cursor"]} for resource, page in pages.items()},
                     "transactions": {"next_cursor": transactions["next_cursor"]}},

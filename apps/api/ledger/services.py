@@ -596,13 +596,6 @@ def reverse_settlement(actor, group_id, settlement_id, payload):
         raise HttpError(404, "Settlement not found")
     if payment.reversed:
         raise HttpError(409, "Settlement is already reversed")
-    if actor.pk not in [
-        group.owner_id,
-        payment.recorded_by_id,
-        payment.sender.user_id,
-        payment.recipient.user_id,
-    ]:
-        raise HttpError(403, "Only the involved people or organizer can reverse this record")
     payment.reversed = True
     payment.save(update_fields=["reversed"])
     keep_removed_balances_zero(group)
