@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { FlatList } from 'react-native';
 import type { GroupTransaction } from './types';
+import { transactionLiftTiming } from './motionShared';
 
 // FlatList can only center a measured cell. For a distant record, approach its
 // estimated position first, then center the actual cell once it is mounted.
@@ -24,7 +25,8 @@ export function useTransactionReveal(list: React.RefObject<FlatList<GroupTransac
       if (!scrolling || !visible.current.includes(key)) return;
       cancel();
       setHighlight(key);
-      timer = setTimeout(() => setHighlight(''), 1800);
+      const { rise, hold, return: settle } = transactionLiftTiming;
+      timer = setTimeout(() => setHighlight(''), rise + hold + settle);
     };
     settled.current = () => {
       if (!scrolling) return;

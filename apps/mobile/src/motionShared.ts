@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { AccessibilityInfo, Animated, AppState, Easing, Platform } from 'react-native';
 
 export type MotionPreference = { enabled: boolean; active: boolean };
+export const transactionLiftTiming = { rise: 170, hold: 280, return: 300 } as const;
 export const motionDuration = { feedback: 180, paperScale: 0.75 } as const;
 
 // RN Web maps these APIs to live matchMedia and document visibility events.
