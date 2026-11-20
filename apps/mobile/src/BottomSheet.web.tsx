@@ -1,8 +1,9 @@
 // shadcn's Base UI Drawer composition, styled with the existing app tokens.
 // https://ui.shadcn.com/docs/components/base/drawer (MIT), adapted 2026-11-01.
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Drawer } from '@base-ui/react/drawer';
 import RowGroup from './RowGroup';
+import { ScrollPrefetch } from './ScrollPrefetch';
 import LoadingOverlay from './LoadingOverlay';
 import { useDialogRegistration } from './DialogFocus';
 import { appFontFamily } from './typography';
@@ -14,6 +15,15 @@ const snapPoints = [0.65, 1];
 export default function BottomSheet({ visible, onDismiss, title, icon, total, count, disabled, doneAccessibilityLabel, gap = 0, closeIconOnly = false, children }: React.ComponentProps<typeof NativeBottomSheet>) {
   const { palette, motion } = useUI();
   const [snapPoint, setSnapPoint] = useState<Drawer.Root.SnapPoint | null>(snapPoints[0]);
+  const body = useRef<HTMLDivElement>(null);
+  const [viewport] = useState(() => ({ bottom: 0, listeners: new Set<() => void>() }));
+  const checkPrefetch = () => { if (body.current) { viewport.bottom = body.current.getBoundingClientRect().bottom; viewport.listeners.forEach(check => check()); } };
+  useEffect(() => {
+    if (!visible || !body.current) return;
+    const observer = new ResizeObserver(checkPrefetch);
+    observer.observe(body.current);
+    return () => observer.disconnect();
+  }, [visible]);
   useDialogRegistration(visible);
   useEffect(() => { if (!visible) setSnapPoint(snapPoints[0]); }, [visible]);
   const close = () => { if (!disabled) onDismiss(); };
@@ -27,7 +37,7 @@ export default function BottomSheet({ visible, onDismiss, title, icon, total, co
             <div className="mero-sheet-heading"><Icon name={icon} /><Drawer.Title className="mero-sheet-title">{title}</Drawer.Title><Button title={closeIconOnly ? undefined : "Done"} icon={closeIconOnly ? "close" : "tick"} iconOnly={closeIconOnly} kind={closeIconOnly ? "text" : "outlined"} compact accessibilityLabel={doneAccessibilityLabel ?? (icon === 'people' ? 'Apply split' : icon === 'pay' ? 'Apply payers' : 'Close sheet')} disabled={disabled || !closeIconOnly && count === 0} style={closeIconOnly ? { width: 44, height: 44, minWidth: 44 } : undefined} onPress={close} /></div>
             {(total || count !== undefined) && <p className="mero-sheet-summary" style={{ color: palette.muted }}>{[total, count === undefined ? '' : `${count} selected`].filter(Boolean).join(' · ')}</p>}
           </header>
-          <Drawer.Content className="mero-sheet-body"><RowGroup style={{ gap }}>{children}</RowGroup></Drawer.Content>
+          <Drawer.Content className="mero-sheet-body" ref={body} onScroll={checkPrefetch}><ScrollPrefetch.Provider value={viewport}><RowGroup style={{ gap }}>{children}</RowGroup></ScrollPrefetch.Provider></Drawer.Content>
           <LoadingOverlay inline />
         </Drawer.Popup>
       </Drawer.Viewport>

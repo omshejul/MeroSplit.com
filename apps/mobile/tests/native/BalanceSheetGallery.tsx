@@ -10,7 +10,7 @@ import { AppFrame, ScreenHeader, pageContentStyle } from '../../src/AppNavigatio
 import AppStack, { NavigationContainer, useAppNavigation } from '../../src/AppStack';
 import BalanceExplanation, { type BalanceSelection } from '../../src/BalanceExplanationDialog';
 import { balanceKey } from '../../src/balanceExplanation';
-import { directTransfers, proposeTransfers } from '../../src/accounting';
+import { addExpense, proposeTransfers, directTransfers } from '../../src/accounting';
 import { ExpenseDetail } from '../../src/GroupScreen';
 import type { Expense, Group } from '../../src/types';
 const file = new File(Paths.document, 'balance-sheet-state.json');
@@ -19,8 +19,8 @@ const entries = [ ['Fbomb', 11900, 20700, 'food'], ['bobby', 53300, 0, 'food'], 
 function fixture(long: boolean, simplified: boolean): Group {
  if (simplified) {
   const make = (id: string, payer: string, shares: Record<string, string>): Expense => ({ id, version: 1, description: id, total: Object.values(shares).reduce((sum, amount) => sum + BigInt(amount), 0n).toString(), paid: { [payer]: Object.values(shares).reduce((sum, amount) => sum + BigInt(amount), 0n).toString() }, shares, split: { mode: 'exact', values: shares }, date: '2026-11-01', category: 'food', notes: '', deleted: false });
-  const expenses = [make('Dinner', 'a', { b: '100000' }), make('Taxi', 'b', { c: '60000' })];
-  const balances = { a: '100000', b: '-40000', c: '-60000' };
+  const expenses = long ? Array.from({ length: 91 }, (_, i) => ({ ...make(`Bill ${String(i + 1).padStart(3, '0')}`, i % 2 ? 'b' : 'a', { a: '20000', b: '20000', c: '20000' }), id: String(i).padStart(3, '0'), deleted: i >= 68, date: `2026-11-${String(1 + Math.floor(i / 8)).padStart(2, '0')}` })) : [make('Dinner', 'a', { b: '100000' }), make('Taxi', 'b', { c: '60000' })];
+  const balances = expenses.filter(bill => !bill.deleted).reduce((net, bill) => addExpense(net, bill.paid, bill.shares), { a: '0', b: '0', c: '0' } as Record<string, string>);
   return { id: 'balance-sheet-qa', name: 'Goa Is On', version: 1, simplify_debts: true, participants: [{ id: 'a', name: 'Me' }, { id: 'b', name: 'Aditya' }, { id: 'c', name: 'Anish' }], expenses, settlements: [], activity: [], balances, transfers: proposeTransfers(balances) };
  }
  const expenses: Expense[] = Array.from({ length: long ? 30 : entries.length }, (_, i) => {
@@ -41,7 +41,7 @@ function Gallery() {
  }
  return <NavigationContainer ref={navigation.ref}><AppFrame><AppStack initialScreen="home" scope="balance-sheet-qa" blocked={false} render={() => <>
   <ScreenHeader title={opened ? opened.bill.description : "Balance sheet QA"} busy={false} />
-  <ScrollView contentContainerStyle={pageContentStyle}>{opened ? <><Button title="Back to balances" onPress={() => setOpened(null)} /><ExpenseDetail expense={opened.bill} group={opened.group} selfId="a" busy={false} canEdit={false} onEdit={() => {}} onReverse={() => {}} /></> : <><View style={{ flexDirection: 'row', gap: 12 }}><Button title="Use light" onPress={() => { void changeColorFamily('orchid'); void changeAppearance('light'); }} /><Button title="Use dark" onPress={() => { void changeColorFamily('orchid'); void changeAppearance('dark'); }} /></View><Button title="Open simplified breakdown" onPress={() => open(false, false, true)} /><Button title="Open simplified outgoing" onPress={() => open(false, false, true, true)} /><Button title="Open amount breakdown" onPress={() => open()} /><Button title="Open outgoing breakdown" onPress={() => open(false, false, false, true)} /><Button title="Open long breakdown" onPress={() => open(true)} /><Button title="Open offline error" onPress={() => open(false, true)} /><Text style={ui.caption}>Closed {closes} times</Text></>}</ScrollView>
+  <ScrollView contentContainerStyle={pageContentStyle}>{opened ? <><Button title="Back to balances" onPress={() => setOpened(null)} /><ExpenseDetail expense={opened.bill} group={opened.group} selfId="a" busy={false} canEdit={false} onEdit={() => {}} onReverse={() => {}} /></> : <><View style={{ flexDirection: 'row', gap: 12 }}><Button title="Use light" onPress={() => { void changeColorFamily('orchid'); void changeAppearance('light'); }} /><Button title="Use dark" onPress={() => { void changeColorFamily('orchid'); void changeAppearance('dark'); }} /></View><Button title="Open long simplified breakdown" onPress={() => open(true, false, true)} /><Button title="Open simplified breakdown" onPress={() => open(false, false, true)} /><Button title="Open simplified outgoing" onPress={() => open(false, false, true, true)} /><Button title="Open amount breakdown" onPress={() => open()} /><Button title="Open outgoing breakdown" onPress={() => open(false, false, false, true)} /><Button title="Open long breakdown" onPress={() => open(true)} /><Button title="Open offline error" onPress={() => open(false, true)} /><Text style={ui.caption}>Closed {closes} times</Text></>}</ScrollView>
   <BalanceExplanation onOpenBill={bill => { if (selection) setOpened({ bill, group: selection.group }); }} selection={selection} currentKey={selection ? stale ? 'changed' : balanceKey(selection.group, []) : ''} onClose={() => { setSelection(null); setCloses(value => value + 1); }} />
  </>} /></AppFrame></NavigationContainer>;
 }

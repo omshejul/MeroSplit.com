@@ -1,7 +1,8 @@
 import ScrollView from './KeyboardScrollView';
+import { ScrollPrefetch } from './ScrollPrefetch';
 import LoadingOverlay from './LoadingOverlay';
 import RowGroup from './RowGroup';
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { KeyboardAvoidingView, Modal, Platform, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { Text } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -14,10 +15,13 @@ export default function BottomSheet({ visible, onDismiss, title, icon, total, co
 }) {
   const { ui, palette, motion } = useUI(), { height, width } = useWindowDimensions(), insets = useSafeAreaInsets();
   const [headerHeight, setHeaderHeight] = useState(100), [sheetHeight, setSheetHeight] = useState(height);
+  const scroll = useRef<React.ComponentRef<typeof ScrollView>>(null);
+  const [viewport] = useState(() => ({ bottom: 0, listeners: new Set<() => void>() }));
+  const checkPrefetch = () => scroll.current?.measureInWindow((_x, y, _width, height) => { viewport.bottom = y + height; viewport.listeners.forEach(check => check()); });
   const close = () => { if (!disabled) onDismiss(); };
   const content = <DialogFocus active={visible} busy={disabled} onEscape={close} label={title} style={{ flex: 1 }}>
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={Platform.OS === 'ios' ? Math.max(0, height - sheetHeight) : 0} style={{ flex: 1 }}>
-      <ScrollView style={{ flex: 1, marginTop: headerHeight }} nestedScrollEnabled keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 12 + insets.bottom }}><RowGroup style={{ gap }}>{children}</RowGroup></ScrollView>
+      <ScrollView ref={scroll} onScroll={checkPrefetch} onLayout={checkPrefetch} onContentSizeChange={checkPrefetch} scrollEventThrottle={100} style={{ flex: 1, marginTop: headerHeight }} nestedScrollEnabled keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 12 + insets.bottom }}><ScrollPrefetch.Provider value={viewport}><RowGroup style={{ gap }}>{children}</RowGroup></ScrollPrefetch.Provider></ScrollView>
       <View onLayout={event => setHeaderHeight(event.nativeEvent.layout.height)} style={{ position: 'absolute', top: 0, left: 0, right: 0, paddingHorizontal: 20, paddingTop: 20, paddingBottom: 16, gap: 6 }}>
         <View accessible={false} pointerEvents="none" style={{ position: 'absolute', top: 8, width: 36, height: 4, borderRadius: 2, backgroundColor: palette.outline, alignSelf: 'center' }} />
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}><Icon name={icon} /><Text accessibilityRole="header" style={[ui.section, { flex: 1 }]}>{title}</Text><Button title={closeIconOnly ? undefined : "Done"} icon={closeIconOnly ? "close" : "tick"} iconOnly={closeIconOnly} kind={closeIconOnly ? "text" : "outlined"} compact accessibilityLabel={doneAccessibilityLabel ?? (icon === 'people' ? 'Apply split' : icon === 'pay' ? 'Apply payers' : 'Close sheet')} disabled={disabled || !closeIconOnly && count === 0} style={closeIconOnly ? { width: 44, height: 44, minWidth: 44 } : undefined} onPress={close} /></View>
