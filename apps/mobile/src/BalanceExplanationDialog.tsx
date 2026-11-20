@@ -1,7 +1,7 @@
 import { useLoading } from './LoadingOverlay';
 import { ErrorState, LoadingState } from './UIStates';
 import { ErrorText } from './ui';
-import React, { useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState } from 'react';
 import { Animated, Easing, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { Text } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -10,6 +10,7 @@ import { balanceKey, changedBalance, explainTransfer } from './balanceExplanatio
 import type { BalanceSource } from './balanceExplanationStorage';
 import type { Command, Expense, Group, Session } from './types';
 import BottomSheet from './BottomSheet';
+import { PrefetchTrigger } from './ScrollPrefetch';
 import { categoryIcon, expenseCategory, type ExpenseIcons } from './categoryIcons';
 import { useExpenseIcons } from './useExpenseIcons';
 import { motionDuration } from './motion';
@@ -21,9 +22,10 @@ const nameFor = (group: Group, selfId: string, id: string) => id === selfId ? 'Y
 const netText = (name: string, amount: string) => BigInt(amount) > 0n ? `${name} ${name === 'You' ? 'are' : 'is'} owed ${formatMoney(amount)}` : BigInt(amount) < 0n ? `${name} ${name === 'You' ? 'owe' : 'owes'} ${formatMoney((-BigInt(amount)).toString())}` : `${name} ${name === 'You' ? 'are' : 'is'} settled up`;
 const dateText = (date: string | null) => date ? new Date(`${date}T12:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Date unavailable';
 const absolute = (amount: string) => (BigInt(amount) < 0n ? -BigInt(amount) : BigInt(amount)).toString();
+const HistoryOpen = createContext(true);
 type HistoryRow = Explanation['history']['entries'][number] | Explanation['history']['excluded'][number];
 
-function InlineDetails({ title, expandedTitle, icon = 'history', amount, amountEffect, onOpenBill, children }: { title: string; expandedTitle?: string; icon?: IconName; amount?: string; amountEffect?: string; onOpenBill?: () => void; children: React.ReactNode }) {
+function InlineDetails({ title, expandedTitle, icon = 'history', amount, amountEffect, groupEffect = false, onOpenBill, children }: { groupEffect?: boolean; title: string; expandedTitle?: string; icon?: IconName; amount?: string; amountEffect?: string; onOpenBill?: () => void; children: React.ReactNode }) {
   const { ui, palette, motion } = useUI(), [open, setOpen] = useState(false), [mounted, setMounted] = useState(false), [height, setHeight] = useState(0);
   const [progress] = useState(() => new Animated.Value(0));
   useEffect(() => {
@@ -34,13 +36,13 @@ function InlineDetails({ title, expandedTitle, icon = 'history', amount, amountE
     animation.start(({ finished }) => { if (finished && !open) setMounted(false); });
     return () => animation.stop();
   }, [open, height, motion.enabled, progress]);
-  const effectLabel = amountEffect === undefined ? '' : BigInt(amountEffect) > 0n ? ', adds to what you are owed' : BigInt(amountEffect) < 0n ? ', adds to what you owe' : ', no change to your balance';
+  const effectLabel = amountEffect === undefined ? '' : groupEffect ? BigInt(amountEffect) > 0n ? ', increases your group balance' : BigInt(amountEffect) < 0n ? ', decreases your group balance' : ', no change to your group balance' : BigInt(amountEffect) > 0n ? ', adds to what you are owed' : BigInt(amountEffect) < 0n ? ', adds to what you owe' : ', no change to your balance';
   return <View style={{ borderTopWidth: StyleSheet.hairlineWidth, borderColor: palette.line }}>
     <Button kind="plain" accessibilityRole="button" accessibilityState={{ expanded: open }} accessibilityLabel={`${open ? expandedTitle ?? title : title}${amount === undefined ? '' : `, ${BigInt(amount) < 0n ? 'minus' : 'plus'} ${formatMoney(absolute(amount))}${effectLabel}`}`} onPress={() => { if (!open) setMounted(true); setOpen(value => !value); }} style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 48, paddingVertical: 10, backgroundColor: pressed ? palette.soft : undefined })}>
       <Icon name={icon} size={20} color={palette.muted} /><Text style={[ui.body, { flex: 1 }]}>{open ? expandedTitle ?? title : title}</Text>{amount !== undefined && <Text style={[ui.body, { color: amountEffect === undefined ? palette.text : balanceColor(amountEffect, palette), fontVariant: ['tabular-nums'], flexShrink: 1 }]}>{BigInt(amount) < 0n ? '−' : '+'}{formatMoney(absolute(amount))}</Text>}<Animated.View style={{ transform: [{ rotate: progress.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '180deg'] }) }] }}><Icon name="down" size={18} color={palette.muted} /></Animated.View>
     </Button>
     {mounted && <Animated.View pointerEvents={open ? 'auto' : 'none'} accessibilityElementsHidden={!open} importantForAccessibility={open ? 'auto' : 'no-hide-descendants'} style={{ overflow: 'hidden', height: motion.enabled ? progress.interpolate({ inputRange: [0, 1], outputRange: [0, height] }) : undefined, opacity: motion.enabled ? progress : 1 }}>
-      <View onLayout={event => setHeight(event.nativeEvent.layout.height)} style={{ gap: 8, paddingBottom: 12, ...(motion.enabled ? { position: 'absolute', top: 0, left: 0, right: 0 } : {}) }}>{children}
+      <View onLayout={event => setHeight(event.nativeEvent.layout.height)} style={{ gap: 8, paddingBottom: 12, ...(motion.enabled ? { position: 'absolute', top: 0, left: 0, right: 0 } : {}) }}><HistoryOpen.Provider value={open}>{children}</HistoryOpen.Provider>
         {onOpenBill && <Button title="Open bill" icon="bill" kind="text" compact disabled={!open} accessibilityLabel={`Open bill: ${title}`} onPress={onOpenBill} style={{ alignSelf: 'flex-start' }} />}
       </View>
     </Animated.View>}
@@ -54,11 +56,15 @@ function balanceText(group: Group, selfId: string, amount: string, past = false)
   return BigInt(amount) < 0n ? `You ${past ? 'owed' : 'owe'} ${other} ${formatMoney(absolute(amount))}` : `${other} ${past ? 'owed' : 'owes'} you ${formatMoney(amount)}`;
 }
 
-function RecordRow({ row, group, selfId, current = false, onOpenBill }: { row: HistoryRow; group: Group; selfId: string; current?: boolean; onOpenBill?: (bill: Expense) => void }) {
+function RecordRow({ row, group, selfId, current = false, compact = false, categoryIcons = {}, onOpenBill }: { compact?: boolean; categoryIcons?: ExpenseIcons; row: HistoryRow; group: Group; selfId: string; current?: boolean; onOpenBill?: (bill: Expense) => void }) {
   const { ui, palette } = useUI();
   const bill = row.kind === 'bill' ? row.bill : null, payment = row.kind === 'payment' ? row.payment : null;
   const paid = bill ? Object.entries(bill.paid).filter(([, amount]) => BigInt(amount) > 0n).map(([id, amount]) => `${nameFor(group, selfId, id)} paid ${formatMoney(amount)}`).join(', ') : '';
   const title = bill ? bill.description : payment!.sender === selfId ? `You paid ${nameFor(group, selfId, payment!.recipient)}` : `${nameFor(group, selfId, payment!.sender)} paid you`;
+  if (compact) return <InlineDetails title={title} icon={bill ? categoryIcon(expenseCategory({ ...bill, groupId: group.id, title: bill.description }, categoryIcons)) : 'payment'} amount={row.effect} amountEffect={row.effect} groupEffect onOpenBill={bill && onOpenBill ? () => onOpenBill(bill) : undefined}>
+    <Text style={ui.caption}>{bill ? `${paid}. Your share ${formatMoney(bill.shares[selfId] ?? '0')}.` : `Recorded payment of ${formatMoney(payment!.amount)}.`}</Text>
+    <Text style={ui.caption}>{row.excluded ? 'Reversed. No effect on balances.' : BigInt(row.effect) === 0n ? 'No change to your group balance.' : `Your group balance ${BigInt(row.effect) > 0n ? 'increases' : 'decreases'} by ${formatMoney(absolute(row.effect))}.`}</Text>
+  </InlineDetails>;
   return <View style={{ gap: 4 }}>
     <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}><Text style={ui.body}>{title}</Text><Text style={ui.caption}>{dateText(row.date)}</Text></View>
     <Text style={ui.caption}>{bill ? `${paid}. Your share ${formatMoney(bill.shares[selfId] ?? '0')}.` : `Recorded payment of ${formatMoney(payment!.amount)}.`}</Text>
@@ -67,12 +73,17 @@ function RecordRow({ row, group, selfId, current = false, onOpenBill }: { row: H
   </View>;
 }
 
-function HistoryRecords({ rows, group, selfId, onOpenBill }: { rows: HistoryRow[]; group: Group; selfId: string; onOpenBill: (bill: Expense) => void }) {
-  const { ui } = useUI(), [limit, setLimit] = useState(20);
+function HistoryRecords({ rows, group, selfId, onOpenBill, categoryIcons = {} }: { categoryIcons?: ExpenseIcons; rows: HistoryRow[]; group: Group; selfId: string; onOpenBill: (bill: Expense) => void }) {
+  const { ui, palette } = useUI(), [limit, setLimit] = useState(20), open = useContext(HistoryOpen);
+  const compact = group.participants.length > 2 && group.simplify_debts !== false;
   return <>
-    {rows.slice(0, limit).map((row, index) => <RecordRow key={row.key} row={row} group={group} selfId={selfId} current={index === rows.length - 1} onOpenBill={onOpenBill} />)}
+    {rows.slice(0, limit).map((row, index) => <React.Fragment key={row.key}>
+      {compact && (index === 0 || row.date !== rows[index - 1].date) && <Text style={[ui.caption, { paddingTop: 12 }]}>{dateText(row.date)}</Text>}
+      <RecordRow row={row} group={group} selfId={selfId} current={index === rows.length - 1} compact={compact} categoryIcons={categoryIcons} onOpenBill={onOpenBill} />
+      {compact && 'balance' in row && row.balance !== null && <View style={{ gap: 4, paddingVertical: 8, borderTopWidth: StyleSheet.hairlineWidth, borderColor: palette.line }}><Text style={ui.caption}>Your balance after this day</Text><Text style={[ui.body, { color: balanceColor(row.balance, palette) }]}>{balanceText(group, selfId, row.balance, index !== rows.length - 1)}</Text></View>}
+    </React.Fragment>)}
     {!rows.length && <Text style={ui.caption}>No bills or recorded payments changed your balance.</Text>}
-    {rows.length > limit && <Button title="Show more records" kind="text" onPress={() => setLimit(value => value + 20)} />}
+    {rows.length > limit && <PrefetchTrigger enabled={open} key={limit} onApproach={() => setLimit(value => Math.min(value + 20, rows.length))} />}
   </>;
 }
 
@@ -119,10 +130,10 @@ function ExplanationBody({ value, selfId, categoryIcons = {}, onOpenBill }: { va
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12, borderTopWidth: StyleSheet.hairlineWidth, borderColor: palette.line, paddingTop: 8 }}><Text style={[ui.body, { flex: 1 }]}>{BigInt(own.balance) > 0n ? 'You are owed' : 'You owe'}</Text><Text style={[ui.body, { color: balanceColor(own.balance, palette), fontVariant: ['tabular-nums'] }]}>{formatMoney(absolute(own.balance))}</Text></View>
       </InlineDetails>
       <InlineDetails title={`Bills and payments (${history.entries.length})`} icon="history">
-        <Text style={ui.caption}>Your bills and recorded payments across the group.</Text>
-        <HistoryRecords rows={history.entries} group={group} selfId={selfId} onOpenBill={onOpenBill} />
+        <Text style={ui.caption}>Each amount changes your total group balance. Expand a record for details.</Text>
+        <HistoryRecords rows={history.entries} group={group} selfId={selfId} onOpenBill={onOpenBill} categoryIcons={categoryIcons} />
       </InlineDetails>
-      {!!history.excluded.length && <InlineDetails title={`${history.excluded.length} reversed record${history.excluded.length === 1 ? '' : 's'}`} icon="refresh"><HistoryRecords rows={history.excluded} group={group} selfId={selfId} onOpenBill={onOpenBill} /></InlineDetails>}
+      {!!history.excluded.length && <InlineDetails title={`${history.excluded.length} reversed record${history.excluded.length === 1 ? '' : 's'}`} icon="refresh"><HistoryRecords rows={history.excluded} group={group} selfId={selfId} onOpenBill={onOpenBill} categoryIcons={categoryIcons} /></InlineDetails>}
       <InlineDetails title="Group payment plan" icon="simplify">
         {people.map(person => <Text key={person.id} style={ui.body}>{netText(person.name, person.balance)}</Text>)}
         <SectionHeading>Suggested payments</SectionHeading>
@@ -154,10 +165,10 @@ function ExplanationBody({ value, selfId, categoryIcons = {}, onOpenBill }: { va
     <InlineDetails title="Show running balance" expandedTitle="Hide running balance">
       <Text style={ui.caption}>{history.ordered ? 'Based on current bills and recorded payment dates. Balances are shown after each date.' : 'Some records have no date or predate the agreed starting balance. Their effects are shown below; a chronological running balance is unavailable.'}</Text>
       {group.opening_balance?.accepted && <><SectionHeading>Agreed starting balance</SectionHeading><Text style={ui.body}>{balanceText(group, selfId, history.opening, true)}</Text><Text style={ui.caption}>{dateText(group.opening_balance.cutoff)} · {group.opening_balance.source}</Text></>}
-      <HistoryRecords rows={history.entries} group={group} selfId={selfId} onOpenBill={onOpenBill} />
+      <HistoryRecords rows={history.entries} group={group} selfId={selfId} onOpenBill={onOpenBill} categoryIcons={categoryIcons} />
       {group.opening_balance && !group.opening_balance.accepted && <Text style={ui.caption}>The proposed starting balance is waiting for agreement and is not included.</Text>}
     </InlineDetails>
-    {!!history.excluded.length && <InlineDetails title={`${history.excluded.length} reversed record${history.excluded.length === 1 ? '' : 's'} excluded`} icon="refresh"><HistoryRecords rows={history.excluded} group={group} selfId={selfId} onOpenBill={onOpenBill} /></InlineDetails>}
+    {!!history.excluded.length && <InlineDetails title={`${history.excluded.length} reversed record${history.excluded.length === 1 ? '' : 's'} excluded`} icon="refresh"><HistoryRecords rows={history.excluded} group={group} selfId={selfId} onOpenBill={onOpenBill} categoryIcons={categoryIcons} /></InlineDetails>}
   </>;
 }
 
