@@ -12,8 +12,9 @@ const CHECK_INTERVAL = 5 * 60 * 1000;
 
 export default function useAppUpdates(options: Options) {
   const native = Updates.useUpdates();
-  const application = Platform.OS === 'web' ? null : requireOptionalNativeModule<{ nativeBuildVersion?: string }>('ExpoApplication');
+  const application = Platform.OS === 'web' ? null : requireOptionalNativeModule<{ nativeApplicationVersion?: string; nativeBuildVersion?: string }>('ExpoApplication');
   const build = application?.nativeBuildVersion ?? (Platform.OS === 'ios' ? Constants.platform?.ios?.buildNumber : Constants.platform?.android?.versionCode)?.toString();
+  const version = application?.nativeApplicationVersion;
   const store = Platform.OS === 'ios' ? appStores.ios : appStores.android;
   const supported = Platform.OS !== 'web' && !__DEV__ && Updates.isEnabled && !!Updates.runtimeVersion && Updates.channel === 'merosplit-production';
   const [phase, setPhase] = useState<Phase>('idle'), [error, setError] = useState('');
@@ -21,7 +22,7 @@ export default function useAppUpdates(options: Options) {
   const storeAvailable = !!storeBuild;
   const [downloaded, setDownloaded] = useState<string | null>(null), [dismissed, setDismissed] = useState<string | null>(null);
   const flight = useRef(false), live = useRef(true), lastAttempt = useRef(0), lastStoreAttempt = useRef(0);
-  const current = useRef({ ...options, native, supported, downloaded, storeBuild, build }); current.current = { ...options, native, supported, downloaded, storeBuild, build };
+  const current = useRef({ ...options, native, supported, downloaded, storeBuild, build, version }); current.current = { ...options, native, supported, downloaded, storeBuild, build, version };
   const dialogsOpen = useSyncExternalStore(subscribeDialogs, hasOpenDialogs, () => false);
   useEffect(() => { live.current = true; return () => { live.current = false; }; }, []);
   useEffect(() => {
@@ -38,7 +39,7 @@ export default function useAppUpdates(options: Options) {
   const progress = native.downloadProgress;
   const percent = native.isDownloading && typeof progress === 'number' && Number.isFinite(progress) ? Math.round(Math.max(0, Math.min(1, progress)) * 100) : null;
   const label = applying ? 'Restarting…' : downloading ? percent === null ? 'Downloading…' : `Downloading ${percent}%`
-    : checking ? 'Checking…' : openingStore ? 'Opening store…' : storeAvailable ? `Update in ${store.name}` : pending ? 'Restart to update' : phase === 'none' ? 'No new updates' : 'Check for update';
+    : checking ? 'Checking…' : openingStore ? 'Opening store…' : storeAvailable ? 'Update available' : pending ? 'Restart to update' : phase === 'none' ? 'No new updates' : 'Check for update';
 
   async function check(manual = false) {
     const state = current.current;
@@ -57,7 +58,7 @@ export default function useAppUpdates(options: Options) {
       if (checkStore) {
         lastStoreAttempt.current = now;
         setPhase('checking');
-        try { available = await checkStoreUpdate(state.baseUrl, Platform.OS, state.build); }
+        try { available = await checkStoreUpdate(state.baseUrl, Platform.OS, state.build, state.version); }
         catch { storeCheckFailed = true; }
         if (!live.current) return;
         if (!current.current.enabled || !current.current.foreground || !current.current.online || current.current.baseUrl !== state.baseUrl) {
@@ -66,10 +67,7 @@ export default function useAppUpdates(options: Options) {
         setStoreBuild(available);
       }
       if (available || hasPending || !checkOta) {
-        if (manual && available) {
-          setDismissedStore(null);
-          await launchStore(available);
-        }
+        if (manual && available) setDismissedStore(null);
         if (manual && !available && hasPending) setDismissed(null);
         setPhase('idle');
         return;
@@ -106,7 +104,7 @@ export default function useAppUpdates(options: Options) {
       flight.current = false;
     }
   }
-  // Both the manual check and the prompt use the same store handoff.
+  // Only the update dialog's button opens the store.
   async function launchStore(build: string) {
     const state = current.current;
     if (!live.current || !state.enabled || !state.foreground || !state.safe || state.busy || hasOpenDialogs()) return;
@@ -136,7 +134,7 @@ export default function useAppUpdates(options: Options) {
   return { native, supported, working, storeAvailable, storeName: store.name, openingStore, applying, label, error, none: phase === 'none',
     disabled: options.busy || !options.enabled || working,
     promptVisible: !!(promptReady && (storeBuild ? dismissedStore !== storeBuild : pending && dismissed !== pending)),
-    check: () => void (current.current.storeBuild ? openStore() : check(true)), engage: () => void check(), restart: () => void restart(), openStore: () => void openStore(),
+    check: () => void check(true), engage: () => void check(), restart: () => void restart(), openStore: () => void openStore(),
     later: () => { if (!flight.current) { if (storeBuild) setDismissedStore(storeBuild); else setDismissed(pending); setError(''); } },
   };
 }

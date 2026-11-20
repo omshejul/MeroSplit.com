@@ -33,7 +33,7 @@ export default function AppUpdates({ update }: { update: AppUpdateState }) {
 export function AppUpdatePrompt({ update }: { update: AppUpdateState }) {
   const { ui } = useUI();
   const store = update.storeAvailable;
-  const title = store ? 'Update available' : 'Restart to update';
+  const title = store ? 'Update your app' : 'Restart to update';
   const busy = update.applying || update.openingStore;
   return <KeyboardDialog visible={update.promptVisible} label={title} placement={store ? 'center' : 'bottom'} onDismiss={update.later} dismissable={!busy} blocksAppRestart={false}>
     <Dialog.Title icon="refresh">{title}</Dialog.Title>
