@@ -812,40 +812,47 @@ test('personal shared-link invitations have no approval step, including old pend
   assert.equal(button(joined, 'Approve request'), undefined);
 });
 
-test('background checks prompt and the manual button opens a newer store build before a downloaded OTA', async () => {
+test('background and manual checks prompt before opening a newer store release, ahead of a downloaded OTA', async () => {
  for (const os of ['ios','android']) {
   const calls:any[] = [], opened:string[] = [];
-  let newer = '33';
+  let newer = '1.2.4:35';
   const linking = { async openURL(url:string) { assert.equal(this, linking); opened.push(url); } };
   const app=updatesApp(undefined,{Platform:{OS:os},Linking:linking,Constants:{expoConfig:{version:'99',ios:{buildNumber:'999'}}},checkStoreUpdate:async(...args:any[])=>{calls.push(args);return newer;}});
   app.native.state.isUpdatePending=true;app.native.state.downloadedUpdate={updateId:'pending-ota'};
   app.render({safe:false});await app.commit();await tick();
   assert.equal(app.render().promptVisible,false);
-  app.render({safe:true});assert.equal(component(app.prompt(),'KeyboardDialog').props.label,'Update available');
+  app.render({safe:true});assert.equal(component(app.prompt(),'KeyboardDialog').props.label,'Update your app');
   assert.equal(calls[0][1],os);assert.equal(calls[0][2],'27','read installed native metadata, not the OTA manifest');
+  assert.equal(calls[0][3],'1.2','read the installed native version, not the OTA manifest');
   assert.deepEqual(opened,[]);assert.deepEqual(app.native.calls,[]);
 
   app.render().later();app.clock.now+=300_000;app.render().engage();await tick();
-  assert.equal(app.render().promptVisible,false,'Later suppresses the same build');
-  newer='34';app.clock.now+=300_000;app.render().engage();await tick();
-  assert.equal(app.render().promptVisible,true,'a newer build can prompt again');
+  assert.equal(app.render().promptVisible,false,'Later suppresses the same release');
+  newer='1.2.5:35';app.clock.now+=300_000;app.render().engage();await tick();
+  assert.equal(app.render().promptVisible,true,'a new version reusing the build number can prompt again');
   app.render().later();
   app.render().check();await tick();
   const update=app.render(), store=os==='ios'?'App Store':'Google Play';
-  assert.equal(update.label,`Update in ${store}`);
+  assert.equal(update.label,'Update available');
+  assert.equal(update.promptVisible,true);
+  assert.deepEqual(opened,[]);
+  button(app.prompt(),`Open ${store}`).props.onPress();await tick();
   assert.deepEqual(opened,[os==='ios'?'itms-apps://itunes.apple.com/app/id6823916128':'market://details?id=com.omshejul.splitdumb']);
   assert.equal(app.render().promptVisible,false);
   assert.equal(button(app.tree(),update.label).props.icon,'external');app.unmount();
  }
 });
 
-test('the first manual check opens the store when it discovers a newer build', async () => {
+test('the first manual check shows a dialog and only its store button opens the external app', async () => {
   for (const platform of ['ios', 'android']) {
     const opened: string[] = [];
     const app = updatesApp(undefined, { Platform: { OS: platform }, checkStoreUpdate: async () => '33', Linking: { async openURL(url: string) { opened.push(url); } } });
     const state = app.render();
     assert.equal(state.storeAvailable, false);
     state.check(); await tick();
+    assert.deepEqual(opened, []);
+    assert.equal(app.render().promptVisible, true);
+    button(app.prompt(), platform === 'ios' ? 'Open App Store' : 'Open Google Play').props.onPress(); await tick();
     assert.deepEqual(opened, [platform === 'ios' ? 'itms-apps://itunes.apple.com/app/id6823916128' : 'market://details?id=com.omshejul.splitdumb']);
     assert.equal(app.render().promptVisible, false);
     app.unmount();
