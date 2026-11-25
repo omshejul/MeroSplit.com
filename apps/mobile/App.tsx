@@ -26,6 +26,7 @@ import { AppState, BackHandler, Linking, Platform, RefreshControl, StyleSheet, V
 import type { AlertButton } from 'react-native';
 import { Alert } from './src/alerts';
 import { SafeAreaProvider, SafeAreaView, initialWindowMetrics } from 'react-native-safe-area-context';
+import { FoldProvider } from './src/FoldRegions';
 import * as Crypto from 'expo-crypto';
 import { accountOwner, ApiError, requestEmailCode, confirmEmailCode, endSession, claimLegacyGroup, expensePayload, fetchGroup, refreshGroups, retainHistoryWindow, request, syncOutbox, cacheOfflineGroups, prefetchRead } from './src/api';
 import type { EmailCodeChallenge } from './src/api';
@@ -1624,7 +1625,7 @@ function AppContent() {
     {session && !authHeld && !expired && Platform.OS === 'web' && <OAuthContinuation key={`oauth-continuation|${owner}|${session.token}`} session={session} busy={busy} onSaveName={value => saveName(value, true)} beforeContinue={async () => { await draftWrites.current; }} />}
   </></NavigationContainer></PhotoSession.Provider>;
 }
-export default function App() { return <SafeAreaProvider initialMetrics={initialWindowMetrics}><UIProvider><LoadingProvider><AppContent /></LoadingProvider></UIProvider></SafeAreaProvider>; }
+export default function App() { return <SafeAreaProvider initialMetrics={initialWindowMetrics}><FoldProvider><UIProvider><LoadingProvider><AppContent /></LoadingProvider></UIProvider></FoldProvider></SafeAreaProvider>; }
 const makeStyles = (colors: Palette) => StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
 });

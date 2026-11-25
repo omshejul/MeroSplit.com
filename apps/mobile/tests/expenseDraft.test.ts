@@ -10,6 +10,7 @@ import { sqliteAdapter } from './sqlite.ts';
 import { migrate, readDraft, saveDraft } from '../src/storage.ts';
 import * as accounting from '../src/accounting.ts';
 import * as defaults from '../src/expenseDefaults.ts';
+import { usableFoldRegion } from '../src/foldGeometry.ts';
 
 const group: any = { id:'group-one', name:'Trip', version:1, participants:[{id:'self',name:'You'},{id:'other',name:'Other'}],expenses:[],settlements:[],balances:{},transfers:[],activity:[] };
 const tick = () => new Promise<void>(resolve => setImmediate(resolve));
@@ -24,7 +25,7 @@ function form(db: any, options: any = {}) {
     useRef:(initial:any)=>{const id=cursor++;return state[id]??={current:initial}},
     useContext:()=>discard, useId:()=> 'amount-accessory', Platform:{OS:'ios'}, InputAccessoryView:'InputAccessoryView', ScreenDraftDiscard:{},
     useEffect:(fn:()=>any, values:any[])=>{const id=cursor++;if(!deps[id]||values.some((v,i)=>v!==deps[id][i])){effects.push(()=>{cleanup[id]?.();cleanup[id]=fn()});deps[id]=values}},
-    useWindowDimensions:()=>({fontScale:1}),StyleSheet:{create:(v:any)=>v},View:'View',Text:'Text',Form:'Form',AmountField:'AmountField',TextField:'TextField',DateField:'DateField',Button:'Button',ErrorText:'ErrorText',BillPeople:'BillPeople',DraftAttachment:'DraftAttachment',NotesField:'NotesField',Checkbox:{Item:'Checkbox'},RadioChoice:'RadioChoice',
+    useWindowDimensions:()=>options.window??({fontScale:1,height:667}),useFoldRegions:()=>options.regions??[],usableFoldRegion,StyleSheet:{create:(v:any)=>v},View:'View',Text:'Text',Form:'Form',AmountField:'AmountField',TextField:'TextField',DateField:'DateField',Button:'Button',ErrorText:'ErrorText',BillPeople:'BillPeople',DraftAttachment:'DraftAttachment',NotesField:'NotesField',Checkbox:{Item:'Checkbox'},RadioChoice:'RadioChoice',
     useUI:()=>({ui:{},palette:{}}),Crypto:{randomUUID:()=> 'draft-fixed-id'},useScreenRemovalLock:()=>{}, getDatabase:async()=>db,readDraft,saveDraft,
     clearStagedMedia:async(f:any)=>{media.push(f)},
   };
@@ -47,6 +48,41 @@ test('actual new bill field callbacks survive background/unmount and real SQLite
 
 const snapshot = (changes:any={}) => ({schemaVersion:1,groupId:group.id,expenseId:null,id:'draft-fixed-id',expenseVersion:0,description:'Draft',amount:'31',date:'2026-10-27',notes:'Keep these notes',payerIds:['self'],payerAmounts:{self:'31'},mode:'shares',participantIds:['self','other'],splitValues:{self:'2',other:'1'},...changes});
 const memory = async () => {const raw=new DatabaseSync(':memory:'),db=sqliteAdapter(raw);await migrate(db);return{raw,db}};
+const allNodes = (tree:any):any[] => Array.isArray(tree) ? tree.flatMap(allNodes) : tree?.children ? [tree,...tree.children.flatMap(allNodes)] : [];
+
+test('folding and resizing the live bill form retains the same durable draft and adapts editors to usable space',async()=>{
+ const {raw,db}=await memory(),window={width:800,height:700,fontScale:1};
+ const app=form(db,{window});let tree=await app.settle();
+ const measure=(width:number)=>{allNodes(tree).find(n=>n.props.testID==='bill-frame').props.onLayout({nativeEvent:{layout:{width}}});tree=app.render();};
+ const columns=()=>allNodes(tree).find(n=>n.props.testID==='bill-columns');
+ field(tree,'AmountField','Amount (₹)').props.onChangeText('31.25');tree=app.render();
+ field(tree,'TextField','Description').props.onChangeText('Folded draft');tree=app.render();
+ measure(320);assert.equal(columns().props.style.flexDirection,'column');
+ measure(728);assert.equal(columns().props.style.flexDirection,'row');
+ assert.ok(allNodes(tree).filter(n=>n.type==='BillPeople').every(n=>n.props.inline));
+ window.fontScale=1.5;tree=app.render();assert.equal(columns().props.style.flexDirection,'column');
+ window.fontScale=1;window.height=400;tree=app.render();assert.equal(columns().props.style.flexDirection,'column');
+ window.height=700;measure(320);assert.equal(columns().props.style.flexDirection,'column');
+ assert.equal(field(tree,'AmountField','Amount (₹)').props.value,'31.25');assert.equal(field(tree,'TextField','Description').props.value,'Folded draft');
+ await app.writes.current;const saved=await readDraft<any>(db,'account-a',group.id);assert.equal(saved.id,'draft-fixed-id');assert.equal(saved.amount,'31.25');assert.equal(app.saves.length,0,'layout changes must not submit or duplicate a bill');
+ app.unmount();raw.close();
+});
+test('an active vertical fold separates wide bill editors and a narrow fold panel keeps the draft on one side',async()=>{
+ const {raw,db}=await memory(),regions=[{kind:'division',frame:{x:450,y:0,width:20,height:700}}];
+ const app=form(db,{window:{width:1000,height:700,fontScale:1},regions});let tree=await app.settle();
+ const measure=()=>{const frame=allNodes(tree).find(n=>n.props.testID==='bill-frame');frame.props.ref.current={measureInWindow:(done:any)=>done(100)};frame.props.onLayout({nativeEvent:{layout:{width:728}}});tree=app.render();};
+ field(tree,'TextField','Description').props.onChangeText('Across the fold');tree=app.render();measure();
+ let columns=allNodes(tree).find(n=>n.props.testID==='bill-columns');
+ assert.equal(columns.props.style.flexDirection,'row');
+ assert.ok(100+columns.children[0].props.style[1].width<=450);
+ assert.ok(100+columns.children[0].props.style[1].width+columns.props.style.gap>=470);
+ regions[0].frame.x=350;tree=app.render();measure();columns=allNodes(tree).find(n=>n.props.testID==='bill-columns');
+ assert.equal(columns.props.style.flexDirection,'column');
+ const container=allNodes(tree).find(n=>Array.isArray(n.props.style)&&n.props.style[1]?.marginLeft!==undefined);
+ assert.equal(100+container.props.style[1].marginLeft,370);
+ assert.equal(field(tree,'TextField','Description').props.value,'Across the fold');
+ assert.equal(app.saves.length,0);await app.writes.current;app.unmount();raw.close();
+});
 const button = (tree:any,title:string):any => {if(tree?.type==='Button'&&tree.props.title===title)return tree;if(Array.isArray(tree)){for(const x of tree){const r=button(x,title);if(r)return r}}else for(const x of tree?.children??[]){const r=button(x,title);if(r)return r}return null};
 
 test('untouched new and edit forms need no discard confirmation after an empty restore',async()=>{
@@ -123,10 +159,10 @@ test('invalid Save focuses Description with one nearby error, preserves the draf
  assert.equal(focused,1);assert.equal(app.saves.length,0);assert.equal(app.discard.hasDraft,true);
  assert.deepEqual(await readDraft(db,'account-a',group.id),saved);
  assert.equal(field(tree,'AmountField','Amount (₹)').props.value,'31');
- const input=field(tree,'TextField','Description'),siblings=tree.children.flat(Infinity);
+ const input=field(tree,'TextField','Description'),siblings=allNodes(tree);
  const descriptionGroup=siblings.find((node:any)=>node?.children?.includes(input));assert.ok(descriptionGroup,'Description and its feedback share a field group');
  assert.equal(field(descriptionGroup,'ErrorText',null).children.join(''),'Enter a description of up to 200 characters.');
- assert.equal(siblings.filter((node:any)=>node?.type==='ErrorText').length,0,'description validation must not repeat at the Save footer');
+ assert.equal(siblings.filter((node:any)=>node?.type==='ErrorText').length,1,'description validation must not repeat at the Save footer');
  input.props.onChangeText('Dinner');await app.writes.current;tree=app.render();assert.equal(field(tree,'ErrorText',null),null);
  button(tree,'Save bill').props.onPress();await tick();await app.writes.current;
  assert.equal(app.saves.length,1);assert.equal(app.saves[0][0].description,'Dinner');assert.equal(app.saves[0][0].total,'3100');assert.equal(focused,1);
@@ -136,7 +172,7 @@ test('invalid Save focuses Description with one nearby error, preserves the draf
 test('a failed bill save preserves draft and attachment for the next cold mount',async()=>{
  const {raw,db}=await memory();await saveDraft(db,'account-a',group.id,snapshot({mode:'equal',splitValues:{}}));const app=form(db,{onSave:async()=>{throw Error('Synthetic queue failure')}});const tree=await app.settle();button(tree,'Save bill').props.onPress();await tick();await app.writes.current;
  assert.equal((await readDraft<any>(db,'account-a',group.id))?.amount,'31');
- const failed=app.render(),error=field(failed,'ErrorText',null);assert.equal(error.children.join(''),'Synthetic queue failure');assert.ok(failed.children.flat(Infinity).includes(error),'general save errors remain beside Save');
+ const failed=app.render(),error=field(failed,'ErrorText',null);assert.equal(error.children.join(''),'Synthetic queue failure');assert.ok(allNodes(failed).some(node=>node.children.flat(Infinity).includes(error)&&node.children.flat(Infinity).includes(button(failed,'Save bill'))),'general save errors remain beside Save');
  app.unmount();assert.equal(app.media.length,0);raw.close();
 });
 

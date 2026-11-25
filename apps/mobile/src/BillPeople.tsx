@@ -14,7 +14,8 @@ export default function BillPeople({ title, sheetTitle, icon, summary, inline, d
   const trigger = useRef<React.ComponentRef<typeof View>>(null);
   const close = () => { Keyboard.dismiss(); setOpen(false); requestAnimationFrame(() => trigger.current?.focus()); };
   const content = typeof children === 'function' ? children(close) : children;
-  if (inline) return <View style={{ gap: 10 }}><View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}><Icon name={icon} /><SectionHeading>{title}</SectionHeading></View><RowGroup style={{ gap: 10 }}>{content}</RowGroup></View>;
+  // Finish an open sheet before moving its editor inline after a resize.
+  if (inline && !open) return <View style={{ gap: 10 }}><View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}><Icon name={icon} /><SectionHeading>{title}</SectionHeading></View><RowGroup style={{ gap: 10 }}>{content}</RowGroup></View>;
   return <>
     <Button kind="plain" ref={trigger} accessibilityRole="button" accessibilityLabel={`${title}. ${summary}`} disabled={disabled} accessibilityState={{ disabled }} onPress={() => { if (!disabled) setOpen(true); }} style={ui.row}>
       <Icon name={icon} /><View style={ui.rowBody}><Text style={ui.label}>{title}</Text><Text style={ui.body}>{summary}</Text></View><Icon name="next" size={18} />

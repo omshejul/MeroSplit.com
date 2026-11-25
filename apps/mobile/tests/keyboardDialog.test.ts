@@ -230,3 +230,18 @@ test('shared web dialog is centered and compact on desktop while retaining phone
     assert.equal(dialog.props.style.width, 343); assert.equal(dialog.props.style.alignSelf, 'center');
   } finally { env.Platform.OS = 'native'; windowWidth = 375; }
 });
+
+test('custom dialogs stay in a usable fold panel and recompute when the keyboard shortens the window', () => {
+ const regions:any[]=[{kind:'division',frame:{x:390,y:0,width:20,height:667}}];
+ const scope:any=env;scope.useFoldRegions=()=>regions;windowWidth=800;
+ try {
+  const render=production('KeyboardDialog.tsx','KeyboardDialog'),props={visible:true,onDismiss(){},children:'Keep these inputs'};
+  let tree=render(props);let panel=one(tree,'Animated.View').props.style;
+  assert.equal(panel.left,410);assert.equal(panel.width,390);assert.equal(one(tree,Dialog).props.style.width,358);
+  regions[0]={kind:'division',frame:{x:0,y:300,width:800,height:24}};
+  tree=render(props);panel=one(tree,'Animated.View').props.style;assert.equal(panel.top,324);assert.equal(panel.height,343);assert.equal(one(tree,Dialog).props.style.maxHeight,311);
+  one(tree,'KeyboardAvoidingView').props.onLayout({nativeEvent:{layout:{height:280}}});tree=render(props);
+  assert.equal(one(tree,'Animated.View').props.style.flex,1);assert.equal(one(tree,Dialog).props.style.maxHeight,228);
+  assert.equal(one(tree,'DialogFocus').children[0],props.children);
+ } finally {delete scope.useFoldRegions;windowWidth=375;}
+});

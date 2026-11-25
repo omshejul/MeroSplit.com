@@ -265,6 +265,16 @@ test('people dialog adapts to short viewports and Done dismisses the keyboard wh
   assert.equal(dismisses, 1); assert.equal(nodes(people.render(props)).find(node => node.type === 'Input'), child);
 });
 
+test('widening with a people sheet open keeps it open until Done and never reopens it on folding', () => {
+ const app=harness('src/BillPeople.tsx','BillPeople'),child=React.createElement('Input',{value:'31.25'});
+ const props={title:'Split between',icon:'people',summary:'2 people',inline:false,disabled:false,children:child};
+ let tree=app.render(props);nodes(tree).find(n=>n.type==='Button')!.props.onPress();
+ tree=app.render({...props,inline:true});const sheet=nodes(tree).find(n=>n.type==='PeopleSheet')!;
+ assert.equal(sheet.props.visible,true);assert.equal(nodes(tree).find(n=>n.type==='Input'),child);
+ sheet.props.onDismiss();tree=app.render({...props,inline:true});assert.equal(nodes(tree).some(n=>n.type==='PeopleSheet'),false);
+ tree=app.render(props);assert.equal(nodes(tree).find(n=>n.type==='PeopleSheet')!.props.visible,false);assert.equal(nodes(tree).find(n=>n.type==='Input'),child);
+});
+
 test('accepted attachment action reuses one load/picker path and preserves permission/limit/pending guards', async () => {
   let reads = 0, picks = 0, uploads = 0;
   const session = { token: 'owner-a' }, props = { session, groupId: 'g', expenseId: 'e', busy: false, onBusyChange() {} };

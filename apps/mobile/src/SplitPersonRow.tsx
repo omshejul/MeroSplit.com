@@ -62,12 +62,12 @@ export default function SplitPersonRow({ person, title, selected, disabled, edit
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', columnGap: 8, minHeight: 64, paddingVertical: 6, borderBottomWidth: StyleSheet.hairlineWidth },
+  row: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', columnGap: 8, rowGap: 8, minHeight: 64, paddingVertical: 6, borderBottomWidth: StyleSheet.hairlineWidth },
   person: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, minWidth: 136, minHeight: 44 },
   check: { width: 22, height: 22, borderWidth: 1.5, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
   name: { fontSize: 15, lineHeight: 20 }, preview: { fontSize: 12, lineHeight: 17, fontVariant: ['tabular-nums'] },
-  control: { flexDirection: 'row', alignItems: 'center', minHeight: 46, borderWidth: 1, borderRadius: 9, marginLeft: 'auto', paddingHorizontal: 0 },
-  step: { width: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+  control: { flexDirection: 'row', alignItems: 'center', maxWidth: '100%', minHeight: 46, borderWidth: 1, borderRadius: 9, marginLeft: 'auto', paddingHorizontal: 0 },
+  step: { width: 44, flexShrink: 0, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
   inputContainer: { flex: 1, minWidth: 0 },
   input: { minHeight: 44, paddingHorizontal: 4, paddingVertical: 8, borderWidth: 0, backgroundColor: 'transparent', fontSize: 17, fontVariant: ['tabular-nums'] },
 });

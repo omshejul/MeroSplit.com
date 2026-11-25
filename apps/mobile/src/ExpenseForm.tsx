@@ -8,7 +8,7 @@ import { currencySymbol } from './currency';
 import Form from './Form';
 import { ScreenDraftDiscard, useScreenRemovalLock } from './screenRemoval';
 import React, { useContext, useEffect, useId, useRef, useState } from 'react';
-import { InputAccessoryView, Platform, StyleSheet, View, type TextInput } from 'react-native';
+import { InputAccessoryView, Platform, StyleSheet, View, useWindowDimensions, type TextInput } from 'react-native';
 import { Text } from 'react-native-paper';
 import * as Crypto from 'expo-crypto';
 import { adjustmentToPaise, formatMoney, integer, rupeesToPaise, validateExpense } from './accounting';
@@ -26,6 +26,8 @@ import { expenseDraftStore } from './expenseDraft';
 import { defaultExpenseChoices, defaultPayerAmounts } from './expenseDefaults';
 import type { ExpenseDefaults } from './expenseDefaults';
 import { getDatabase } from './native';
+import { useFoldRegions } from './FoldRegions';
+import { usableFoldRegion } from './foldGeometry';
 
 export type ExpenseFormDraft = {
   schemaVersion: 1; groupId: string; expenseId: string | null; id: string; expenseVersion: number;
@@ -169,6 +171,19 @@ export default function ExpenseForm({ group, expense, selfId, busy, autoFocusAmo
   const handedOff = useRef(false), mounted = useRef(true), discard = useContext(ScreenDraftDiscard);
   const pendingSave = useRef<Promise<void> | null>(null);
   const [ready, setReady] = useState(false);
+  const { width: windowWidth = 0, height: windowHeight = 0, fontScale = 1 } = useWindowDimensions();
+  const [contentFrame, setContentFrame] = useState({ x: 0, width: 0 });
+  const formFrame = useRef<React.ComponentRef<typeof View>>(null);
+  const regions = useFoldRegions();
+  const divisions = regions.filter(region => region.kind === 'division' && region.frame.height > region.frame.width);
+  useEffect(() => { formFrame.current?.measureInWindow(x => setContentFrame(previous => previous.x === x ? previous : { ...previous, x })); }, [windowWidth, regions]);
+  const panel = usableFoldRegion({ x: contentFrame.x, y: 0, width: contentFrame.width, height: windowHeight }, divisions);
+  const division = divisions.find(region => region.frame.x > contentFrame.x && region.frame.x + region.frame.width < contentFrame.x + contentFrame.width);
+  const foldGap = division ? Math.max(24, division.frame.width) : 24;
+  const firstWidth = division ? division.frame.x - contentFrame.x - (foldGap - division.frame.width) / 2 : (contentFrame.width - 24) / 2;
+  const secondWidth = contentFrame.width - firstWidth - foldGap;
+  const expanded = windowHeight >= 480 && divisions.length <= 1 && Math.min(firstWidth, secondWidth) >= 320 * Math.max(1, fontScale);
+  const constrained = contentFrame.width > 0 && !expanded && panel.width < contentFrame.width;
   const storage = useRef<ReturnType<typeof expenseDraftStore> | null>(null);
   if (!storage.current) storage.current = expenseDraftStore(owner, group.id, expense?.id ?? null, writes, getDatabase);
   const store = storage.current;
@@ -286,9 +301,17 @@ export default function ExpenseForm({ group, expense, selfId, busy, autoFocusAmo
   let formattedTotal: string | undefined;
   try { formattedTotal = formatMoney(rupeesToPaise(draft.amount)); } catch { /* Keep incomplete input editable. */ }
   return <Form label="Bill" style={styles.form} onSubmit={() => { if (!disabled && !group.archived) void save(); }}>
+    <View ref={formFrame} testID="bill-frame" onLayout={event => {
+      const width = event.nativeEvent.layout.width;
+      setContentFrame(previous => previous.width === width ? previous : { ...previous, width });
+      formFrame.current?.measureInWindow(x => setContentFrame(previous => previous.x === x ? previous : { ...previous, x }));
+    }}>
+    <View style={[styles.form, constrained && { width: panel.width, marginLeft: panel.x - contentFrame.x }]}>
     <Text style={ui.caption}>{group.name}</Text>
     {group.archived && <NoticeBanner>Reopen this group in settings before saving a bill.</NoticeBanner>}
     {expense && expense.version !== draft.expenseVersion && <NoticeBanner>A newer edit exists. Review it before saving this older draft.</NoticeBanner>}
+    <View testID="bill-columns" style={{ flexDirection: expanded ? 'row' : 'column', alignItems: 'stretch', gap: expanded ? foldGap : 12 }}>
+    <View style={[styles.column, expanded && { width: firstWidth }]}>
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start', gap: 12 }}>
       <View style={{ flex: 1, minWidth: 180, gap: 12 }}>
         <AmountField ref={amountInput} autoCorrect={false} label={`Amount (${currencySymbol()})`} value={draft.amount} onChangeText={amount => change({ amount })} placeholder="0" editable={!disabled}
@@ -308,12 +331,14 @@ export default function ExpenseForm({ group, expense, selfId, busy, autoFocusAmo
       <TextField ref={descriptionInput} autoCorrect={false} label="Description" value={draft.description} onChangeText={description => change({ description })} placeholder="What was it for?" maxLength={200} editable={!disabled} />
       {error === descriptionError && <ErrorText live>{error}</ErrorText>}
     </View>
+    </View>
+    <View style={[styles.column, expanded && { width: secondWidth }]}>
     <BillPeople total={formattedTotal} count={draft.payerIds.length} icon="pay" title="Who paid?" sheetTitle={usesPayerAmounts(draft) ? 'Enter paid amounts' : 'Choose payer'} summary={draft.payerIds.length === 1 ? label(draft.payerIds[0]) : draft.payerIds.length ? `${draft.payerIds.length} people` : 'Choose who paid'}
-      inline={group.participants.filter(person => !person.removed || draft.payerIds.includes(person.id)).length === 1} disabled={disabled}>
+      inline={expanded || group.participants.filter(person => !person.removed || draft.payerIds.includes(person.id)).length === 1} disabled={disabled}>
       {close => <PayerFields participants={group.participants} draft={draft} disabled={disabled || !!group.archived} preserveRemoved={!!acceptedExpense}
         label={label} onChange={change} status={payerStatus} onToggle={togglePayer} onAdjust={adjustPayer} onDone={close} />}
     </BillPeople>
-    <BillPeople total={formattedTotal} count={draft.participantIds.length} icon="people" title="Split between" summary={between} inline={group.participants.filter(person => !person.removed || draft.participantIds.includes(person.id)).length === 1} disabled={disabled}>
+    <BillPeople total={formattedTotal} count={draft.participantIds.length} icon="people" title="Split between" summary={between} inline={expanded || group.participants.filter(person => !person.removed || draft.participantIds.includes(person.id)).length === 1} disabled={disabled}>
       <SplitFields participants={group.participants} draft={draft} disabled={disabled} preserveRemoved={!!acceptedExpense}
         label={label} onChange={change} status={splitStatus} />
     </BillPeople>
@@ -321,11 +346,15 @@ export default function ExpenseForm({ group, expense, selfId, busy, autoFocusAmo
     <NotesField value={draft.notes} disabled={disabled} onChange={notes => void change({ notes })} />
     {!!error && error !== descriptionError && <ErrorText live>{error}</ErrorText>}
     <Button title={saving ? 'Saving…' : 'Save bill'} onPress={() => void save()} disabled={disabled || group.archived} kind="primary" icon="check" />
+    </View>
+    </View>
+    </View>
+    </View>
   </Form>;
 }
 
 const styles = StyleSheet.create({
-  form: { gap: 12 }, field: { gap: 7 },
+  form: { gap: 12 }, field: { gap: 7 }, column: { minWidth: 0, gap: 12 },
   methods: { flexDirection: 'row', borderWidth: 1, borderRadius: 12, overflow: 'hidden' },
   method: { flex: 1, minWidth: 0, minHeight: 64, paddingVertical: 8, paddingHorizontal: 2, alignItems: 'center', justifyContent: 'center', gap: 4 },
   reveal: { gap: 8, paddingBottom: 4 },

@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import ts from 'typescript';
+import { usableFoldRegion } from '../src/foldGeometry.ts';
 
 const files = ['AttachmentGallery', 'AttachmentTile', 'ListRow', 'PersonRow', 'PersonChoice', 'SplitPersonRow', 'ChoiceGroup', 'UIStates', 'PaginationFooter', 'AttachmentPicker', 'AttachmentRow', 'MediaPreviewFrame', 'OverflowMenu', 'AppLogo', 'ResendControls', 'FallbackTabLayout', 'BillSummary', 'FloatingActionContainer', 'FieldDialog'];
 const programs = [...files, 'SignInMethods'].map(name => {
@@ -24,6 +25,8 @@ export function withSharedUI<T extends Record<string, any>>(input: T): T & Recor
   env.useDialogTransition ??= (visible: boolean) => ({ present: visible, opacity: 1, translateY: 0 });
   env.useDialogBodySize ??= () => ({ height: undefined, onContentSizeChange() {} });
   env.useWindowDimensions ??= () => ({ width: 390, height: 844, fontScale: 1 });
+  env.useFoldRegions ??= () => [];
+  env.usableFoldRegion ??= usableFoldRegion;
   env.useEffect ??= () => {};
   env.useDialogRegistration ??= () => {};
   env.canTakePhoto ??= () => false;
