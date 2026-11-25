@@ -168,7 +168,7 @@ test('the changing safe viewport bounds Paper iOS content, not just its outer sh
   const declaration = shared.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === 'KeyboardDialog')!;
   let measuredHeight: number | undefined;
   const renderDialog = new Function('env', `with(env) { ${ts.transpile(declaration.getText(shared).replace('export default ', ''), { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React })}; return KeyboardDialog; }`)(
-    withSharedUI({ React: { createElement }, DialogContext: { Provider: 'DialogProvider' }, DialogFocus: 'DialogFocus', useUI: () => ({ palette: {}, motion: { enabled: false } }), Platform: { OS: 'ios' }, useWindowDimensions: () => ({ width: 375, height: 1000 }), Dialog: 'PaperDialog', Portal: 'Portal', KeyboardAvoidingView: 'KeyboardBoundary', useSafeAreaInsets: () => ({ top: 20, bottom: 34 }), useState: () => [measuredHeight, (value: number) => { measuredHeight = value; }] }));
+    withSharedUI({ React: { createElement }, DialogContext: { Provider: 'DialogProvider' }, DialogFocus: 'DialogFocus', useUI: () => ({ palette: {}, motion: { enabled: false } }), Platform: { OS: 'ios' }, useWindowDimensions: () => ({ width: 375, height: 1000 }), Modal: 'PaperModal', Portal: 'Portal', KeyboardAvoidingView: 'KeyboardBoundary', useSafeAreaInsets: () => ({ top: 20, bottom: 34 }), useState: () => [measuredHeight, (value: number) => { measuredHeight = value; }] }));
   // Execute the INSTALLED iOS Surface style partition. Its container has two
   // layers: flexShrink goes outside; maxHeight constrains the content inside.
   // This checks the actual forwarding boundary, not native text/Yoga layout.
@@ -183,8 +183,8 @@ test('the changing safe viewport bounds Paper iOS content, not just its outer sh
       StyleSheet: { flatten: (value: unknown) => Object.assign({}, ...[value].flat(Infinity)) },
       splitStyles: splitModule.splitStyles, forwardRef: (fn: Function) => fn, getStyleForShadowLayer: () => ({}) }));
   function contentStyle(props: Record<string, any>) {
-    const dialog = one(renderDialog({ ...props, visible: true, children: [] }), 'PaperDialog');
-    const outer = renderSurface({ container: true, elevation: 0, style: dialog.props.style }, null) as Element;
+    const dialog = one(renderDialog({ ...props, visible: true, children: [] }), 'PaperModal');
+    const outer = renderSurface({ container: true, elevation: 0, style: dialog.props.contentContainerStyle }, null) as Element;
     assert.equal(outer.props.style.flexShrink, 1);
     return (outer.children[0] as Element).props.style;
   }

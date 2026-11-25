@@ -43,12 +43,12 @@ test('hidden dialogs retain the height-measuring ancestor and keep scrolling con
     assert.equal(boundary.props.behavior, 'height', 'padding does not constrain Paper’s absolute-fill modal');
     assert.equal(boundary.props.style.flex, 1);
     if (!visible) {
-      assert.equal(elements(tree).filter(node => node.type === Dialog).length, 0, 'hidden native dialogs do not retain an opacity-zero Paper modal');
+      assert.equal(elements(tree).filter(node => node.type === 'Modal').length, 0, 'hidden native dialogs do not retain an opacity-zero Paper modal');
       continue;
     }
-    const dialog = one(tree, Dialog);
+    const dialog = one(tree, 'Modal');
     assert.equal(dialog.props.visible, visible); assert.equal(dialog.props.onDismiss, dismiss); assert.equal(dialog.props.dismissable, false); assert.equal(dialog.props.theme.animation.scale, 0, 'the local transition owns animation while Paper mounts opaque');
-    assert.equal(dialog.props.style.flexShrink, 1); assert.equal(dialog.props.style.marginVertical, 0);
+    assert.equal(dialog.props.contentContainerStyle.flexShrink, 1); assert.equal(dialog.props.contentContainerStyle.marginVertical, 0); assert.equal(dialog.props.contentContainerStyle.elevation, 24);
     assert.equal(elements(dialog).find(node => node.type === Dialog.ScrollArea), body);
     assert.equal(elements(dialog).find(node => node.type === Dialog.Actions), footer);
   }
@@ -78,17 +78,17 @@ test('opted-in dialog cards track the measured keyboard viewport, safe area, rot
   const footer = React.createElement(Dialog.Actions, {}, 'Done');
   const props = { visible: false, onDismiss() {}, maxHeight: 647, children: [body, footer] };
   let tree = render(props);
-  assert.equal(elements(tree).filter(node => node.type === Dialog).length, 0);
+  assert.equal(elements(tree).filter(node => node.type === 'Modal').length, 0);
   for (const [height, callerCap, expected] of [[667, 647, 615], [433, 647, 381], [375, 355, 323], [300, 647, 248], [667, 400, 400], [667, 647, 615], [10, 647, 0]]) {
     one(tree, 'KeyboardAvoidingView').props.onLayout({ nativeEvent: { layout: { height } } });
     tree = render({ ...props, visible: true, maxHeight: callerCap });
-    assert.equal(one(tree, Dialog).props.style.maxHeight, expected);
-    assert.equal(elements(one(tree, Dialog)).find(node => node.type === Dialog.Actions), footer);
+    assert.equal(one(tree, 'Modal').props.contentContainerStyle.maxHeight, expected);
+    assert.equal(elements(one(tree, 'Modal')).find(node => node.type === Dialog.Actions), footer);
     assert.equal(elements(body).includes(footer), false);
   }
   one(tree, 'KeyboardAvoidingView').props.onLayout({ nativeEvent: { layout: { height: 667 } } });
   tree = render({ ...props, visible: true, maxHeight: undefined });
-  assert.equal(one(tree, Dialog).props.style.maxHeight, 615, 'all dialogs remain bounded by the safe viewport');
+  assert.equal(one(tree, 'Modal').props.contentContainerStyle.maxHeight, 615, 'all dialogs remain bounded by the safe viewport');
 });
 
 // Run the pinned Paper Modal function with deferred native animations. This tests
@@ -112,10 +112,13 @@ function paperModal() {
     },
   };
   const animations: any[] = [];
+  const styleDeclaration = source.statements.find(node => ts.isVariableStatement(node) && node.declarationList.declarations.some(d => d.name.getText(source) === 'styles'))!;
+  const StyleSheet = { absoluteFill: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }, create: (styles: unknown) => styles };
+  const styles = new Function('StyleSheet', `${ts.transpile(styleDeclaration.getText(source), { target: ts.ScriptTarget.ES2022 })}; return styles;`)(StyleSheet);
   const scope = { React: hooks, DEFAULT_DURATION: 220, useInternalTheme: () => ({ animation: { scale: 0.75 } }), useLatestCallback: (fn: Function) => fn,
-    useSafeAreaInsets: () => ({ top: 20, bottom: 0 }), useAnimatedValue: (value: number) => state({ value })[0],
+    useSafeAreaInsets: () => ({ top: 20, bottom: safeBottom }), useAnimatedValue: (value: number) => state({ value })[0],
     Animated: { View: 'Animated.View', timing: (value: any, config: any) => ({ start: (done?: Function) => animations.push({ value, config, done }) }) },
-    Easing: { out: (value: unknown) => value, cubic: 'cubic' }, StyleSheet: { absoluteFill: {} }, AnimatedPressable: 'AnimatedPressable', View: 'View', Surface: 'Surface', styles: {}, BackHandler: {},
+    Easing: { out: (value: unknown) => value, cubic: 'cubic' }, StyleSheet, AnimatedPressable: 'AnimatedPressable', View: 'View', Surface: 'Surface', styles, BackHandler: {},
     addEventListener(_target: unknown, _event: string, fn: () => boolean) { back.push(fn); return { remove() { back.splice(back.indexOf(fn), 1); } }; },
   };
   const modal = new Function('env', `with(env) { ${ts.transpile(declaration.getText(source), { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React })}; return Modal; }`)(withSharedUI(scope));
@@ -130,12 +133,30 @@ function paperModal() {
   };
 }
 
+test('a fold panel constrains only the card wrapper while the real Paper backdrop covers the app', () => {
+  const regions = [{ kind: 'division', frame: { x: 390, y: 0, width: 20, height: 667 } }];
+  const scope: any = env; scope.useFoldRegions = () => regions; windowWidth = 800;
+  try {
+    let dismissed = 0;
+    const tree = production('KeyboardDialog.tsx', 'KeyboardDialog')({ visible: true, onDismiss: () => dismissed++ });
+    assert.deepEqual(one(tree, 'Animated.View').props.style, { flex: 1, opacity: 1 }, 'the animation ancestor must cover both fold panels');
+    const modal = paperModal(), paper = modal.render(one(tree, 'Modal').props);
+    assert.deepEqual(one(paper, 'Animated.View').props.style, { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 });
+    assert.equal(one(paper, 'AnimatedPressable').props.style[0].flex, 1, 'the backdrop keeps the whole modal area');
+    const wrapper = Object.assign({}, ...one(paper, 'View').props.style);
+    assert.equal(wrapper.left, 410); assert.equal(wrapper.right, 0); assert.equal(wrapper.top, 20); assert.equal(wrapper.bottom, 0);
+    assert.equal(wrapper.marginTop, 0); assert.equal(wrapper.marginBottom, 0, 'the selected panel already excludes safe areas');
+    one(paper, 'AnimatedPressable').props.onPress(); assert.equal(dismissed, 1);
+    modal.unmount();
+  } finally { delete scope.useFoldRegions; windowWidth = 375; }
+});
+
 test('first native open and reopen paint opaque before any Paper animation completes', () => {
   const render = production('KeyboardDialog.tsx', 'KeyboardDialog');
   let modal: ReturnType<typeof paperModal> | undefined, dismissed = 0;
   const props = { onDismiss: () => dismissed++, children: 'autofocused input' };
   for (const visible of [false, true, false, true]) {
-    const dialog = elements(render({ ...props, visible })).find(node => node.type === Dialog);
+    const dialog = elements(render({ ...props, visible })).find(node => node.type === 'Modal');
     if (!dialog) { modal?.unmount(); if (modal) assert.equal(modal.back.length, 0); modal = undefined; continue; }
     modal ??= paperModal();
     const tree = modal.render(dialog.props);
@@ -153,7 +174,7 @@ test('first native open and reopen paint opaque before any Paper animation compl
 test('a busy native dialog still consumes Back without dismissing or enabling the backdrop', () => {
   const render = production('KeyboardDialog.tsx', 'KeyboardDialog'), modal = paperModal();
   let dismissed = 0;
-  const dialog = one(render({ visible: true, dismissable: false, onDismiss: () => dismissed++ }), Dialog);
+  const dialog = one(render({ visible: true, dismissable: false, onDismiss: () => dismissed++ }), 'Modal');
   const tree = modal.render(dialog.props);
   assert.equal(modal.back[0](), true); assert.equal(dismissed, 0);
   assert.equal(one(tree, 'AnimatedPressable').props.disabled, true);
@@ -220,14 +241,14 @@ test('shared web dialog is centered and compact on desktop while retaining phone
   const props = { visible: true, onDismiss() {}, children: 'unchanged fields' };
   try {
     env.Platform.OS = 'web';
-    assert.equal(elements(render({ ...props, visible: false })).filter(node => node.type === Dialog).length, 0, 'fully closed web dialogs release their modal and focus lifecycle');
+    assert.equal(elements(render({ ...props, visible: false })).filter(node => node.type === 'Modal').length, 0, 'fully closed web dialogs release their modal and focus lifecycle');
     for (const [width, expected] of [[1440, 480], [2000, 480], [540, 480], [375, 343]]) {
-      windowWidth = width; const dialog = one(render(props), Dialog);
-      assert.equal(dialog.props.style.width, expected); assert.equal(dialog.props.style.alignSelf, 'center');
+      windowWidth = width; const dialog = one(render(props), 'Modal');
+      assert.equal(dialog.props.contentContainerStyle.width, expected); assert.equal(dialog.props.contentContainerStyle.alignSelf, 'center');
       assert.ok(elements(dialog).some(node => node.type === 'DialogFocus' && node.children[0] === props.children));
     }
-    env.Platform.OS = 'native'; const dialog = one(render(props), Dialog);
-    assert.equal(dialog.props.style.width, 343); assert.equal(dialog.props.style.alignSelf, 'center');
+    env.Platform.OS = 'native'; const dialog = one(render(props), 'Modal');
+    assert.equal(dialog.props.contentContainerStyle.width, 343); assert.equal(dialog.props.contentContainerStyle.alignSelf, 'center');
   } finally { env.Platform.OS = 'native'; windowWidth = 375; }
 });
 
@@ -236,12 +257,32 @@ test('custom dialogs stay in a usable fold panel and recompute when the keyboard
  const scope:any=env;scope.useFoldRegions=()=>regions;windowWidth=800;
  try {
   const render=production('KeyboardDialog.tsx','KeyboardDialog'),props={visible:true,onDismiss(){},children:'Keep these inputs'};
-  let tree=render(props);let panel=one(tree,'Animated.View').props.style;
-  assert.equal(panel.left,410);assert.equal(panel.width,390);assert.equal(one(tree,Dialog).props.style.width,358);
+  let tree=render(props);let panel=one(tree,'Modal').props.style;
+  const containerType = one(tree, 'Modal').type;
+  assert.equal(panel.left,410);assert.equal(panel.right,0);assert.equal(one(tree,'Modal').props.contentContainerStyle.width,358);
   regions[0]={kind:'division',frame:{x:0,y:300,width:800,height:24}};
-  tree=render(props);panel=one(tree,'Animated.View').props.style;assert.equal(panel.top,324);assert.equal(panel.height,343);assert.equal(one(tree,Dialog).props.style.maxHeight,311);
+  tree=render(props);panel=one(tree,'Modal').props.style;assert.equal(panel.top,324);assert.equal(panel.bottom,0);assert.equal(one(tree,'Modal').props.contentContainerStyle.maxHeight,311);
   one(tree,'KeyboardAvoidingView').props.onLayout({nativeEvent:{layout:{height:280}}});tree=render(props);
-  assert.equal(one(tree,'Animated.View').props.style.flex,1);assert.equal(one(tree,Dialog).props.style.maxHeight,228);
+  assert.equal(one(tree,'Animated.View').props.style.flex,1);assert.equal(one(tree,'Modal').props.contentContainerStyle.maxHeight,228);
+  assert.equal(one(tree,'Modal').type,containerType,'fold and keyboard transitions keep the same modal container type');
   assert.equal(one(tree,'DialogFocus').children[0],props.children);
  } finally {delete scope.useFoldRegions;windowWidth=375;}
+});
+
+test('a bottom card in an inset fold panel applies safe areas once and keeps a busy backdrop full size', () => {
+  const regions = [{ kind: 'division', frame: { x: 0, y: 300, width: 800, height: 24 } }];
+  const scope: any = env; scope.useFoldRegions = () => regions; windowWidth = 800; safeBottom = 24;
+  try {
+    let dismissed = 0;
+    const tree = production('KeyboardDialog.tsx', 'KeyboardDialog')({ visible: true, placement: 'bottom', dismissable: false, onDismiss: () => dismissed++ });
+    const props = one(tree, 'Modal').props, modal = paperModal(), paper = modal.render(props);
+    assert.deepEqual(one(tree, 'Animated.View').props.style, { flex: 1, opacity: 1 });
+    const wrapper = Object.assign({}, ...one(paper, 'View').props.style);
+    assert.equal(wrapper.justifyContent, 'flex-end'); assert.equal(wrapper.top, 324); assert.equal(wrapper.bottom, 24);
+    assert.equal(wrapper.marginTop, 0); assert.equal(wrapper.marginBottom, 0);
+    assert.equal(props.contentContainerStyle.maxHeight, 287); assert.equal(props.contentContainerStyle.paddingBottom, 0);
+    const backdrop = one(paper, 'AnimatedPressable');
+    assert.equal(backdrop.props.style[0].flex, 1); assert.equal(backdrop.props.disabled, true); assert.equal(backdrop.props.onPress, undefined);
+    assert.equal(modal.back[0](), true); assert.equal(dismissed, 0); modal.unmount();
+  } finally { delete scope.useFoldRegions; windowWidth = 375; safeBottom = 0; }
 });

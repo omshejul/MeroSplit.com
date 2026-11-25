@@ -80,6 +80,10 @@ test('an active vertical fold separates wide bill editors and a narrow fold pane
  assert.equal(columns.props.style.flexDirection,'column');
  const container=allNodes(tree).find(n=>Array.isArray(n.props.style)&&n.props.style[1]?.marginLeft!==undefined);
  assert.equal(100+container.props.style[1].marginLeft,370);
+ regions[0].frame.x=90;tree=app.render();measure();columns=allNodes(tree).find(n=>n.props.testID==='bill-columns');
+ assert.equal(columns.props.style.flexDirection,'column','a fold overlapping the form edge must constrain the whole form');
+ const edge=allNodes(tree).find(n=>Array.isArray(n.props.style)&&n.props.style[1]?.marginLeft!==undefined);
+ assert.equal(100+edge.props.style[1].marginLeft,110);
  assert.equal(field(tree,'TextField','Description').props.value,'Across the fold');
  assert.equal(app.saves.length,0);await app.writes.current;app.unmount();raw.close();
 });

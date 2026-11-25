@@ -182,7 +182,7 @@ export default function ExpenseForm({ group, expense, selfId, busy, autoFocusAmo
   const foldGap = division ? Math.max(24, division.frame.width) : 24;
   const firstWidth = division ? division.frame.x - contentFrame.x - (foldGap - division.frame.width) / 2 : (contentFrame.width - 24) / 2;
   const secondWidth = contentFrame.width - firstWidth - foldGap;
-  const expanded = windowHeight >= 480 && divisions.length <= 1 && Math.min(firstWidth, secondWidth) >= 320 * Math.max(1, fontScale);
+  const expanded = windowHeight >= 480 && divisions.length <= 1 && (!!division || panel.width === contentFrame.width) && Math.min(firstWidth, secondWidth) >= 320 * Math.max(1, fontScale);
   const constrained = contentFrame.width > 0 && !expanded && panel.width < contentFrame.width;
   const storage = useRef<ReturnType<typeof expenseDraftStore> | null>(null);
   if (!storage.current) storage.current = expenseDraftStore(owner, group.id, expense?.id ?? null, writes, getDatabase);
