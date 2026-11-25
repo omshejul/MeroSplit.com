@@ -1,0 +1,23 @@
+{
+  "version": "1.2.6",
+  "platform": "IOS",
+  "device": "APP_IPHONE_DUO",
+  "data": "Synthetic demo groups and bills",
+  "capture": "Native iPhone Duo simulator, actual app with isolated test data",
+  "encoding": "JPEG quality100; no resizing or content changes",
+  "appStoreDelivery": "COMPLETE",
+  "screenshots": [
+    {
+      "file": "01-folded-groups.jpg",
+      "sha256": "cb1878d2dde0004625ac76d3609c587a8220e2eaee2e0115b02f09b5cb084f1d"
+    },
+    {
+      "file": "02-unfolded-bill.jpg",
+      "sha256": "9a409767edd36d32f50d06bacd57bf761ebd539dadec83c3cffa0f7cd934e9f8"
+    },
+    {
+      "file": "03-half-open-help.jpg",
+      "sha256": "245085a89f6bf15910189838f919317a676c58228645d55b8208cb5d30657e2b"
+    }
+  ]
+}
