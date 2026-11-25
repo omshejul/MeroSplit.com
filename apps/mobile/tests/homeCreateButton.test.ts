@@ -12,9 +12,9 @@ const fn = source.statements.find(node => ts.isFunctionDeclaration(node))!;
 const code = ts.transpile(fn.getText(source).replace('export default ', ''), { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React });
 
 test('Create actions float above native glass while custom navigation stays in flow', () => {
-  for (const OS of ['ios', 'android', 'web']) for (const Version of [25, 26, 27]) for (const direct of [false, true]) {
+  for (const OS of ['ios', 'android', 'web']) for (const Version of [25, 26, 27]) for (const direct of [false, true]) for (const right of [0, 84]) {
     let loaded = 0, clicked = 0; const native = OS === 'ios' && Version >= 26;
-    const env = { usesNativeHomeTabs:native,FloatingActionContainer:'FloatingActionContainer',React, View: 'View', Button: 'Button', Icon: 'Icon', GlassSurface: 'GlassSurface', useUI: () => ({ palette: { accent: 'accent', muted: 'muted' } }), Platform: { OS, Version }, pageWidthStyle: OS === 'web' ? { maxWidth: 760, alignSelf: 'center' } : {},
+    const env = { useSafeAreaInsets:()=>({right}),usesNativeHomeTabs:native,FloatingActionContainer:'FloatingActionContainer',React, View: 'View', Button: 'Button', Icon: 'Icon', GlassSurface: 'GlassSurface', useUI: () => ({ palette: { accent: 'accent', muted: 'muted' } }), Platform: { OS, Version }, pageWidthStyle: OS === 'web' ? { maxWidth: 760, alignSelf: 'center' } : {},
       require: (name: string) => { assert.equal(name, 'react-native-screens/experimental'); loaded++; return { SafeAreaView: 'NativeSafeAreaView' }; } };
     const render = new Function('env', `with(env){${actionCode};${code};return HomeCreateButton;}`)(withSharedUI(env));
     const tree = render({ direct, disabled: false, onPress: () => clicked++ });
@@ -22,7 +22,8 @@ test('Create actions float above native glass while custom navigation stays in f
     assert.equal(loaded, 0, 'Navigation owns the inset, never the action');
     assert.equal(tree.props.edges, undefined);
     if (!native) assert.equal(tree.props.pointerEvents, 'box-none');
-    const content = tree, glass = content.children[0], button = OS === 'ios' ? glass.children[0] : glass;
+    const content = tree, glass = native && right ? content.children[0].children[0] : content.children[0], button = OS === 'ios' ? glass.children[0] : glass;
+    if (native && right) assert.equal(content.children[0].props.style.paddingRight, right, 'Home action clears the local native tab rail');
     if (OS === 'ios') { assert.equal(glass.type, 'GlassSurface'); assert.equal(glass.props.interactive, true); assert.equal(glass.props.tintColor, 'accent'); }
     assert.equal(button.props.kind, 'primary');
     assert.equal(button.props.style.backgroundColor, OS === 'ios' ? 'transparent' : 'accent', 'iOS pressable must not paint over native glass');
@@ -36,7 +37,7 @@ test('Create actions float above native glass while custom navigation stays in f
     assert.equal(button.props.style.minHeight, 48);
     assert.equal(button.props.style.borderRadius, 999);
     button.props.onPress(); assert.equal(clicked, 1);
-    const disabled=render({ direct, disabled: true, onPress() {} }).children[0];
+    const disabledTree=render({ direct, disabled: true, onPress() {} }), disabled=native && right ? disabledTree.children[0].children[0] : disabledTree.children[0];
     assert.equal((OS === 'ios' ? disabled.children[0] : disabled).props.disabled, true);
     if (OS === 'ios') assert.equal(disabled.props.interactive, false);
   }
