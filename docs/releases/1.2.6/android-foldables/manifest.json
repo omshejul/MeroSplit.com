@@ -1,0 +1,26 @@
+{
+  "version": "1.2.6",
+  "platform": "ANDROID",
+  "capture": "Native foldable emulator, actual app with isolated synthetic data",
+  "imageEdited": false,
+  "screenshots": [
+    {
+      "file": "01-inner-square.png",
+      "width": 2106,
+      "height": 2106,
+      "sha256": "423de812d697c40efa378fab52e53c5818069ec56ebd67c7c14e6a29da1f9937"
+    },
+    {
+      "file": "02-inner-4x3.png",
+      "width": 2688,
+      "height": 2016,
+      "sha256": "d844ada93858829af2373e3d1850fa92dcf6a8e009e8e74d9ac0a071d4989d94"
+    },
+    {
+      "file": "03-outer-10x16.png",
+      "width": 1260,
+      "height": 2016,
+      "sha256": "237fe2643e006abc4d12d97a819dc6df522e1c9c0a49e8129f7fe9d54372b8eb"
+    }
+  ]
+}
