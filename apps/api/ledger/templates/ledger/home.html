@@ -3,19 +3,19 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>MeroSplit: shared bills and balances for groups and friends</title>
-  <meta name="description" content="Record bills you share with friends, flatmates and travel groups. MeroSplit works out each person's balance, suggests payments to settle the group, and keeps offline changes until you reconnect.">
+  <title>MeroSplit: shared bills, sorted</title>
+  <meta name="description" content="Split bills with flatmates, friends and travel groups. MeroSplit works out who owes whom, suggests the fewest payments to settle up, and keeps offline changes until you reconnect.">
   <link rel="canonical" href="https://merosplit.com/">
   <meta name="color-scheme" content="light dark">
-  <meta name="theme-color" content="#EEF0F3" media="(prefers-color-scheme: light)">
-  <meta name="theme-color" content="#0F1114" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#F5F5F5" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#111111" media="(prefers-color-scheme: dark)">
   <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon.png">
   <link rel="apple-touch-icon" sizes="180x180" href="/assets/apple-touch-icon.png">
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="MeroSplit">
   <meta property="og:url" content="https://merosplit.com/">
-  <meta property="og:title" content="MeroSplit: shared bills and balances for groups and friends">
-  <meta property="og:description" content="Record shared bills, see who owes whom, and record payments when people settle up.">
+  <meta property="og:title" content="MeroSplit: shared bills, sorted">
+  <meta property="og:description" content="Add what you paid. MeroSplit works out who owes whom and suggests the fewest payments to settle up.">
   <meta property="og:image" content="https://merosplit.com/assets/merosplit-icon.png">
   <meta property="og:image:type" content="image/png">
   <meta property="og:image:width" content="1024">
@@ -23,42 +23,112 @@
   <meta property="og:image:alt" content="MeroSplit amber and coral mark">
   <meta name="twitter:card" content="summary">
   <link rel="stylesheet" href="/assets/typography.css">
-  <link rel="stylesheet" href="/assets/home.css">
+  <link rel="stylesheet" href="/assets/landing.css">
+  <script src="/assets/landing.js" defer></script>
   {% if testing_links_ready and not google_play_public %}<script src="/assets/install.js" defer></script>{% endif %}
   <script type="application/ld+json">{"@context": "https://schema.org", "@type": "WebSite", "name": "MeroSplit", "url": "https://merosplit.com/"}</script>
 </head>
 <body>
-  <!-- Icons: Heroicons v2.1.5, 24 outline (https://heroicons.com). MIT License, Copyright (c) Tailwind Labs, Inc. -->
+  <!-- Icons: Hugeicons free stroke-rounded set via /assets/icons.svg (MIT License, Copyright (c) 2025 Hugeicons). The Android guide close icon is Heroicons v2.1.5 (MIT License, Copyright (c) Tailwind Labs, Inc.). -->
   <a class="skip" href="#main">Skip to content</a>
-  {% include "ledger/components/public_header.html" with hide_nav=True %}
+  <header class="wrap top">
+    <a class="brand" href="/"><svg viewBox="0 0 89 96" aria-hidden="true" focusable="false"><path fill="#FFB21E" d="M40 0a40 40 0 0 0 0 80V61a21 21 0 0 1 0-42z"/><path fill="#F2545B" d="M49 16a40 40 0 0 1 0 80V77a21 21 0 0 0 0-42z"/></svg>MeroSplit</a>
+    <a class="top-link" href="/app/"><svg class="hi" aria-hidden="true" focusable="false"><use href="/assets/icons.svg#globe-02"/></svg>Open on web</a>
+    <a class="pill" href="#get"><svg class="hi" aria-hidden="true" focusable="false"><use href="/assets/icons.svg#download-04"/></svg>Get the app</a>
+  </header>
 
-  <main id="main" class="wrap landing">
-    <section class="pitch" aria-labelledby="title">
-      <h1 id="title">Shared bills.<br>Clear balances.</h1>
-      <p class="lede">For flatmates, friends and trips. Add what you paid, see who owes whom, and settle up your way.</p>
-      <p class="source-note">Built in the open. <a href="https://github.com/omshejul/MeroSplit.com">Explore the source on GitHub</a>.</p>
-      <div class="install" id="install" tabindex="-1" aria-label="Try MeroSplit">
-        <div class="badges">
-          <a id="iphone-install" href="https://apps.apple.com/app/merosplit/id6823916128"><img src="/assets/download-on-the-app-store.svg" alt="Download on the App Store" height="52"></a>
-          {% if google_play_public %}
-          <a class="google-play-badge" href="https://play.google.com/store/apps/details?id=com.omshejul.splitdumb"><img src="/assets/get-it-on-google-play.png" alt="Get it on Google Play" width="646" height="250"></a>
-          {% elif testing_links_ready %}
-          <a id="android-badge" href="#android-install" aria-haspopup="dialog" aria-controls="android-guide"><img src="/assets/try-on-android.svg" alt="Try on Android: see testing steps" height="52"></a>
-          {% endif %}
+  <main id="main">
+    <section class="wrap hero" aria-labelledby="hero-title">
+      <h1 id="hero-title" class="cut" data-copy="Shared bills,&#10;sorted."><span class="cut-l">Shared bills,<br>sorted.</span></h1>
+      <div class="hero-foot">
+        <p class="lede">For flatmates, friends and trips. Add what you paid and MeroSplit works out who owes whom. Pay each other however you like, then record it.</p>
+        <div class="get" id="install" tabindex="-1">
+          <div class="badges">
+            <a id="iphone-install" href="https://apps.apple.com/app/merosplit/id6823916128"><img src="/assets/download-on-the-app-store.svg" alt="Download on the App Store" width="144" height="48"></a>
+            {% if google_play_public %}<a class="google-play-badge" href="https://play.google.com/store/apps/details?id=com.omshejul.splitdumb"><img src="/assets/get-it-on-google-play.png" alt="Get it on Google Play" width="646" height="250"></a>
+            {% elif testing_links_ready %}<a id="android-badge" href="#android-install" aria-haspopup="dialog" aria-controls="android-guide"><img src="/assets/try-on-android.svg" alt="Try on Android: see testing steps" height="48"></a>{% endif %}
+          </div>
+          <a class="web-link" href="/app/"><svg class="hi" aria-hidden="true" focusable="false"><use href="/assets/icons.svg#browser"/></svg>Or use it in your browser</a>
         </div>
-        <a class="web-choice" href="/app/">Continue on web</a>
-        <figure class="install-qr"><img src="/assets/install-qr.svg" width="112" height="112" alt="QR code to open MeroSplit install options on your phone"><figcaption>Scan to try on your phone.</figcaption></figure>
       </div>
     </section>
 
-    <figure class="split-example" aria-label="Illustrative example of a shared dinner split">
-      <figcaption>Illustrative example</figcaption>
-      <div class="dinner"><h2>Dinner with friends</h2><p>₹1,200</p><span>Asha paid. Split three ways.</span></div>
-      <div class="people" aria-hidden="true"><span>A</span><span>R</span><span>M</span></div>
-      <p class="share">₹400 <span>each</span></p>
-      <ul class="settle"><li><span>Ravi pays Asha</span><strong>₹400</strong></li><li><span>Meera pays Asha</span><strong>₹400</strong></li></ul>
-      <p class="receipt-note">Simplify combines group balances into suggested payments.<br>You pay each other. MeroSplit keeps track.</p>
-    </figure>
+    <section class="wrap simplify" id="simplify" aria-labelledby="simplify-title">
+      <div class="simplify-intro">
+        <h2 id="simplify-title">Fewer payments. Same balances.</h2>
+        <p>Turn on Simplify and MeroSplit looks at the whole group at once. It suggests the fewest payments that settle everyone, and nobody pays a rupee more or gets a rupee less.</p>
+      </div>
+
+      <div class="demo">
+        <div class="trip">
+          <div class="trip-head">
+            <span class="tile" aria-hidden="true"><svg class="hi" aria-hidden="true" focusable="false"><use href="/assets/icons.svg#beach"/></svg></span>
+            <div><h3>Goa trip</h3><p>An example group.<span data-demo-only hidden> Untick a bill to leave it out.</span></p></div>
+          </div>
+          <ul class="bills" id="bills">
+          <li><label class="bill"><input type="checkbox" checked hidden data-amount="12000" data-payer="0" data-among="0 1 2 3"><span class="bill-icon"><svg class="hi" aria-hidden="true" focusable="false"><use href="/assets/icons.svg#hotel-02"/></svg></span><span class="bill-name">Villa, two nights</span><span class="bill-amt">₹12,000</span><span class="bill-meta">Asha paid, split 4 ways</span></label></li>
+          <li><label class="bill"><input type="checkbox" checked hidden data-amount="2400" data-payer="1" data-among="0 1 2 3"><span class="bill-icon"><svg class="hi" aria-hidden="true" focusable="false"><use href="/assets/icons.svg#scooter-01"/></svg></span><span class="bill-name">Scooter rental</span><span class="bill-amt">₹2,400</span><span class="bill-meta">Ravi paid, split 4 ways</span></label></li>
+          <li><label class="bill"><input type="checkbox" checked hidden data-amount="3600" data-payer="2" data-among="0 1 2 3"><span class="bill-icon"><svg class="hi" aria-hidden="true" focusable="false"><use href="/assets/icons.svg#restaurant-01"/></svg></span><span class="bill-name">Dinner at the shack</span><span class="bill-amt">₹3,600</span><span class="bill-meta">Meera paid, split 4 ways</span></label></li>
+          <li><label class="bill"><input type="checkbox" checked hidden data-amount="1600" data-payer="3" data-among="0 1 2 3"><span class="bill-icon"><svg class="hi" aria-hidden="true" focusable="false"><use href="/assets/icons.svg#taxi-02"/></svg></span><span class="bill-name">Airport cab</span><span class="bill-amt">₹1,600</span><span class="bill-meta">Kabir paid, split 4 ways</span></label></li>
+          <li><label class="bill"><input type="checkbox" checked hidden data-amount="4500" data-payer="1" data-among="0 1 2"><span class="bill-icon"><svg class="hi" aria-hidden="true" focusable="false"><use href="/assets/icons.svg#ticket-01"/></svg></span><span class="bill-name">Parasailing</span><span class="bill-amt">₹4,500</span><span class="bill-meta">Ravi paid, split between Asha, Ravi and Meera</span></label></li>
+          </ul>
+        </div>
+
+        <div class="board">
+          <div class="board-bar">
+            <p class="tally" id="tally" aria-live="polite"><strong>6</strong> <span>payments to settle up</span></p>
+            <button class="switch" id="simplify-switch" type="button" role="switch" aria-checked="false" data-demo-only hidden><svg class="hi" aria-hidden="true" focusable="false"><use href="/assets/icons.svg#magic-wand-01"/></svg>Simplify<span class="switch-track" aria-hidden="true"></span></button>
+          </div>
+          <svg class="graph" id="graph" viewBox="0 30 600 400" aria-hidden="true" focusable="false" data-demo-only hidden></svg>
+          <div>
+            <ol class="payments" id="payments" aria-label="Payments to settle up">
+          <li><span>Ravi pays Asha</span><strong>₹900</strong></li>
+          <li><span>Meera pays Asha</span><strong>₹2,100</strong></li>
+          <li><span>Kabir pays Asha</span><strong>₹2,600</strong></li>
+          <li><span>Meera pays Ravi</span><strong>₹1,200</strong></li>
+          <li><span>Kabir pays Ravi</span><strong>₹200</strong></li>
+          <li><span>Kabir pays Meera</span><strong>₹500</strong></li>
+            </ol>
+            <p>Each person's balance stays the same with or without Simplify.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="wrap more" aria-labelledby="more-title">
+      <h2 id="more-title">Bring your history. Take it anywhere.</h2>
+      <dl class="features">
+        <div><dt><span class="feature-icon"><svg class="hi" aria-hidden="true" focusable="false"><use href="/assets/icons.svg#wifi-off-01"/></svg></span>Works without signal</dt><dd>Add and edit bills offline. Changes sync when you reconnect, and any clash comes to you to review.</dd></div>
+        <div><dt><span class="feature-icon"><svg class="hi" aria-hidden="true" focusable="false"><use href="/assets/icons.svg#file-import"/></svg></span>Bring your Splitwise history</dt><dd>Review a Splitwise CSV export, then import it into MeroSplit.</dd></div>
+        <div><dt><span class="feature-icon"><svg class="hi" aria-hidden="true" focusable="false"><use href="/assets/icons.svg#laptop-phone-sync"/></svg></span>Phone or browser</dt><dd>iPhone, Android and the web share one account and the same balances.</dd></div>
+      </dl>
+    </section>
+
+    <section class="wrap money" aria-labelledby="money-title">
+      <h2 id="money-title">MeroSplit keeps the record. You move the money.</h2>
+      <div class="money-points">
+        <p><span class="point-icon"><svg class="hi" aria-hidden="true" focusable="false"><use href="/assets/icons.svg#money-exchange-01"/></svg></span><strong>Pay the way you already do.</strong>UPI, cash or a bank transfer. Record it and everyone's balance updates.</p>
+        <p><span class="point-icon"><svg class="hi" aria-hidden="true" focusable="false"><use href="/assets/icons.svg#gift"/></svg></span><strong>Free. No ads. No subscriptions.</strong>Every feature is there from your first bill.</p>
+        <p><span class="point-icon"><svg class="hi" aria-hidden="true" focusable="false"><use href="/assets/icons.svg#source-code"/></svg></span><strong>Open source.</strong>The code behind MeroSplit is public, so anyone can check how it works.<a class="source" href="https://github.com/omshejul/MeroSplit.com"><svg class="hi" aria-hidden="true" focusable="false"><use href="/assets/icons.svg#github"/></svg>Source on GitHub</a></p>
+      </div>
+    </section>
+
+    <section class="get-band" id="get" aria-labelledby="get-title">
+      <div class="wrap get-inner">
+        <div class="get-copy">
+          <h2 id="get-title">Add the first bill.</h2>
+          <p>Get MeroSplit on {% if google_play_public %}iPhone or Android{% else %}iPhone{% endif %}, or open it in your browser. One account, the same groups everywhere.</p>
+          <div class="badges">
+            <a href="https://apps.apple.com/app/merosplit/id6823916128"><img src="/assets/download-on-the-app-store.svg" alt="Download on the App Store" width="156" height="52"></a>
+            {% if google_play_public %}<a class="google-play-badge" href="https://play.google.com/store/apps/details?id=com.omshejul.splitdumb"><img src="/assets/get-it-on-google-play.png" alt="Get it on Google Play" width="646" height="250"></a>
+            {% elif testing_links_ready %}<a href="#android-install" aria-haspopup="dialog" aria-controls="android-guide"><img src="/assets/try-on-android.svg" alt="Try on Android: see testing steps" height="52"></a>{% endif %}
+          </div>
+          <a class="web-link" href="/app/"><svg class="hi" aria-hidden="true" focusable="false"><use href="/assets/icons.svg#browser"/></svg>Open MeroSplit on the web</a>
+          <figure class="qr"><img src="/assets/install-qr.svg" width="104" height="104" alt="QR code to open MeroSplit install options on your phone"><figcaption>Scan with your phone to get the app.</figcaption></figure>
+        </div>
+        <img class="mascot" src="/assets/mascot.png" alt="" width="560" height="560" loading="lazy">
+      </div>
+    </section>
   </main>
 
   {% if testing_links_ready and not google_play_public %}
