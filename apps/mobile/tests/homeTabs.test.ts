@@ -83,7 +83,7 @@ test('RTL swipes follow reading direction', () => {
   h.onPanResponderRelease(null, gesture); assert.deepEqual(app.selected, ['Friends']);
 });
 
-test('native tab taps go through React before switching, even for visited tabs', () => {
+test('native tab taps select immediately without waiting for React, including unvisited screens', () => {
   const React = { createElement: (type: unknown, props: any, ...children: any[]) => ({ type, props, children }) };
   const file = ts.createSourceFile('HomeTabs.ios.tsx', readFileSync(new URL('../src/HomeTabs.ios.tsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   const body = file.statements.filter(node => !ts.isImportDeclaration(node)).map(node => node.getText(file).replace(/^export (?:default )?/, '')).join('\n');
@@ -95,21 +95,55 @@ test('native tab taps go through React before switching, even for visited tabs',
   const props = { selected: 'Groups', busy: false, onSelect: (value: string) => selected.push(value), render: (value: string) => { rendered.push(value); return value; } };
   const tree = render(props); assert.equal(tree.type, 'NativeTabs'); assert.deepEqual(rendered, ['Groups']);
   for(const screen of tree.children[0]){const provider=screen.children[0];assert.equal(provider?.type,'SafeAreaProvider','native tab owns its safe-area context from first mount');assert.equal(provider.children[0]?.type,screen.props.screenKey==='Groups'?'AnimatedView':undefined,'viewport stays full height inside the local provider');assert.equal(screen.props.ios.overrideScrollViewContentInsetAdjustmentBehavior,false,'manual clearance must not be doubled by automatic insets');}
-  assert.deepEqual(tree.children[0].map((screen: any) => screen.props.preventNativeSelection), [true, true, true, true]);
-  tree.props.onTabSelectionPrevented({ nativeEvent: { provenance: 4, selectedScreenKey: 'Groups', preventedScreenKey: 'Friends' } });
+  assert.deepEqual(tree.children[0].map((screen: any) => screen.props.preventNativeSelection), [false, false, false, false], 'UIKit must be able to select before a JS event or destination render');
+  tree.props.onTabSelected({ nativeEvent: { provenance: 4, selectedScreenKey: 'Friends', actionOrigin: 'user' } });
   assert.deepEqual(selected, ['Friends']); assert.equal(refs.current, 4);
   tree.props.onTabSelected({ nativeEvent: { provenance: 5, selectedScreenKey: 'Activity', actionOrigin: 'programmatic-js' } });
   assert.deepEqual(selected, ['Friends']);
+  tree.props.onTabSelected({ nativeEvent: { provenance: 6, selectedScreenKey: 'Account', actionOrigin: 'user' } });
+  assert.deepEqual(selected, ['Friends', 'Account'], 'another native tap is acknowledged before React commits the previous route');
+  assert.equal(refs.current, 6);
   const people = render({ ...props, selected: 'Friends' });
   const [groups, friends] = people.children[0];
-  assert.equal(groups.props.preventNativeSelection, true);
+  assert.equal(groups.props.preventNativeSelection, false);
   assert.deepEqual(groups.children[0].children[0].props.style, { flex: 1 });
-  assert.equal(friends.props.preventNativeSelection, true);
-  people.props.onTabSelectionPrevented({ nativeEvent: { provenance: 6, selectedScreenKey: 'Friends', preventedScreenKey: 'Groups' } });
-  assert.deepEqual(selected, ['Friends', 'Groups']);
+  assert.equal(friends.props.preventNativeSelection, false);
+  people.props.onTabSelected({ nativeEvent: { provenance: 7, selectedScreenKey: 'Groups', actionOrigin: 'user' } });
+  assert.deepEqual(selected, ['Friends', 'Account', 'Groups']);
   const busy = render({ ...props, busy: true }); assert.ok(busy.children[0].every((node: any) => node.props.preventNativeSelection));
   busy.props.onTabSelectionPrevented({ nativeEvent: { provenance: 7, selectedScreenKey: 'Groups', preventedScreenKey: 'Account' } });
-  assert.deepEqual(selected, ['Friends', 'Groups']);
+  assert.deepEqual(selected, ['Friends', 'Account', 'Groups']);
+  busy.props.onTabSelected({ nativeEvent: { provenance: 8, selectedScreenKey: 'Account', actionOrigin: 'user' } });
+  assert.deepEqual(selected, ['Friends', 'Account', 'Groups'], 'account isolation remains a navigation boundary');
+  assert.ok(render(props).children[0].every((node: any) => node.props.preventNativeSelection === false));
+});
+
+test('home tab navigation stays synchronous while activity data is missing on both platforms', () => {
+  const file = ts.createSourceFile('App.tsx', readFileSync(new URL('../App.tsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  let handler = '', busy = '';
+  function visit(node: ts.Node) {
+    if (ts.isJsxSelfClosingElement(node) && node.tagName.getText(file) === 'HomeTabs') {
+      for (const prop of node.attributes.properties) if (ts.isJsxAttribute(prop) && prop.initializer && ts.isJsxExpression(prop.initializer)) {
+        if (prop.name.getText(file) === 'onSelect') handler = prop.initializer.expression!.getText(file);
+        if (prop.name.getText(file) === 'busy') busy = prop.initializer.expression!.getText(file);
+      }
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(file); assert.ok(handler); assert.equal(busy, 'authHeld', 'background loading must not lock tabs');
+  for (const platform of ['ios', 'android']) {
+    const actions: string[] = [], owner = { current: 'old' };
+    const select = new Function('env', `with(env){${ts.transpile(`const select = ${handler};`, { target: ts.ScriptTarget.ES2022 })}; return select;}`)({
+      setShowArchived() {}, setShowHidden() {}, activityOwner: owner, setActivityError() {},
+      session: {}, readScope: () => 'scope', readPrefetch: { fresh: () => false },
+      navigate: (_screen: string, params: { tab: string }) => actions.push(params.tab),
+      fetch: () => { throw new Error('Tab navigation must not await HTTP'); },
+    });
+    for (const tab of ['Friends', 'Activity', 'Account', 'Groups']) {
+      select(tab); assert.equal(actions.at(-1), tab, platform + ' selects in the same call');
+    }
+    assert.equal(owner.current, '', 'uncached activity can load after selection');
+  }
 });
 
 test('web uses its supported input focus API so text editing never changes tabs', () => {
