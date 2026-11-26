@@ -17,7 +17,8 @@ export function AppFrame({ children, onTouchStart, windowOnly = false }: { child
   // Headers keep the top/cutout inset; sticky controls protect their own bottom edge.
   return <View style={{ flex: 1, backgroundColor: palette.background }} onTouchStart={onTouchStart}>
     <StatusBar style={dark ? 'light' : 'dark'} />
-    {windowOnly ? children : <SafeAreaView style={{ flex: 1 }} edges={Platform.OS === 'ios' ? ['top', 'left', 'right'] : ['top', 'left', 'right', 'bottom']}>
+    {/* A side status bar can leave no top inset. Keep a content margin without adding to larger system insets. */}
+    {windowOnly ? children : <SafeAreaView style={{ flex: 1, paddingTop: Platform.OS === 'web' ? 0 : 16 }} edges={{ top: Platform.OS === 'web' ? 'additive' : 'maximum', left: 'additive', right: 'additive', bottom: Platform.OS === 'ios' ? 'off' : 'additive' }}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}><View style={{ flex: 1 }}>{children}</View></KeyboardAvoidingView>
     </SafeAreaView>}
   </View>;

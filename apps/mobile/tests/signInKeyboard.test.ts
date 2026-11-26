@@ -217,7 +217,7 @@ test('actual AppFrame owns safe-area top and only Android sign-in adds keyboard 
     const env = { React, View: 'View', SafeAreaView: 'SafeAreaView', StatusBar: 'StatusBar', KeyboardAvoidingView: host.KAV, Platform: { OS: os }, useUI: () => ({ palette: {}, dark: false }) };
     const render = new Function('env', `with(env){${ts.transpileModule(frame.getText(source).replace(/^export /, ''), { compilerOptions: { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React } }).outputText};return AppFrame;}`)(withSharedUI(env));
     const tree = render({ children: child });
-    assert.ok(nodes(tree).find(n => n.type === 'SafeAreaView')!.props.edges.includes('top'));
+    assert.notEqual(nodes(tree).find(n => n.type === 'SafeAreaView')!.props.edges.top, 'off');
     const active = nodes(tree).filter(n => n.type === host.KAV && n.props.behavior);
     assert.equal(active.length, os === 'web' ? 0 : 1, 'Avoid stacking Android and iOS keyboard adjustments');
     if (os === 'android') assert.equal(active[0].props.keyboardVerticalOffset, top, 'Account for the safe-area owning ancestor');

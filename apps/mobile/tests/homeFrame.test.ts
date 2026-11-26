@@ -37,7 +37,7 @@ test('window-only frame leaves native controllers unpadded, while screen frames 
   assert.equal(full.children[1], host);
   const screen = render({ children: 'screen' });
   assert.equal(screen.children[1].type, 'SafeAreaView');
-  assert.deepEqual(screen.children[1].props.edges, ['top', 'left', 'right']);
+  assert.deepEqual(screen.children[1].props.edges, { top: 'maximum', left: 'additive', right: 'additive', bottom: 'off' });
   assert.equal(screen.children[1].children[0].type, 'KeyboardAvoidingView');
 });
 
