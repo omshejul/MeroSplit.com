@@ -11,15 +11,15 @@ import { Text } from 'react-native-paper';
 import { Button, Icon, IconAction, radii, useUI } from './ui';
 import TabBarSurface from './TabBarSurface';
 
-export function AppFrame({ children, onTouchStart }: { children: React.ReactNode; onTouchStart?: () => void }) {
+export function AppFrame({ children, onTouchStart, windowOnly = false }: { children: React.ReactNode; onTouchStart?: () => void; windowOnly?: boolean }) {
   const { palette, dark } = useUI();
   // iOS scroll views own bottom insets so their surfaces reach the window edge.
   // Headers keep the top/cutout inset; sticky controls protect their own bottom edge.
   return <View style={{ flex: 1, backgroundColor: palette.background }} onTouchStart={onTouchStart}>
     <StatusBar style={dark ? 'light' : 'dark'} />
-    <SafeAreaView style={{ flex: 1 }} edges={Platform.OS === 'ios' ? ['top', 'left', 'right'] : ['top', 'left', 'right', 'bottom']}>
+    {windowOnly ? children : <SafeAreaView style={{ flex: 1 }} edges={Platform.OS === 'ios' ? ['top', 'left', 'right'] : ['top', 'left', 'right', 'bottom']}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}><View style={{ flex: 1 }}>{children}</View></KeyboardAvoidingView>
-    </SafeAreaView>
+    </SafeAreaView>}
   </View>;
 }
 

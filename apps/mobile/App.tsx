@@ -62,7 +62,7 @@ import GroupList from './src/GroupList';
 import { groupListRows } from './src/groupListRows';
 
 import { AddExpenseButton, AppFrame, pageContentStyle, ScreenHeader } from './src/AppNavigation';
-import HomeTabs from './src/HomeTabs';
+import HomeTabs, { usesNativeHomeTabs } from './src/HomeTabs';
 import HomeCreateButton from './src/HomeCreateButton';
 import ScrollBottomInset from './src/ScrollBottomInset';
 import { EmailSignIn, CodeSignIn } from './src/SignInForms';
@@ -1457,6 +1457,11 @@ function AppContent() {
   const emailContent = !checkingCookie && emailEntry?.phase === 'switch' && emailEntry.inspection ? <SwitchAccountDialog currentEmail={emailEntry.inspection.currentEmail!} targetEmail={emailEntry.inspection.email} invitation={emailEntry.inspection.purpose === 'invite'} busy={busy} onSwitch={confirmAccountSwitch} onCancel={cancelAccountSwitch} />
       : !checkingCookie && emailEntry?.phase === 'name' ? <NameOnlyForm key={emailEntry.id} busy={busy} onSave={finishEmailName} />
       : <EmailLinkStatus opening={checkingCookie || emailEntry?.phase === 'opening' || emailEntry?.phase === 'target'} busy={busy} error={emailEntry?.error ?? ''} sent={!!emailEntry?.sent} canRenew={!!emailEntry?.id} onRetry={retryEmailLink} onRenew={() => void renewCurrentEmailLink()} onSignIn={leaveEmailLink} />;
+  function renderFramedScreen(route: AppRoute, focused: boolean, billQueued: () => void, insideHomeTabs = false) {
+    const content = renderScreen(route, focused, billQueued, insideHomeTabs);
+    // UIKit places native tabs against the window; only their screen content takes insets.
+    return usesNativeHomeTabs && React.isValidElement(content) && content.type === HomeTabs ? content : <AppFrame>{content}</AppFrame>;
+  }
   function renderScreen(route: AppRoute, focused: boolean, billQueued: () => void, insideHomeTabs = false) {
     const busy = submissions.current.has(route.key!) || submissions.current.has(`${route.key}|attachments`);
     const screen = session && !expired ? route.name : 'login', { tab = 'Groups', groupId = null, expenseId = null, settlementId = null, activityEditId } = route.params ?? {};
@@ -1474,7 +1479,7 @@ function AppContent() {
     if (storageError) return <SafeAreaView role="main" style={[s.screen, pageContentStyle]}><Text accessibilityRole="header" aria-level={1} style={ui.section}>Could not open saved records</Text><ErrorText live>{storageError}</ErrorText><Button title="Retry" disabled={busy} onPress={() => launch(restore)} /></SafeAreaView>;
   if (authHeld && !session) return <EmailLinkScreen title={emailEntry?.phase === 'name' ? 'Name' : 'Sign in'} busy={busy}>{emailContent}</EmailLinkScreen>;
   if (screen === 'home' && session && !insideHomeTabs) return <HomeTabs selected={tab} busy={authHeld} onSelect={value => { setShowArchived(false); setShowHidden(false); if (value === 'Activity') { if (!readPrefetch.fresh(readScope(session), '/activity?limit=50')) activityOwner.current = ''; setActivityError(''); } navigate('home', { tab: value }); }}
-    render={value => renderScreen({ ...route, params: { ...route.params, tab: value } }, focused && value === tab, billQueued, true)} />;
+    render={value => (usesNativeHomeTabs ? renderFramedScreen : renderScreen)({ ...route, params: { ...route.params, tab: value } }, focused && value === tab, billQueued, true)} />;
   if (screen === 'expenseIcon') return selected && expense ? <BillIconPicker key={`${owner}|${groupId}|${expense.id}`} active={focused} category={expenseCategory({ ...expense, groupId: selected.group.id, title: expense.description }, categoryIcons)}
     disabled={busy || authHeld || expired || selected.group.archived || !!expense.deleted || pending.some(row => row.body.id === expense.id && (row.attempted || row.state !== 'pending'))}
     onSelect={(category, onQueued) => changeExpenseIcon(expense, category, onQueued)} onClose={() => navigation.complete('expenseDetail', { groupId, expenseId })} />
@@ -1591,8 +1596,8 @@ function AppContent() {
   if (Platform.OS === 'web' && !ready) return <AppFrame><View style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center' }]}>
     <LoadingSpinner visible label="Loading" />
   </View></AppFrame>;
-  return <PhotoSession.Provider value={authHeld || expired ? null : session}><NavigationContainer ref={navigation.ref} linking={webLinking}><><AppFrame onTouchStart={engage}><View ref={protectedContent} style={{ flex: 1 }} pointerEvents={authHeld ? 'none' : 'auto'} accessibilityElementsHidden={authHeld} importantForAccessibility={authHeld ? 'no-hide-descendants' : 'auto'} aria-hidden={authHeld}>
-    <AppStack scope={`${owner}|${navigationScope}|${expired}`} initialScreen={expired ? 'login' : initialScreen.current} render={renderScreen} blocked={authHeld} />
+  return <PhotoSession.Provider value={authHeld || expired ? null : session}><NavigationContainer ref={navigation.ref} linking={webLinking}><><AppFrame windowOnly onTouchStart={engage}><View ref={protectedContent} style={{ flex: 1 }} pointerEvents={authHeld ? 'none' : 'auto'} accessibilityElementsHidden={authHeld} importantForAccessibility={authHeld ? 'no-hide-descendants' : 'auto'} aria-hidden={authHeld}>
+    <AppStack scope={`${owner}|${navigationScope}|${expired}`} initialScreen={expired ? 'login' : initialScreen.current} render={renderFramedScreen} blocked={authHeld} />
   </View>
     {!ready && launchIcon && <View pointerEvents="none" style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background }]}>
       <AppIconPreview icon={launchIcon} size={112} />
