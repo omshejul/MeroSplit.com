@@ -1,4 +1,5 @@
 from allauth.headless.constants import Client
+from django.conf import settings
 from django.urls import include, path, re_path
 from django.views.generic import TemplateView
 from ledger import google_browser, mcp_oauth_views
@@ -37,6 +38,7 @@ urlpatterns = [
     path("assets/install.js", public_asset, {"asset": "install.js"}),
     path("assets/install-qr.svg", public_asset, {"asset": "install-qr.svg"}),
     path("assets/download-on-the-app-store.svg", public_asset, {"asset": "download-on-the-app-store.svg"}),
+    path("assets/get-it-on-google-play.png", public_asset, {"asset": "get-it-on-google-play.png"}),
     path("assets/try-on-iphone.svg", public_asset, {"asset": "try-on-iphone.svg"}),
     path("assets/try-on-android.svg", public_asset, {"asset": "try-on-android.svg"}),
     path("assets/merosplit-icon.png", public_asset, {"asset": "merosplit-icon.png"}),
@@ -58,7 +60,10 @@ urlpatterns = [
     path("oauth/authorize", mcp_oauth_views.authorize),
     path("oauth/token", mcp_oauth_views.token),
     path("oauth/revoke", mcp_oauth_views.revoke),
-    path("", TemplateView.as_view(template_name="ledger/home.html", extra_context={"testing_links_ready": TESTING_LINKS_READY})),
+    path("", TemplateView.as_view(template_name="ledger/home.html", extra_context={
+        "google_play_public": settings.GOOGLE_PLAY_PUBLIC,
+        "testing_links_ready": TESTING_LINKS_READY,
+    })),
     path("robots.txt", TemplateView.as_view(template_name="ledger/robots.txt", content_type="text/plain; charset=utf-8")),
     path("sitemap.xml", TemplateView.as_view(template_name="ledger/sitemap.xml", content_type="application/xml; charset=utf-8")),
     path(".well-known/apple-app-site-association", apple_association),

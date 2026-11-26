@@ -24,7 +24,7 @@
   <meta name="twitter:card" content="summary">
   <link rel="stylesheet" href="/assets/typography.css">
   <link rel="stylesheet" href="/assets/home.css">
-  {% if testing_links_ready %}<script src="/assets/install.js" defer></script>{% endif %}
+  {% if testing_links_ready and not google_play_public %}<script src="/assets/install.js" defer></script>{% endif %}
   <script type="application/ld+json">{"@context": "https://schema.org", "@type": "WebSite", "name": "MeroSplit", "url": "https://merosplit.com/"}</script>
 </head>
 <body>
@@ -40,7 +40,11 @@
       <div class="install" id="install" tabindex="-1" aria-label="Try MeroSplit">
         <div class="badges">
           <a id="iphone-install" href="https://apps.apple.com/app/merosplit/id6823916128"><img src="/assets/download-on-the-app-store.svg" alt="Download on the App Store" height="52"></a>
-          {% if testing_links_ready %}<a id="android-badge" href="#android-install" aria-haspopup="dialog" aria-controls="android-guide"><img src="/assets/try-on-android.svg" alt="Try on Android: see testing steps" height="52"></a>{% endif %}
+          {% if google_play_public %}
+          <a class="google-play-badge" href="https://play.google.com/store/apps/details?id=com.omshejul.splitdumb"><img src="/assets/get-it-on-google-play.png" alt="Get it on Google Play" width="646" height="250"></a>
+          {% elif testing_links_ready %}
+          <a id="android-badge" href="#android-install" aria-haspopup="dialog" aria-controls="android-guide"><img src="/assets/try-on-android.svg" alt="Try on Android: see testing steps" height="52"></a>
+          {% endif %}
         </div>
         <a class="web-choice" href="/app/">Continue on web</a>
         <figure class="install-qr"><img src="/assets/install-qr.svg" width="112" height="112" alt="QR code to open MeroSplit install options on your phone"><figcaption>Scan to try on your phone.</figcaption></figure>
@@ -57,7 +61,7 @@
     </figure>
   </main>
 
-  {% if testing_links_ready %}
+  {% if testing_links_ready and not google_play_public %}
   <dialog id="android-guide" class="android-guide" aria-labelledby="android-step-1">
     <div class="guide-heading"><p id="android-progress" aria-live="polite">Step 1 of 3</p><form method="dialog"><button class="guide-close" aria-label="Close Android guide"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/></svg></button></form></div>
     <progress id="android-progress-bar" max="3" value="1" aria-label="Android setup step"></progress>

@@ -110,6 +110,7 @@ CLOUDFLARE_EMAIL_API_TOKEN = os.environ.get("CLOUDFLARE_EMAIL_API_TOKEN", "")
 DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "MeroSplit <mail@merosplit.com>")
 EMAIL_REPLY_TO = os.environ.get("EMAIL_REPLY_TO", "mail@merosplit.com")
 PUBLIC_WEB_URL = os.environ.get("PUBLIC_WEB_URL", "https://merosplit.com")
+GOOGLE_PLAY_PUBLIC = os.environ.get("GOOGLE_PLAY_PUBLIC", "false").lower() == "true"
 EMAIL_CLIENT_IP_SOURCE = os.environ.get("EMAIL_CLIENT_IP_SOURCE", "remote_addr")
 EMAIL_RAILWAY_PUBLIC_HOSTS = {
     host.strip().lower().rstrip(".") for host in os.environ.get("EMAIL_RAILWAY_PUBLIC_HOSTS", "").split(",") if host.strip()

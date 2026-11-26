@@ -100,6 +100,8 @@ p { margin: 0; max-width: 62ch; }
 .badges { display: flex; flex-wrap: wrap; gap: .75rem; align-items: center; }
 .badges a { display: inline-flex; min-height: 3.25rem; border-radius: 10px; }
 .badges img { height: 3.25rem; width: auto; max-width: 100%; }
+/* Match the App Store badge's visible height, accounting for Google's transparent padding. */
+.badges .google-play-badge img { height: 4.875rem; max-width: none; margin: -.8125rem -.75rem; }
 .web-choice { display: inline-flex; align-items: center; min-height: 2.75rem; margin-top: .75rem; font-weight: 500; }
 .install-qr { margin: 1.5rem 0 0; display: flex; align-items: center; gap: 1rem; color: var(--quiet); font-size: .875rem; }
 .install-qr img { width: 7rem; height: 7rem; flex-shrink: 0; background: white; }
