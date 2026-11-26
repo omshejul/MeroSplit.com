@@ -14,6 +14,8 @@ Run `node store-assets/foldables/render.mjs` from a checkout with Google Chrome 
 
 The inputs are captures of the actual app running in native simulators with fictional demonstration records. The isolated QA wrapper supplies those records and automation while the production screens remain unchanged. The bill uses Beach dinner and an amount of 1240. The editable HTML adds only surrounding artwork and a decorative frame. It scales each complete capture uniformly. It does not redraw controls, move navigation, change amounts or crop the app display.
 
+The Duo captures include the native 16 pt minimum top content margin. This uses the maximum of the system safe inset and the content margin, so a side status bar cannot leave the title against the corner. Larger phone safe insets remain intact. See [Apple Duo layout guidance](https://developer.apple.com/design/human-interface-guidelines/designing-for-iphone-duo) and [maximum safe-area mode](https://appandflow.github.io/react-native-safe-area-context/docs/api/safe-area-view/). Opus reviewed both updated native captures and their final artwork on 2026-11-26 and approved them with no blockers.
+
 `capture-manifest.json` records source revision, QA provenance and input checksums. `render-proof.json` records output checksums, native dimensions and composition geometry. The renderer checks font loading, dimensions, text overlap, canvas bounds and uniform image scale. Visually inspect every output before upload.
 
 The existing normal-phone screenshots and the historical raw 1.2.6 release captures remain separate. Upload only `apple/` to the Duo slot and only `android/` to the foldable slot.

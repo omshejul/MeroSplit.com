@@ -1,7 +1,6 @@
 {
-  "productSourceRevision": "fb284e316c0a95ee53749357d56d33a60b30d37c",
-  "testedMobileTree": "72435147b2f057f31d18809e2a530616d5d88751",
-  "deployedSourceRevision": "81685e4e4badaa9239fd845af7bd17acc35b7e69",
+  "productSourceRevision": "d789437088d9a4bebaee4990db8b7a89b515d500",
+  "testedMobileTree": "44ad3f6d1a56e282ae9075cbe5ae2104b3e83b0b",
   "captureDate": "2026-11-26",
   "method": "Actual production screen components in isolated native QA apps, with fictional records and OTA disabled. Artwork scales complete native screenshots uniformly without cropping or changing controls.",
   "ios": {
@@ -11,7 +10,13 @@
     "device": "iPhone Duo simulator",
     "postures": "Native hinge events 0 and 180 degrees",
     "sidebarVerification": "Folded window 466 x 678 points, unfolded 951 x 669 points. Native sidebar right edge remains 26 points from active screen right edge in both postures.",
-    "selectedEvidence": "native-rail-routed/qa-report.json"
+    "selectedEvidence": "header-spacing/native-duo-final/qa-report.json",
+    "minimumTopContentMarginPoints": 16,
+    "groupsTitleYPoints": {
+      "folded": 27,
+      "unfolded": 27
+    },
+    "productSourceRevision": "d789437088d9a4bebaee4990db8b7a89b515d500"
   },
   "android": {
     "nativeVersion": "1.2.6 (35)",
@@ -20,7 +25,8 @@
     "postures": "Native OPENED and CLOSED states; reversible display override for square layout",
     "selectedEvidence": "android-refresh/final-capture-manifest.json",
     "draftContinuity": "Beach dinner, amount 1240, retained when folding",
-    "statusBar": "Genuine OS pixels preserved, including emulator notification icon where present."
+    "statusBar": "Genuine OS pixels preserved, including emulator notification icon where present.",
+    "productSourceRevision": "fb284e316c0a95ee53749357d56d33a60b30d37c"
   },
   "captures": [
     {
@@ -31,7 +37,7 @@
         1398,
         2034
       ],
-      "sha256": "b754893d7195054233c72e64818b1afe67bbdd447a3066cdff3ec385d9b55300",
+      "sha256": "45ca8096817e011c41127215689690b068844cab380326cbbc5a35cc16209132",
       "nativePixelsEdited": false,
       "fictionalDemoData": true
     },
@@ -43,7 +49,7 @@
         2853,
         2007
       ],
-      "sha256": "dd7054762ac257ad55a27127489f35caa3e9025cf620d7f7033f34990cacc522",
+      "sha256": "2d734ec57594bf1c99d7cbdfebfc75e3b0d56cc2582989c12f53fa6634518a3a",
       "nativePixelsEdited": false,
       "fictionalDemoData": true
     },
@@ -83,5 +89,6 @@
       "nativePixelsEdited": false,
       "fictionalDemoData": true
     }
-  ]
+  ],
+  "previousDeployedSourceRevision": "81685e4e4badaa9239fd845af7bd17acc35b7e69"
 }
