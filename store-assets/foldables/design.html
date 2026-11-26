@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>MeroSplit foldable store artwork</title><style>
+@font-face{font-family:Stack;src:url('inputs/StackSansText.ttf');font-weight:200 700}*{box-sizing:border-box}body{margin:0;color:#1c1b22;font-family:Stack,sans-serif}#artboard{position:relative;overflow:hidden;background:var(--bg)}.brand{position:absolute;display:flex;align-items:center;gap:20px}.brand img{display:block;width:95px}.brand span{font-size:48px;font-weight:600}.headline{position:absolute;margin:0;font-weight:600;line-height:1.05;letter-spacing:-3px}.sub{position:absolute;margin:0;line-height:1.35;font-weight:400}.motif,.trail{position:absolute;pointer-events:none}.device{position:absolute;padding:16px;background:#242329;border-radius:65px;box-shadow:0 0 0 3px #757078,0 22px 42px #1c1b2226}.capture{display:block;width:100%;height:auto;border-radius:49px}.amber .brand img{background:#fbf4e8;border-radius:24px;padding:8px}
+</style></head><body><main id="artboard"></main><script>
+(()=>{
+const params=new URLSearchParams(location.search),platform=params.get('platform')||'apple',index=Number(params.get('shot')||1)-1;
+const sets={
+ apple:[
+ {file:'apple/01-groups.png',capture:'inputs/apple-01.png',w:1398,h:2034,sw:1398,sh:2034,headline:['Every group,','at a glance'],copy:'See who owes and who is owed.',bg:'#FBF4E8',arc:'#F2545B'},
+ {file:'apple/02-opened.png',capture:'inputs/apple-02.png',w:2853,h:2007,sw:2853,sh:2007,headline:['More room','for every group'],copy:'Groups and balances, with navigation at your side.',bg:'#FFB21E',arc:'#F2545B'}],
+ android:[
+ {file:'android/01-square.png',capture:'inputs/android-01.png',w:2106,h:2106,sw:2106,sh:2106,headline:['Split it','your way'],copy:'Equally, by amount, percent or shares.',bg:'#FBF4E8',arc:'#F2545B'},
+ {file:'android/02-wide.png',capture:'inputs/android-02.png',w:2688,h:2016,sw:2688,sh:2016,headline:['Shared bills,','sorted'],copy:'Bills and balances for everyone in the group.',bg:'#DADFE8',arc:'#F2545B'},
+ {file:'android/03-folded.png',capture:'inputs/android-03.png',w:1260,h:2016,sw:1260,sh:2016,headline:['Quick bills,','folded'],copy:'Amount, payer and split on one screen.',bg:'#FFB21E',arc:'#F2545B'}]
+};
+const d=sets[platform]?.[index];if(!d)throw Error('Unknown artwork');const a=document.getElementById('artboard');a.style.width=d.w+'px';a.style.height=d.h+'px';a.style.setProperty('--bg',d.bg);if(d.bg==='#FFB21E')a.classList.add('amber');
+const landscape=d.w>d.h*1.15,square=d.w/d.h>0.85&&!landscape;
+const margin=d.w*.07,brandTop=d.h*.042,headlineTop=d.h*(landscape?.145:.125),font=d.w*(landscape?.048:square?.068:.085),subTop=headlineTop+font*2.1+d.h*.035,subFont=d.w*(landscape?.019:square?.023:.028);
+const top=landscape?d.h*.405:square?d.h*.35:d.h*.355,bottom=d.h*.035,maxW=d.w*.86,maxH=d.h-top-bottom,pad=landscape?20:16,scale=Math.min((maxW-pad*2)/d.sw,(maxH-pad*2)/d.sh),screenW=d.sw*scale,screenH=d.sh*scale,frameW=screenW+pad*2,frameH=screenH+pad*2,left=(d.w-frameW)/2;
+a.innerHTML=`<div class="brand" style="left:${margin}px;top:${brandTop}px"><img src="inputs/merosplit-logo.svg" alt=""><span>MeroSplit</span></div><h1 class="headline" style="left:${margin}px;top:${headlineTop}px;font-size:${font}px;width:${d.w-margin*2}px">${d.headline.join('<br>')}</h1><p class="sub" style="left:${margin}px;top:${subTop}px;font-size:${subFont}px;width:${d.w-margin*2}px">${d.copy}</p><svg class="motif" style="width:${frameW*.92}px;left:${left+frameW*.34}px;top:${top+frameH*.02}px" viewBox="0 0 900 900" aria-hidden="true"><path d="M465 85 A360 360 0 0 1 465 805 L465 625 A180 180 0 0 0 465 265Z" fill="${d.arc}" opacity=".7"/></svg><svg class="trail" style="inset:0;width:100%;height:100%" viewBox="0 0 ${d.w} ${d.h}" aria-hidden="true"><path d="M${left+frameW+20} ${top-65}V${top+frameH*.63}Q${left+frameW+20} ${top+frameH*.74} ${left+frameW*.8} ${top+frameH*.74}H${left*.48}V${d.h*.91}" fill="none" stroke="#1c1b22" stroke-opacity=".25" stroke-width="5" stroke-dasharray="14 18"/></svg><div class="device" style="left:${left}px;top:${top}px;width:${frameW}px;padding:${pad}px"><img class="capture" src="${d.capture}" alt="Actual native MeroSplit app with fictional demonstration data"></div>`;
+window.composition={...d,platform,index,scale,screen:{width:screenW,height:screenH},frame:{x:left,y:top,width:frameW,height:frameH},caption:'Native app capture uniformly scaled inside a decorative frame. Application UI is not reconstructed or altered.'};
+window.renderReady=Promise.all([...document.images].map(i=>i.decode())).then(()=>document.fonts.ready).then(()=>{a.dataset.ready='true'});
+})();
+</script></body></html>

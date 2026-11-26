@@ -24,6 +24,12 @@ Native startup checks are reused. Foregrounding, reconnecting and app interactio
 
 Manual update checks read `/api/v1/app-releases` before checking OTA. Automatic and manual checks show an Update your app dialog for a newer native release; its button opens the platform store listing. Compare installed app version first, then build number, so a newer version reusing a build number is detected. Update `apps/api/ledger/app_releases.py` only after verifying the exact release is available in the store, including the intended Play testing audience. An uploaded or pending-review build is not available. The store controls account, territory, device and staged-rollout eligibility. Release checks use installed binary metadata, never the OTA manifest version. Store lookup failures can still download a compatible OTA, but cannot report No new updates when both checks are needed.
 
+## Store screenshots
+
+Use the editable compositions and capture provenance in [store-assets/foldables](../store-assets/foldables/README.md) for the dedicated Duo and Android foldable slots. Preserve the existing normal-phone images unless requested otherwise. Validate dimensions, aspect ratios and the actual native screen before uploading.
+
+For an existing live App Store version, screenshot-only Product Page Optimization treatments can be reviewed independently and promoted to that version. Verify the review state, promotion and resulting screenshot checksums before reporting them live. Google Play foldable images use their dedicated Console field. Public update text is exactly `Fix minor bugs`.
+
 ## Sentry
 
 The `om-shejul` organization has `merosplit-api` for Django and the notification worker, and `merosplit-app` for Expo native and web. Set `SENTRY_DSN`, `SENTRY_ENVIRONMENT=production` and `SENTRY_RELEASE` to the source revision on both backend services. Without a DSN, reporting is disabled.

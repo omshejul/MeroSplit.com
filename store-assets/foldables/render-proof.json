@@ -1,0 +1,322 @@
+[
+  {
+    "composition": {
+      "file": "apple/01-groups.png",
+      "capture": "inputs/apple-01.png",
+      "w": 1398,
+      "h": 2034,
+      "sw": 1398,
+      "sh": 2034,
+      "headline": [
+        "Every group,",
+        "at a glance"
+      ],
+      "copy": "See who owes and who is owed.",
+      "bg": "#FBF4E8",
+      "arc": "#F2545B",
+      "platform": "apple",
+      "index": 0,
+      "scale": 0.594267453294002,
+      "screen": {
+        "width": 830.7858997050148,
+        "height": 1208.74
+      },
+      "frame": {
+        "x": 267.6070501474926,
+        "y": 722.0699999999999,
+        "width": 862.7858997050148,
+        "height": 1240.74
+      },
+      "caption": "Native app capture uniformly scaled inside a decorative frame. Application UI is not reconstructed or altered."
+    },
+    "frame": {
+      "x": 267.59375,
+      "y": 722.0625,
+      "width": 862.78125,
+      "height": 1240.71875
+    },
+    "copy": [
+      {
+        "text": "Every group,\nat a glance",
+        "x": 97.859375,
+        "y": 254.25,
+        "width": 1202.265625,
+        "height": 249.53125,
+        "overflow": false
+      },
+      {
+        "text": "See who owes and who is owed.",
+        "x": 97.859375,
+        "y": 574.96875,
+        "width": 1202.265625,
+        "height": 52.828125,
+        "overflow": false
+      }
+    ],
+    "capture": {
+      "source": "inputs/apple-01.png",
+      "naturalWidth": 1398,
+      "naturalHeight": 2034,
+      "width": 831,
+      "height": 1209
+    },
+    "fontLoaded": true,
+    "sha256": "25e166341ad466799b29155d20cbbb4d4aa51411bac5acf18e53e030adb05235"
+  },
+  {
+    "composition": {
+      "file": "apple/02-opened.png",
+      "capture": "inputs/apple-02.png",
+      "w": 2853,
+      "h": 2007,
+      "sw": 2853,
+      "sh": 2007,
+      "headline": [
+        "More room",
+        "for every group"
+      ],
+      "copy": "Groups and balances, with navigation at your side.",
+      "bg": "#FFB21E",
+      "arc": "#F2545B",
+      "platform": "apple",
+      "index": 1,
+      "scale": 0.5400697558545092,
+      "screen": {
+        "width": 1540.8190134529148,
+        "height": 1083.92
+      },
+      "frame": {
+        "x": 636.0904932735426,
+        "y": 812.835,
+        "width": 1580.8190134529148,
+        "height": 1123.92
+      },
+      "caption": "Native app capture uniformly scaled inside a decorative frame. Application UI is not reconstructed or altered."
+    },
+    "frame": {
+      "x": 636.078125,
+      "y": 812.828125,
+      "width": 1580.8125,
+      "height": 1123.90625
+    },
+    "copy": [
+      {
+        "text": "More room\nfor every group",
+        "x": 199.703125,
+        "y": 291,
+        "width": 2453.578125,
+        "height": 287.5625,
+        "overflow": false
+      },
+      {
+        "text": "Groups and balances, with navigation at your side.",
+        "x": 199.703125,
+        "y": 648.828125,
+        "width": 2453.578125,
+        "height": 73.171875,
+        "overflow": false
+      }
+    ],
+    "capture": {
+      "source": "inputs/apple-02.png",
+      "naturalWidth": 2853,
+      "naturalHeight": 2007,
+      "width": 1541,
+      "height": 1084
+    },
+    "fontLoaded": true,
+    "sha256": "03dfd8505b8ff813ad598c8c0431a72ccb320c2d617921dcdbe97b63fa8978f6"
+  },
+  {
+    "composition": {
+      "file": "android/01-square.png",
+      "capture": "inputs/android-01.png",
+      "w": 2106,
+      "h": 2106,
+      "sw": 2106,
+      "sh": 2106,
+      "headline": [
+        "Split it",
+        "your way"
+      ],
+      "copy": "Equally, by amount, percent or shares.",
+      "bg": "#FBF4E8",
+      "arc": "#F2545B",
+      "platform": "android",
+      "index": 0,
+      "scale": 0.5998053181386515,
+      "screen": {
+        "width": 1263.19,
+        "height": 1263.19
+      },
+      "frame": {
+        "x": 405.405,
+        "y": 737.0999999999999,
+        "width": 1295.19,
+        "height": 1295.19
+      },
+      "caption": "Native app capture uniformly scaled inside a decorative frame. Application UI is not reconstructed or altered."
+    },
+    "frame": {
+      "x": 405.390625,
+      "y": 737.09375,
+      "width": 1295.1875,
+      "height": 1295.1875
+    },
+    "copy": [
+      {
+        "text": "Split it\nyour way",
+        "x": 147.40625,
+        "y": 263.25,
+        "width": 1811.15625,
+        "height": 300.71875,
+        "overflow": false
+      },
+      {
+        "text": "Equally, by amount, percent or shares.",
+        "x": 147.40625,
+        "y": 637.6875,
+        "width": 1811.15625,
+        "height": 65.390625,
+        "overflow": false
+      }
+    ],
+    "capture": {
+      "source": "inputs/android-01.png",
+      "naturalWidth": 2106,
+      "naturalHeight": 2106,
+      "width": 1263,
+      "height": 1263
+    },
+    "fontLoaded": true,
+    "sha256": "34a896cab60256a3b2f7ee8f377884b46eb4643aa6067e243c6107cb9b71b1c7"
+  },
+  {
+    "composition": {
+      "file": "android/02-wide.png",
+      "capture": "inputs/android-02.png",
+      "w": 2688,
+      "h": 2016,
+      "sw": 2688,
+      "sh": 2016,
+      "headline": [
+        "Shared bills,",
+        "sorted"
+      ],
+      "copy": "Bills and balances for everyone in the group.",
+      "bg": "#DADFE8",
+      "arc": "#F2545B",
+      "platform": "android",
+      "index": 1,
+      "scale": 0.5401587301587302,
+      "screen": {
+        "width": 1451.9466666666667,
+        "height": 1088.96
+      },
+      "frame": {
+        "x": 598.0266666666666,
+        "y": 816.48,
+        "width": 1491.9466666666667,
+        "height": 1128.96
+      },
+      "caption": "Native app capture uniformly scaled inside a decorative frame. Application UI is not reconstructed or altered."
+    },
+    "frame": {
+      "x": 598.015625,
+      "y": 816.46875,
+      "width": 1491.9375,
+      "height": 1128.953125
+    },
+    "copy": [
+      {
+        "text": "Shared bills,\nsorted",
+        "x": 188.15625,
+        "y": 292.3125,
+        "width": 2311.671875,
+        "height": 270.9375,
+        "overflow": false
+      },
+      {
+        "text": "Bills and balances for everyone in the group.",
+        "x": 188.15625,
+        "y": 633.828125,
+        "width": 2311.671875,
+        "height": 68.953125,
+        "overflow": false
+      }
+    ],
+    "capture": {
+      "source": "inputs/android-02.png",
+      "naturalWidth": 2688,
+      "naturalHeight": 2016,
+      "width": 1452,
+      "height": 1089
+    },
+    "fontLoaded": true,
+    "sha256": "553bc097be3cdd4dc49eb785108cc379710f3640c1f85b69039bb96b4f95477a"
+  },
+  {
+    "composition": {
+      "file": "android/03-folded.png",
+      "capture": "inputs/android-03.png",
+      "w": 1260,
+      "h": 2016,
+      "sw": 1260,
+      "sh": 2016,
+      "headline": [
+        "Quick bills,",
+        "folded"
+      ],
+      "copy": "Amount, payer and split on one screen.",
+      "bg": "#FFB21E",
+      "arc": "#F2545B",
+      "platform": "android",
+      "index": 2,
+      "scale": 0.5941269841269843,
+      "screen": {
+        "width": 748.6000000000003,
+        "height": 1197.7600000000002
+      },
+      "frame": {
+        "x": 239.69999999999987,
+        "y": 715.68,
+        "width": 780.6000000000003,
+        "height": 1229.7600000000002
+      },
+      "caption": "Native app capture uniformly scaled inside a decorative frame. Application UI is not reconstructed or altered."
+    },
+    "frame": {
+      "x": 239.6875,
+      "y": 715.671875,
+      "width": 780.59375,
+      "height": 1229.75
+    },
+    "copy": [
+      {
+        "text": "Quick bills,\nfolded",
+        "x": 88.1875,
+        "y": 252,
+        "width": 1083.59375,
+        "height": 224.875,
+        "overflow": false
+      },
+      {
+        "text": "Amount, payer and split on one screen.",
+        "x": 88.1875,
+        "y": 547.46875,
+        "width": 1083.59375,
+        "height": 47.625,
+        "overflow": false
+      }
+    ],
+    "capture": {
+      "source": "inputs/android-03.png",
+      "naturalWidth": 1260,
+      "naturalHeight": 2016,
+      "width": 749,
+      "height": 1198
+    },
+    "fontLoaded": true,
+    "sha256": "65a84b5c793d080de60a1283d6af5b4a8808953227e421fa9a2a1d5301c2415c"
+  }
+]

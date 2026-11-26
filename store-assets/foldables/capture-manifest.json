@@ -1,0 +1,87 @@
+{
+  "productSourceRevision": "fb284e316c0a95ee53749357d56d33a60b30d37c",
+  "testedMobileTree": "72435147b2f057f31d18809e2a530616d5d88751",
+  "deployedSourceRevision": "81685e4e4badaa9239fd845af7bd17acc35b7e69",
+  "captureDate": "2026-11-26",
+  "method": "Actual production screen components in isolated native QA apps, with fictional records and OTA disabled. Artwork scales complete native screenshots uniformly without cropping or changing controls.",
+  "ios": {
+    "nativeVersion": "1.2.6 (37)",
+    "qaBuild": "ba25ebc8-d30e-44c3-ad1b-da248f9db436",
+    "qaBundleIdentifier": "com.omshejul.splitdumb.foldableqa",
+    "device": "iPhone Duo simulator",
+    "postures": "Native hinge events 0 and 180 degrees",
+    "sidebarVerification": "Folded window 466 x 678 points, unfolded 951 x 669 points. Native sidebar right edge remains 26 points from active screen right edge in both postures.",
+    "selectedEvidence": "native-rail-routed/qa-report.json"
+  },
+  "android": {
+    "nativeVersion": "1.2.6 (35)",
+    "qaBuild": "b6a09d68-c6dc-49c4-9f62-910e05cf9793",
+    "device": "Pixel Fold emulator",
+    "postures": "Native OPENED and CLOSED states; reversible display override for square layout",
+    "selectedEvidence": "android-refresh/final-capture-manifest.json",
+    "draftContinuity": "Beach dinner, amount 1240, retained when folding",
+    "statusBar": "Genuine OS pixels preserved, including emulator notification icon where present."
+  },
+  "captures": [
+    {
+      "input": "inputs/apple-01.png",
+      "platform": "apple",
+      "posture": "folded Groups with right system sidebar",
+      "pixels": [
+        1398,
+        2034
+      ],
+      "sha256": "b754893d7195054233c72e64818b1afe67bbdd447a3066cdff3ec385d9b55300",
+      "nativePixelsEdited": false,
+      "fictionalDemoData": true
+    },
+    {
+      "input": "inputs/apple-02.png",
+      "platform": "apple",
+      "posture": "unfolded Groups with right system sidebar",
+      "pixels": [
+        2853,
+        2007
+      ],
+      "sha256": "dd7054762ac257ad55a27127489f35caa3e9025cf620d7f7033f34990cacc522",
+      "nativePixelsEdited": false,
+      "fictionalDemoData": true
+    },
+    {
+      "input": "inputs/android-01.png",
+      "platform": "android",
+      "posture": "square bill form",
+      "pixels": [
+        2106,
+        2106
+      ],
+      "sha256": "b0d4f2e26a93ae4581bf912e4eae27ba08aa77e3dd5462d80a14832154be0bb1",
+      "nativePixelsEdited": false,
+      "fictionalDemoData": true
+    },
+    {
+      "input": "inputs/android-02.png",
+      "platform": "android",
+      "posture": "unfolded group bills",
+      "pixels": [
+        2688,
+        2016
+      ],
+      "sha256": "fde9ff680b28d03e625787eb4f9a5512470a345f90783fb55753a4b80049377e",
+      "nativePixelsEdited": false,
+      "fictionalDemoData": true
+    },
+    {
+      "input": "inputs/android-03.png",
+      "platform": "android",
+      "posture": "folded bill form",
+      "pixels": [
+        1260,
+        2016
+      ],
+      "sha256": "a7f0606211895fae8ac9d14effd9fc3beb16bf83ddc72b1a46d1c6b19c6f11b0",
+      "nativePixelsEdited": false,
+      "fictionalDemoData": true
+    }
+  ]
+}
