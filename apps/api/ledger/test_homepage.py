@@ -1,5 +1,6 @@
 """The public root must work for a crawler before the Expo app is exported."""
 
+import re
 from hashlib import sha256
 from html.parser import HTMLParser
 from struct import unpack
@@ -52,12 +53,13 @@ def test_crawler_gets_real_homepage_and_head_without_javascript_or_an_app_export
     assert response["Content-Type"].startswith("text/html")
     page = Document(response.content.decode())
     assert page.tags.count("main") == 1 and page.tags.count("h1") == 1
-    assert page.tags.count("figure") == 2 and "Shared bills." in " ".join(page.text)
-    assert "Illustrative example" in " ".join(page.text)
+    text = " ".join(page.text)
+    assert "Shared bills," in text and "sorted." in text and text.count("Shared bills,") == 1
+    # The Simplify example reads as a list of bills and payments before its script runs.
+    assert "Villa, two nights" in text and "Kabir pays Meera" in text and "payments to settle up" in text
     assert "table" not in page.tags
-    assert len(" ".join(page.text).split()) <= 150
     assert "/app/" in page.links and {"/privacy", "/support"}.issubset(page.links)
-    assert [script.get("src") for script in page.scripts if script.get("type") != "application/ld+json"] == []
+    assert [script.get("src") for script in page.scripts if script.get("type") != "application/ld+json"] == ["/assets/landing.js"]
     assert "<div id=\"root\"" not in response.content.decode()
     assert page.meta["canonical"] == ["https://merosplit.com/"]
     assert page.meta["og:url"] == "https://merosplit.com/"
@@ -67,6 +69,40 @@ def test_crawler_gets_real_homepage_and_head_without_javascript_or_an_app_export
     assert browser.head("/").status_code == 200
     assert browser.post("/").status_code == 405
     assert browser.get("/app/").status_code == 503, "the public homepage does not depend on the app bundle"
+
+
+def test_simplify_example_lists_the_direct_payments_its_bills_produce():
+    """landing.js recomputes from the same data attributes, so the static list must agree with them."""
+    html = Client().get("/").content.decode()
+    people = ["Asha", "Ravi", "Meera", "Kabir"]
+    owe = [[0] * len(people) for _ in people]
+    for amount, payer, among in re.findall(r'data-amount="(\d+)" data-payer="(\d)" data-among="([\d ]+)"', html):
+        among = [int(p) for p in among.split()]
+        for person in among:
+            if person != int(payer):
+                owe[person][int(payer)] += int(amount) / len(among)
+    expected = []
+    for a in range(len(people)):
+        for b in range(a + 1, len(people)):
+            net = owe[a][b] - owe[b][a]
+            if net:
+                debtor, creditor = (a, b) if net > 0 else (b, a)
+                expected.append((f"{people[debtor]} pays {people[creditor]}", f"₹{abs(net):,.0f}"))
+    listed = html.split('<ol class="payments" id="payments"', 1)[1].split("</ol>", 1)[0]
+    assert re.findall(r"<li><span>([^<]+)</span><strong>([^<]+)</strong></li>", listed) == expected
+    assert re.search(r'<strong>(\d+)</strong> <span>payments to settle up', html)[1] == str(len(expected))
+    for asset, kind in [("landing.css", "text/css"), ("landing.js", "text/javascript"), ("mascot.png", "image/png"), ("icons.svg", "image/svg+xml")]:
+        response = Client().get(f"/assets/{asset}")
+        assert response.status_code == 200 and response["Content-Type"].startswith(kind)
+        response.close()
+
+
+def test_every_home_icon_is_in_the_hugeicons_sprite():
+    html = Client().get("/").content.decode()
+    used = set(re.findall(r'href="/assets/icons\.svg#([a-z0-9-]+)"', html))
+    sprite = (settings.BASE_DIR / "ledger/assets/icons.svg").read_text()
+    assert used and used <= set(re.findall(r'<symbol id="([a-z0-9-]+)"', sprite))
+    assert "Hugeicons" in sprite and "MIT License" in sprite
 
 
 def test_public_crawl_hints_list_canonical_pages_and_exclude_private_app_routes():

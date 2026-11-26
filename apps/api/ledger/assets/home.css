@@ -22,7 +22,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-/* MeroSplit home. Light by default, dark from the OS. html[data-theme] pins either one for local fixtures. */
+/* MeroSplit help pages. The home page uses landing.css. Light by default, dark from the OS. html[data-theme] pins either one for local fixtures. */
 :root {
   color-scheme: light;
   --page: #EEF0F3; --paper: #FFFFFF; --ink: #16181C; --quiet: #565D66; --rule: #C9CED6;
@@ -59,7 +59,7 @@ p { margin: 0; max-width: 62ch; }
 /* Heroicons (MIT): 24px outline paths, sized with the text. */
 .i { width: 1.15em; height: 1.15em; flex-shrink: 0; }
 
-/* Shared by home and the help pages: brand, help links, Open MeroSplit. */
+/* Help page header: brand, help links, Open MeroSplit. */
 .top { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem 1.5rem; padding-block: 1.25rem; border-bottom: 1px solid var(--rule); }
 .brand { min-height: 2.75rem; display: flex; align-items: center; gap: .6rem; margin-right: auto; color: var(--ink); text-decoration: none; font-weight: 600; font-size: 1.15rem; }
 .brand img { width: 2.25rem; height: 2.25rem; border-radius: 22%; }
@@ -90,74 +90,5 @@ p { margin: 0; max-width: 62ch; }
 
 .foot nav a { display: inline-flex; align-items: center; min-height: 2.75rem; }
 
-/* One split, one set of choices. The help pages retain their shared styles above. */
-.landing { width: min(67.5rem, 100% - 2.5rem); display: grid; grid-template-columns: 1.1fr .9fr; gap: 4rem; align-items: center; padding-block: clamp(2.5rem, 6vw, 5rem); }
-.pitch h1 { font-size: clamp(2.8rem, 5.5vw, 4.5rem); font-weight: 650; line-height: 1.03; max-width: 14ch; }
-.pitch .lede { margin-top: 1.5rem; font-size: 1.0625rem; color: var(--quiet); max-width: 36ch; }
-.source-note { margin-top: 1rem; font-size: .9375rem; color: var(--quiet); }
-.source-note a { font-weight: 500; }
-.install { margin-top: 2rem; scroll-margin-block: 1rem; }
-.badges { display: flex; flex-wrap: wrap; gap: .75rem; align-items: center; }
-.badges a { display: inline-flex; min-height: 3.25rem; border-radius: 10px; }
-.badges img { height: 3.25rem; width: auto; max-width: 100%; }
-/* Match the App Store badge's visible height, accounting for Google's transparent padding. */
-.badges .google-play-badge img { height: 4.875rem; max-width: none; margin: -.8125rem -.75rem; }
-.web-choice { display: inline-flex; align-items: center; min-height: 2.75rem; margin-top: .75rem; font-weight: 500; }
-.install-qr { margin: 1.5rem 0 0; display: flex; align-items: center; gap: 1rem; color: var(--quiet); font-size: .875rem; }
-.install-qr img { width: 7rem; height: 7rem; flex-shrink: 0; background: white; }
-.install-qr figcaption { max-width: 15ch; }
-.split-example { margin: 0; padding: 1.5rem 2rem 2rem; border-radius: 18px; background: var(--paper); box-shadow: 0 8px 30px #00000008; font-variant-numeric: tabular-nums; }
-.split-example figcaption { color: var(--quiet); font-size: .8rem; text-align: right; }
-.dinner { padding-block: 1.25rem; border-bottom: 1px dashed var(--rule); }
-.dinner h2 { font-size: 1.05rem; font-weight: 500; }
-.dinner p { font-size: clamp(2.5rem, 4vw, 3.5rem); font-weight: 600; line-height: 1.3; margin-block: .4rem; }
-.dinner span, .receipt-note { color: var(--quiet); font-size: .875rem; }
-.people { display: flex; justify-content: center; padding-top: 1.5rem; }
-.people span { display: grid; place-items: center; width: 3rem; height: 3rem; border-radius: 50%; border: 3px solid var(--paper); margin-inline: -.2rem; font-weight: 600; color: #452511; background: #FFD99B; }
-.people span:nth-child(2) { background: #FFC6B5; }.people span:nth-child(3) { background: #E5DFD6; }
-.share { text-align: center; padding-block: .5rem 1.25rem; font-size: 1.7rem; font-weight: 600; }.share span { font-weight: 400; font-size: 1rem; color: var(--quiet); }
-.settle { list-style: none; margin: 0; padding: 0; border-top: 1px dashed var(--rule); }
-.settle li { display: flex; justify-content: space-between; gap: 1rem; padding-top: 1rem; }.settle strong { font-weight: 600; }
-.receipt-note { margin-top: 1.5rem; }
-.install-selected, #install:focus-visible { outline: 3px solid var(--blue); outline-offset: 6px; border-radius: 4px; }
-@media (max-width: 52rem) {
-  .landing { grid-template-columns: minmax(0, 1fr); gap: 2.5rem; max-width: 32rem; padding-top: 2rem; }
-  .pitch h1 { font-size: clamp(2.5rem, 9vw, 4rem); }
-  .install-qr { display: none; }
-}
 @media (max-width: 40rem) { .top nav { order: 3; width: 100%; } }
-@media (forced-colors: active) { .split-example, .people span { border: 1px solid CanvasText; } .open { border: 1px solid ButtonText; } }
-
-.guide-open { overflow: hidden; }
-.android-guide { color: var(--ink); background: var(--paper); border: 1px solid var(--rule); border-radius: 12px; padding: 1.25rem; width: min(27rem, calc(100% - 2rem)); max-height: calc(100dvh - 2rem); overflow-y: auto; overscroll-behavior: contain; }
-.android-guide:not([open]) { display: none; }
-.android-guide::backdrop { background: #0009; }
-.guide-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
-.guide-heading p { font-size: .8125rem; color: var(--quiet); font-weight: 500; }
-.guide-heading form { margin: 0; }
-.android-guide button { font: inherit; cursor: pointer; }
-.guide-close { display: grid; place-items: center; min-width: 44px; min-height: 44px; margin: -.5rem -.5rem -.5rem 0; color: var(--quiet); background: transparent; border: 0; border-radius: 8px; }
-#android-progress-bar { display: block; width: 100%; height: 4px; margin-block: 1rem 1.25rem; border: 0; border-radius: 2px; overflow: hidden; accent-color: var(--blue); background: var(--rule); }
-#android-progress-bar::-webkit-progress-bar { background: var(--rule); }
-#android-progress-bar::-webkit-progress-value { background: var(--blue); }
-#android-progress-bar::-moz-progress-bar { background: var(--blue); }
-.android-guide h2 { font-size: 1.375rem; line-height: 1.2; }
-.android-guide h2:focus { outline: none; }
-.android-guide section p { margin-top: .75rem; color: var(--quiet); font-size: .9375rem; }
-.guide-shot { display: block; width: fit-content; max-width: 100%; margin-top: 1.25rem; border: 1px solid var(--rule); border-radius: 8px; overflow: hidden; }
-.guide-shot img { background: white; }
-.guide-button { display: flex; align-items: center; justify-content: center; gap: .45rem; width: 100%; min-height: 44px; padding: .625rem 1.25rem; font-size: .9375rem; font-weight: 500; line-height: 1.35; border: 1px solid var(--rule); border-radius: 8px; text-align: center; text-decoration: none; }
-.android-guide .guide-primary { margin-top: 1.25rem; background: var(--blue); border-color: var(--blue); color: var(--on-blue); }
-.android-guide .guide-next { margin-top: .5rem; color: var(--blue); background: transparent; font-size: .9375rem; font-weight: 500; }
-.guide-footer { display: flex; align-items: center; justify-content: space-between; gap: 1rem; border-top: 1px solid var(--rule); margin-top: 1rem; padding-top: .5rem; }
-.guide-footer a { font-size: .875rem; }
-.guide-back { min-height: 44px; padding: .5rem .75rem; margin-left: -.75rem; color: var(--ink); border: 0; border-radius: 8px; background: transparent; }
-.guide-back:disabled { color: var(--quiet); cursor: default; opacity: .6; }
-.android-guide a:hover { text-decoration: underline; }
-.android-guide button:focus-visible { outline: 3px solid var(--blue); outline-offset: 3px; }
-.android-guide [hidden] { display: none; }
-.android-fallback { display: none; padding-block: 2rem; }
-.android-fallback:target { display: block; }
-.guide-supported .android-fallback { display: none; }
-.android-fallback a { display: inline-flex; align-items: center; min-height: 44px; }
-@media (forced-colors: active) { .guide-button, #android-progress-bar { border: 1px solid ButtonText; } }
+@media (forced-colors: active) { .open { border: 1px solid ButtonText; } }
