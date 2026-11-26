@@ -158,8 +158,7 @@ h2 { font-size: clamp(2rem, 4.4vw, 3.25rem); font-weight: 600; line-height: 1.04
 .feature-icon { margin-bottom: 1.1rem; }
 .feature-icon .hi, .point-icon .hi { width: 2rem; height: 2rem; }
 .features dd { margin: .35rem 0 0; color: var(--quiet); max-width: 34ch; }
-@media (min-width: 40rem) { .features { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (min-width: 64rem) { .features { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (min-width: 48rem) { .features { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 
 /* Money */
 .money { display: grid; gap: 2.5rem; padding-block: clamp(3.5rem, 8vw, 6.5rem); border-top: 1px solid var(--line); }
@@ -168,6 +167,8 @@ h2 { font-size: clamp(2rem, 4.4vw, 3.25rem); font-weight: 600; line-height: 1.04
 .money-points p { position: relative; min-height: 3.75rem; padding-left: 5rem; max-width: calc(46ch + 5rem); color: var(--quiet); }
 .point-icon { position: absolute; left: 0; top: 0; }
 .money-points strong { display: block; margin-bottom: .2rem; color: var(--ink); font-size: 1.1875rem; font-weight: 600; letter-spacing: -.01em; }
+.source { display: flex; align-items: center; gap: .45em; width: fit-content; min-height: 2.75rem; margin-top: .9rem; padding: .4rem 1rem .4rem .8rem; border: 1px solid var(--line); border-radius: 999px; color: var(--ink); font-weight: 500; text-decoration: none; white-space: nowrap; transition: background-color .15s; }
+.source:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); }
 @media (min-width: 60rem) { .money { grid-template-columns: 1fr 1fr; } }
 
 /* Get it */
@@ -238,7 +239,7 @@ h2 { font-size: clamp(2rem, 4.4vw, 3.25rem); font-weight: 600; line-height: 1.04
   html { scroll-behavior: auto; }
   .cut-l, .cut::after { animation: none; }
   .graph .edge.enter path.line, .graph .edge.enter :is(path.head, text) { animation: none; stroke-dashoffset: 0; opacity: 1; }
-  .graph .edges.leave, .switch-track, .switch-track::after, .pill, .bill-icon { transition: none; }
+  .graph .edges.leave, .switch-track, .switch-track::after, .pill, .bill-icon, .source { transition: none; }
 }
 @media (forced-colors: active) {
   .demo, .switch, .guide-button, #android-progress-bar { border: 1px solid CanvasText; }
