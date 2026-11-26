@@ -147,6 +147,24 @@ def test_install_intent_is_manual_safe_and_android_group_precedes_play(monkeypat
         assert sha256(b"".join(response.streaming_content)).hexdigest() == digest
 
 
+def test_public_google_play_badge_links_directly_to_the_store(monkeypatch):
+    context = resolve("/").func.view_initkwargs["extra_context"]
+    monkeypatch.setitem(context, "google_play_public", True)
+    monkeypatch.setitem(context, "testing_links_ready", True)
+    browser = Client()
+    response = browser.get("/?install=1", HTTP_USER_AGENT="Android")
+    assert response.status_code == 200 and "Location" not in response
+    html = response.content.decode()
+    assert 'href="https://play.google.com/store/apps/details?id=com.omshejul.splitdumb"' in html
+    assert 'alt="Get it on Google Play"' in html
+    assert 'alt="Download on the App Store"' in html and 'href="/app/"' in html
+    for beta_step in ("groups.google.com", "play.google.com/apps/testing", "android-guide", "/assets/install.js"):
+        assert beta_step not in html
+    badge = browser.get("/assets/get-it-on-google-play.png")
+    assert badge.status_code == 200 and badge["Content-Type"] == "image/png"
+    badge.close()
+
+
 def test_home_header_is_logo_only_with_help_links_in_footer():
     browser = Client()
     html = browser.get("/").content.decode()
