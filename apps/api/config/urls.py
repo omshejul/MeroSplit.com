@@ -20,7 +20,7 @@ from ledger.group_invite_views import group_invite_preview
 from ledger.mcp_setup import setup as mcp_setup
 
 from config.associations import android_association, apple_association
-from config.web import invite_app, public_asset, web_app, web_media
+from config.web import install, invite_app, public_asset, web_app, web_media
 
 # Enable only after the exact current iOS and Android testing builds are eligible.
 TESTING_LINKS_READY = True
@@ -69,6 +69,7 @@ urlpatterns = [
         "testing_links_ready": TESTING_LINKS_READY,
         "loader_layers": range(24),
     })),
+    re_path(r"^install/?$", install),
     path("robots.txt", TemplateView.as_view(template_name="ledger/robots.txt", content_type="text/plain; charset=utf-8")),
     path("sitemap.xml", TemplateView.as_view(template_name="ledger/sitemap.xml", content_type="application/xml; charset=utf-8")),
     path(".well-known/apple-app-site-association", apple_association),
