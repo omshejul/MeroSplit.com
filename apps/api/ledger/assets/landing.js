@@ -1,5 +1,6 @@
-/* Simplify demo on the home page. The page renders the example bills and their direct payments
-   without JavaScript; this adds the bill toggles, the Simplify switch and the drawn graph. */
+/* Simplify demo on the home page. The page renders the example bills, their direct payments and
+   the controls' space up front (a <noscript> style hides the controls without JavaScript), so this
+   script fills the graph and wires the toggles without moving anything. */
 (() => {
   const list = document.getElementById("bills");
   const graph = document.getElementById("graph");
@@ -161,8 +162,6 @@
     }));
   }
 
-  // SVG elements have no .hidden property, so clear the attribute everywhere.
-  for (const node of [...boxes, ...document.querySelectorAll("[data-demo-only]")]) node.removeAttribute("hidden");
   toggle.addEventListener("click", () => {
     simplified = !simplified;
     toggle.setAttribute("aria-checked", String(simplified));
