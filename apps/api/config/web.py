@@ -11,6 +11,7 @@ from urllib.request import urlopen
 from django.conf import settings
 from django.http import FileResponse, HttpResponse, HttpResponseRedirect, JsonResponse, StreamingHttpResponse
 from django.views.decorators.csrf import ensure_csrf_cookie
+from django.views.decorators.http import require_safe
 from ledger.media import download_url
 from ledger.models import UploadedFile
 from ninja.errors import HttpError
@@ -88,6 +89,27 @@ def invite_app(request, token):
     response = HttpResponseRedirect("/app/invite/" + quote(token, safe=""))
     response["Cache-Control"] = "no-store"
     response["Referrer-Policy"] = "no-referrer"
+    return response
+
+
+APP_STORE_URL = "https://apps.apple.com/app/merosplit/id6823916128"
+GOOGLE_PLAY_URL = "https://play.google.com/store/apps/details?id=com.omshejul.splitdumb"
+
+
+@require_safe
+def install(request):
+    """Send a phone to its store. iPadOS in desktop mode, computers and crawlers get the home page's install
+    choices, as does Android until the Play listing is public, so its testing steps stay reachable."""
+    agent = request.headers.get("User-Agent", "")
+    if re.search(r"iPhone|iPad|iPod", agent):
+        target = APP_STORE_URL
+    elif "Android" in agent and settings.GOOGLE_PLAY_PUBLIC:
+        target = GOOGLE_PLAY_URL
+    else:
+        target = "/?install=1#install"
+    response = HttpResponseRedirect(target)
+    response["Cache-Control"] = "no-store"
+    response["Vary"] = "User-Agent"
     return response
 
 

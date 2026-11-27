@@ -194,6 +194,44 @@ def test_install_intent_is_manual_safe_and_android_group_precedes_play(monkeypat
         assert sha256(b"".join(response.streaming_content)).hexdigest() == digest
 
 
+IPHONE = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Mobile/15E148 Safari/604.1"
+IPAD = "Mozilla/5.0 (iPad; CPU OS 17_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.6 Mobile/15E148 Safari/604.1"
+ANDROID = "Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36"
+MAC = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Safari/605.1.15"
+
+
+@pytest.mark.parametrize("path", ["/install", "/install/"])
+def test_install_sends_each_phone_to_its_store_and_everything_else_to_the_install_choices(path, settings):
+    settings.GOOGLE_PLAY_PUBLIC = True
+    expected = {
+        IPHONE: "https://apps.apple.com/app/merosplit/id6823916128",
+        IPAD: "https://apps.apple.com/app/merosplit/id6823916128",
+        ANDROID: "https://play.google.com/store/apps/details?id=com.omshejul.splitdumb",
+        MAC: "/?install=1#install",
+        "Googlebot": "/?install=1#install",
+        "": "/?install=1#install",
+    }
+    for agent, target in expected.items():
+        response = Client(HTTP_USER_AGENT=agent).get(path)
+        assert response.status_code == 302 and response["Location"] == target, agent
+        # The answer depends on the device, so no cache may hand one device's store to another.
+        assert response["Cache-Control"] == "no-store" and "User-Agent" in response["Vary"]
+    assert Client(HTTP_USER_AGENT=ANDROID).head(path)["Location"] == expected[ANDROID]
+    assert Client().post(path).status_code == 405
+
+
+def test_install_keeps_android_on_the_testing_steps_until_play_is_public(settings):
+    settings.GOOGLE_PLAY_PUBLIC = False
+    assert Client(HTTP_USER_AGENT=ANDROID).get("/install")["Location"] == "/?install=1#install"
+    assert Client(HTTP_USER_AGENT=IPHONE).get("/install")["Location"] == "https://apps.apple.com/app/merosplit/id6823916128"
+
+
+def test_home_qr_code_opens_install():
+    # Generated with qrcode 1.5.4: QRCode.toString("https://merosplit.com/install", {type: "svg", errorCorrectionLevel: "M", margin: 4}).
+    qr = (settings.BASE_DIR / "ledger/assets/install-qr.svg").read_bytes()
+    assert sha256(qr).hexdigest() == "3246f3a868505d8cbbb0c54c3be934d5cd650ec932a7a0fec2b7df88ea77b78c"
+
+
 def test_public_google_play_badge_links_directly_to_the_store(monkeypatch):
     context = resolve("/").func.view_initkwargs["extra_context"]
     monkeypatch.setitem(context, "google_play_public", True)
