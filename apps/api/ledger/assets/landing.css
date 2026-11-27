@@ -1,5 +1,14 @@
 /* MeroSplit home page. Light by default, dark from the OS. html[data-theme] pins either one for local fixtures.
    Amber marks bills and coral marks payments, the two halves of the mark. */
+/* Max widths use em, not ch: ch is the font's "0" and would change when the font swaps.
+   Arial adjusted to Stack Sans Text's widths and vertical metrics (ascent 1.0em, descent .3em, no line gap),
+   so text keeps its size and position if the web font arrives after first paint. Overrides are divided by
+   size-adjust because browsers scale them by it. */
+@font-face { font-family: "Stack Sans Fallback"; src: local("Arial"), local("ArialMT"); font-weight: 400; size-adjust: 108.4%; ascent-override: 92.25%; descent-override: 27.68%; line-gap-override: 0%; }
+@font-face { font-family: "Stack Sans Fallback"; src: local("Arial"), local("ArialMT"); font-weight: 500; size-adjust: 109.6%; ascent-override: 91.24%; descent-override: 27.37%; line-gap-override: 0%; }
+@font-face { font-family: "Stack Sans Fallback"; src: local("Arial Bold"), local("Arial-BoldMT"); font-weight: 600; size-adjust: 102.84%; ascent-override: 97.24%; descent-override: 29.17%; line-gap-override: 0%; }
+@font-face { font-family: "Stack Sans Fallback"; src: local("Arial Bold"), local("Arial-BoldMT"); font-weight: 700; size-adjust: 102.16%; ascent-override: 97.89%; descent-override: 29.37%; line-gap-override: 0%; }
+
 :root {
   color-scheme: light;
   --page: #F5F5F5; --paper: #FFFFFF; --ink: #161616; --quiet: #5C5C5C; --line: #DCDCDC;
@@ -26,7 +35,7 @@
 *, *::before, *::after { box-sizing: border-box; }
 [hidden] { display: none !important; }
 html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; scroll-behavior: smooth; }
-body { margin: 0; background: var(--page); color: var(--ink); font: 400 1.0625rem/1.55 "Stack Sans Text", system-ui, sans-serif; font-variant-numeric: tabular-nums; }
+body { margin: 0; background: var(--page); color: var(--ink); font: 400 1.0625rem/1.55 "Stack Sans Text", "Stack Sans Fallback", system-ui, sans-serif; font-variant-numeric: tabular-nums; }
 img, svg { display: block; max-width: 100%; }
 a { color: inherit; text-underline-offset: .2em; text-decoration-thickness: 1px; }
 a:hover { text-decoration-thickness: 2px; }
@@ -68,7 +77,7 @@ h2 { font-size: clamp(2rem, 4.4vw, 3.25rem); font-weight: 600; line-height: 1.04
 @keyframes rise { from { transform: none; clip-path: inset(0 calc(100% - var(--cut)) 0 0); } }
 @keyframes sink { from { transform: none; clip-path: inset(0 0 0 var(--cut)); } }
 .hero-foot { display: grid; gap: 2rem; margin-top: clamp(2rem, 4vw, 3rem); }
-.lede { max-width: 34ch; font-size: clamp(1.125rem, 1.6vw, 1.3rem); line-height: 1.5; }
+.lede { max-width: 23.2em; font-size: clamp(1.125rem, 1.6vw, 1.3rem); line-height: 1.5; }
 .get { display: grid; gap: .9rem; justify-items: start; scroll-margin-block: 2rem; }
 .badges { --badge: 3rem; display: flex; flex-wrap: wrap; align-items: center; gap: .75rem; }
 .badges a { display: inline-flex; border-radius: 9px; }
@@ -82,7 +91,7 @@ h2 { font-size: clamp(2rem, 4.4vw, 3.25rem); font-weight: 600; line-height: 1.04
 /* Simplify demo */
 .simplify { padding-block: clamp(3.5rem, 8vw, 6.5rem); border-top: 1px solid var(--line); }
 .simplify-intro { display: grid; gap: 1.25rem; max-width: 46rem; }
-.simplify-intro p { max-width: 54ch; color: var(--quiet); font-size: 1.125rem; }
+.simplify-intro p { max-width: 36.8em; color: var(--quiet); font-size: 1.125rem; }
 .demo { display: grid; margin-top: clamp(2rem, 4vw, 3rem); border-radius: 24px; background: var(--paper); overflow: hidden; }
 .trip { padding: clamp(1.25rem, 3vw, 2rem); border-bottom: 1px solid var(--line); }
 .trip-head { display: flex; align-items: center; gap: .9rem; }
@@ -96,8 +105,8 @@ h2 { font-size: clamp(2rem, 4.4vw, 3.25rem); font-weight: 600; line-height: 1.04
 /* Amber marks a bill, as in the app's expense icons. */
 .bill-icon { grid-row: span 2; display: grid; place-items: center; width: 2.5rem; height: 2.5rem; margin-right: .85rem; border-radius: 12px; background: var(--bill-tile); color: var(--bill-icon); transition: background-color .15s; }
 .bill-icon .hi { width: 1.35rem; height: 1.35rem; }
-.bill:has(input:not([hidden])) { cursor: pointer; }
-.bill:has(input:not([hidden])):hover { background: color-mix(in srgb, var(--amber) 12%, transparent); }
+.bill:has(input) { cursor: pointer; }
+.bill:has(input):hover { background: color-mix(in srgb, var(--amber) 12%, transparent); }
 .bill-name { grid-column: 3; font-weight: 500; line-height: 1.35; }
 .bill-meta { grid-column: 3 / -1; color: var(--quiet); font-size: .875rem; line-height: 1.4; }
 .bill-amt { grid-column: 4; grid-row: 1; margin-left: .85rem; font-weight: 600; line-height: 1.35; }
@@ -117,7 +126,8 @@ h2 { font-size: clamp(2rem, 4.4vw, 3.25rem); font-weight: 600; line-height: 1.04
 .switch[aria-checked="true"] .switch-track { background: var(--coral); }
 .switch[aria-checked="true"] .switch-track::after { transform: translateX(1.125rem); }
 
-.graph { width: 100%; max-width: 40rem; height: auto; margin: 1rem auto .5rem; overflow: visible; font-family: inherit; }
+/* The box is sized before landing.js draws into it: wide and compact layouts match its viewBoxes. */
+.graph { width: 100%; max-width: 40rem; height: auto; aspect-ratio: 600 / 400; margin: 1rem auto .5rem; overflow: visible; font-family: inherit; }
 .graph .avatar { stroke: var(--paper); stroke-width: 4; }
 .graph .initial { font-size: 24px; font-weight: 600; fill: var(--avatar-ink); text-anchor: middle; dominant-baseline: central; }
 .graph .who { font-size: 17px; font-weight: 600; fill: var(--ink); text-anchor: middle; }
@@ -131,6 +141,7 @@ h2 { font-size: clamp(2rem, 4.4vw, 3.25rem); font-weight: 600; line-height: 1.04
 .graph .edge.pay path.head { fill: var(--coral); }
 .graph .edge.pay text { font-size: 16px; font-weight: 600; fill: var(--ink); }
 /* Narrow screens draw the same graph tighter, with larger type, so amounts stay readable. */
+@media (max-width: 40rem) { .graph { aspect-ratio: 400 / 430; } }
 .graph.compact .who { font-size: 20px; }
 .graph.compact .bal, .graph.compact .edge text { font-size: 17px; }
 .graph.compact .edge.pay text { font-size: 18px; }
@@ -151,20 +162,20 @@ h2 { font-size: clamp(2rem, 4.4vw, 3.25rem); font-weight: 600; line-height: 1.04
 
 /* Features */
 .more { padding-block: clamp(3.5rem, 8vw, 6.5rem); border-top: 1px solid var(--line); }
-.more h2 { max-width: 18ch; }
+.more h2 { max-width: 12.2em; }
 .features { display: grid; gap: 2rem 3rem; margin: clamp(2rem, 4vw, 3.25rem) 0 0; }
 .features dt { font-size: 1.1875rem; font-weight: 600; letter-spacing: -.01em; }
 .feature-icon, .point-icon { display: grid; place-items: center; width: 3.75rem; height: 3.75rem; border-radius: 18px; background: var(--paper); color: var(--ink); }
 .feature-icon { margin-bottom: 1.1rem; }
 .feature-icon .hi, .point-icon .hi { width: 2rem; height: 2rem; }
-.features dd { margin: .35rem 0 0; color: var(--quiet); max-width: 34ch; }
+.features dd { margin: .35rem 0 0; color: var(--quiet); max-width: 23.2em; }
 @media (min-width: 48rem) { .features { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 
 /* Money */
 .money { display: grid; gap: 2.5rem; padding-block: clamp(3.5rem, 8vw, 6.5rem); border-top: 1px solid var(--line); }
-.money h2 { max-width: 15ch; }
+.money h2 { max-width: 10.2em; }
 .money-points { display: grid; gap: 1.75rem; align-content: start; }
-.money-points p { position: relative; min-height: 3.75rem; padding-left: 5rem; max-width: calc(46ch + 5rem); color: var(--quiet); }
+.money-points p { position: relative; min-height: 3.75rem; padding-left: 5rem; max-width: calc(31.4em + 5rem); color: var(--quiet); }
 .point-icon { position: absolute; left: 0; top: 0; }
 .money-points strong { display: block; margin-bottom: .2rem; color: var(--ink); font-size: 1.1875rem; font-weight: 600; letter-spacing: -.01em; }
 .source { display: flex; align-items: center; gap: .45em; width: fit-content; min-height: 2.75rem; margin-top: .9rem; padding: .4rem 1rem .4rem .8rem; border: 1px solid var(--line); border-radius: 999px; color: var(--ink); font-weight: 500; text-decoration: none; white-space: nowrap; transition: background-color .15s; }
@@ -176,13 +187,13 @@ h2 { font-size: clamp(2rem, 4.4vw, 3.25rem); font-weight: 600; line-height: 1.04
 .get-inner { display: grid; gap: .75rem; padding-block: 0 clamp(2.5rem, 6vw, 4.5rem); }
 .get-band h2 { font-size: clamp(2.5rem, 6.5vw, 5rem); letter-spacing: -.045em; }
 .get-copy { display: grid; gap: 1.25rem; align-content: start; }
-.get-copy > p { max-width: 38ch; font-size: 1.125rem; }
+.get-copy > p { max-width: 25.9em; font-size: 1.125rem; }
 .get-band .badges { --badge: 3.25rem; }
 .get-band :focus-visible { outline-color: var(--on-brand); }
 .mascot { width: clamp(9rem, 30vw, 21rem); height: auto; margin-top: -2.5rem; justify-self: end; order: -1; }
 .qr { display: none; margin: .5rem 0 0; align-items: center; gap: 1rem; font-size: .9375rem; }
 .qr img { width: 6.5rem; height: 6.5rem; border-radius: 8px; background: #FFFFFF; padding: .3rem; }
-.qr figcaption { max-width: 14ch; }
+.qr figcaption { max-width: 9.5em; }
 /* The mascot stands on the band's bottom edge; its PNG has ~8% clear space under the feet. */
 @media (min-width: 52rem) {
   .get-inner { padding-right: clamp(18rem, 30vw, 25rem); }

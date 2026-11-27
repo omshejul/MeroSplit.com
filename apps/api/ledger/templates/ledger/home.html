@@ -22,8 +22,10 @@
   <meta property="og:image:height" content="1024">
   <meta property="og:image:alt" content="MeroSplit amber and coral mark">
   <meta name="twitter:card" content="summary">
+  <link rel="preload" href="/assets/fonts/StackSansText.ttf" as="font" type="font/ttf" crossorigin>
   <link rel="stylesheet" href="/assets/typography.css">
   <link rel="stylesheet" href="/assets/landing.css">
+  <noscript><style>[data-demo-only], .bill input { display: none !important; }</style></noscript>
   <script src="/assets/landing.js" defer></script>
   {% if testing_links_ready and not google_play_public %}<script src="/assets/install.js" defer></script>{% endif %}
   <script type="application/ld+json">{"@context": "https://schema.org", "@type": "WebSite", "name": "MeroSplit", "url": "https://merosplit.com/"}</script>
@@ -63,23 +65,23 @@
         <div class="trip">
           <div class="trip-head">
             <span class="tile" aria-hidden="true"><svg class="hi" aria-hidden="true" focusable="false"><use href="/assets/icons.svg#beach"/></svg></span>
-            <div><h3>Goa trip</h3><p>An example group.<span data-demo-only hidden> Untick a bill to leave it out.</span></p></div>
+            <div><h3>Goa trip</h3><p>An example group.<span data-demo-only> Untick a bill to leave it out.</span></p></div>
           </div>
           <ul class="bills" id="bills">
-          <li><label class="bill"><input type="checkbox" checked hidden data-amount="12000" data-payer="0" data-among="0 1 2 3"><span class="bill-icon"><svg class="hi" aria-hidden="true" focusable="false"><use href="/assets/icons.svg#hotel-02"/></svg></span><span class="bill-name">Villa, two nights</span><span class="bill-amt">₹12,000</span><span class="bill-meta">Asha paid, split 4 ways</span></label></li>
-          <li><label class="bill"><input type="checkbox" checked hidden data-amount="2400" data-payer="1" data-among="0 1 2 3"><span class="bill-icon"><svg class="hi" aria-hidden="true" focusable="false"><use href="/assets/icons.svg#scooter-01"/></svg></span><span class="bill-name">Scooter rental</span><span class="bill-amt">₹2,400</span><span class="bill-meta">Ravi paid, split 4 ways</span></label></li>
-          <li><label class="bill"><input type="checkbox" checked hidden data-amount="3600" data-payer="2" data-among="0 1 2 3"><span class="bill-icon"><svg class="hi" aria-hidden="true" focusable="false"><use href="/assets/icons.svg#restaurant-01"/></svg></span><span class="bill-name">Dinner at the shack</span><span class="bill-amt">₹3,600</span><span class="bill-meta">Meera paid, split 4 ways</span></label></li>
-          <li><label class="bill"><input type="checkbox" checked hidden data-amount="1600" data-payer="3" data-among="0 1 2 3"><span class="bill-icon"><svg class="hi" aria-hidden="true" focusable="false"><use href="/assets/icons.svg#taxi-02"/></svg></span><span class="bill-name">Airport cab</span><span class="bill-amt">₹1,600</span><span class="bill-meta">Kabir paid, split 4 ways</span></label></li>
-          <li><label class="bill"><input type="checkbox" checked hidden data-amount="4500" data-payer="1" data-among="0 1 2"><span class="bill-icon"><svg class="hi" aria-hidden="true" focusable="false"><use href="/assets/icons.svg#ticket-01"/></svg></span><span class="bill-name">Parasailing</span><span class="bill-amt">₹4,500</span><span class="bill-meta">Ravi paid, split between Asha, Ravi and Meera</span></label></li>
+          <li><label class="bill"><input type="checkbox" checked data-amount="12000" data-payer="0" data-among="0 1 2 3"><span class="bill-icon"><svg class="hi" aria-hidden="true" focusable="false"><use href="/assets/icons.svg#hotel-02"/></svg></span><span class="bill-name">Villa, two nights</span><span class="bill-amt">₹12,000</span><span class="bill-meta">Asha paid, split 4 ways</span></label></li>
+          <li><label class="bill"><input type="checkbox" checked data-amount="2400" data-payer="1" data-among="0 1 2 3"><span class="bill-icon"><svg class="hi" aria-hidden="true" focusable="false"><use href="/assets/icons.svg#scooter-01"/></svg></span><span class="bill-name">Scooter rental</span><span class="bill-amt">₹2,400</span><span class="bill-meta">Ravi paid, split 4 ways</span></label></li>
+          <li><label class="bill"><input type="checkbox" checked data-amount="3600" data-payer="2" data-among="0 1 2 3"><span class="bill-icon"><svg class="hi" aria-hidden="true" focusable="false"><use href="/assets/icons.svg#restaurant-01"/></svg></span><span class="bill-name">Dinner at the shack</span><span class="bill-amt">₹3,600</span><span class="bill-meta">Meera paid, split 4 ways</span></label></li>
+          <li><label class="bill"><input type="checkbox" checked data-amount="1600" data-payer="3" data-among="0 1 2 3"><span class="bill-icon"><svg class="hi" aria-hidden="true" focusable="false"><use href="/assets/icons.svg#taxi-02"/></svg></span><span class="bill-name">Airport cab</span><span class="bill-amt">₹1,600</span><span class="bill-meta">Kabir paid, split 4 ways</span></label></li>
+          <li><label class="bill"><input type="checkbox" checked data-amount="4500" data-payer="1" data-among="0 1 2"><span class="bill-icon"><svg class="hi" aria-hidden="true" focusable="false"><use href="/assets/icons.svg#ticket-01"/></svg></span><span class="bill-name">Parasailing</span><span class="bill-amt">₹4,500</span><span class="bill-meta">Ravi paid, split between Asha, Ravi and Meera</span></label></li>
           </ul>
         </div>
 
         <div class="board">
           <div class="board-bar">
             <p class="tally" id="tally" aria-live="polite"><strong>6</strong> <span>payments to settle up</span></p>
-            <button class="switch" id="simplify-switch" type="button" role="switch" aria-checked="false" data-demo-only hidden><svg class="hi" aria-hidden="true" focusable="false"><use href="/assets/icons.svg#magic-wand-01"/></svg>Simplify<span class="switch-track" aria-hidden="true"></span></button>
+            <button class="switch" id="simplify-switch" type="button" role="switch" aria-checked="false" data-demo-only><svg class="hi" aria-hidden="true" focusable="false"><use href="/assets/icons.svg#magic-wand-01"/></svg>Simplify<span class="switch-track" aria-hidden="true"></span></button>
           </div>
-          <svg class="graph" id="graph" viewBox="0 30 600 400" aria-hidden="true" focusable="false" data-demo-only hidden></svg>
+          <svg class="graph" id="graph" viewBox="0 30 600 400" aria-hidden="true" focusable="false" data-demo-only></svg>
           <div>
             <ol class="payments" id="payments" aria-label="Payments to settle up">
           <li><span>Ravi pays Asha</span><strong>₹900</strong></li>

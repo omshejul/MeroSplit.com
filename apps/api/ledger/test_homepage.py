@@ -60,6 +60,11 @@ def test_crawler_gets_real_homepage_and_head_without_javascript_or_an_app_export
     assert "table" not in page.tags
     assert "/app/" in page.links and {"/privacy", "/support"}.issubset(page.links)
     assert [script.get("src") for script in page.scripts if script.get("type") != "application/ld+json"] == ["/assets/landing.js"]
+    # Nothing moves on load: the font is preloaded and the demo's controls take their space from the first paint.
+    html = response.content.decode()
+    assert '<link rel="preload" href="/assets/fonts/StackSansText.ttf" as="font" type="font/ttf" crossorigin>' in html
+    assert "<noscript><style>[data-demo-only], .bill input { display: none !important; }</style></noscript>" in html
+    assert " hidden" not in html.split('<main id="main">', 1)[1].split("</main>", 1)[0]
     assert "<div id=\"root\"" not in response.content.decode()
     assert page.meta["canonical"] == ["https://merosplit.com/"]
     assert page.meta["og:url"] == "https://merosplit.com/"
