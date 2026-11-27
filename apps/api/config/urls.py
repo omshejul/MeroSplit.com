@@ -67,6 +67,7 @@ urlpatterns = [
     path("", TemplateView.as_view(template_name="ledger/home.html", extra_context={
         "google_play_public": settings.GOOGLE_PLAY_PUBLIC,
         "testing_links_ready": TESTING_LINKS_READY,
+        "loader_layers": range(24),
     })),
     path("robots.txt", TemplateView.as_view(template_name="ledger/robots.txt", content_type="text/plain; charset=utf-8")),
     path("sitemap.xml", TemplateView.as_view(template_name="ledger/sitemap.xml", content_type="application/xml; charset=utf-8")),

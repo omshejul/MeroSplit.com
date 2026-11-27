@@ -1,3 +1,31 @@
+/* Loader: lift it at the first snap of the mark after the font and the page's images are in. If landing.css has
+   already started lifting it (two cycles), follow that instead, and if that happened before this script ran, leave
+   the headline still rather than replaying its split under the reader. */
+(() => {
+  const root = document.documentElement;
+  const loader = document.querySelector(".loader");
+  if (!loader) return;
+  const cap = loader.getAnimations?.().find((a) => a.animationName === "lift");
+  if (cap && cap.currentTime >= cap.effect.getTiming().delay) {
+    loader.remove();
+    return;
+  }
+  let ready = false;
+  const lift = () => {
+    if (root.classList.contains("ready")) return;
+    root.classList.add("ready");
+    setTimeout(() => loader.remove(), 450);
+  };
+  const font = document.fonts ? document.fonts.load('1em "Stack Sans Text"').then(() => document.fonts.ready) : Promise.resolve();
+  const page = new Promise((done) => (document.readyState === "complete" ? done() : addEventListener("load", done, { once: true })));
+  Promise.all([font, page]).catch(() => {}).then(() => {
+    ready = true;
+    if (document.hidden) lift();
+  });
+  loader.addEventListener("animationiteration", () => ready && lift());
+  loader.addEventListener("animationstart", (event) => event.animationName === "lift" && lift());
+})();
+
 /* Simplify demo on the home page. The page renders the example bills, their direct payments and
    the controls' space up front (a <noscript> style hides the controls without JavaScript), so this
    script fills the graph and wires the toggles without moving anything. */
