@@ -63,7 +63,13 @@ def test_crawler_gets_real_homepage_and_head_without_javascript_or_an_app_export
     # Nothing moves on load: the font is preloaded and the demo's controls take their space from the first paint.
     html = response.content.decode()
     assert '<link rel="preload" href="/assets/fonts/StackSansText.ttf" as="font" type="font/ttf" crossorigin>' in html
-    assert "<noscript><style>[data-demo-only], .bill input { display: none !important; }</style></noscript>" in html
+    assert "<noscript><style>[data-demo-only], .bill input, .loader { display: none !important; }</style></noscript>" in html
+    # The loader is decoration outside main: hidden from assistive tech, without text, and lifted by CSS alone.
+    loader = html.split('<div class="loader" aria-hidden="true">', 1)[1].split("</div>\n  <a class=\"skip\"", 1)[0]
+    assert loader.count('<use href="#mark-amber"/>') == 24 and loader.count('<use href="#mark-coral"/>') == 24
+    assert html.index('class="loader"') < html.index('<main id="main">')
+    landing_css = (settings.BASE_DIR / "ledger/assets/landing.css").read_text()
+    assert "animation: lift .4s calc(var(--cycle) * 2) ease forwards;" in landing_css
     assert " hidden" not in html.split('<main id="main">', 1)[1].split("</main>", 1)[0]
     assert "<div id=\"root\"" not in response.content.decode()
     assert page.meta["canonical"] == ["https://merosplit.com/"]
