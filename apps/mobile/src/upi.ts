@@ -2,6 +2,11 @@ import { integer, MAX_AMOUNT } from './accounting.ts';
 import type { Group } from './types.ts';
 
 export type UPIPayment = { sender: string; recipient: string; amount: string };
+export type UPIPaymentAttempt = NonNullable<Group['payment_attempts']>[number];
+export class UPIPaymentReviewError extends Error {
+  attempt: UPIPaymentAttempt;
+  constructor(attempt: UPIPaymentAttempt) { super('Check this payment before paying again.'); this.attempt = attempt; }
+}
 export type UPILaunchQuote = {
   id: string; vpa: string; amount: string; currency: string; recipient: string; note: string;
   bank_verified: false; direct_launch_supported: boolean; expires_at: string; group_version: number;

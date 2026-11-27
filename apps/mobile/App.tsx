@@ -31,7 +31,7 @@ import * as Crypto from 'expo-crypto';
 import { accountOwner, ApiError, requestEmailCode, confirmEmailCode, endSession, claimLegacyGroup, expensePayload, fetchGroup, refreshGroups, retainHistoryWindow, request, syncOutbox, cacheOfflineGroups, prefetchRead } from './src/api';
 import type { EmailCodeChallenge } from './src/api';
 import { readAppLink, type AppLink } from './src/browserLinks';
-import { validateUPIPayment, type UPILaunchQuote } from './src/upi';
+import { UPIPaymentReviewError, validateUPIPayment, type UPILaunchQuote, type UPIPaymentAttempt } from './src/upi';
 import { formatMoney } from './src/accounting';
 import { emptyGroup, previewPending } from './src/ledger';
 import { getDatabase, savedSession, saveSession, retireSyncPause, shareJson, storageIsDurable, isOnline, claimFirstSplitUPIPrompt } from './src/native';
@@ -1060,19 +1060,20 @@ function AppContent() {
     await queue(command('POST', `/groups/${groupId}/expenses/${value.id}/reverse`, { version: value.version }));
     if (navigation.ref.getRootState() === route) navigate('group');
   }
-  async function savePayment(value: Transfer, onQueued?: () => void) {
+  async function savePayment(value: Transfer & { attemptId?: string }, onQueued?: () => void) {
     await perform(async () => {
       if (!selected) throw new Error('Open a group first.');
       if (selected.group.archived) throw new Error('Reopen this group in settings before making changes.');
       const paymentId = uuid(), now = new Date();
       const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-      let attempt = selected.group.payment_attempts?.find(attempt => attempt.sender === value.sender && attempt.recipient === value.recipient && ['prepared', 'reported'].includes(attempt.state) && !pending.some(command => command.path.endsWith('/settlements') && command.body.attempt_id === attempt.id));
+      let attempt = value.attemptId ? { id: value.attemptId } : selected.group.payment_attempts?.find(attempt => attempt.sender === value.sender && attempt.recipient === value.recipient && ['prepared', 'reported'].includes(attempt.state) && !pending.some(command => command.path.endsWith('/settlements') && command.body.attempt_id === attempt.id));
       if (!attempt && session && isOnline()) {
         try { attempt = (await request<{ items: NonNullable<Group['payment_attempts']> }>(session, `/groups/${groupId}/history/attempts?sender=${value.sender}&recipient=${value.recipient}&state=active`)).items[0]; }
         catch (error) { if (!storageIsDurable() || error instanceof ApiError && error.status < 500) throw error; }
       }
-      await queue(command('POST', `/groups/${groupId}/settlements`, { id: paymentId, ...value, date, ...(attempt ? { attempt_id: attempt.id } : {}) }), undefined, undefined, () => { onQueued?.(); navigation.complete('group'); });
-    });
+      const { attemptId, ...payment } = value;
+      await queue(command('POST', `/groups/${groupId}/settlements`, { id: paymentId, ...payment, date, ...(attempt ? { attempt_id: attempt.id } : {}) }), undefined, undefined, () => { onQueued?.(); navigation.complete('group'); });
+    }, false);
   }
   async function reviewChange(value: Command) {
     await browse(`review:${value.command_id}`, async current => {
@@ -1131,7 +1132,7 @@ function AppContent() {
       }
     });
   }
-  async function groupAction(suffix: string, body: Record<string, unknown>): Promise<Record<string, unknown>> {
+  async function groupAction(suffix: string, body: Record<string, unknown>, reportError = true): Promise<Record<string, unknown>> {
     return perform(async () => {
       if (!session) throw new Error('Sign in to continue.');
       requireConnectionForTemporaryStorage();
@@ -1149,7 +1150,7 @@ function AppContent() {
         if (localPerson && !(error instanceof ApiError) && (await pendingCommands(db, owner)).find(row => row.command_id === value.command_id)?.state === 'pending') return { id: groupId, participant_id: body.id, pending: true };
         throw error;
       } finally { if (ownerRef.current === owner) setSyncing(false); }
-    });
+    }, reportError);
   }
   async function reviewPaymentAttempt(sender: string, recipient: string) {
     if (!session || !groupId) return;
@@ -1170,25 +1171,32 @@ function AppContent() {
       const db = await getDatabase();
       let group = await fetchGroup(session, groupId!);
       const payer = group.participants.find(person => !person.removed && String(person.user_id) === session.userId)?.id ?? '';
-      validateUPIPayment(group, payer, payment);
       const activeAttempt = async () => {
         const attempt = (await request<{ items: NonNullable<Group['payment_attempts']> }>(session, `/groups/${groupId}/history/attempts?sender=${payment.sender}&recipient=${payment.recipient}&state=active&version=${group.version}`)).items[0];
         if (attempt) { group = { ...group, payment_attempts: [...(group.payment_attempts ?? []).filter(value => value.id !== attempt.id), attempt] }; if (!await saveReadGroup(session!, group, () => activeGroupRef.current === group.id, false)) throw new Error('This group changed. Reopen it before paying.'); }
         return attempt;
       };
       let attempt = await activeAttempt();
-      if (attempt && (attempt.state !== 'prepared' || attempt.amount !== payment.amount)) throw new Error('Review the existing payment. Cancel an unpaid attempt before changing its amount.');
-      if (!attempt) {
-        const payee = group.participants.find(person => person.id === payment.recipient)?.payment_profile;
-        if (!payee) throw new Error('Ask this person to add their UPI address.');
-        await enqueue(db, owner, command('POST', `/groups/${groupId}/payment-attempts`, { id: uuid(), ...payment, group_version: group.version, payee_version: payee.version }));
-        await syncOutbox(db, session, 'summary');
-        group = (await listGroups(db, owner)).find(row => row.group.id === groupId)!.group;
-        attempt = await activeAttempt();
-      } else if (!await saveReadGroup(session, group, () => activeGroupRef.current === group.id, false)) throw new Error('This group changed. Reopen it before paying.');
+      // An earlier handoff has an unknown bank outcome. Review it, even if its quote is still valid.
+      if (attempt) throw new UPIPaymentReviewError(attempt);
+      validateUPIPayment(group, payer, payment);
+      const payee = group.participants.find(person => person.id === payment.recipient)?.payment_profile;
+      if (!payee) throw new Error('Ask this person to add their UPI address.');
+      const attemptId = uuid();
+      await enqueue(db, owner, command('POST', `/groups/${groupId}/payment-attempts`, { id: attemptId, ...payment, group_version: group.version, payee_version: payee.version }));
+      await syncOutbox(db, session, 'summary');
+      group = (await listGroups(db, owner)).find(row => row.group.id === groupId)!.group;
+      attempt = await activeAttempt();
       if (!attempt) throw new Error('Payment details changed. Review again.');
-      return request<UPILaunchQuote>(session, `/groups/${groupId}/payment-attempts/${attempt.id}/launch`);
-    });
+      if (attempt.id !== attemptId) throw new UPIPaymentReviewError(attempt);
+      try { return await request<UPILaunchQuote>(session, `/groups/${groupId}/payment-attempts/${attempt.id}/launch`); }
+      catch (error) {
+        if (!(error instanceof ApiError && error.status === 409)) throw error;
+        await reviewPaymentAttempt(payment.sender, payment.recipient).catch(() => {});
+        const latest = await request<UPIPaymentAttempt>(session, `/groups/${groupId}/payment-attempts/${attempt.id}`).catch(() => attempt!);
+        throw new UPIPaymentReviewError(latest);
+      }
+    }, false);
   }
   async function sendSignInLink() {
     const value = await requestEmailLink(API_URL, email);
@@ -1548,7 +1556,16 @@ function AppContent() {
       </>}
       {screen === 'expense' && selected && (!expenseId || expense || reviewInput) && <ExpenseForm key={`${owner}|${groupId}|${expenseId ?? 'new'}`} group={preview ?? selected.group} expense={reviewInput ?? expense} selfId={selfId} busy={busy} autoFocusAmount={focused && !expenseId && !reviewInput} owner={owner} writes={draftWrites} onSave={(value, attachment, onQueued) => saveExpense(value, attachment, () => { onQueued?.(); billQueued(); })} />}
       {screen === 'review' && selected && reviewCommand && <SavedChangeScreen command={reviewCommand} group={selected.group} busy={busy} onApplySetting={() => void resolveSavedSetting(true)} onDiscard={() => groupSettingReview(reviewCommand, selected.group) ? confirm('Keep the current setting?', 'Only this unsent setting change will be removed. Your saved bills will stay and continue syncing.', () => resolveSavedSetting(false), 'Keep current setting') : confirm('Discard this unsent change?', 'Accepted records remain. Your saved change will be removed from this phone.', async () => { await discardCommand(await getDatabase(), owner, reviewCommand.command_id); setReviewCommand(null); navigate('group'); }, 'Discard change')} onEditSaved={value => { setReviewInput(value); navigate('expense', { expenseId: reviewCommand.method === 'PUT' ? value.id : null }); }} />}
-      {screen === 'settle' && selected && preview && <SettleForm key={`${owner}|${groupId}`} group={preview} initial={transfer} busy={busy} selfId={selfId} onRemind={online && !pending.length ? remindPayment : undefined} onReviewAttempt={reviewPaymentAttempt} onPrepareUPI={prepareUPI} onCancelUPI={async id => { await groupAction(`/payment-attempts/${id}/cancel`, {}); await clearPaymentReturn(await getDatabase(), owner, id); await load(); }} returnPayment={returnPayment} onArmReturn={armPaymentReturn} onReturnPaymentChange={persistPaymentReturn} onResolveReturn={finishPaymentReturn} onSave={savePayment} onCancel={() => { setReturnAttemptId(null); back(); }} />}
+      {screen === 'settle' && selected && preview && <SettleForm key={`${owner}|${groupId}`} group={preview} initial={transfer} busy={busy} selfId={selfId} onRemind={online && !pending.length ? remindPayment : undefined} onReviewAttempt={reviewPaymentAttempt} onPrepareUPI={prepareUPI} onCancelUPI={async (id, sender, recipient) => {
+        try { await groupAction(`/payment-attempts/${id}/cancel`, {}, false); }
+        catch (error) {
+          if (!(error instanceof ApiError && error.status === 409)) throw error;
+          await reviewPaymentAttempt(sender, recipient).catch(() => {});
+          const latest = await request<UPIPaymentAttempt>(session!, `/groups/${groupId}/payment-attempts/${id}`);
+          throw new UPIPaymentReviewError(latest);
+        }
+        await clearPaymentReturn(await getDatabase(), owner, id); await load();
+      }} returnPayment={returnPayment} onArmReturn={armPaymentReturn} onReturnPaymentChange={persistPaymentReturn} onResolveReturn={finishPaymentReturn} onSave={savePayment} onCancel={() => { setReturnAttemptId(null); back(); }} />}
       {screen === 'paymentDetail' && selected && settlement && <PaymentDetail onShowInGroup={() => navigate('group', { groupId, revealRecord: `payment:${settlement.id}` })} payment={settlement} group={preview ?? selected.group} selfId={selfId} busy={busy} canReverse={!pending.length && !selected.group.archived} onReverse={() => confirm('Reverse payment record?', 'This removes the payment from the group’s balances.', () => reversePayment(settlement), 'Reverse payment')} />}
       {screen === 'members' && selected && <MembersScreen key={`${owner}|${groupId}`} owner={owner} session={session} onPhotoChanged={sync} group={preview ?? selected.group} selfId={selfId} busy={busy} onAction={groupAction} onMembership={action => { if (action === 'restore') launch(() => changeMembership(action)); else confirm('Delete group?', 'Leave this group and remove it from your list. Shared balances and history stay. Your saved drafts are kept.', () => changeMembership(action), 'Delete group'); }} addPersonRequest={addPersonRequest} />}
 
